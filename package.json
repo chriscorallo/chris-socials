@@ -1,0 +1,43 @@
+{
+  "name": "chris-content-intelligence-system",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "lint": "eslint .",
+    "db:up": "node scripts/dev-db.mjs",
+    "db:migrate": "pnpm --filter @chris/domain exec prisma migrate dev",
+    "db:migrate:diff": "pnpm --filter @chris/domain exec prisma migrate diff --from-config-datasource --to-schema packages/domain/prisma/schema.prisma --script",
+    "db:migrate:deploy": "pnpm --filter @chris/domain exec prisma migrate deploy",
+    "db:seed": "pnpm --filter @chris/domain exec prisma db seed",
+    "dev:web": "pnpm --filter @chris/web dev"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "ffmpeg-static"
+    ]
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0",
+    "eslint": "^10.10.0",
+    "tsx": "^4.23.13",
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
+    "dotenv-cli": "^11.0.0",
+    "@eslint/js": "^10.0.1",
+    "typescript-eslint": "^8.69.0",
+    "dotenv": "^17.4.2",
+    "globals": "^17.12.0"
+  }
+}

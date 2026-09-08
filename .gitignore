@@ -1,0 +1,27 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# secrets — never committed
+.env
+.env.local
+.env.*.local
+*.local
+
+# generated
+packages/domain/prisma/generated/
+packages/domain/.pglite/
+
+# local dev media storage (Phase 1 local-fs StorageAdapter — see /docs/DECISIONS.md)
+.storage/
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store

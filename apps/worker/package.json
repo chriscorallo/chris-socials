@@ -1,0 +1,31 @@
+{
+  "name": "@chris/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/render-job.ts",
+  "types": "./src/render-job.ts",
+  "exports": {
+    ".": "./src/render-job.ts",
+    "./quality-gate-job": "./src/quality-gate-job.ts",
+    "./publish-job": "./src/publish-job.ts",
+    "./snapshot-job": "./src/snapshot-job.ts",
+    "./comment-ingestion-job": "./src/comment-ingestion-job.ts",
+    "./autonomous-publish-job": "./src/autonomous-publish-job.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@chris/domain": "workspace:*",
+    "@chris/agents": "workspace:*",
+    "@chris/media": "workspace:*",
+    "@chris/platforms": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "@types/node": "^26.5.0",
+    "vitest": "^5.0.0"
+  }
+}

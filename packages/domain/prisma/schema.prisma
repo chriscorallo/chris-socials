@@ -1,0 +1,1031 @@
+// Phase 0 schema subset. See /docs/DATA_MODEL.md for the full entity map and which phase
+// introduces each remaining entity. Every schema change after this file's initial migration
+// must go through `prisma migrate dev` — never a hand-edited migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: connection URL lives in prisma.config.ts (CLI) and is passed to the driver
+// adapter at runtime (see src/prisma.ts) — not here. See /docs/DECISIONS.md.
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Enums ---
+
+// The 23 states from /docs/STATE_MACHINE.md. Order matches the doc's happy-path ordering,
+// not alphabetical, so the enum reads as a story.
+enum ContentState {
+  IDEA
+  SELECTED
+  CONTRACTED
+  RESEARCHING
+  RESEARCH_BLOCKED
+  RESEARCHED
+  SCRIPTING
+  SCRIPTED
+  READY_TO_FILM
+  FILMED
+  MEDIA_INGESTED
+  TAKE_SELECTED
+  EDIT_PLANNED
+  EDITING
+  RENDERED
+  QC_REPAIR
+  QC_BLOCKED
+  READY
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  MEASURING
+  ARCHIVED
+  CANCELLED
+}
+
+enum ActorType {
+  HUMAN
+  SYSTEM
+  JOB
+}
+
+enum BrandMemoryKind {
+  CONSTITUTION
+  CHRIS_BRAIN
+}
+
+// Brand Constitution pillars — /brand/BRAND_CONSTITUTION.md.
+enum Pillar {
+  SKILL
+  MINDSET
+  LIFESTYLE
+  PASSIONS
+}
+
+// /docs/PRODUCT_SPEC.md — Production tiers.
+enum ProductionTier {
+  RAW
+  FAST
+  MEDIUM
+  HERO
+}
+
+enum ResearchDepth {
+  NONE
+  LIGHT
+  STANDARD
+  DEEP
+}
+
+enum FactualRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// Physical filming batches — /prompts/agents/PRODUCTION_DIRECTOR.md.
+enum FilmingSetup {
+  DESK
+  STANDING
+  CASUAL
+  WALKING
+  SKIT
+  SPECIAL
+}
+
+// Real from Phase 1 (raw upload only); more kinds (RENDER, GRAPHIC, ...) added when the
+// phases that produce them arrive.
+enum MediaAssetKind {
+  RAW_TAKE
+}
+
+// /prompts/agents/RESEARCH.md — Research status.
+enum ResearchStatus {
+  READY
+  NEEDS_MORE_RESEARCH
+  UNSUPPORTED
+  OUT_OF_SCOPE
+}
+
+// /prompts/agents/PRODUCTION_DIRECTOR.md's "which platforms" concept, and
+// /docs/DECISIONS.md's platform rate-limit notes.
+enum ContentPlatform {
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE
+}
+
+// A Weekly Strategist proposal requires human review before it takes effect on the state
+// machine — see /docs/DECISIONS.md ("Weekly Strategist proposals require review before
+// taking effect"). Never PROPOSED -> effect without passing through APPROVED.
+enum PortfolioItemStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+}
+
+// --- Models ---
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+model ContentItem {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  pillar       Pillar?
+  format       String?
+  currentState ContentState @default(IDEA)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  transitions          ContentStateTransition[]
+  productionContract   ProductionContract?
+  creatorCard          CreatorCard?
+  mediaAssets          MediaAsset[]
+  scheduleEntry        ScheduleEntry?
+  researchPackets      ResearchPacket[]
+  scriptVersions       ScriptVersion[]
+  weeklyPortfolioItems WeeklyPortfolioItem[]
+  takeSelections       TakeSelection[]
+  editPlans            EditPlan[]
+  renders              Render[]
+  qcReports            QCReport[]
+  platformPackages     PlatformPackage[]
+  publications         Publication[]
+  performanceSnapshots PerformanceSnapshot[]
+  comments             Comment[]
+  performanceEvaluations PerformanceEvaluation[]
+  tasteFeedback        TasteFeedback[]
+  experimentVariants   ExperimentVariant[]
+  adversarialCritiques AdversarialCritique[]
+}
+
+// --- Reference Creator Intelligence (spec §8) ---
+// No live scraping/API integration in this system — ReferenceContent.description is
+// manually entered (a transcript, notes, or summary Chris or a specialist supplies).
+// "Principles transfer. Identity does not." — see /prompts/agents/REFERENCE_INTELLIGENCE.md.
+
+model ReferenceCreator {
+  id                     String   @id @default(cuid())
+  name                   String
+  platforms              Json // string[]
+  brandPositioning       String
+  knownAudience          String?
+  formats                Json // string[]
+  storytellingTendencies String?
+  verbalTendencies       String?
+  editingTendencies      String?
+  visualCharacteristics  String?
+  hookArchetypes         Json // string[]
+  ctaBehaviors           String?
+  contentEvolution       String?
+  relevanceToChris       String?
+  doNotTransfer          String?
+  sourceProvenance       String?
+  createdAt              DateTime @default(now())
+
+  content ReferenceContent[]
+}
+
+model ReferenceContent {
+  id                     String           @id @default(cuid())
+  referenceCreatorId     String
+  description            String
+  platform               ContentPlatform?
+  durationSeconds        Int?
+  hook                   String?
+  topic                  String?
+  publicPerformanceNotes String?
+  sourceUrl              String?
+  createdAt              DateTime         @default(now())
+
+  referenceCreator ReferenceCreator       @relation(fields: [referenceCreatorId], references: [id])
+  observations     ReferenceObservation[]
+
+  @@index([referenceCreatorId])
+}
+
+// /prompts/agents/REFERENCE_INTELLIGENCE.md's Return shape.
+model ReferenceObservation {
+  id                     String   @id @default(cuid())
+  referenceContentId     String
+  observed               String
+  likelyPrinciple        String
+  transferabilityToChris String
+  reason                 String
+  risks                  Json // string[]
+  testRequired           String
+  confidence             Float?
+  createdAt              DateTime @default(now())
+
+  referenceContent ReferenceContent @relation(fields: [referenceContentId], references: [id])
+
+  @@index([referenceContentId])
+}
+
+// --- Weekly Programming Thesis + Portfolio (spec §9 steps 2-3) ---
+
+model WeeklyProgrammingThesis {
+  id                    String   @id @default(cuid())
+  weekStartDate         DateTime @unique
+  thesis                String
+  primaryObjectives     Json // string[]
+  activeExperiments     Json // string[]
+  areasToExploit        Json // string[]
+  areasToExplore        Json // string[]
+  areasToReduce         Json // string[]
+  risks                 Json // string[]
+  contentGaps           Json // string[]
+  productionConstraints Json // string[]
+  humanDecisionsNeeded  Json // string[]
+  createdAt             DateTime @default(now())
+
+  portfolioItems WeeklyPortfolioItem[]
+}
+
+// One row per candidate idea evaluated as part of a week's portfolio — spec §9 step 3's
+// per-idea fields (purpose, pillar, topic, ... duplicate risk, research/production burden).
+model WeeklyPortfolioItem {
+  id                  String              @id @default(cuid())
+  weeklyThesisId      String
+  contentItemId       String
+  purpose             String
+  pillar              Pillar?
+  topic               String
+  subtopic            String?
+  format              String
+  productionTier      ProductionTier
+  targetLengthSeconds Int?
+  primaryHypothesis   String
+  historicalAnalogue  String?
+  referenceInfluence  String?
+  whyThisWeek         String
+  duplicateRisk       String?
+  researchBurden      String?
+  productionBurden    String?
+  selected            Boolean             @default(true)
+  // Agent proposals start PROPOSED and have no effect on the ContentItem's state until a
+  // human approves them — see /docs/DECISIONS.md.
+  status              PortfolioItemStatus @default(PROPOSED)
+  createdAt           DateTime            @default(now())
+
+  weeklyThesis WeeklyProgrammingThesis @relation(fields: [weeklyThesisId], references: [id])
+  contentItem  ContentItem             @relation(fields: [contentItemId], references: [id])
+
+  @@unique([weeklyThesisId, contentItemId])
+  @@index([contentItemId])
+}
+
+// Phase 2 — spec §9 step 5. Append-only: each research attempt is a new row (episodic
+// memory is permanent by construction, per /docs/ARCHITECTURE.md), never overwritten. The
+// most recent row for a ContentItem is the current one. claimsGateResult is filled in once
+// the Claims Gate has evaluated this specific packet — see packages/agents/src/schemas.ts
+// for the JSON shapes (kept independent of this schema deliberately: packages/domain must
+// not depend on packages/agents, see /docs/ARCHITECTURE.md's package boundaries).
+model ResearchPacket {
+  id                    String         @id @default(cuid())
+  contentItemId         String
+  primaryClaim          String
+  facts                 Json
+  citations             Json
+  numericInputs         Json
+  calculationNotes      String?
+  caveats               Json
+  confidence            Float
+  contradictoryEvidence Json
+  prohibitedClaims      Json
+  contentSafeWording    String
+  status                ResearchStatus
+  stopResearching       Boolean
+  claimsGateResult      Json?
+  createdAt             DateTime       @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
+  @@index([contentItemId])
+}
+
+// Phase 2 — spec §9 step 7. Append-only, same rationale as ResearchPacket.
+// brandGuardianReport is filled in once Brand Guardian has evaluated this specific script.
+model ScriptVersion {
+  id                              String   @id @default(cuid())
+  contentItemId                   String
+  researchPacketId                String?
+  spokenScript                    String
+  beats                           Json
+  intendedPauses                  Json
+  emphasizedWords                 Json
+  visualBeats                     Json
+  requiredFactualCaveats          Json
+  targetRuntimeSeconds            Int
+  estimatedSpeakingRuntimeSeconds Int
+  followUpIdeas                   Json
+  brandGuardianReport             Json?
+  createdAt                       DateTime @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
+  @@index([contentItemId])
+}
+
+// Issued once a ContentItem is SELECTED, transitioning it to CONTRACTED. Every field here
+// mirrors spec §9 step 4 ("Production Contract") — see /prompts/agents/PRODUCTION_DIRECTOR.md
+// and /docs/PRODUCT_SPEC.md. DO_NOT_EXPAND_INTO is mandatory per spec, not optional.
+model ProductionContract {
+  id                        String         @id @default(cuid())
+  contentItemId             String         @unique
+  purpose                   String
+  primaryIdea               String
+  audiencePromise           String
+  topic                     String
+  format                    String
+  productionTier            ProductionTier
+  targetLengthMinSeconds    Int
+  targetLengthMaxSeconds    Int
+  researchDepth             ResearchDepth
+  factualRisk               FactualRisk
+  experiment                String?
+  platformOpportunities     Json // string[]
+  humanEditingBudgetMinutes Int?
+  requiredAssets            Json // string[]
+  scope                     String
+  doNotExpandInto           String
+  createdAt                 DateTime       @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+}
+
+// Filming-focused, minimal by design — /prompts/agents/PRODUCTION_DIRECTOR.md: "only what
+// Chris needs while filming." Issued when SCRIPTED -> READY_TO_FILM.
+model CreatorCard {
+  id               String       @id @default(cuid())
+  contentItemId    String       @unique
+  hook             String
+  talkingPoints    Json // string[]
+  setup            FilmingSetup
+  estimatedMinutes Int?
+  notes            String?
+  createdAt        DateTime     @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+}
+
+// Raw media ingestion (spec §9 step 10). Only RAW_TAKE exists in Phase 1 — transcript/scene
+// analysis fields arrive with Phase 3's media intelligence.
+model MediaAsset {
+  id               String         @id @default(cuid())
+  contentItemId    String
+  kind             MediaAssetKind
+  storageKey       String
+  originalFilename String
+  mimeType         String
+  sizeBytes        Int
+  createdAt        DateTime       @default(now())
+
+  // Phase 3 analysis fields — added to this same table rather than a separate RawTake
+  // table, per /docs/DATA_MODEL.md. Populated by deterministic ffprobe analysis
+  // (packages/media's probeMedia) once ingested; null until then.
+  durationSeconds Float?
+  width           Int?
+  height          Int?
+  frameRate       Float?
+  hasAudio        Boolean?
+  videoCodec      String?
+  audioCodec      String?
+  // Transcript — plain text for now; a real transcription provider is a Phase 3 open item,
+  // see /docs/DECISIONS.md ("Transcription: interface only, no provider chosen yet").
+  transcript      String?
+
+  contentItem    ContentItem     @relation(fields: [contentItemId], references: [id])
+  takeSelections TakeSelection[] @relation("SelectedTake")
+
+  @@index([contentItemId])
+}
+
+// Spec §9 step 11. Not unique per ContentItem — a take can be re-selected (e.g. after new
+// footage arrives), and each attempt is a permanent record, same append-only pattern as
+// ResearchPacket/ScriptVersion.
+model TakeSelection {
+  id                   String   @id @default(cuid())
+  contentItemId        String
+  selectedMediaAssetId String
+  backupMediaAssetId   String?
+  confidence           Float
+  reason               String
+  materialDefects      Json // string[]
+  createdAt            DateTime @default(now())
+
+  contentItem  ContentItem @relation(fields: [contentItemId], references: [id])
+  selectedTake MediaAsset  @relation("SelectedTake", fields: [selectedMediaAssetId], references: [id])
+  editPlans    EditPlan[]
+
+  @@index([contentItemId])
+}
+
+// Spec §9 step 12 — the LLM decides, the renderer executes exactly what's here. `plan` is
+// the full structured instruction set (packages/agents' EditPlanSchema); a few fields are
+// duplicated as real columns for querying. Append-only — a QC_REPAIR loop creates a new
+// EditPlan row per repair attempt, never overwrites one.
+model EditPlan {
+  id                    String         @id @default(cuid())
+  contentItemId         String
+  takeSelectionId       String
+  productionTier        ProductionTier
+  targetDurationSeconds Float
+  doNothingElse         Boolean        @default(false)
+  plan                  Json
+  createdAt             DateTime       @default(now())
+
+  contentItem   ContentItem   @relation(fields: [contentItemId], references: [id])
+  takeSelection TakeSelection @relation(fields: [takeSelectionId], references: [id])
+  renders       Render[]
+
+  @@index([contentItemId])
+}
+
+enum RenderStatus {
+  SUCCESS
+  FAILED
+}
+
+// Spec §9 step 13 + step 14 (Technical QC feeds this same row). Append-only — the
+// EDIT -> RENDER -> INSPECT -> REPAIR -> RENDER loop (spec §9 step 15) creates a new Render
+// row per attempt, with `attempt` counting the repair iterations for that EditPlan.
+model Render {
+  id                String       @id @default(cuid())
+  contentItemId     String
+  editPlanId        String
+  attempt           Int          @default(1)
+  status            RenderStatus
+  storageKey        String?
+  durationSeconds   Float?
+  width             Int?
+  height            Int?
+  fileSizeBytes     Int?
+  technicalQCReport Json?
+  errorMessage      String?
+  createdAt         DateTime     @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+  editPlan    EditPlan    @relation(fields: [editPlanId], references: [id])
+  qcReports   QCReport[]
+
+  @@index([contentItemId])
+  @@index([editPlanId])
+}
+
+enum HardGateStatus {
+  PASS
+  BLOCK
+}
+
+enum QCSeverity {
+  INFO
+  MINOR
+  MAJOR
+  BLOCKING
+}
+
+// Phase 4 — spec §9 step 16's Hard Gates (FACTUAL/TECHNICAL/BRAND/CREATIVE), evaluated once
+// per successful Render (a technical-QC FAILURE never reaches this — render-record.ts routes
+// that straight to QC_REPAIR without spending a Visual QA/vision call). One row per gate run;
+// append-only like Render itself, so re-running the gate after a repair keeps history rather
+// than overwriting it — see /docs/DECISIONS.md.
+//
+// `overallStatus` is derived, never hand-set: packages/domain/src/quality-gate.ts's
+// aggregateHardGates() is the only place that computes it, and its return type makes a BLOCK
+// impossible to average away (see /docs/ARCHITECTURE.md's Authority hierarchy enforcement
+// rules) — this row is that function's persisted output, not an independent judgment call.
+model QCReport {
+  id               String         @id @default(cuid())
+  contentItemId    String
+  renderId         String
+  factualStatus    HardGateStatus
+  technicalStatus  HardGateStatus
+  brandStatus      HardGateStatus
+  creativeStatus   HardGateStatus
+  overallStatus    HardGateStatus
+  reasons          Json
+  visualQAImpression String?
+  createdAt        DateTime       @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+  render      Render      @relation(fields: [renderId], references: [id])
+  issues      QCIssue[]
+
+  @@index([contentItemId])
+  @@index([renderId])
+}
+
+model QCIssue {
+  id                String     @id @default(cuid())
+  qcReportId        String
+  category          String
+  description       String
+  severity          QCSeverity
+  timestampSeconds  Float?
+  recommendedRepair String?
+  source            String // "VISUAL_QA" | "OVERLAY_COLLISION" — which check produced this
+  createdAt         DateTime   @default(now())
+
+  qcReport QCReport @relation(fields: [qcReportId], references: [id])
+
+  @@index([qcReportId])
+}
+
+// Calendar shell (spec §9 step 19, "Auto-Fill Week") — Phase 1 was a single manually-set date;
+// Phase 5 adds the real per-platform target list the Scheduler/publish job actually reads.
+model ScheduleEntry {
+  id             String   @id @default(cuid())
+  contentItemId  String   @unique
+  scheduledDate  DateTime
+  targetPlatforms Json    @default("[]") // ContentPlatform[] — which platforms to publish to
+  createdAt      DateTime @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+}
+
+// Spec §9 step 20 — generated only after the final render exists; one row per (ContentItem,
+// platform). Append-only (episodic memory, same rationale as ScriptVersion/EditPlan) — a
+// re-packaging (e.g. after a caption edit) is a new row, not an overwrite.
+model PlatformPackage {
+  id                String          @id @default(cuid())
+  contentItemId     String
+  platform          ContentPlatform
+  caption           String
+  title             String?
+  hashtags          Json // string[]
+  coverFrameSeconds Float?
+  metadata          Json? // platform-specific extras (e.g. YouTube description, IG alt text)
+  createdAt         DateTime        @default(now())
+
+  contentItem  ContentItem   @relation(fields: [contentItemId], references: [id])
+  publications Publication[]
+
+  @@index([contentItemId])
+  @@index([contentItemId, platform])
+}
+
+enum PublicationStatus {
+  SUCCESS
+  FAILED
+  // TikTok's unaudited-app fallback (see /docs/DECISIONS.md) — a real, intentional outcome,
+  // not a failure: the package was sent to TikTok as a private draft for Chris to publish
+  // manually, because this app doesn't (yet) have Content Posting API audit approval.
+  DRAFT
+}
+
+// Spec §9 step 22 ("Publish + Verify... not done until verified") — one row per publish
+// *attempt* per (ContentItem, platform), append-only like Render. `attempt` plus the shared
+// `idempotencyKey` are what makes a retried publish job safe: the domain layer checks the
+// latest row for this (contentItemId, platform) before ever calling a platform adapter again.
+model Publication {
+  id                String            @id @default(cuid())
+  contentItemId     String
+  platform          ContentPlatform
+  platformPackageId String
+  attempt           Int               @default(1)
+  idempotencyKey    String
+  status            PublicationStatus
+  platformPostId    String?
+  url               String?
+  mediaHash         String?
+  rawResponse       Json?
+  errorMessage      String?
+  publishedAt       DateTime?
+  verifiedAt        DateTime?
+  createdAt         DateTime          @default(now())
+
+  contentItem     ContentItem     @relation(fields: [contentItemId], references: [id])
+  platformPackage PlatformPackage @relation(fields: [platformPackageId], references: [id])
+
+  @@index([contentItemId])
+  @@index([contentItemId, platform])
+}
+
+// Spec §22 ("Encrypted token storage for platform credentials, with refresh handling") — one
+// row per platform, AES-256-GCM encrypted at the application layer (packages/platforms'
+// TokenCrypto) using a key from TOKEN_ENCRYPTION_KEY, never plaintext at rest. See
+// /docs/SECURITY.md and /docs/DECISIONS.md.
+model PlatformCredential {
+  id                    String          @id @default(cuid())
+  platform              ContentPlatform @unique
+  accountId             String
+  encryptedAccessToken  String
+  encryptedRefreshToken String?
+  expiresAt             DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+}
+
+// Spec §9 step 23 — one row per (ContentItem, platform, offset), captured at most once each.
+// Every metric field is nullable and stays null when the platform genuinely doesn't return
+// it — never defaulted to 0 or estimated (spec: "never fabricate an unavailable metric").
+// Verified per-platform availability against live docs during Phase 6 — see
+// /docs/DECISIONS.md: YouTube's Data API v3 returns no watch-time/share/save metrics at all,
+// TikTok's video query API returns no watch-time/save metrics, only Instagram's Reels insights
+// return average watch time.
+enum SnapshotOffset {
+  T_PLUS_1H
+  T_PLUS_6H
+  T_PLUS_24H
+  T_PLUS_72H
+  T_PLUS_7D
+  T_PLUS_30D
+}
+
+model PerformanceSnapshot {
+  id                  String          @id @default(cuid())
+  contentItemId       String
+  platform            ContentPlatform
+  offset              SnapshotOffset
+  capturedAt          DateTime        @default(now())
+  viewCount           Int?
+  likeCount           Int?
+  commentCount        Int?
+  shareCount          Int?
+  saveCount           Int?
+  reach               Int?
+  avgWatchTimeSeconds Float?
+  rawResponse         Json?
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
+  @@unique([contentItemId, platform, offset])
+  @@index([contentItemId])
+}
+
+// Spec §9 step 24 — real, platform-sourced comments, ingested (not generated). Append-only in
+// the sense that ingestion never edits a comment's text after the fact; re-ingesting the same
+// platformCommentId is a no-op (see packages/domain/src/comment.ts).
+model Comment {
+  id                String          @id @default(cuid())
+  contentItemId     String
+  platform          ContentPlatform
+  platformCommentId String
+  authorHandle      String?
+  text              String
+  postedAt          DateTime?
+  ingestedAt        DateTime        @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
+  @@unique([contentItemId, platform, platformCommentId])
+  @@index([contentItemId])
+}
+
+// Spec §9 step 24's Audience Intelligence output. Not tied to a single ContentItem — a
+// recurring pattern is explicitly cross-video by definition (§12's "only surface a pattern
+// once it recurs across multiple comments/videos").
+model AudienceInsight {
+  id                     String   @id @default(cuid())
+  category               String // questions/confusion/objections/... — see AUDIENCE_INTELLIGENCE.md
+  description            String
+  supportingCommentCount Int
+  exampleQuotes          Json // string[]
+  actionableSuggestion   String?
+  createdAt              DateTime @default(now())
+}
+
+// Spec §9 step 25 — the Analytics Agent's per-video judgment, persisted (not recomputed
+// silently and thrown away) so it has the same version-history/audit-trail properties as
+// every other specialist's output in this system. Append-only — a re-run after more snapshots
+// come in is a new row, not an overwrite of the earlier read.
+model PerformanceEvaluation {
+  id                                     String   @id @default(cuid())
+  contentItemId                          String
+  overallSummary                         String
+  strategicallyValuableDespiteLowerViews Boolean
+  categories                             Json // PerformanceCategoryEvaluation[] — see packages/agents/src/schemas.ts
+  createdAt                              DateTime @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
+  @@index([contentItemId])
+}
+
+// --- Phase 7: Adaptive Intelligence (spec §6/§7) ---
+
+// Evidence Ledger — spec §7: "every learned rule carries provenance; 'AI thinks this works' is
+// never a valid belief state on its own." Every Belief must cite at least one of these by id.
+enum EvidenceSourceType {
+  PERFORMANCE_SNAPSHOT
+  EXPERIMENT
+  AUDIENCE_INSIGHT
+  DECISION_JOURNAL
+  MANUAL
+}
+
+model EvidenceEntry {
+  id            String             @id @default(cuid())
+  statement     String
+  sourceType    EvidenceSourceType
+  sourceId      String? // id of the originating PerformanceSnapshot/Experiment/etc. row
+  contentItemId String?
+  platform      ContentPlatform?
+  confidence    Float
+  recordedAt    DateTime           @default(now())
+
+  @@index([sourceType])
+}
+
+// Semantic memory — spec §6 memory type 3. One table, not two (`BeliefProposal` and `Belief`
+// are the same row at different `status` values, matching the `WeeklyPortfolioItem`
+// PROPOSED/APPROVED/REJECTED pattern already established in this codebase) — the state
+// transition, not a separate table, is what "promotion" means. `status` only ever moves
+// PROPOSED -> ACCEPTED/REJECTED, or ACCEPTED -> RETIRED — see
+// packages/domain/src/belief.ts.
+enum BeliefStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  RETIRED
+}
+
+model Belief {
+  id                    String       @id @default(cuid())
+  statement             String
+  causalClaim           String? // the interpretation — kept distinct from `statement` (the
+  // observation) per spec §26: "separates OBSERVATION from CAUSAL CLAIM."
+  isExperimentalEvidence Boolean // true = controlled experiment; false = retrospective/correlational
+  status                BeliefStatus @default(PROPOSED)
+  evidenceIds           Json // string[] of EvidenceEntry ids — required, non-empty at proposal time
+  sampleSize            Int
+  applicablePlatform    ContentPlatform?
+  applicableTopic       String?
+  applicableFormat      String?
+  dateRangeStart        DateTime?
+  dateRangeEnd          DateTime?
+  confidence            Float
+  confounders           Json // string[] — required field (may be empty, never omitted)
+  contradictoryEvidence Json // string[]
+  firstObserved         DateTime?
+  lastEvaluated         DateTime?
+  retestConditions      String?
+  proposedBy            String // actorId
+  reviewedBy            String? // actorId — set only on ACCEPTED/REJECTED
+  reviewedAt            DateTime?
+  createdAt             DateTime     @default(now())
+}
+
+// Human Taste Model — spec §7. Raw feedback is evidence; the tag is interpretation — both
+// kept, per TASTE_LEARNER.md ("preserve the original wording alongside the tag").
+model TasteFeedback {
+  id              String          @id @default(cuid())
+  contentItemId   String?
+  artifactType    String // e.g. "EDIT_PLAN", "SCRIPT", "PLATFORM_PACKAGE"
+  rawFeedback     String
+  normalizedTag   String
+  productionTier  ProductionTier?
+  createdAt       DateTime        @default(now())
+
+  contentItem ContentItem? @relation(fields: [contentItemId], references: [id])
+
+  @@index([contentItemId])
+  @@index([normalizedTag])
+}
+
+// Derived from TasteFeedback, never hand-set — one row per (artifactType, tag, context)
+// combination the Taste Learner has accumulated enough evidence to speak to.
+model ChrisAcceptanceProbability {
+  id            String   @id @default(cuid())
+  artifactType  String
+  tag           String
+  context       Json // {productionTier?, topic?, format?} — the scoping this probability applies to
+  probability   Float
+  sampleSize    Int
+  generalizes   Boolean // per TASTE_LEARNER.md: context-specific vs. appears to generalize
+  confidence    Float
+  createdAt     DateTime @default(now())
+
+  @@index([artifactType, tag])
+}
+
+// Brand Timeline — spec §7. Era names/boundaries are never hardcoded; Chris and the system
+// define them from actual evolution, hence no enum here, just a free-text name.
+model BrandEra {
+  id          String    @id @default(cuid())
+  name        String
+  startDate   DateTime
+  endDate     DateTime? // null = current/ongoing era
+  description String
+  createdAt   DateTime  @default(now())
+}
+
+// Experiment engine — spec §9 (Auto-Fill Week's "active experiments") / EXPERIMENT_AGENT.md.
+enum ExperimentStatus {
+  PROPOSED
+  RUNNING
+  CONCLUDED
+  INCONCLUSIVE
+}
+
+model Experiment {
+  id              String           @id @default(cuid())
+  hypothesis      String
+  status          ExperimentStatus @default(PROPOSED)
+  confounders     Json // string[]
+  minSampleSize   Int
+  minDurationDays Int
+  portfolioMapping String? // e.g. "exploit" / "adjacent" / "exploration" — see EXPERIMENT_AGENT.md
+  conclusion      String?
+  createdAt       DateTime         @default(now())
+  concludedAt     DateTime?
+
+  variants ExperimentVariant[]
+}
+
+model ExperimentVariant {
+  id            String   @id @default(cuid())
+  experimentId  String
+  contentItemId String? // the actual ContentItem embodying this variant, once produced
+  label         String
+  description   String
+  createdAt     DateTime @default(now())
+
+  experiment  Experiment   @relation(fields: [experimentId], references: [id])
+  contentItem ContentItem? @relation(fields: [contentItemId], references: [id])
+
+  @@index([experimentId])
+}
+
+// Weekly Review / Learning Council's output — spec's "WeeklyBrief," the backward-looking
+// counterpart to WeeklyProgrammingThesis's forward-looking plan.
+model WeeklyBrief {
+  id                          String   @id @default(cuid())
+  weekStartDate               DateTime @unique
+  whatHappened                String
+  whatItMeans                 String
+  stillUncertain               Json // string[]
+  recommendationsForNextWeek  Json // string[]
+  createdAt                   DateTime @default(now())
+}
+
+// Adversarial Evaluator's critique — advisory (spec: "you report risks; the Creative Director
+// and hard gates decide what happens next"), persisted anyway so a past critique remains real
+// evidence rather than a recomputed-and-discarded read, consistent with every other
+// specialist's output in this system.
+model AdversarialCritique {
+  id                         String   @id @default(cuid())
+  artifactType               String
+  artifactId                 String
+  contentItemId              String?
+  concerns                   Json // {description, whyItMatters, evidence}[]
+  noMaterialWeaknessesFound  Boolean
+  createdAt                  DateTime @default(now())
+
+  contentItem ContentItem? @relation(fields: [contentItemId], references: [id])
+
+  @@index([contentItemId])
+}
+
+// --- Phase 8: Autonomy (spec §23) ---
+
+// The named steps where this system currently either requires or could skip a human click —
+// see /docs/AGENT_CONTRACTS.md's roster. Deliberately a fixed enum, not a free-text string:
+// autonomy is earned per real, identifiable subsystem, never as a vague blanket grant.
+enum AutonomySubsystem {
+  TAKE_SELECTION
+  EDIT_PLANNING
+  QUALITY_GATE
+  SCHEDULING
+  PUBLISHING
+}
+
+// One row per (subsystem, productionTier) — the literal Phase 8 acceptance criterion:
+// "evaluated per subsystem," and per content class (spec's own RAW/FAST vs. HERO example)
+// within that. HERO staying at level 0/1 while RAW/FAST advances is a direct, structural
+// consequence of this being a *composite* key, not an emergent property of low usage — HERO's
+// row simply never accumulates the same approvedOutcomeCount RAW/FAST's row does, and
+// `ceilingLevel` lets a human cap it permanently regardless of count (spec: "may require
+// human review permanently").
+model AutonomyLevel {
+  id                  String            @id @default(cuid())
+  subsystem           AutonomySubsystem
+  productionTier      ProductionTier
+  level               Int               @default(0)
+  approvedOutcomeCount Int              @default(0)
+  ceilingLevel        Int               @default(4)
+  lastEscalatedAt     DateTime?
+  lastEscalationReason String?
+  updatedAt           DateTime          @updatedAt
+  createdAt           DateTime          @default(now())
+
+  @@unique([subsystem, productionTier])
+}
+
+enum LlmModelClass {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// The cost & latency governor's raw data — /docs/ARCHITECTURE.md §16 names this
+// ("every job carries limits... this is the cost & latency governor") but until this table,
+// nothing actually recorded what a real call cost. One row per completed (or failed) model
+// call, written by packages/agents' CostTrackingModelProvider decorator — never by an agent
+// directly, so no agent file needs to know this table exists. costUsd is computed at write
+// time from the token counts the provider returned and the pricing snapshot in
+// packages/agents/src/pricing.ts; it is a point-in-time calculation, not a live join against
+// a price list, so a later price change never rewrites historical spend.
+model ModelCallLog {
+  id            String         @id @default(cuid())
+  promptId      String
+  modelClass    LlmModelClass
+  model         String
+  inputTokens   Int?
+  outputTokens  Int?
+  costUsd       Float?
+  latencyMs     Int
+  success       Boolean        @default(true)
+  errorMessage  String?
+  contentItemId String?
+  createdAt     DateTime       @default(now())
+
+  @@index([promptId])
+  @@index([createdAt])
+  @@index([contentItemId])
+}
+
+// Permanent transition history — never deleted or overwritten. See /docs/STATE_MACHINE.md.
+model ContentStateTransition {
+  id             String       @id @default(cuid())
+  contentItemId  String
+  fromState      ContentState
+  toState        ContentState
+  reason         String?
+  actorType      ActorType
+  actorId        String?
+  idempotencyKey String?      @unique
+  createdAt      DateTime     @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
+  @@index([contentItemId])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  actor      String
+  actorType  ActorType
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// Architectural decisions use this table too (Phase 0), alongside future creative/strategic
+// decisions from Phase 1+. See /docs/ARCHITECTURE.md — Decision Journal.
+model DecisionJournalEntry {
+  id               String   @id @default(cuid())
+  question         String
+  selectedDecision String
+  alternatives     Json?
+  rationale        String
+  evidenceIds      Json?
+  confidence       Float?
+  decisionOwner    String
+  agentOrModel     String?
+  userOverride     Boolean  @default(false)
+  laterOutcome     String?
+  retrospective    String?
+  createdAt        DateTime @default(now())
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String
+  updatedAt   DateTime @updatedAt
+}
+
+model BrandConstitutionVersion {
+  id          String   @id @default(cuid())
+  version     Int      @unique
+  contentHash String
+  content     String
+  createdAt   DateTime @default(now())
+}
+
+model BrandMemory {
+  id          String          @id @default(cuid())
+  kind        BrandMemoryKind
+  version     Int
+  contentHash String
+  content     String
+  createdAt   DateTime        @default(now())
+
+  @@unique([kind, version])
+}

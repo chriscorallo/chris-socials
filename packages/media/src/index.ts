@@ -1,0 +1,23 @@
+/**
+ * Storage adapter interface. Real from Phase 1 (raw upload); a local-fs implementation now,
+ * a Vercel Blob implementation later — swappable by config, not by rewrite. See
+ * /docs/ARCHITECTURE.md.
+ */
+export interface StorageAdapter {
+  put(key: string, data: Buffer | Uint8Array, contentType?: string): Promise<{ url: string }>;
+  get(key: string): Promise<Buffer>;
+  signedUrl(key: string, expiresInSeconds: number): Promise<string>;
+  delete(key: string): Promise<void>;
+}
+
+export const PHASE_INTRODUCED = 1;
+
+export { LocalFsStorageAdapter } from "./local-fs-adapter";
+export type { LocalFsStorageAdapterOptions } from "./local-fs-adapter";
+
+export * from "./ffmpeg-paths";
+export * from "./probe";
+export * from "./render";
+export * from "./technical-qc";
+export * from "./frame-extractor";
+export * from "./overlay-collision";

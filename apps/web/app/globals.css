@@ -1,0 +1,227 @@
+@import "tailwindcss";
+
+/*
+ * Design system — Apple-keynote-inspired: near-black ground, ambient blurred color behind
+ * glass panels, one warm accent (the brand's "premium/finance" register) balanced against a
+ * cool one for contrast. Defined once here; every page composes it via the small component
+ * set in app/components/ui.tsx rather than repeating raw hex values per page.
+ */
+@theme {
+  --color-ink: #050506;
+  --color-surface: #0d0d10;
+  --color-surface-raised: #16161b;
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  --color-text: #f5f4f2;
+  --color-text-muted: #a7a39c;
+  --color-text-faint: #6f6b64;
+
+  /* Amber/gold — the "premium, finance" register. */
+  --color-gold-400: #f3c46a;
+  --color-gold-500: #e5a94a;
+  --color-gold-600: #c98a2c;
+
+  /* Violet — cool counterweight, used for strategy/intelligence surfaces. */
+  --color-violet-400: #b3a2ff;
+  --color-violet-500: #8f76ff;
+  --color-violet-600: #6c50e8;
+
+  --color-emerald-400: #6ee7b0;
+  --color-emerald-500: #34c58c;
+
+  --color-rose-400: #ff9d8a;
+  --color-rose-500: #ee6b52;
+
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-text);
+}
+
+/* Ambient background: a few soft, blurred color fields fixed behind everything, the way an
+ * Apple product page uses out-of-focus color instead of a flat fill. Pure CSS, no imagery. */
+.ambient-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ambient-field::before,
+.ambient-field::after {
+  content: "";
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.24;
+}
+.ambient-field::before {
+  top: -18vw;
+  left: -12vw;
+  background: radial-gradient(circle, var(--color-gold-500), transparent 70%);
+}
+.ambient-field::after {
+  bottom: -22vw;
+  right: -14vw;
+  background: radial-gradient(circle, var(--color-violet-500), transparent 70%);
+}
+
+@layer components {
+  /* Glass panel — the one card treatment every page reuses. */
+  .panel {
+    position: relative;
+    border-radius: 1rem;
+    border: 1px solid var(--color-border);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 40px -24px rgba(0, 0, 0, 0.6);
+  }
+
+  /* The "act here" variant of .panel — a gold ring/border marks the one or two sections that
+   * are the actual next step for the current pipeline stage, vs. the plain .panel used for
+   * read-only history/context. Directly serves "intuitive flow": the page should never make
+   * Chris hunt for what to do next among a wall of identical boxes. */
+  .panel-action {
+    border-color: color-mix(in srgb, var(--color-gold-500) 45%, var(--color-border));
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-gold-500) 7%, transparent),
+      rgba(255, 255, 255, 0.02)
+    );
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 40px -24px rgba(0, 0, 0, 0.6),
+      0 0 0 1px color-mix(in srgb, var(--color-gold-500) 12%, transparent);
+  }
+
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, var(--color-gold-400), var(--color-violet-400));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.55rem 1.1rem;
+    transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
+    white-space: nowrap;
+  }
+  .btn:active {
+    transform: scale(0.97);
+  }
+  .btn-primary {
+    color: #14100a;
+    background: linear-gradient(135deg, var(--color-gold-400), var(--color-gold-600));
+    box-shadow: 0 8px 20px -8px rgba(229, 169, 74, 0.55);
+  }
+  .btn-primary:hover {
+    filter: brightness(1.08);
+  }
+  .btn-ghost {
+    color: var(--color-text);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--color-border);
+  }
+  .btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .btn-danger {
+    color: #2a0e08;
+    background: linear-gradient(135deg, var(--color-rose-400), var(--color-rose-500));
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+    transform: none;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.55rem;
+  }
+  .badge-gold {
+    color: var(--color-gold-400);
+    background: color-mix(in srgb, var(--color-gold-500) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-gold-500) 30%, transparent);
+  }
+  .badge-violet {
+    color: var(--color-violet-400);
+    background: color-mix(in srgb, var(--color-violet-500) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-violet-500) 30%, transparent);
+  }
+  .badge-rose {
+    color: var(--color-rose-400);
+    background: color-mix(in srgb, var(--color-rose-500) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-rose-500) 30%, transparent);
+  }
+  .badge-emerald {
+    color: var(--color-emerald-400);
+    background: color-mix(in srgb, var(--color-emerald-500) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-emerald-500) 30%, transparent);
+  }
+  .badge-neutral {
+    color: var(--color-text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--color-border);
+  }
+
+  .field-input {
+    width: 100%;
+    border-radius: 0.6rem;
+    border: 1px solid var(--color-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text);
+    padding: 0.55rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .field-input:focus {
+    outline: none;
+    border-color: var(--color-gold-500);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gold-500) 25%, transparent);
+  }
+
+  .field-label {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin-bottom: 0.35rem;
+  }
+
+  .link-quiet {
+    color: var(--color-text-muted);
+    text-decoration: none;
+  }
+  .link-quiet:hover {
+    color: var(--color-text);
+  }
+}
+
+* {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}

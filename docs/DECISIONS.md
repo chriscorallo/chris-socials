@@ -1,0 +1,1330 @@
+# Decisions
+
+Every material architectural decision, in the order it was made. Entry format: **Date —
+Decision.** Alternatives considered. Rationale. Reversibility. This file is maintained by
+every session, per root `CLAUDE.md` — it is how a future Claude Code session (or Chris)
+understands *why*, not just *what*.
+
+---
+
+## 2026-09-05 — Compact spec file is the authoritative source of truth
+
+**Decision:** `Chris_Content_Intelligence_Compact_Master_Spec.md` (repo root) is canonical.
+The earlier long-form pasted specification is used only as supplementary detail for prompt
+*wording* (Parts II–XV) where it doesn't contradict the compact spec.
+
+**Alternatives considered:** ask Chris to paste the missing tail of the long-form spec and
+reconcile both in full.
+
+**Rationale:** the long-form paste was cut off mid-sentence in Part XVI. Chris then provided
+the compact file — read in full (728 lines), it is self-consistent, complete, and covers every
+section the long-form spec covers, just condensed. Treating it as canonical resolves the
+truncation problem without waiting on a reconciliation pass across two overlapping documents.
+
+**Reversibility:** high — if a genuine conflict surfaces later between the two documents, it
+gets logged here and resolved case-by-case; nothing was deleted.
+
+---
+
+## 2026-09-05 — Implementation stack: Next.js + TypeScript + Postgres on Vercel
+
+**Decision:** Next.js (App Router, TypeScript strict), PostgreSQL via Prisma, deployed to
+Vercel.
+
+**Alternatives considered:** plain Node/TS service (framework-agnostic, more portable, more
+to wire up manually — auth, routing, hosting).
+
+**Rationale:** the spec deliberately avoids naming a stack (only demands provider
+abstractions, typed schemas, deterministic media tooling). This environment already has
+Vercel tooling loaded, and Next.js/Vercel is the path of least setup friction for a
+single-operator product that still needs real hosting, auth, and a database. Confirmed
+directly with Chris via question before Phase 0 began.
+
+**Reversibility:** moderate — the domain/state-machine/prompt logic lives in framework-agnostic
+packages (`packages/domain`, etc.) specifically so the web framework itself is not deeply
+load-bearing; swapping Next.js for another framework later would touch `apps/web` only.
+
+---
+
+## 2026-09-05 — Monorepo tooling: pnpm workspaces, no Turborepo yet
+
+**Decision:** pnpm workspaces only.
+
+**Rationale:** matches the spec's `/apps` + `/packages` layout with the least tooling. Add
+Turborepo later if build/caching performance actually demands it — premature build-tool
+investment isn't justified at Phase 0 scale.
+
+**Reversibility:** high — additive change, no restructuring required.
+
+---
+
+## 2026-09-05 — Database: Prisma ORM over Postgres; Auth.js (NextAuth v5) credentials provider
+
+**Decision:** Prisma for schema/migrations; Auth.js v5 with a Credentials provider and a
+single seeded `User` row (Chris).
+
+**Alternatives considered:** a custom auth flow; an OAuth-only provider.
+
+**Rationale:** Prisma gives real migrations (spec requirement: "no schema change without
+migrations") and strong TypeScript types. This is a single-operator internal tool, not
+multi-tenant SaaS, so Credentials-based auth is the least infrastructure for the actual
+requirement; the `User`/session model is generic enough to add OAuth later without a schema
+change.
+
+**Reversibility:** DB engine choice is the more expensive one to reverse (migrations exist);
+auth mechanism is cheap to swap later since there's exactly one user.
+
+---
+
+## 2026-09-05 — Prompt registry: version-controlled Markdown files, not a DB table
+
+**Decision:** Prompts live under `/prompts/**` as Markdown with YAML frontmatter
+(`prompt_id`, `version`, `role`, `required_context`, `output_schema`, `model_class`, `active`,
+`eval_status`, `rollback_version`). `packages/prompts` loads and validates them. No
+`PromptDefinition`/`PromptVersion` DB table yet.
+
+**Rationale:** the spec explicitly allows "version-controlled files **or** a prompt registry."
+Files are git-diffable and human-editable without a deploy. A DB-backed registry can be added
+later specifically to support *runtime* prompt rollback without moving the authoring source —
+that's a real but not-yet-needed capability.
+
+**Reversibility:** high — the DB table, if added later, would be populated *from* these files,
+not replace them as the authoring source.
+
+---
+
+## 2026-09-05 — Feature flags: single table + helper, no vendor
+
+**Decision:** one `FeatureFlag` table, `isEnabled(key)` helper.
+
+**Rationale:** avoids adopting a vendor (LaunchDarkly, etc.) before the need is proven. The
+spec's requirement is "use feature flags for risky/new autonomous behavior" — a simple
+DB-backed flag satisfies that at Phase 0/8 scale.
+
+**Reversibility:** high — swappable for a vendor later; the `isEnabled()` call-site interface
+would not need to change.
+
+---
+
+## 2026-09-05 — Cost expectations discussed and accepted
+
+**Decision:** proceed cloud-hosted on Vercel as planned, accepting an estimated **$350–
+$1,300+/month** run-rate at the target ~130 videos/month (~390 platform placements/month),
+driven mainly by LLM/agent calls, vision/QA calls, render compute, storage, and Vercel+Postgres
+hosting — generative/HERO media is the largest variable on top of that.
+
+**Alternatives considered:** local-first/hybrid self-hosting (storage/render/DB on Chris's own
+machine) to cut cost to an estimated $30–$150/month, at the cost of always-on
+scheduling/publishing reliability, multi-device access, and managed backups.
+
+**Rationale:** Chris explicitly chose to keep the cloud-hosted plan, prioritizing reliability
+and access over minimizing run-rate. Actual per-video cost becomes visible from Phase 0 onward
+via the observability requirements in `/docs/SECURITY.md` rather than staying an estimate —
+the model-routing cost governor (`/docs/ARCHITECTURE.md` §16, arrives Phase 3+) is the lever to
+pull if real numbers run high.
+
+**Reversibility:** high — this is a running-cost decision, not an architectural one; nothing
+about the code depends on staying cloud-hosted forever.
+
+---
+
+## 2026-09-05 — Platform API rate-limit risks documented before Phase 5
+
+**Decision:** the following constraints are treated as known risks to design around, not
+surprises to discover during Phase 5:
+- **Instagram Graph API:** 25 published posts/24h per account. Target ~4.3/day/platform —
+  comfortable headroom.
+- **YouTube Data API v3:** default 10,000 units/day quota, 1,600 units per video insert
+  (~6/day ceiling before other same-day calls, realistically ~4–5/day with overhead). Target
+  sits right at this ceiling — a quota-increase request should be filed with Google early in
+  Phase 5 planning, and the Scheduler must be quota-aware rather than assume unlimited calls.
+- **TikTok Content Posting API:** public direct-posting requires app-audit approval; unaudited
+  apps can only post private/draft. No guaranteed approval timeline. The spec already
+  anticipates this (§21 graceful failure) — the TikTok adapter ships with a
+  draft-and-manually-publish fallback from day one in Phase 5, not added after the fact.
+
+**Reversibility:** n/a (external platform constraint, not a choice) — documented so Phase 5's
+design starts from these limits rather than assuming unlimited API access.
+
+**Correction — 2026-09-07 (verified against current Google docs when Phase 5 actually
+started):** the YouTube figure above was wrong, carried forward uncorrected from the original
+plan. `videos.insert` no longer draws from the shared 10,000-unit/day bucket at 1,600 units per
+call — Google's current quota-cost table
+(`https://developers.google.com/youtube/v3/determine_quota_cost`) puts it in its **own**
+dedicated bucket: **100 calls/day, 1 unit per call**, separate from the general 10,000/day
+budget (which still applies to everything else — `videos.list` status checks, etc.). At the
+~4.3/day/platform target this is comfortable headroom, not "right at the ceiling" — the
+early-quota-increase-request urgency from the original entry no longer applies. The
+Scheduler/publish job is still built quota-aware (packages/platforms' `youtube-quota.ts`
+tracks both buckets independently from today's real `Publication` rows), because "still a
+hard external limit, just a bigger one" is not the same as "no limit" — and because this same
+kind of platform-detail drift is exactly why the check-before-building rule exists.
+
+---
+
+## 2026-09-07 — Local dev/test database: PGlite over the Postgres wire protocol, not Docker
+
+**Decision:** this build environment has no Docker and no Homebrew (confirmed by direct
+check). Local dev/test uses `@electric-sql/pglite` served over a real TCP socket via
+`@electric-sql/pglite-socket`, which speaks the actual Postgres wire protocol. Prisma's
+standard `postgresql` provider connects to it exactly as it would connect to real Postgres —
+no schema dialect changes, no drift risk between dev/test and production.
+
+**Alternatives considered:** (a) ask Chris to install Docker Desktop or Homebrew+Postgres
+before continuing; (b) fall back to SQLite for dev/test, accepting schema-dialect drift risk
+(no native enums, different JSON handling) between environments.
+
+**Rationale:** per `CLAUDE.md`'s standing rule — when technical reality conflicts with the
+plan, document the conflict, preserve product intent, choose the safest reversible
+implementation, and continue rather than stopping. PGlite is real compiled Postgres (not an
+emulation), so this preserves the "Postgres via Prisma, migrations are real Postgres SQL"
+product intent exactly, with zero external install requirement. `docker-compose.yml` remains
+in the repo as the standard path for any future environment that does have Docker — switching
+is a one-line `DATABASE_URL` change plus starting Docker instead of the PGlite socket script.
+
+**Reversibility:** high — purely a local dev/test convenience; production always uses a real
+managed Postgres (Neon via Vercel Marketplace), unaffected by this choice.
+
+---
+
+## 2026-09-07 — The PGlite dev database can't handle concurrently dispatched queries
+
+**Decision:** `getContentItem` (`packages/domain/src/content-item.ts`) fetches its seven
+related artifacts (`productionContract`, `creatorCard`, `mediaAssets`, `scheduleEntry`,
+`transitions`, `researchPackets`, `scriptVersions`) as **sequential** `await`s, one query at a
+time — not one `findUnique` with all seven nested in `include`, and not `Promise.all` over
+seven independent queries either.
+
+**Rationale:** isolated by bisection across three hypotheses, in order:
+1. First suspected `take`+`orderBy` on a to-many relation inside `include` (a Prisma
+   LATERAL-join query strategy) — a single such relation alone worked, but combined with
+   several sibling relations it broke, so this wasn't the real trigger.
+2. Then suspected "too many relations combined in one `include`" generally — moved to
+   `Promise.all` over seven separate single-relation queries instead. This *still* broke,
+   even after removing `take` and `orderBy` complexity, on as few as 3-4 concurrently
+   in-flight queries.
+3. Confirmed the actual trigger is **concurrent query dispatch itself** — even with Prisma's
+   connection pool forced to `connection_limit=1` (a single real TCP connection), `Promise.all`
+   still failed, meaning it's pipelined/overlapping requests on the wire that this PGlite
+   build's connection handler can't reliably process, not connection-pool concurrency. Purely
+   **sequential** `await`s (proven in isolated single-query test scripts throughout this
+   investigation) are the one pattern that has been reliable at every step.
+
+Real Postgres (Docker locally, Neon in production) supports concurrent/pipelined queries and
+complex multi-relation `include`s fine — none of this reflects a real product constraint.
+
+**Consequence for future sessions:** in code that runs against this sandbox's dev database,
+prefer sequential `await`s over `Promise.all` for multiple Prisma queries until a real
+Postgres is available. If a future query hits "Server has closed the connection," suspect
+concurrent dispatch first (not query complexity) and try sequential awaits before anything
+else.
+
+**Reversibility:** high — sequential awaits are semantically identical to `Promise.all` here
+(a handful of fast local queries; the latency difference is negligible), and nothing prevents
+switching back to `Promise.all` once a real Postgres is in use.
+
+---
+
+## 2026-09-07 — Phase 2 scoped to the core Research -> Script pipeline; rest deferred
+
+**Decision:** this pass of Phase 2 builds and ships: the model-provider abstraction
+(`packages/agents`), the Research Agent, Claims Gate, Script Agent, and Brand Guardian, the
+orchestration pipeline tying them together, and DB persistence
+(`ResearchPacket`/`ScriptVersion`) wired to real state transitions. It does **not** build
+reference library + semantic similarity, Weekly Programming Thesis, or portfolio constraints
+— all four of those remain in `/docs/PHASE_PLAN.md`'s Phase 2 scope but are deferred to a
+follow-up pass.
+
+**Rationale:** `/docs/PHASE_PLAN.md`'s Phase 2 acceptance criterion (written during initial
+planning) is specifically the Research -> Claims Gate -> Script pipeline running end-to-end
+against gold-standard fixtures — that's the acceptance-critical spine, and it's what's built
+and tested here (with a mock model provider, so zero API cost was spent proving it works; the
+real Anthropic provider is wired in and ready the moment an API key is added). The remaining
+four subsystems are each a meaningfully separate, non-trivial body of work with real open
+product questions (which reference creators beyond Jun Yuh, what the actual portfolio
+allocation ratios should be) that benefit from Chris's input rather than being guessed at to
+hit a scope target in one pass.
+
+**Reversibility:** high — nothing built here needs to change to add the remaining four
+subsystems later; they're additive.
+
+**Update (same day, later pass):** reference library, Weekly Programming Thesis, and
+portfolio constraints were subsequently built (see Phase 2's second completion entry in
+`/docs/PHASE_PLAN.md`) — schema, domain CRUD, three more agents (Reference Intelligence,
+Creative Director, Weekly Strategist), and UI (`/reference`, `/strategy`). One piece was
+deliberately still not built: **embeddings-based semantic similarity** ("reference library,
+semantic similarity" in spec §25's Phase 2 scope). What exists instead is manual
+creator/content entry analyzed per-item by the Reference Intelligence agent — genuinely
+useful, but not the same as automated similarity search across a growing corpus (e.g. "find
+past Chris videos with a similar hook family," spec §7's Content Graph `same_hook_family`
+edge). Real semantic similarity needs an embeddings provider choice and a vector storage/index
+decision (pgvector vs. a dedicated vector DB) — a real infrastructure investment worth its own
+consideration once there's enough reference/content volume to make similarity search valuable,
+not a snap decision folded into an already-large session. Revisit when Content Graph work
+(Phase 2's `ContentRelationship` entity, still deferred per `/docs/DATA_MODEL.md`) is tackled.
+
+**Also fixed in this pass (recurring pattern, worth naming once):** every exported
+`CreateXInput`/`UpsertXInput` type in `packages/domain` derived from a Zod schema containing
+`.default(...)` must use `z.input<typeof Schema>`, not `z.infer<typeof Schema>` — `z.infer`
+is the schema's *output* type (post-parse, defaults filled in and therefore required),
+`z.input` is what a caller may actually omit. Using `z.infer` for a Zod schema's exported
+"caller input" type makes TypeScript wrongly require fields the schema's own `.default(...)`
+makes optional at runtime — caught first on `ScheduleEntry`'s `scheduledDate`, then recurred
+in `production-contract.ts`, `weekly-thesis.ts`, `reference-creator.ts`, and
+`decision-journal.ts` once tests actually omitted a defaulted field (earlier tests happened
+to always pass every field explicitly, masking it). Fixed at all five sites; any new
+`Create.../Upsert...Schema` with a `.default(...)` field should export via `z.input` from the
+start.
+
+---
+
+## 2026-09-07 — Weekly Strategist proposals require review before taking effect
+
+**Decision:** `WeeklyPortfolioItem` gained a `status` field (`PROPOSED` / `APPROVED` /
+`REJECTED`, default `PROPOSED`). `recordPortfolioItem` (called when the Weekly Strategist
+agent runs) only ever writes a proposal — it never transitions the underlying `ContentItem`.
+A new `approvePortfolioItem` is the only path that transitions `IDEA -> SELECTED` (and only
+for a proposal marked `selected: true`); `rejectPortfolioItem` marks a proposal rejected with
+no state-machine effect at all. Re-running the Strategist for the same (thesis, item) pair
+resets its status back to `PROPOSED` — a fresh AI proposal requires fresh human review, even
+if a prior one had already been approved.
+
+**Alternatives considered:** the original implementation (see the first Phase 2 entry above)
+applied every returned allocation immediately.
+
+**Rationale:** the original approach let the Weekly Strategist agent silently move ideas
+`IDEA -> SELECTED` with no human in the loop — a genuine violation of the spec's authority
+hierarchy (`/docs/ARCHITECTURE.md`: specialists recommend, they don't get to make Level-2
+Creative-Director-tier decisions unilaterally) and its `NEEDS YOU` philosophy (subjective
+creative/strategic choices are exactly the category that should surface for review, not
+auto-apply). Caught during a deliberate pass over already-flagged known limitations rather
+than left to accumulate — the fix was contained enough to do immediately instead of deferring
+further.
+
+**Reversibility:** high — this is additive (a new required review step, not a removed
+capability); `/strategy`'s UI now shows a "Needs your review" queue for `PROPOSED` items with
+Approve/Reject actions.
+
+---
+
+## 2026-09-07 — Confirmed: prior Phase 2 UI already correctly avoided the same mistake elsewhere
+
+**Note (verification, not a change):** re-checked every other agent-triggering Server Action
+for the same "agent output silently takes effect" risk before considering the review-gap fix
+complete. `runPipeline` (Research → Script) and `analyzeContent` (Reference Intelligence) were
+already correct — `applyPipelineResult` only ever *advances* a state the human already put the
+item into (`RESEARCHING`, entered manually) and reports a `RESEARCH_BLOCKED` result rather
+than silently discarding it; `recordReferenceObservations` never touches the state machine at
+all, it only ever writes observations for Chris to read. The Weekly Strategist path was the
+one actual gap.
+
+---
+
+## 2026-09-07 — Phase 3 renderer: `ffmpeg-static` + `ffprobe-static`, hosted in `apps/worker`
+
+**Decision:** the deterministic renderer and media-analysis layer use `ffmpeg-static` and
+`ffprobe-static` (npm packages that download a real, static, platform-matched `ffmpeg`/
+`ffprobe` binary at install time) rather than requiring a system-installed ffmpeg. Resolves
+the open question flagged back in Phase 0/`/docs/PHASE_PLAN.md` ("where does the renderer
+actually execute").
+
+**Rationale:** this sandbox has neither Docker nor Homebrew (per earlier decisions), so a
+system ffmpeg install isn't available — but `ffmpeg-static`'s bundled binary was verified
+directly: real ffmpeg 6.0 with `libx264`/`libx265`/`libass`/`libfreetype` (needed for text
+overlays and burned captions) and a matching `ffprobe` 4.4, both running natively on this
+machine. This isn't a workaround specific to the sandbox — it's a legitimate, commonly-used
+production pattern (bundling a static binary directly into a Node process/serverless
+function) that avoids a system dependency entirely, in dev and in a real deployment alike.
+
+**Where it runs:** `apps/worker` — the process boundary that has existed since Phase 0
+specifically for this decision. Whether that's a long-lived worker host or a Vercel
+Sandbox/Function invocation in production is still open (function execution time and
+deployment package size — `ffmpeg-static`'s binary is ~45MB — are real constraints worth
+validating against an actual deploy, not decided from first principles here) — but the
+renderer's own interface doesn't care which; this is a deployment-target decision, not an
+API change, so it stays reversible.
+
+**What the renderer actually implements now (real, tested, not a stub):** trim/concat source
+segments, center-crop + scale to a 9:16 target (1080×1920), burned text overlays (`drawtext`,
+timed), single-pass audio loudness normalization (`loudnorm`), H.264/AAC MP4 output at fixed,
+reproducible encode settings.
+
+**Deliberately not implemented yet (EditPlan's schema reserves the fields; the renderer skips
+them gracefully per spec §21's graceful-degradation principle rather than failing):** B-roll
+compositing and music/SFX mixing (both need an approved asset library — `BrandAsset`,
+deferred, see below), transitions between segments (hard cuts only for now), face-tracked
+reframing (computer vision is out of scope for a *deterministic* renderer — center-crop is
+the documented simpler fallback for RAW/FAST tiers).
+
+**Also deferred this phase:** `BrandAsset` (the approved reusable asset library, spec §15) —
+nothing in the core "does the deterministic renderer produce a valid, QC'd output" acceptance
+criterion depends on it, and introducing it now (with no real assets to populate it) would be
+the same "table without a proven need" mistake avoided in Phase 1/2. Add it when B-roll/music
+mixing is actually implemented.
+
+**Reversibility:** high — the ffmpeg-command-building code is isolated in
+`packages/media`; swapping the binary source (system ffmpeg, a different static package, a
+cloud transcoding API) touches one module, not the renderer's callers.
+
+---
+
+## 2026-09-07 — Transcription: interface only, no provider chosen yet
+
+**Decision:** a `TranscriptionProvider` interface exists (mirroring `ModelProvider`'s
+pattern) with a mock implementation for tests; no real transcription API is wired in yet.
+
+**Rationale:** consistent with how the Anthropic model provider was handled in Phase 2 — the
+abstraction and its tests don't need a real key or real cost to be built and proven correct.
+Take Selector and Edit Planner both accept a transcript as plain input, so they work
+identically whether that transcript came from a real provider or was typed in manually while
+no provider is configured; nothing downstream needs to change when a real provider is added.
+
+**Reversibility:** high.
+
+---
+
+## 2026-09-07 — Bug caught by tests: `render-record.ts` tried an invalid direct transition
+
+**Note:** `recordRenderAttempt`'s repair-limit logic originally jumped `RENDERED -> QC_BLOCKED`
+directly once the attempt count hit the limit. `/docs/STATE_MACHINE.md` doesn't allow that —
+`QC_BLOCKED` is only reachable via `QC_REPAIR -> QC_BLOCKED`. The state machine's own
+`InvalidTransitionError` caught this immediately in the repair-loop test (`render-record.test.ts`,
+"repeated QC failures hit the repair-iteration limit"), before it ever reached real usage.
+Fixed by always landing in `QC_REPAIR` first, then immediately following with the documented
+second transition to `QC_BLOCKED` when the limit is already reached — two real transitions,
+both in the actual table, rather than one invalid shortcut. No decision to record beyond
+"the test did its job" — logged so a future session sees this exact class of mistake (a
+domain function's business logic drifting out of sync with the state table it's supposed to
+drive) has already been caught once here.
+
+---
+
+## 2026-09-07 — Bug caught by tests: ffmpeg silently clamps out-of-bounds segments
+
+**Decision:** `renderVideo()` (`packages/media/src/render.ts`) now probes the source file's
+actual duration and rejects (`RenderSegmentOutOfBoundsError`) any segment whose `endSeconds`
+exceeds it — *before* building or running the ffmpeg command — rather than trusting the
+caller.
+
+**Rationale:** an integration test (`apps/worker`'s `render-job.test.ts`) deliberately fed a
+segment ending far past the source's real length, expecting the render to fail. It didn't —
+`renderVideo` returned `SUCCESS`. ffmpeg's own `trim` filter doesn't error on an out-of-bounds
+end time; it silently clamps to the frames actually available, producing a shorter clip than
+requested instead of a clear failure. `packages/agents`' Edit Planner already validates
+segment bounds against the source duration *it was told about* — but that's not true defense
+in depth if the render layer itself will happily accept a bad value anyway (a stale duration,
+an EditPlan created outside the agent path, direct DB edits). The fix moves the same check to
+where it can't be bypassed: immediately before rendering, against the file that's actually
+about to be rendered.
+
+**Reversibility:** high — additive validation; no existing correct caller is affected (see
+the passing happy-path test), only ones that were silently getting wrong output.
+
+---
+
+## 2026-09-07 — Real Phase 3 acceptance-criterion pipeline verified end-to-end
+
+**Note (verification, not a decision):** `apps/worker/src/render-job.ts`'s
+`renderContentItem` — and its integration test — prove the actual Phase 3 acceptance
+criterion for real: a synthetic fixture (no real Chris footage needed) moves through a real
+`ContentItem` state machine (FILMED → MEDIA_INGESTED → TAKE_SELECTED → EDIT_PLANNED →
+EDITING → RENDERED), a real `MediaAsset` in a real (local-fs) `StorageAdapter`, a real
+hand-constructed `EditPlan` (the Edit Planner agent's own output-validation is proven
+separately with a mock provider in `packages/agents`), a real ffmpeg render, and real
+ffprobe-based technical QC — landing at `RENDERED` with a `PASS` report. The failure path
+(an invalid EditPlan) is verified too: it fails clearly and leaves the `ContentItem` at
+`EDITING` for a real retry, not silently corrupting state.
+
+---
+
+## 2026-09-07 — `apps/web` calls the render job in-process, no queue yet
+
+**Decision:** `apps/worker`'s package.json now exposes `./src/render-job.ts` as its main
+export, so `apps/web`'s Server Actions can `import { renderContentItem } from "@chris/worker"`
+and run a render synchronously within the same request, rather than enqueueing a job for a
+separately-running worker process to pick up.
+
+**Rationale:** no job queue exists yet (deliberately — building one now would be exactly the
+kind of premature complexity CLAUDE.md's standing rules warn against, before there's a real
+concurrency/scale need). For Phase 3's actual requirement — proving the render pipeline works
+and giving Chris a way to trigger it — running it in-process is the simplest thing that
+works, and Vercel Functions' current 300s default timeout comfortably covers a single
+short-form render. `apps/worker` still exists as the intended eventual home for a real
+async job runner (Phase 5+, once publishing/scale pressure makes one necessary) — this
+decision doesn't foreclose that, it just doesn't build it before it's needed.
+
+**Reversibility:** high — `renderContentItem` doesn't know or care whether it's called
+in-process from a Server Action or dequeued by a standalone worker; swapping to a real queue
+later changes the caller, not this function.
+
+**Also decided in this pass:** used `client.messages.parse()` with Zod-based
+`output_config.format` (via `@anthropic-ai/sdk/helpers/zod`'s `zodOutputFormat`) for
+structured agent outputs, rather than hand-rolled JSON-mode parsing or tool-use-as-structured-
+output — this is the SDK's own recommended current pattern (confirmed via the bundled
+Claude API skill, not assumed from training data, given how fast this surface changes) and
+gives schema-validated typed output directly from the API call.
+
+---
+
+## 2026-09-07 — Phase 1: no separate `ContentIdea` table; `Notification` deferred
+
+**Decision:** Phase 1 does not introduce the `ContentIdea` entity `/docs/DATA_MODEL.md`
+originally slotted for this phase. `ContentItem`'s `IDEA` state (already real since Phase 0)
+serves as the ideas backlog — the IDEAS nav view is simply `ContentItem`s in state `IDEA`.
+`Notification` is also deferred past Phase 1 — nothing in Phase 1's actual acceptance
+criteria (create idea → advance through stub states → upload raw media → appear on calendar)
+needs it, and building it now would be a table with no real consumer.
+
+**Alternatives considered:** build `ContentIdea` as a separate, lighter-weight pre-selection
+entity (raw unstructured brainstorm) that later gets "promoted" into a `ContentItem`; build
+`Notification` now since the data model doc already listed it for this phase.
+
+**Rationale:** `ContentItem` already starts life in `IDEA` state by default (Phase 0 schema).
+A second table representing the same conceptual thing (an idea that hasn't been selected yet)
+would be duplicate structure with no distinct behavior to justify it yet. If raw brainstorm
+volume ever outgrows the structured `ContentItem` shape (e.g. Chris wants to jot ten
+one-line thoughts a day without titling/pillar-tagging each one), `ContentIdea` can be added
+then, with a promotion path into `ContentItem` — nothing about this decision blocks that.
+
+**Reversibility:** high — additive; introducing `ContentIdea` and `Notification` later needs
+new tables, not a rework of anything built now.
+
+---
+
+## 2026-09-07 — Prisma 7's connection-config model (driver adapters, `prisma.config.ts`)
+
+**Decision:** `packages/domain/prisma/schema.prisma`'s `datasource` block declares only
+`provider = "postgresql"` — no `url`. The connection string for the Prisma CLI (migrate,
+studio) lives in `packages/domain/prisma.config.ts` (`datasource.url`, reading
+`DATABASE_URL`). At runtime, `PrismaClient` is constructed with an explicit driver adapter
+(`@prisma/adapter-pg`'s `PrismaPg`, wrapping `pg`) rather than reading a schema-level `url`.
+Seeding is configured via `prisma.config.ts`'s `migrations.seed` (not `package.json#prisma.seed`)
+and must be run explicitly (`prisma db seed`) — Prisma 7 no longer auto-seeds after `migrate
+dev`/`migrate reset`.
+
+**Alternatives considered:** pin to an older Prisma major (6.x) to keep the pre-7
+schema-embedded-`url` model and avoid this added indirection.
+
+**Rationale:** the registry's latest stable `@prisma/client`/`prisma` is 7.10.0, and this is a
+new project with no existing Prisma investment to preserve — there's no reason to start on a
+deliberately older major. Confirmed against Prisma's own current docs (fetched directly,
+not from training-data memory, since this is exactly the kind of "APIs change without
+warning" case the environment's tooling warnings call out) rather than guessed.
+
+**Reversibility:** moderate — this is Prisma's own current architecture, not a choice we can
+easily reverse without leaving Prisma entirely; documented here so a future session doesn't
+"fix" `schema.prisma` back to a `url` field and reintroduce the validation error this
+resolved.
+
+**Also decided in this pass:** `typescript` is pinned to `^6.0.3`, not the registry's `latest`
+tag (`7.0.2`) — `typescript-eslint@8.69.0`'s peer range caps at `<6.1.0`, and TS7 isn't yet
+supported by the lint tooling ecosystem. Revisit once `typescript-eslint` publishes TS7
+support.
+
+---
+
+## 2026-09-07 — Initial migration generated via `migrate diff`, applied via `migrate deploy`
+
+**Decision:** the very first Prisma migration was generated with `prisma migrate diff
+--from-empty --to-schema prisma/schema.prisma --script` (writing the SQL by hand into
+`prisma/migrations/<timestamp>_init/migration.sql` + `migration_lock.toml`) and applied with
+`prisma migrate deploy`, instead of the normal interactive `prisma migrate dev`.
+
+**Alternatives considered:** debug why `migrate dev` itself fails against the PGlite dev
+database further (it failed with `P1017: Server has closed the connection` partway through,
+with no error surfaced by `pglite-socket`'s own server/connection/error events — most likely
+`migrate dev`'s shadow-database step, which needs to `CREATE DATABASE`, something PGlite's
+single-embedded-database engine cannot actually do); or add a real Postgres via Docker just
+for this one step.
+
+**Rationale:** `migrate dev` computes its diff by spinning up a temporary **shadow database**
+so it can safely detect drift — a mechanism several real hosted-Postgres providers also can't
+support (for unrelated reasons: restricted users, PgBouncer, etc.), for which Prisma's own
+documented workaround is exactly this: generate the SQL out-of-band and apply it with
+`migrate deploy`, which only applies SQL files and records them in `_prisma_migrations` —
+no shadow database involved. This keeps every future migration's *history* fully real and
+Prisma-native (`migrate status` confirms "Database schema is up to date!"); only the
+*authoring* step for schema changes in this sandbox needs the extra `migrate diff` command
+instead of `migrate dev`'s one-liner.
+
+**Consequence for future sessions:** until a real Postgres (Docker, or Neon in
+production/staging) is available, author new migrations the same way: **`prisma migrate diff
+--from-config-datasource --to-schema prisma/schema.prisma --script`** (diffs the live dev
+database's actual current state against the target schema — no shadow database needed,
+unlike `--from-migrations`, which *also* requires a shadow database and fails with "You must
+set `datasource.shadowDatabaseUrl`" in this sandbox). Place the output in a new timestamped
+`prisma/migrations/<ts>_<name>/migration.sql`, then `prisma migrate deploy`. This only works
+correctly when the live dev database's schema is already fully in sync with migration
+history before making the change (true here since every prior migration was applied via
+`migrate deploy`) — if it ever drifts, reconcile it before trusting a `--from-config-datasource`
+diff. Once a real Postgres is available (e.g. via `docker-compose.yml`), `migrate dev` should
+work normally again — this is a sandbox-specific workaround, not a permanent change to how
+this project does migrations.
+
+**Reversibility:** high — the resulting migration history is indistinguishable from one
+`migrate dev` would have produced; switching back to `migrate dev` once a real shadow-database-
+capable Postgres is available requires no schema or history changes.
+
+---
+
+## 2026-09-07 — `apps/web/CLAUDE.md` and `apps/web/AGENTS.md` are Next.js–owned, not ours
+
+**Note (not really a decision):** running `next dev` auto-generates
+`apps/web/CLAUDE.md` (a one-line pointer, `@AGENTS.md`) and `apps/web/AGENTS.md` (framework
+guidance telling an agent to check `node_modules/next/dist/docs/` for breaking changes before
+writing Next.js code in that directory) — a Next.js 16 feature, regenerated on every `next
+dev` run. This is scoped to `apps/web` and is unrelated to, and does not override, this
+repository's root `CLAUDE.md`. Leave it alone — don't delete it (it just comes back) and don't
+mistake it for a second copy of this project's own operating rules.
+
+---
+
+## 2026-09-07 — Phase 4: hard-gate aggregation is pure, and BRAND/CREATIVE reuse Brand Guardian's scores
+
+**Decision:** `packages/domain/src/quality-gate.ts`'s `aggregateHardGates()` is a pure function
+over four already-reduced `PASS`/`BLOCK` inputs (FACTUAL, TECHNICAL, BRAND, CREATIVE) — it ORs
+them together and can't average a `BLOCK` away because its inputs and output are never numbers,
+only the two-value union. FACTUAL is read from the ClaimsGateResult already persisted on the
+ResearchPacket at RESEARCHING time (Phase 2) — Claims Gate is never re-run against the final
+edit, since its contract (`/docs/AGENT_CONTRACTS.md`) takes ResearchPacket + ScriptVersion, not
+Render, and an EditPlan can only trim/caption the script's existing claims, never add a new
+one. BRAND and CREATIVE are spec-named hard gates (§9 step 16) with no agent literally producing
+scores under those names — Brand Guardian (Phase 2) produces `brandScore`/`voiceScore`/
+`originalityScore` instead. Mapping used: BRAND = brandScore AND voiceScore both ≥ 70; CREATIVE
+= originalityScore ≥ 60 (both plain exported constants, not buried in logic).
+
+**Alternatives considered:** (a) build a dedicated Brand/Creative review agent for this phase
+instead of reusing Brand Guardian's existing scores — rejected as unjustified scope now, since
+Brand Guardian's existing fields already cover the same territory (voice/originality/strategic
+fit) the spec's BRAND/CREATIVE gates are gesturing at; (b) re-run Claims Gate against the final
+render's transcript for genuine defense-in-depth against edit-introduced factual drift —
+rejected for this phase because there's no dedicated final-render transcription step yet (see
+the still-open "no real transcription provider" limitation) and the spec's own Claims Gate
+contract doesn't name Render as an input; worth revisiting once transcription is real.
+
+**Reversibility:** high — both the score-to-gate thresholds and the FACTUAL source are one
+function call each (`brandGateFromScores`, `creativeGateFromScore`, the ClaimsGateResult read)
+and can be swapped for dedicated agents/re-checks later without touching
+`aggregateHardGates()`'s shape.
+
+---
+
+## 2026-09-07 — Visual QA is the first agent needing vision input; extended ModelProvider accordingly
+
+**Decision:** added an optional `images?: ModelImageInput[]` field to
+`StructuredCompletionRequest` (`packages/agents/src/model-provider.ts`) rather than a separate
+vision-specific interface. `AnthropicModelProvider` maps each image to a labelled
+(`t=<seconds>s`) content block placed before the text prompt when present; `MockModelProvider`
+just records them on `calls` for test assertions. Frame extraction itself
+(`packages/media/src/frame-extractor.ts`) is deterministic ffmpeg work — `-ss` seek +
+single-frame PNG per sampled timestamp — with the same defense-in-depth pattern as Phase 3's
+render segment-bounds check: a seek past the end of the video exits ffmpeg with code 0 and
+writes no file ("Output file is empty, nothing was encoded") rather than erroring, verified
+directly against the real binary, so `extractFrames` explicitly checks the output file exists
+and is non-empty rather than trusting the exit code.
+
+**Alternatives considered:** a separate `completeWithVision()` method on `ModelProvider` —
+rejected because every other call shape (system prompt, schema, promptId, model routing) is
+identical; a parallel method would duplicate the whole interface for one optional field.
+
+**Reversibility:** high — `images` is optional and additive; no existing agent call changes
+shape.
+
+---
+
+## 2026-09-07 — Bug found and fixed: ffmpeg-static/ffprobe-static break under Next.js's server bundling
+
+**What happened:** every real-model-call-free Phase 3 verification claim in this repo (`pnpm
+test`'s integration tests, and the "verified via live UI" language in Phase 3's completion
+record below) was true only through *either* Vitest *or* a standalone Node script
+(`renderContentItem`/`probeMedia` called directly, bypassing Next.js entirely) — never through
+an actual Next.js Server Action running inside `next dev`. Phase 4's `runQualityGate` action was
+the first code path to invoke `packages/media`'s ffmpeg/ffprobe functions through Next's own
+bundler, and it failed immediately: `spawn /ROOT/node_modules/.pnpm/ffprobe-static.../ffprobe
+ENOENT`. Root cause: `ffmpeg-static`/`ffprobe-static` compute their binary path via `__dirname`
+inside their own package code; Next's default Server Components bundling rewrites `__dirname`
+to a synthetic build-time path for bundled dependencies, which is real for most JS code but
+wrong for a package whose entire job is "point at a real file on disk."
+
+**Fix:** `apps/web/next.config.ts` now sets `serverExternalPackages: ["ffmpeg-static",
+"ffprobe-static"]` (a stable Next.js 15+ option — see
+`node_modules/next/dist/docs/.../serverExternalPackages.md`), which opts these two packages out
+of bundling and uses plain Node `require` instead, restoring correct `__dirname` resolution.
+
+**Verification:** confirmed via real HTTP against a restarted `next dev` server (not a script):
+(1) `uploadMedia` against a real uploaded fixture produced a `MediaAsset` with real ffprobe
+values (640×480, 5s, h264/aac, 30fps, hasAudio) instead of failing; (2) `runRender` against a
+fresh `EDIT_PLANNED` item produced a real `RENDERED` item with `Technical QC: PASS`, and the
+resulting file fetched back through `/api/media/...` was confirmed to be a genuine, valid MP4;
+(3) `runQualityGate` got past `probeMedia`/`extractFrames` entirely and failed only at the
+correct, already-known, already-documented point (no `ANTHROPIC_API_KEY` configured).
+
+**Consequence:** Phase 3's completion record's "verified via live UI" language was not fully
+accurate — the actual Next.js-bundled render/upload code paths were silently broken the entire
+time; only the Vitest integration tests (which run outside Next's bundler) and the standalone
+demo script exercised the real logic. This is now fixed and independently re-verified through a
+real server rather than a script, and Phase 3's completion record below has a correction note
+added rather than being silently rewritten.
+
+**Reversibility:** high — a one-line config addition; trivially reversible, and would need to
+be revisited (not reversed) if these packages are ever swapped for a cloud-hosted transcoding
+API that doesn't need local binaries at all.
+
+---
+
+## 2026-09-07 — Model ID fix: Haiku 4.5 needs the dated suffix
+
+**What happened:** `packages/agents/src/providers/anthropic-provider.ts`'s `LOW` model-class
+default was `"claude-haiku-4-5"`, missing the dated suffix (`-20251001`) every other model ID
+in that table already carried correctly (`claude-opus-5`, `claude-sonnet-5`). Found while
+reviewing the provider file during Phase 4 work — never triggered by any test, since every
+automated test in this repo uses `MockModelProvider`, and no `LOW`-class agent has been built
+yet to exercise the real provider's default at all.
+
+**Fix:** corrected to `"claude-haiku-4-5-20251001"`.
+
+**Reversibility:** trivial — a string constant, and already overridable per-deployment via the
+`MODEL_LOW` environment variable regardless.
+
+---
+
+## 2026-09-07 — Bug found and fixed: unbounded date range let future-dated test rows leak into real quota checks
+
+**What happened:** `packages/platforms/src/youtube-quota.ts`'s `getYouTubeQuotaState` counted
+`Publication` rows with `createdAt: { gte: startOfUtcDay(now) }` — no upper bound. A Phase 5
+test (`youtube-quota.test.ts`'s exhaustion case) deliberately used a synthetic future date to
+avoid polluting real "today" across repeated `pnpm test` runs — the same pattern already
+established elsewhere in this repo for test-date collisions. But because the query had no
+`lt: startOfNextUtcDay(now)` bound, those future-dated rows were still `>= startOfUtcDay(realNow)`
+and so counted against every *real* quota check made afterward, for the rest of real time (or
+until the real day catches up to them). Caught immediately by `apps/worker`'s
+`publish-job.test.ts` failing — a YouTube publish that should have succeeded came back skipped,
+traced to `getYouTubeQuotaState` reporting the real day already exhausted (106 rows present)
+purely from other tests' synthetic future data.
+
+**Fix:** added the missing upper bound (`lt: startOfNextUtcDay(now)`), so the query is a real
+closed `[today, tomorrow)` window. Also threaded an optional `now` override through
+`apps/worker/src/publish-job.ts`'s `publishContentItem` (production callers omit it and get
+real time) so the quota-exhaustion path can be tested end-to-end via a synthetic day without
+ever needing 100 real rows created against real "today."
+
+**Consequence:** the ~106 already-created rows from before the fix remain in the dev DB
+(harmless now — they're excluded from every future query by the day bound) rather than being
+deleted; per CLAUDE.md, `ContentStateTransition`/`AuditLog`-adjacent history is not something
+sessions delete casually, and these rows are inert, not actively wrong.
+
+**Reversibility:** trivial — a query bound and an optional parameter; no schema change.
+
+---
+
+## 2026-09-07 — Bug found and fixed: a monotonic `RUN_BASE_MS` alone doesn't prevent same-day test collisions
+
+**What happened:** `packages/platforms/src/__tests__/youtube-quota.test.ts` used the
+established `RUN_BASE_MS = Date.now()` pattern (see the earlier Phase 2 test-date-collision
+entries) to pick synthetic "fake now" days for its quota tests, believing a monotonically
+increasing base was sufficient. It isn't, when the granularity of the collision is a *calendar
+day*: two invocations of `pnpm test` run within the same real hour still compute
+`fakeNowForOffset(2)`/`fakeNowForOffset(3)` timestamps that fall in the *same* UTC day bucket
+(`getYouTubeQuotaState` buckets by day, not by millisecond) — so rows from an earlier
+invocation today accumulated under a later one, breaking exact-count assertions after a few
+repeated runs in one session. Caught by `pnpm test` failing on the second/third run of the
+day, not the first.
+
+**Fix:** added the other half of the established pattern this repo already uses for date
+collisions (see Phase 2's entries): explicit `deleteMany` cleanup of that synthetic day's
+`YOUTUBE` rows before each test's own inserts, so exact-count assertions never depend on
+whatever earlier runs left behind. Verified by running the same test file twice in immediate
+succession — passes both times.
+
+**Consequence for future sessions:** a monotonic run-base timestamp prevents collisions at the
+granularity the *consuming* code actually buckets by. When that's day-level (or coarser) and
+tests run repeatedly within a shorter real window than that granularity, pair it with explicit
+cleanup — don't assume "monotonic" alone is sufficient without checking the bucket size.
+
+**Reversibility:** trivial — test-only change, no product code affected.
+
+---
+
+## 2026-09-07 — TikTok has no comment-listing access at this app's tier; metrics field mapping verified per platform
+
+**Decision:** verified all three platforms' metric and comment endpoints against current docs
+before building Phase 6, the same discipline as Phase 5's adapter work:
+- **Instagram**: `/{media-id}/insights` real fields `views`, `likes`, `comments`, `shares`,
+  `saved`, `reach`, `ig_reels_avg_watch_time` — the only one of the three platforms with a
+  watch-time metric available to a standard app. Comments via `/{media-id}/comments`.
+- **YouTube Data API v3**: `videos.list?part=statistics` returns only `viewCount`,
+  `likeCount`, `commentCount` — no share count, no save count, and (confirmed directly) no
+  watch-time/average-view-duration field anywhere in this API; that data lives only in the
+  separate, more heavily-scoped YouTube Analytics API, not integrated this phase. Comments via
+  `commentThreads.list`.
+- **TikTok**: `/v2/video/query/` returns `like_count`/`comment_count`/`share_count`/
+  `view_count` (no watch-time, no saves) at the same standard access tier this app already
+  uses for publishing. **Comments, however, have no listing endpoint at this tier at all** —
+  the only comment-data endpoint TikTok exposes
+  (`/v2/research/video/comment/list/`) belongs to the separate Research API, which requires
+  its own researcher-eligibility approval a personal creator/publishing app doesn't have and
+  wouldn't qualify for. Confirmed by live search, not assumed.
+
+**Consequence:** `TikTokContentPostingAdapter.listComments()` returns an empty array with a
+documented reason, rather than calling an endpoint this app's credentials could never actually
+reach. Every `PlatformMetrics` field this system doesn't get from a given platform stays
+genuinely `null` — this is now backed by real, per-platform-verified API capability, not a
+generic "might not be available" hedge.
+
+**Known simplification, logged rather than fixed now:** `getMetrics`/`listComments` are typed
+to take the same `platformPostId` `publish()` returns, but for TikTok specifically that's the
+transient `publish_id`, not the real resolved `video_id` metrics/comments queries need — TikTok
+only resolves the real video id via a follow-up status-fetch read after publishing completes,
+which `verify()` doesn't currently surface. Not fixed now because it's unexercised without
+real TikTok credentials anyway (same category as every other real-adapter limitation in this
+system); worth resolving before this adapter is ever pointed at a real account.
+
+**Reversibility:** high — purely adapter-internal; the `PlatformAdapter` interface and every
+caller are unaffected regardless of how TikTok's id resolution is eventually fixed.
+
+---
+
+## 2026-09-07 — Bug found and fixed: synthetic test dates built from "real now + N days" can cross a UTC day boundary
+
+**What happened:** two test files (`packages/platforms/src/__tests__/youtube-quota.test.ts`
+and `apps/worker/src/__tests__/publish-job.test.ts`) picked a synthetic future day as `new
+Date(Date.now() + N * 24h)` — preserving real "now"'s time-of-day. That's fine most of the
+time, but both tests also compute a "check slightly later" timestamp (`+1 hour` past the last
+inserted row) to read the quota state back. When real "now" happens to fall late enough in the
+UTC day (this was found at ~23:xx UTC), `+N days` lands at that same late hour on the target
+day, and `+1 hour` on top of that rolls into the *next* UTC day — outside the very day-bucket
+`getYouTubeQuotaState`'s query and the test's own 100 filler rows both live in. Result: a
+query that should find 100 rows found 0, failing an assertion that has nothing to do with the
+real bug. Caught by `pnpm test` failing, non-deterministically by time-of-day, not by
+inspection.
+
+**Fix:** both files now snap their synthetic day to a fixed noon UTC
+(`Math.floor(ms / dayMs) * dayMs + 12h`) instead of preserving real now's time-of-day — a full
+12-hour margin in both directions absorbs any same-day offset either file adds, regardless of
+what real wall-clock time the test suite happens to run at.
+
+**Consequence for future sessions:** a synthetic test date built from "real now + offset" is
+only safe from day-boundary bugs if either (a) nothing else in the test does further same-day
+arithmetic on it, or (b) it's snapped to a fixed, safely-mid-day time first. Prefer (b) by
+default — it's cheap and removes an entire class of test flakiness that otherwise only shows
+up depending on what time of day (UTC) the suite happens to run.
+
+**Reversibility:** trivial — test-only change, no product code affected.
+
+---
+
+## 2026-09-07 — Bug found and fixed: `publishContentItem`'s YouTube tests polluted both real "today" and their own synthetic future day across many repeated runs
+
+**What happened:** two orchestration tests in `apps/worker/src/__tests__/publish-job.test.ts`
+("all platforms succeeding", "one platform failing") included YOUTUBE in their target
+platforms with no synthetic `now` override, so `publishContentItem`'s real YouTube quota check
+read real wall-clock "today." `recordPublicationAttempt` (`packages/domain/src/publication.ts`)
+always timestamps the `Publication` row it creates with real `now()` — there's no
+synthetic-date override, unlike most other domain functions in this repo, because a real
+publish attempt genuinely should be timestamped with real time. After enough `pnpm test` runs
+in one real day (this session ran the full suite dozens of times while building Phases 5-6),
+real "today"'s simulated 100-upload YouTube budget was genuinely exhausted (1517 real rows
+found), so both tests started failing — not flakily, but deterministically, once the
+threshold was crossed. Separately, the file's own dedicated quota-exhaustion test computes its
+synthetic future day via `Math.floor(...)` (flooring to a calendar day, not a monotonic
+per-run value), so its own 100 filler rows accumulated identically across every same-day
+re-run — 1400 rows found on one such day after repeated debugging runs — which then broke a
+fix attempt that pointed the other two tests at that same synthetic day expecting it to be
+clean.
+
+**Fix, two parts:**
+1. The two orchestration tests don't need YouTube specifically — they're testing "multiple
+   platforms, one platform's outcome doesn't affect the others," a claim that doesn't depend
+   on which platform. "All platforms succeeding" now uses INSTAGRAM+TIKTOK, sidestepping the
+   quota gate entirely. "One platform failing" still legitimately needs three platforms
+   (TIKTOK failing, INSTAGRAM+YOUTUBE succeeding) and now explicitly passes a synthetic future
+   `now` for the quota check, since the row `recordPublicationAttempt` writes is always
+   real-timestamped regardless — the override only needs to make the *check* pass, not the
+   write.
+2. The dedicated quota-exhaustion test (and the "one platform failing" test, which now shares
+   the same synthetic day) both call a new `clearYouTubeQuotaDayFillerRows()` cleanup before
+   inserting anything — the same cleanup-before-insert pattern already established in
+   `packages/platforms/src/__tests__/youtube-quota.test.ts`, applied here because a
+   `Math.floor`-based synthetic day is fixed per calendar day, not monotonic per run, and
+   accumulates identically to real "today" across repeated same-day invocations.
+
+**Verified:** ran the fixed file three times in immediate succession — 7/7 pass every time.
+
+**Consequence for future sessions:** any test that exercises `publishContentItem` (or anything
+else that ultimately calls `recordPublicationAttempt`) against YOUTUBE needs one of: (a) not
+using YOUTUBE at all when the test isn't specifically about YouTube's quota behavior, (b) a
+synthetic `now` passed to the *quota check* even though the *row* will still be real-dated
+(sufficient when the test only runs a handful of times), or (c) explicit day-bucket cleanup
+before asserting exact counts (necessary once repeated runs could plausibly approach the real
+100-upload ceiling on whatever day is in play, real or synthetic-but-fixed).
+
+**Reversibility:** trivial — test-only changes, no product code affected.
+
+---
+
+## 2026-09-07 — Bug found and fixed: even `Date.now()`-based test dates collide for a genuinely global singleton table
+
+**What happened:** `BrandEra`'s Phase 7 tests used fixed literal dates, then (once that
+collided with a previous run's leftover "current era") `Date.now()`-based dates — the standard
+fix pattern elsewhere in this repo. It still wasn't enough: `BrandEra` is the first table in
+this repo that is a genuine global singleton (only one open-ended "current" era can exist at
+any time), not scoped to a fresh per-test `ContentItem` the way nearly everything else is.
+Re-running the test suite twice within the same second (routine while iterating) meant the
+second run's fresh `Date.now()` could land *earlier* than the first run's synthetic
+`Date.now() + 2000ms` era, which is still "the current era" as far as the persistent dev DB is
+concerned — breaking the chronological-ordering check the very next run.
+
+**Fix:** stopped deriving test dates from wall-clock time at all. The test now reads whatever
+era is *actually* current in the real database first (`getCurrentBrandEra`) and builds every
+synthetic date at least a minute past that (and past real `Date.now()`, for the very first run
+when no era exists yet) — correctness no longer depends on how much real time elapsed between
+runs, because it's anchored to the persistent DB's actual current state rather than to the
+clock.
+
+**Consequence for future sessions:** the `Date.now()`-based monotonic pattern used everywhere
+else in this repo assumes real time only moves forward *and* that repeated invocations are
+spaced further apart than whatever offsets the test adds — true for day-bucketed data, not
+reliably true for tests that add only small (sub-few-second) offsets to "now" and might be
+re-run seconds apart. For a genuinely global (not per-fresh-row) piece of state, read the real
+current value and build forward from *that* instead of from the clock.
+
+**Reversibility:** trivial — test-only change, no product code affected.
+
+---
+
+## 2026-09-08 — `AutonomyLevel`'s tests needed direct cleanup, not a date-based dodge
+
+**What happened:** `AutonomyLevel` (Phase 8) is a global row per (subsystem, productionTier),
+like `BrandEra` — but unlike `BrandEra`, there's no date field to build a "safely in the
+future" synthetic value from at all: escalation is driven purely by a call *count*, and the
+(subsystem, tier) space is a small, closed set of enum pairs (5 × 4), not something a test can
+sidestep by picking a fresh, never-before-used combination. The very first version of this
+test file used fixed pairs like `SCHEDULING`/`RAW` with no reset, and — predictably, given
+every other instance of this bug class this session — failed on a second run because the
+row's count had already crossed a threshold from the first run.
+
+**Fix:** each test explicitly deletes its own (subsystem, tier) row (`resetAutonomyLevel`)
+before asserting anything that depends on a known starting count. Verified stable across four
+rapid repeated runs.
+
+**Consequence for future sessions:** when the state under test is keyed by a small closed
+enum space rather than a free-form id, neither a fresh id nor a synthetic date can create
+isolation — direct `deleteMany` cleanup before the test's own writes is the only real fix,
+and it should be reached for immediately rather than after discovering (again) that a
+clever date/id trick doesn't apply here.
+
+**Reversibility:** trivial — test-only, no product code affected.
+
+---
+
+## 2026-09-08 — Real per-call cost logging (`ModelCallLog`), computed from a live cost estimate
+
+**What happened:** Chris asked for a rough cost calculation now that a real
+`ANTHROPIC_API_KEY` was verified working. Built one grounded in the real agent roster
+(`/docs/AGENT_CONTRACTS.md`), live-fetched pricing from claude.com/pricing, and the spec's
+~30-videos/week volume: ~$14/week, ~$61/month, ~$0.41/video in Claude API spend at full
+volume — a small fraction of the original full-stack estimate of $350–$1,300+/month (that
+number also includes hosting, storage, transcription, render compute, and generative media,
+none of which this figure covers). Chris then asked to make that estimate real rather than
+staying a guess.
+
+**Decision:** added `ModelCallLog` (Prisma model, migration
+`20260908013333_model_call_log`) — one row per real model call, with token counts, computed
+`costUsd`, latency, success/failure, and optional `contentItemId`. Logging happens via a new
+decorator, `CostTrackingModelProvider` (`packages/agents/src/providers/cost-tracking-provider.ts`),
+wrapping `ModelProvider` rather than being called from inside every agent file. It's wired in
+at the single real instantiation point, `apps/web/lib/model-provider.ts`'s `getModelProvider()`
+— every Server Action in `apps/web/app/content/[id]/actions.ts` already routes through that
+one function, so this is a one-file wire-in that covers every real call in the app.
+`MockModelProvider` (used by all 275 automated tests) is never wrapped — tests stay free.
+
+Pricing itself lives in `packages/agents/src/pricing.ts` as a hardcoded snapshot (not fetched
+live at request time) — a real invoice must reflect the price in effect when the call
+happened, not today's price, so `costUsd` is computed once at write time and never rewritten.
+
+**Alternatives considered:**
+1. Log to `AuditLog` instead of a new table — rejected: `AuditLog`'s `before`/`after` JSON
+   shape isn't built for numeric aggregation (summing cost/tokens across thousands of rows),
+   and cost logging isn't really an audit-trail concern (no before/after entity state).
+2. Have each agent call a logging function directly — rejected: would require touching all 18
+   agent files in `packages/agents/src` for a concern orthogonal to what any agent actually
+   does; the provider-decorator seam already existed structurally (every agent depends on the
+   `ModelProvider` interface, never a concrete implementation) and is the correct extension
+   point per the same reasoning that put `MockModelProvider` there in the first place.
+3. Fetch Anthropic's pricing live at call time instead of a hardcoded table — rejected: ties
+   every real agent call to an extra network dependency and makes historical cost figures
+   silently drift if Anthropic changes pricing later; a versioned snapshot with a `/docs`
+   changelog entry on update is simpler and matches how the repo already treats prompts/brand
+   docs (new versions, not silent mutation).
+
+**Rationality/testing:** 12 new tests (`packages/domain/src/__tests__/model-call-log.test.ts`,
+`packages/agents/src/__tests__/pricing.test.ts`, `.../cost-tracking-provider.test.ts`) —
+successful-call logging with correct cost, failed-call logging with null cost (never a
+fabricated $0), summary aggregation across model classes, `since`-filtering, and — the "fail
+safely" case — the real `completeStructured` result still returns correctly even when the
+database write itself throws. Full suite: 275/275 passing, `tsc --noEmit` clean, lint clean.
+
+**Known gap, deliberately not built here:** this is the *logging* half of §16's "cost &
+latency governor," not the *enforcement* half. Nothing yet stops a real run from spending
+freely — no per-job call budget, no max-reasoning-calls limit, no escalation threshold. Real
+numbers now exist to build that against; the enforcement layer is future work, not silently
+assumed done.
+
+**Reversibility:** easy — additive-only (new table, new decorator, one wire-in edit). Removing
+the wrapper reverts `getModelProvider()` to its pre-existing behavior with zero other changes.
+
+---
+
+## 2026-09-08 — Spend cap: the enforcement half of the cost & latency governor
+
+**What happened:** immediately after building `ModelCallLog` (previous entry), Chris asked
+for "a stop" — the enforcement half that entry explicitly flagged as a known gap ("nothing
+yet stops a real run from spending freely").
+
+**Decision:** `CostTrackingModelProvider` now enforces a rolling-UTC-day USD ceiling in
+addition to logging. Before calling the delegate provider, it reads today's total spend
+(`getModelCallCostSummary` since UTC midnight) and, if that total has already reached the cap,
+throws `SpendCapExceededError` (`packages/agents/src/spend-cap.ts`) *before* the delegate is
+ever invoked — a blocked call spends zero tokens, not just zero dollars logged after the fact.
+The refusal is written to `AuditLog` (`MODEL_SPEND_CAP_BLOCKED`) so it's visible later. Default
+cap is $30/day (`DEFAULT_DAILY_SPEND_CAP_USD`), overridable via `MODEL_SPEND_DAILY_CAP_USD`
+(`.env.example`), or disabled entirely by passing `dailyCapUsd: null` to the constructor.
+
+**Why $30/day:** the cost-calculation entry above estimated ~$14/week (~$2/day steady-state)
+at full ~30-videos/week volume, but Chris plausibly batches research/scripting/editing for a
+whole week's slate in a single working day — which could plausibly be the full $14 in one day.
+$30/day is roughly 2x that full-week figure concentrated into one day: generous enough that a
+real, even heavy, day of pipeline work shouldn't trip it, tight enough to stop a genuine
+runaway (retry loop, accidental batch-of-batches) well short of real money.
+
+**Two sub-decisions worth recording:**
+1. **Fail OPEN on the cap-check read itself**, not fail closed. If reading today's spend
+   fails (DB hiccup), the call is allowed through rather than blocked — a brief window with no
+   cap enforcement during an outage is a better outcome for a single-operator tool than every
+   real agent call breaking because the governor couldn't read its own state. This is the one
+   place in this codebase where "fail safely" is interpreted as "let the primary operation
+   proceed" rather than "the primary operation must never be blocked by an observability
+   failure" (`ModelCallLog` writes still fail silently/best-effort, unchanged) — a deliberate,
+   asymmetric choice: reads-that-gate get fail-open, writes-that-observe get best-effort.
+2. **Not perfectly atomic.** The check-then-act between "read today's spend" and "record this
+   call's cost" isn't transactional, so calls fired genuinely concurrently could both pass the
+   check before either lands. Accepted as-is: this app drives sequential Server Actions for a
+   single operator, and PGlite itself can't reliably handle concurrent queries regardless (see
+   the PGlite entries above) — a precise billing gate wasn't the goal, a ceiling against
+   runaway/accidental spend was.
+
+**Alternatives considered:**
+- Per-agent or per-model-class sub-budgets instead of one blunt total — rejected for now as
+  more governor than a single-operator tool needs on day one; the full per-job limit list
+  `/docs/ARCHITECTURE.md` §16 always named (max reasoning calls, vision passes, render
+  iterations, etc.) remains explicitly un-built, logged as a known gap rather than implied
+  done.
+- A DB-backed, runtime-adjustable cap (mirroring the `FeatureFlag` pattern) instead of an env
+  var — rejected for the same "prefer the reversible/simple choice" reasoning used throughout
+  this repo's stack decisions; an env var matches how `ANTHROPIC_API_KEY` itself is already
+  configured and needs no new UI to change.
+
+**Testing:** 13 new tests across `packages/agents/src/__tests__/spend-cap.test.ts` (pure
+`startOfUtcDay`/error-shape unit tests) and an expanded
+`.../cost-tracking-provider.test.ts` (blocks before the delegate is called; audits the block;
+allows calls under cap; `dailyCapUsd: null` disables it; a $0 cap is meaningfully different
+from `null`; the existing DB-outage test now also proves the fail-open path). Full suite:
+284/284 passing, `tsc --noEmit` clean, lint clean.
+
+**Reversibility:** easy — additive-only. Passing `dailyCapUsd: null` (or deleting the options
+argument's default in `apps/web/lib/model-provider.ts`) fully reverts to logging-only
+behavior with no other code changes.
+
+---
+
+## 2026-09-08 — Home page rebuilt to spec §20: THIS WEEK / PERFORMANCE / CREATIVE DIRECTOR / NEEDS YOU
+
+**What happened:** Home had been the literal Phase 0 "Foundation OK" status page (brand
+constitution version, feature flag list, content item count) through Phases 1-8 — flagged
+explicitly in an earlier gap analysis as the most visible unaddressed gap, with my own Phase 0
+comment on the page noting it needed "Phase 2 + Phase 7 to mean something." Both now exist.
+Chris picked this as the next priority (over Calendar or Nav consolidation) after the
+cost-governor work.
+
+**Decision:** rebuilt `apps/web/app/page.tsx` into the spec's four named sections, each backed
+by real data, nothing synthesized:
+- **THIS WEEK** — the current `WeeklyProgrammingThesis`'s portfolio approval count (vs. the
+  spec's ~30/week target) and this calendar week's `ScheduleEntry` rows.
+- **PERFORMANCE** — the 4 most recent `PerformanceEvaluation.overallSummary` rows (the
+  Analytics Agent's actual judgment, not a metrics table — Analytics remains the deep-dive
+  page this links out to).
+- **CREATIVE DIRECTOR** — the current thesis's narrative + top risks, linking to Strategy for
+  the full picture.
+- **NEEDS YOU** — a new domain module, `packages/domain/src/needs-you.ts`, mapping all six of
+  spec §20's named categories (subjective choice, factual nuance, unresolved QC, platform
+  issue, strategy decision, uncertainty above threshold) to real, already-existing schema
+  signals: `QC_BLOCKED`/`RESEARCH_BLOCKED` content states, `Publication.status === FAILED`
+  (deduped so a later successful retry doesn't leave a stale entry), the current thesis's own
+  `humanDecisionsNeeded`, `Belief` rows `PROPOSED` (never self-promoted — see the
+  Belief-promotion entry above), and `AdversarialCritique` rows with
+  `noMaterialWeaknessesFound: false`. Hard-capped (default 8) with an honest
+  `totalBeforeCap` count shown as "+N more" rather than either truncating silently or dumping
+  everything — spec's own words, "do not create approval fatigue," is treated as a hard
+  constraint on the function's shape, not a UI nicety layered on afterward.
+
+Also gave the page real visual craft (a small local palette, card-style sections, clear
+typographic hierarchy) rather than reusing the bare inline-style/table pattern the rest of the
+app still uses — Home is the entry point and the flagship "visual/UI is nowhere" complaint;
+Calendar and Nav (declined for this round) still use the old pattern and will need their own
+pass.
+
+**Alternatives considered:**
+- Infer "subjective choice" from something looser (e.g. any `READY` item awaiting a schedule
+  decision) — rejected: that's normal production flow, not a genuine judgment call, and would
+  have reintroduced approval fatigue through the back door.
+- Build a `NeedsYouEntry` database table instead of a computed query — rejected: every
+  underlying signal already has a durable home (ContentState, Publication, Belief,
+  AdversarialCritique); persisting a derived view would be one more thing to keep in sync for
+  no real benefit at this data volume.
+
+**Testing:** 7 new tests (`packages/domain/src/__tests__/needs-you.test.ts`) — one per
+category's mapping correctness, the FAILED-publication supersession-by-retry case, and the
+cap/`totalBeforeCap` behavior. Full suite: 291/291 passing, `tsc --noEmit` clean, lint clean.
+Live-verified against the real running dev server with a real authenticated session (not just
+tests): all four section headers render, real data flows through every section, and the NEEDS
+YOU cap correctly reduced 343 real accumulated signals (mostly leftover test fixtures in the
+shared dev DB) down to 8 shown + an honest "+335 more" — the exact scenario the cap exists for.
+
+**Reversibility:** easy — `needs-you.ts` is additive (new file, new export), and `page.tsx`'s
+previous version is fully recoverable from git history / this entry if ever needed.
+
+---
+
+## 2026-09-08 — Full visual redesign + a real, unrelated bug class it surfaced (unbounded list pages)
+
+**What happened:** Chris asked for a full visual pass across the entire app — "Apple-level of
+premium," deep contrast, color, blur, intuitive flow — and asked specifically that it be
+verified visually (screenshots), not just by reading the code.
+
+**Decision — design system:** added Tailwind CSS v4 to `apps/web` (`postcss.config.mjs`,
+`app/globals.css`) as the styling layer, replacing the ad hoc inline-`style` objects every
+page had used since Phase 0/1. `globals.css` defines the actual design tokens via `@theme`
+(near-black ground, a warm gold + cool violet duotone accent pair, glass-panel/badge/button
+component classes) and a fixed `.ambient-field` (two large blurred radial-gradient orbs behind
+the page — the "Apple keynote" ambient-color treatment). `app/components/ui.tsx` is the shared
+primitive set (`PageShell`, `Panel`, `SectionHeading`, `Badge`, `Button`/`ButtonLink`,
+`EmptyState`, `contentStateTone`) every page composes from, rather than each page reinventing
+its own box/table styling. Every page in the app was rebuilt against this system: Home (this
+session's earlier entry), Login, Calendar, Content (list + detail), Ideas, Strategy,
+Reference (list + detail), Analytics, Learnings, and the NavBar (redesigned as a sticky glass
+bar with active-link highlighting).
+
+**A real bug found along the way:** `NavBar`'s active-link highlight needs `usePathname`
+(client-only), split into a separate `NavLinks.tsx` client component wrapped in `Suspense`
+inside the server `NavBar.tsx` (`usePathname` requires a Suspense boundary on dynamic routes
+like `/content/[id]`, or the whole page silently CSR-bails-out). The first version exported the
+link data (`NAV_LINKS`) from the `"use client"` file for the server fallback to reuse — this
+does not work: every export of a `"use client"` module becomes an opaque client reference
+across the RSC boundary, not just its component exports, so the server component's
+`NAV_LINKS.map` crashed with `TypeError: NAV_LINKS.map is not a function`. Fixed by moving
+`NAV_LINKS` into its own plain (non-`"use client"`) data file both components import. Found by
+actually loading the page (`500` in the dev server log), not by inspection — this class of bug
+doesn't show up in `tsc --noEmit`.
+
+**A second, more significant thing the screenshots found:** several list pages
+(Content: 307,132px tall; Ideas: 83,857px; Analytics: 38,560px; Calendar: 43,149px; Reference:
+13,404px; Learnings: 17,772px) rendered every row of an unbounded `findMany` against the real
+dev DB, which — after many sessions' worth of `pnpm test` runs — has thousands of accumulated
+test rows (`ContentItem`: 4,698; `ScheduleEntry`: many on one date; `ReferenceCreator`: 184;
+`AudienceInsight`: 33; etc.). This is dev-only pollution, not production data, but it exposed a
+real, structural flaw: **none of these pages had ever been bounded** — the same "do not create
+approval fatigue" principle already load-bearing for Home's `NEEDS YOU` queue had never been
+applied to any list page. Fixed at the domain layer, not just the UI: added an optional
+`limit` (and a paired `count*` function) to `listContentItems`, `listReferenceCreators`,
+`listEvidenceEntries`, `listBrandEras`, `listExperiments`, `listTasteFeedback`, `listBeliefs`,
+and `listAudienceInsights` — all additive (`limit` undefined = unlimited, the exact prior
+behavior, so no existing caller or test needed to change). Every affected page now queries with
+a real `take` (not fetch-everything-then-`.slice()`) and shows an honest "showing N of TOTAL"
+line rather than either silently truncating or fetching rows nobody will scroll to. Calendar
+additionally windows by date (7 days back / 30 days ahead) and caps entries per day (12),
+since its problem was one date with 668+ entries, not many dates. Post-fix heights: Content
+3,650px, Ideas 2,704px, Analytics 4,053px (after also fixing an unbounded `listAudienceInsights`
+call and scoping the snapshot-count `groupBy` to only the rendered items), Calendar 3,103px,
+Reference 3,287px, Learnings 7,747px (legitimately dense — 7 real sections plus a fixed
+20-row autonomy table, not pollution).
+
+**Verification:** typecheck clean, lint clean, full suite 291/291 passing (one flaky,
+order-dependent pre-existing failure on a single rerun, confirmed unrelated by a clean rerun —
+see the repeated test-flakiness pattern logged earlier in this file), and a real production
+`next build` succeeds. Visually verified via Playwright screenshots of every real page against
+the live dev server through a real authenticated session (not just curl/grep) — caught both
+bugs above this way, plus one purely cosmetic issue (a Creative-Director panel on Home had
+visible dead space from CSS Grid's `align-items: stretch` matching its shorter sibling's
+height with nothing to fill it — fixed by making `Panel` a flex column and anchoring the
+panel's trailing link to the bottom with `mt-auto` instead of leaving it floating after the
+text).
+
+**Alternatives considered:**
+- Hand-rolled CSS custom properties + inline `style` objects (the pre-existing pattern),
+  scaled up — rejected: correctly applying consistent blur/gradient/spacing tokens across 12
+  pages by hand is slow and error-prone compared to a utility-class system; Tailwind v4's
+  CSS-first `@theme` config keeps the actual token values in one file either way.
+- Truncating each list to a fixed number without a real `count()` or `take` — rejected: still
+  fetches every row from the database only to throw most of them away in the UI, which is real
+  wasted DB work at the row counts observed here (thousands), not just a rendering cost.
+
+**Reversibility:** the design system is additive infrastructure (new CSS/config files, a new
+shared component module) — reverting individual pages to their pre-redesign markup is a
+straightforward per-file revert with no schema or domain-logic dependency. The `limit`
+parameters on domain list functions are additive and backward-compatible; removing them only
+restores the pre-fix (unbounded) behavior.
+
+---
+
+## 2026-09-08 — Calendar rebuilt for real: week grid, time slots, manual placement, and the orphaned Scheduler Agent finally wired up
+
+**What happened:** Chris pushed back on the previous Calendar pass — it was still fundamentally
+a flat date-grouped list with a visual coat of paint, not what spec §9 step 19 ("Auto-Fill
+Week") or §20 (Calendar as one of five primary nav destinations) actually describe. He asked
+for a full analysis of what Calendar is supposed to look and act like, not just another visual
+pass.
+
+**The analysis, in short:**
+- Spec §9 step 19: "Auto-Fill Week — schedule coherently using topic spacing, format spacing,
+  tone, funnel role, experiments, newsletter timing, platform evidence, and content expiry."
+  This is a real scheduling *algorithm*, not just a UI. `packages/agents/src/scheduler-agent.ts`
+  (`runSchedulerAgent`) has implemented this since an earlier phase — real prompt, real typed
+  output (`ScheduleProposalItemSchema`: contentItemId, platforms[], scheduledDate, reasoning) —
+  but **had zero callers anywhere in `apps/**`**. Nothing in the running app ever invoked it.
+  That's the literal answer to "where is the importing": it existed in the codebase, wired to
+  nothing.
+- `ScheduleEntry.scheduledDate` is a real `DateTime` (date *and* time), and
+  `scheduleContentItemForPublishing` (the real, gated publish-path scheduler, distinct from
+  Phase 1's ungated `setScheduleEntry`) already persists it correctly, transitioning
+  `READY -> SCHEDULED`. So "where are the saved on the backend" was already true — the gap was
+  entirely on the *reading and placing* side: the UI only ever showed a flat list group by date
+  string, never a real week grid, and there was no way to place or move an item onto the
+  calendar from the calendar itself — only from a plain date/time input buried on each content
+  item's own page.
+- "Where are the days of the week with the certain scheduled time slots" — there was no grid at
+  all, just day-labeled sections in a single vertical column with no time-of-day structure
+  beyond the timestamp already sitting unused in the data.
+
+**Decision — what was actually built:**
+1. **Real week grid.** 7 day columns (Mon-Sun), `?week=YYYY-MM-DD` navigation (Prev/Today/Next),
+   each entry shows its real time-of-day, not just its date. Structurally bounded to one week's
+   data per view (the actual fix for the earlier 43,000px-tall page — a week grid can't grow
+   unbounded the way a flat list could, not a band-aid cap layered on top).
+2. **`runAutoFillWeek`** (`apps/web/app/calendar/actions.ts`) — the real caller
+   `runSchedulerAgent` never had. Gathers the real unscheduled-READY pool
+   (`listUnscheduledReadyItems`, new), real recent scheduling history, and real YouTube quota
+   state (`getYouTubeQuotaState`, already existed) into the agent's actual input contract, then
+   persists every returned proposal through the same `scheduleContentItemForPublishing` a
+   manual placement uses — no separate, less-gated write path for AI-driven scheduling.
+   Requires `ANTHROPIC_API_KEY`, same UX convention as every other AI-pipeline step in the app.
+3. **Manual placement and reschedule directly from the grid.** Each day has a "+ Add"
+   (`<details>`-based progressive disclosure, zero client JS/libraries) to place any
+   unscheduled READY item onto that day at a chosen time/platforms, and each existing entry
+   expands into a reschedule form pre-filled with its current date/platforms. Both call one
+   Server Action, `placeOnCalendar`, which is exactly `scheduleContentItemForPublishing` under
+   the hood.
+4. **`scheduleContentItemForPublishing` extended to support rescheduling.** It previously only
+   accepted `READY` (the initial placement); calling it again on an already-`SCHEDULED` item
+   threw `ScheduleForPublishingRequiresReadyStateError`. There was no legal path to move an
+   already-scheduled item to a new slot at all. Now: `READY` still transitions to `SCHEDULED`
+   (audited via `ContentStateTransition`, as before); `SCHEDULED` just updates the existing
+   entry's date/platforms with no re-transition (a real move, not a fake state change), audited
+   via a new `SCHEDULE_RESCHEDULED` `AuditLog` action. Every other state is still rejected.
+5. **`listUnscheduledReadyItems`** (new) — the actual pool both Auto-Fill Week and the manual
+   "+ Add" dropdown draw from: every `READY` item (all hard gates already passed) with no
+   `ScheduleEntry` yet.
+
+**A real bug caught before it shipped:** the first draft of `runAutoFillWeek` called
+`redirect()` from inside its own `try` block on the early-return "nothing to place" path — the
+exact same bug class as the `tryAutonomousPublishAction` entry above (Next's `redirect()` works
+by throwing, so it would have been caught by the function's own `catch` and misreported as a
+failure). Fixed by capturing an `errorMessage` variable through the try/catch and calling
+`redirect()` exactly once, after it fully resolves — in both `placeOnCalendar` and
+`runAutoFillWeek`.
+
+**A real type fix along the way:** `recordAudit` only accepted a top-level `PrismaClient`, so
+calling it from inside `scheduleContentItemForPublishing`'s `prisma.$transaction(async (tx) =>
+...)` (needed for the new `SCHEDULE_RESCHEDULED` audit entry to be part of the same
+transaction) failed to typecheck — `tx` is a `Prisma.TransactionClient`, missing
+`$connect`/`$disconnect`/etc. Widened `recordAudit`'s parameter type to
+`PrismaClient | Prisma.TransactionClient`, the same `Db` union `writeTransition` in
+`state-machine.ts` already used for exactly this reason.
+
+**Verification:** 4 new domain tests (`listUnscheduledReadyItems`'s three inclusion/exclusion
+cases, the reschedule-without-retransition case with an explicit assertion that no new
+`ContentStateTransition` row was written) — full suite 295/295 passing, `tsc --noEmit` clean,
+lint clean, a real production `next build` succeeds. Live-verified beyond just screenshots:
+scripted a real Playwright session that opened a day's "+ Add," selected a real unscheduled
+item, submitted, did a **fresh, independent page load** (not trusting the submitting page's own
+post-redirect DOM state — an earlier, less careful version of this check was fooled by a stale
+`<details>` render), and confirmed the target day's entry count actually increased by one with
+the correct item. Auto-Fill Week itself was not exercised live in this pass (it spends real
+API tokens per the cost-cap work above) — verified by type-correctness and matching the agent's
+actual input/output contracts instead.
+
+**Alternatives considered:**
+- Real drag-and-drop between days — rejected for this pass: would require introducing a
+  client-side drag library and converting large parts of a server-rendered page into a
+  client component, a much bigger architectural change than the mechanics gap itself called
+  for. Click-to-open, pick-a-slot via `<details>` achieves the same real mechanic (place/move
+  an item onto a specific day+time) with zero new dependencies and no client/server boundary
+  restructuring — revisit drag-and-drop only if this proves genuinely too slow to use.
+- Confining Auto-Fill Week's placements to strictly the currently-viewed week — rejected: the
+  Scheduler Agent's own judgment (topic spacing, content expiry, etc.) may reasonably want to
+  place an item further out; constraining it to one week would fight the agent's actual job.
+  The button's copy is honest about this ("places every unscheduled READY item," not "fills
+  just this week").
+
+**Reversibility:** additive throughout — `listUnscheduledReadyItems` and the widened
+`recordAudit` signature don't change any existing caller's behavior; the `scheduleContentItemForPublishing`
+SCHEDULED-state branch only adds a previously-impossible code path. Reverting the Calendar page
+to the flat-list version is a straightforward file revert with no schema dependency.
+
+---
+
+## 2026-09-08 — Correction: Calendar's week navigation was actually broken (both directions)
+
+**What happened:** Chris reported "previous button does work but next does not" immediately
+after the Calendar rebuild above. Investigated by directly comparing what each button's
+generated `href` actually rendered (via `curl` against the real dev server, then confirmed
+through real Playwright clicks) rather than reasoning about the code in the abstract — the
+same discipline this whole build has used throughout, applied to a bug report instead of a new
+feature.
+
+**Root cause:** the page's `week` query param round-trip had a UTC/local timezone mismatch.
+Writing the param used `date.toISOString().slice(0, 10)` (UTC serialization) on a Date that
+was always local midnight; reading it back used `new Date(paramString)`, which the ECMAScript
+spec parses a date-only string as **UTC midnight**, then fed straight into `mondayOf()`, which
+reads it with *local* getters (`getDay`, `getFullYear`, `getMonth`, `getDate`). This server
+runs in PDT (UTC-7). Requesting `?week=2026-08-31` — Prev's own generated target — rendered
+"Week of August 24": the UTC-midnight instant for Aug 31 is 5pm PDT on Aug 30 (a Sunday), and
+`mondayOf` walked that back another 6 days to Aug 24. **Both buttons were broken** — Next's
+error happened to look like "nothing happens" (the miscalculation round-tripped back near the
+starting week), Prev's looked like it worked because it visibly moved, just to the wrong week
+Chris hadn't necessarily checked against.
+
+**Fix:** replaced the UTC-touching read/write pair with two functions that never leave local
+time — `toWeekParam` formats a Date's local Y/M/D directly (no `.toISOString()`), and
+`parseWeekParam` constructs a local Date directly from a regex-parsed Y/M/D (no `new
+Date(string)`), rejecting anything that doesn't round-trip to the exact date requested (catches
+JS Date's silent month/day-overflow rollover too — e.g. month 13 quietly becoming January of
+the following year). Pulled all four date helpers (`mondayOf`, `toWeekParam`, `parseWeekParam`,
+`toDatetimeLocal`) out of the page component into `apps/web/lib/calendar-week.ts` specifically
+so they're unit-testable — a page component's local helpers can't be imported by a test file,
+which is exactly why this class of bug had no regression test to catch it the first time.
+Widened `vitest.config.ts`'s include glob to `apps/*/lib/**/*.test.ts` (this app has no `src/`
+directory, so the existing `apps/*/src/**/*.test.ts` pattern silently matched nothing here).
+
+**Verification:** 9 new tests in `apps/web/lib/calendar-week.test.ts`, including the literal
+reported scenario (`parseWeekParam("2026-09-14")` must round-trip back to
+`"2026-09-14"` after `mondayOf`, and the same for `"2026-08-31"`), a 4-hop chained-Next
+simulation, and the month-overflow rejection case — run in this process's *actual* timezone,
+not a hardcoded one, since the bug was timezone-dependent and a test that only passed by
+coincidence in UTC wouldn't have caught it. 304/304 full suite passing, `tsc --noEmit` clean,
+lint clean, production `next build` succeeds. Re-verified live: `curl` against the exact URLs
+both buttons generate now returns the correct week for each, chained 6 hops deep; a real
+Playwright browser session clicking Next → Next → Prev now shows September 14 → 21 → 14, not
+the stuck/wrong-week behavior from the bug report.
+
+**Reversibility:** trivial — pure function extraction plus a bug fix, no schema or API surface
+changed.

@@ -1,0 +1,21 @@
+# Standard local-dev Postgres path for anyone with Docker available.
+# This sandbox has neither Docker nor Homebrew, so Phase 0 was built and verified against
+# `pnpm db:up` (PGlite served over the real Postgres wire protocol) instead — see
+# /docs/DECISIONS.md for the full rationale. Both paths produce a real Postgres server that
+# Prisma's `postgresql` provider connects to identically; only DATABASE_URL's port needs to
+# match whichever one is running.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chris
+      POSTGRES_PASSWORD: chris
+      POSTGRES_DB: chris_dev
+    ports:
+      - "55432:5432"
+    volumes:
+      - chris_pgdata:/var/lib/postgresql/data
+
+volumes:
+  chris_pgdata:
