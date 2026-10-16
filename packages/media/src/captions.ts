@@ -282,7 +282,7 @@ export function layoutCaptionChunks(
   const lineHeight = assFontSize; // libass line advance ~= Fontsize for this font
   const outline = Math.max(1, Math.round(preset.outline * s));
   const maxWidth = Math.floor(safe.centeredMaxWidth * 0.94 - 2 * outline);
-  const gap = Math.round(24 * s);
+  const gap = Math.round(32 * s);
   const defaultBottom = captionBandBottom(config.position, canvas);
   const family = BUNDLED_FONT_FAMILIES[preset.weight];
 
