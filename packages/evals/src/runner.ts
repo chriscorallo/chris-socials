@@ -7,6 +7,7 @@ import {
   runClaimsGateAgent,
   BilledModelCallError,
   type ModelProvider,
+  type ModelUsage,
   type ResearchPacket,
   type StructuredCompletionRequest,
 } from "@chris/agents";
@@ -79,6 +80,12 @@ export function checkAssertions(output: unknown, assertions: Assertion[], mode: 
 /** Records model + cost of every call made through it (no database needed). */
 class MeteringProvider implements ModelProvider {
   costUsd = 0;
+  usage: ModelUsage | null = null;
+  private add(u: ModelUsage | undefined) {
+    if (!u) return;
+    const t = (this.usage ??= { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, webSearchRequests: 0, webFetchRequests: 0 });
+    for (const k of Object.keys(t) as (keyof ModelUsage)[]) t[k] += u[k];
+  }
   model: string | null = null;
   constructor(private readonly inner: ModelProvider) {}
   async completeStructured<T>(request: StructuredCompletionRequest<T>) {
@@ -86,11 +93,13 @@ class MeteringProvider implements ModelProvider {
       const result = await this.inner.completeStructured(request);
       this.model = result.model;
       this.costUsd += (result.usage && computeCostUsd(result.model, result.usage)) || 0;
+      this.add(result.usage);
       return result;
     } catch (err) {
       if (err instanceof BilledModelCallError) {
         this.model = err.model;
         this.costUsd += (err.usage && computeCostUsd(err.model, err.usage)) || 0;
+        this.add(err.usage);
       }
       throw err;
     }
@@ -127,6 +136,7 @@ export async function runEvalCase(provider: ModelProvider, c: EvalCase, brandCon
       failures,
       output,
       costUsd: meter.costUsd,
+      usage: meter.usage,
       latencyMs: Date.now() - started,
       model: meter.model,
     };
@@ -140,6 +150,7 @@ export async function runEvalCase(provider: ModelProvider, c: EvalCase, brandCon
       output: null,
       error: err instanceof Error ? err.message : String(err),
       costUsd: meter.costUsd,
+      usage: meter.usage,
       latencyMs: Date.now() - started,
       model: meter.model,
     };

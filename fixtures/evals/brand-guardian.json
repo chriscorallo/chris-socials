@@ -8,11 +8,25 @@
       "script": "Okay, quick one. Everyone says 'max out your 401(k).' Cool. What does that actually mean in 2026? It means $24,500. That's the number. Not a vibe — a number. Now, can most people actually do that? No. That's like two grand a month. So here's what I'd actually do: get the full employer match first, because that's literally free money, and then figure out what's left. If that's $200 a month, fine. $200 a month is still $200 more than zero. Anyway — the limit's $24,500. Your number doesn't have to be."
     },
     "expect": [
-      { "path": "voiceScore", "gte": 70 },
-      { "path": "brandScore", "gte": 70 }
+      {
+        "path": "voiceScore",
+        "gte": 70
+      },
+      {
+        "path": "brandScore",
+        "gte": 70
+      }
     ],
     "expectMode": "all",
-    "mockResponse": { "brandScore": 84, "voiceScore": 88, "originalityScore": 72, "strategicFit": "Fits finance wedge", "risks": [], "requiredChanges": [], "optionalImprovements": [] }
+    "mockResponse": {
+      "brandScore": 84,
+      "voiceScore": 88,
+      "originalityScore": 72,
+      "strategicFit": "Fits finance wedge",
+      "risks": [],
+      "requiredChanges": [],
+      "optionalImprovements": []
+    }
   },
   {
     "id": "bg-generic-ai",
@@ -23,41 +37,91 @@
       "script": "Are you ready to unlock your financial future? 🚀 In today's fast-paced world, retirement planning is more important than ever. The 401(k) is a game changer that empowers you to level up your finances and take control of your journey to financial freedom. By leveraging the power of compound interest, you can maximize your potential and build the life you deserve. Remember: the best time to start was yesterday, the second best time is today! 💰✨"
     },
     "expect": [
-      { "path": "voiceScore", "lt": 70 },
-      { "path": "brandScore", "lt": 70 }
+      {
+        "path": "voiceScore",
+        "lt": 70
+      },
+      {
+        "path": "brandScore",
+        "lt": 70
+      }
     ],
     "expectMode": "any",
-    "mockResponse": { "brandScore": 30, "voiceScore": 15, "originalityScore": 10, "strategicFit": "Generic", "risks": ["AI-written"], "requiredChanges": ["Rewrite in Chris's voice"], "optionalImprovements": [] }
+    "mockResponse": {
+      "brandScore": 30,
+      "voiceScore": 15,
+      "originalityScore": 10,
+      "strategicFit": "Generic",
+      "risks": [
+        "AI-written"
+      ],
+      "requiredChanges": [
+        "Rewrite in Chris's voice"
+      ],
+      "optionalImprovements": []
+    }
   },
   {
     "id": "bg-cringe-cta",
     "category": "cringe_cta",
-    "description": "Solid body, but ends with engagement bait + fake urgency CTA. Must require a change (or score below threshold).",
+    "description": "Same strong body as bg-good-cta, but ends with engagement bait + fake urgency. Must require a change (or score below threshold) — isolates the CTA.",
     "promptId": "BRAND_GUARDIAN",
     "input": {
-      "script": "Your credit score dropped after you paid off a card? Yeah, that happens. Utilization and account age shift around, and a small temporary dip is normal — it usually bounces back. Don't panic-open a new card over it. SMASH that follow button RIGHT NOW and comment 'MONEY' below and I'll DM you my secret credit hack before this video gets taken down!!! 🔥🔥🔥 Only the first 100 people get it!"
+      "script": "Paid off a credit card and your score dropped? Yeah, that one is annoying. Say you had a $1,500 balance on a $5,000 card. That is 30% utilization. Pay it to zero and that card helps you. But if you then close the card, you just lost $5,000 of available credit, so whatever balances you carry elsewhere now look bigger. That is usually the dip. Paying off: good. Closing the card right after: that is the part that stings. So I would keep it open, put one small subscription on it, and autopay it. SMASH that follow button RIGHT NOW and comment MONEY below and I will DM you my secret credit hack before this video gets taken down!!! 🔥🔥🔥 Only the first 100 people get it!"
     },
     "expect": [
-      { "path": "requiredChanges", "nonEmpty": true },
-      { "path": "brandScore", "lt": 70 }
+      {
+        "path": "requiredChanges",
+        "nonEmpty": true
+      },
+      {
+        "path": "brandScore",
+        "lt": 70
+      }
     ],
     "expectMode": "any",
-    "mockResponse": { "brandScore": 55, "voiceScore": 60, "originalityScore": 50, "strategicFit": "CTA undermines trust", "risks": ["engagement bait"], "requiredChanges": ["Remove fake-urgency CTA"], "optionalImprovements": [] }
+    "mockResponse": {
+      "brandScore": 55,
+      "voiceScore": 60,
+      "originalityScore": 50,
+      "strategicFit": "CTA undermines trust",
+      "risks": [
+        "engagement bait"
+      ],
+      "requiredChanges": [
+        "Remove fake-urgency CTA"
+      ],
+      "optionalImprovements": []
+    }
   },
   {
     "id": "bg-good-cta",
     "category": "appropriate_cta",
-    "description": "Same body with a restrained, natural CTA. Should clear the threshold with no required changes.",
+    "description": "Strong body (concrete numbers, skeptical framing) with a restrained, natural CTA. Should clear the threshold. v2: v1 body was too vague to be a fair good exemplar (Brand Guardian correctly flagged missing numbers) — see docs/decisions-pending/ai.md.",
     "promptId": "BRAND_GUARDIAN",
     "input": {
-      "script": "Your credit score dropped after you paid off a card? Yeah, that happens. Utilization and account age shift around, and a small temporary dip is normal — it usually bounces back. Don't panic-open a new card over it. I'm doing a whole thing on how utilization actually gets calculated next, because it's weirder than you'd think."
+      "script": "Paid off a credit card and your score dropped? Yeah, that one is annoying. Say you had a $1,500 balance on a $5,000 card. That is 30% utilization. Pay it to zero and that card helps you. But if you then close the card, you just lost $5,000 of available credit, so whatever balances you carry elsewhere now look bigger. That is usually the dip. Paying off: good. Closing the card right after: that is the part that stings. So I would keep it open, put one small subscription on it, and autopay it. Next one: how utilization actually gets calculated, because it is weirder than you would think."
     },
     "expect": [
-      { "path": "brandScore", "gte": 70 },
-      { "path": "voiceScore", "gte": 70 }
+      {
+        "path": "brandScore",
+        "gte": 70
+      },
+      {
+        "path": "voiceScore",
+        "gte": 70
+      }
     ],
     "expectMode": "all",
-    "mockResponse": { "brandScore": 82, "voiceScore": 85, "originalityScore": 70, "strategicFit": "Good", "risks": [], "requiredChanges": [], "optionalImprovements": [] }
+    "mockResponse": {
+      "brandScore": 82,
+      "voiceScore": 85,
+      "originalityScore": 70,
+      "strategicFit": "Good",
+      "risks": [],
+      "requiredChanges": [],
+      "optionalImprovements": []
+    }
   },
   {
     "id": "bg-reference-copying",
@@ -69,10 +133,28 @@
       "script": "It's Money Monday Truth Bomb time, besties! Grab your iced coffee. Here's the tea: your credit score is basically your financial GPA, and paying off a card can make it drop. Wild, right? Truth bomb dropped. Mic drop. See you next Money Monday, besties!"
     },
     "expect": [
-      { "path": "originalityScore", "lt": 60 },
-      { "path": "requiredChanges", "nonEmpty": true }
+      {
+        "path": "originalityScore",
+        "lt": 60
+      },
+      {
+        "path": "requiredChanges",
+        "nonEmpty": true
+      }
     ],
     "expectMode": "all",
-    "mockResponse": { "brandScore": 25, "voiceScore": 20, "originalityScore": 5, "strategicFit": "Imitation", "risks": ["copies reference identity"], "requiredChanges": ["Remove the reference creator's catchphrases and series format"], "optionalImprovements": [] }
+    "mockResponse": {
+      "brandScore": 25,
+      "voiceScore": 20,
+      "originalityScore": 5,
+      "strategicFit": "Imitation",
+      "risks": [
+        "copies reference identity"
+      ],
+      "requiredChanges": [
+        "Remove the reference creator's catchphrases and series format"
+      ],
+      "optionalImprovements": []
+    }
   }
 ]

@@ -79,6 +79,8 @@ export interface EvalCaseResult {
   output: unknown;
   error?: string;
   costUsd: number;
+  /** Summed provider usage (incl. cache reads + web searches) — null for mock runs. */
+  usage: import("@chris/agents").ModelUsage | null;
   latencyMs: number;
   model: string | null;
 }
