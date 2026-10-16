@@ -41,7 +41,7 @@ import { captureDueSnapshots } from "@chris/worker/snapshot-job";
 import { ingestCommentsForContentItem } from "@chris/worker/comment-ingestion-job";
 import { tryAutonomousPublish } from "@chris/worker/autonomous-publish-job";
 import { requireSession } from "../../../lib/session";
-import { storage, downloadToFile, safeFilename } from "../../../lib/storage";
+import { storage, downloadToFile, safeFilename, getPublicVideoUrl } from "../../../lib/storage";
 import { registerUploadedRawTake, withTempDir } from "../../../lib/ingest-upload";
 import { getModelProvider } from "../../../lib/model-provider";
 import { getPlatformAdapters } from "../../../lib/platform-adapters";
@@ -464,20 +464,28 @@ export async function submitPublishSchedule(formData: FormData) {
 export async function runPublish(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
+  let notice: string | null = null;
 
   try {
-    await publishContentItem(
+    const result = await publishContentItem(
       prisma,
       storage,
       getPlatformAdapters(),
       contentItemId,
       { actorId: session.user!.id! },
+      { getPublicVideoUrl },
     );
+    const problems = [
+      ...result.failedPlatforms.map((p) => `${p} failed (see Publications below)`),
+      ...result.skippedPlatforms.map((p) => `${p.platform} skipped: ${p.reason}`),
+    ];
+    if (problems.length > 0) notice = problems.join("; ");
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown publish error";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
   }
 
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
   redirect(`/content/${contentItemId}`);
 }
 
@@ -490,14 +498,26 @@ export async function runPublish(formData: FormData) {
 export async function runCaptureSnapshots(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
+  let notice: string | null = null;
 
   try {
-    await captureDueSnapshots(prisma, getPlatformAdapters(), contentItemId, { actorId: session.user!.id! });
+    const result = await captureDueSnapshots(prisma, getPlatformAdapters(), contentItemId, {
+      actorId: session.user!.id!,
+    });
+    const parts: string[] = [];
+    if (result.errors.length > 0) {
+      parts.push(`Couldn't read: ${result.errors.map((e) => `${e.platform} (${e.message})`).join("; ")}`);
+    }
+    if (result.missed.length > 0) {
+      parts.push(`Missed windows (left empty, not backfilled): ${result.missed.map((m) => `${m.platform} ${m.offset}`).join(", ")}`);
+    }
+    if (parts.length > 0) notice = parts.join(" · ");
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown snapshot error";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
   }
 
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
   redirect(`/content/${contentItemId}`);
 }
 
@@ -661,6 +681,7 @@ export async function tryAutonomousPublishAction(formData: FormData) {
       getPlatformAdapters(),
       contentItemId,
       { actorId: session.user!.id! },
+      { publish: { getPublicVideoUrl } },
     );
     if (!result.attempted) {
       notAttemptedReason = result.reason;

@@ -1,37 +1,12 @@
-import {
-  InstagramGraphAdapter,
-  YouTubeDataApiAdapter,
-  TikTokContentPostingAdapter,
-  type PlatformAdapter,
-  type Platform,
-} from "@chris/platforms";
+import { createPlatformAdapters, type PlatformAdapter, type Platform } from "@chris/platforms";
+import { prisma } from "@chris/domain";
 
 /**
- * Real adapters, built from environment credentials — same "ready the moment configured"
- * pattern as lib/model-provider.ts. No PlatformCredential DB rows are read here yet (a full
- * OAuth-token-refresh flow is a documented future enhancement — see .env.example /
- * /docs/DECISIONS.md); credentials come directly from env vars for now.
+ * Real platform adapters backed by the encrypted PlatformCredential store (connected via
+ * /settings/connections, auto-refreshed near expiry), falling back to legacy env tokens when
+ * nothing is connected. Built per call, not cached: tokens are read fresh on every API call
+ * anyway, and a module-level singleton would pin stale config across a reconnect.
  */
-let instance: Partial<Record<Platform, PlatformAdapter>> | undefined;
-
 export function getPlatformAdapters(): Partial<Record<Platform, PlatformAdapter>> {
-  if (!instance) {
-    const instagramToken = process.env.INSTAGRAM_ACCESS_TOKEN;
-    const instagramUserId = process.env.INSTAGRAM_IG_USER_ID;
-    const youtubeToken = process.env.YOUTUBE_ACCESS_TOKEN;
-    const tiktokToken = process.env.TIKTOK_ACCESS_TOKEN;
-
-    instance = {
-      INSTAGRAM: new InstagramGraphAdapter(
-        instagramToken && instagramUserId ? { accessToken: instagramToken, igUserId: instagramUserId } : null,
-      ),
-      YOUTUBE: new YouTubeDataApiAdapter(youtubeToken ? { accessToken: youtubeToken } : null),
-      TIKTOK: new TikTokContentPostingAdapter(
-        tiktokToken
-          ? { accessToken: tiktokToken, appAudited: process.env.TIKTOK_APP_AUDITED === "true" }
-          : null,
-      ),
-    };
-  }
-  return instance;
+  return createPlatformAdapters({ prisma });
 }

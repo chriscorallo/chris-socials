@@ -14,4 +14,5 @@ export const NAV_LINKS = [
   { href: "/reference", label: "Reference" },
   { href: "/analytics", label: "Analytics" },
   { href: "/learnings", label: "Learnings" },
+  { href: "/settings/connections", label: "Connections" },
 ];
