@@ -18,7 +18,13 @@ import { getAutonomyState } from "../autonomy";
 /** Drives a ContentItem all the way to READY, the real prerequisite for everything in this
  * file — Phase 5 builds on top of Phase 3/4's real render + quality-gate machinery, not a
  * shortcut past it. */
-async function makeReadyItem() {
+interface ReadyItemOptions {
+  /** QC outcome recorded for the render; null = no QC report at all (gate skipped). */
+  qc?: "PASS" | "BLOCK" | null;
+  render?: { width?: number | null; height?: number | null; durationSeconds?: number | null; fileSizeBytes?: number | null };
+}
+
+async function makeReadyItem(options: ReadyItemOptions = {}) {
   const item = await createContentItem(prisma, { title: "Publish pipeline test idea" }, {
     actorId: "test-user",
   });
@@ -48,15 +54,35 @@ async function makeReadyItem() {
   const editPlan = await prisma.editPlan.create({
     data: { contentItemId: item.id, takeSelectionId: takeSelection.id, productionTier: "FAST", targetDurationSeconds: 4, plan: {} },
   });
-  await prisma.render.create({
+  const render = await prisma.render.create({
     data: {
       contentItemId: item.id,
       editPlanId: editPlan.id,
       status: "SUCCESS",
       storageKey: `renders/${item.id}/v1.mp4`,
       technicalQCReport: { overall: "PASS", checks: [] },
+      width: 1080,
+      height: 1920,
+      durationSeconds: 30,
+      fileSizeBytes: 5_000_000,
+      ...options.render,
     },
   });
+  const qc = options.qc === undefined ? "PASS" : options.qc;
+  if (qc !== null) {
+    await prisma.qCReport.create({
+      data: {
+        contentItemId: item.id,
+        renderId: render.id,
+        factualStatus: "PASS",
+        technicalStatus: qc,
+        brandStatus: "PASS",
+        creativeStatus: "PASS",
+        overallStatus: qc,
+        reasons: [],
+      },
+    });
+  }
 
   await applyTransition(prisma, { contentItemId: item.id, to: "READY", actorType: "SYSTEM" });
   return item;
@@ -435,5 +461,153 @@ describe("startPublishing / recordPublicationAttempt / finalizePublishing", () =
     const latest = await getLatestPublication(prisma, item.id, "INSTAGRAM");
     expect(latest?.status).toBe("SUCCESS");
     expect(latest?.attempt).toBe(2);
+  });
+});
+
+async function makeScheduledWith(
+  platform: "INSTAGRAM" | "TIKTOK" | "YOUTUBE",
+  options: ReadyItemOptions & { caption?: string; title?: string | null; hashtags?: string[] } = {},
+) {
+  const item = await makeReadyItem(options);
+  const pkg = await recordPlatformPackage(
+    prisma,
+    {
+      contentItemId: item.id,
+      platform,
+      caption: options.caption ?? `Caption for ${platform}`,
+      title: options.title ?? null,
+      hashtags: options.hashtags ?? [],
+    },
+    { actorId: "chris" },
+  );
+  await scheduleContentItemForPublishing(
+    prisma,
+    { contentItemId: item.id, scheduledDate: new Date(), targetPlatforms: [platform] },
+    { actorId: "chris" },
+  );
+  return { item, pkg };
+}
+
+async function blockReasons(
+  contentItemId: string,
+  platform: "INSTAGRAM" | "TIKTOK" | "YOUTUBE",
+  extra: { maxDurationSecondsOverride?: number } = {},
+) {
+  const result = await runPreflight(prisma, { contentItemId, platform, credentialsOk: true, mediaHash: "h", ...extra });
+  return result.status === "BLOCK" ? result.reasons : [];
+}
+
+describe("runPreflight — hard-gate, media spec and text limits", () => {
+  it("BLOCKs when the latest render has no QC report (gate skipped) — critical safety check", async () => {
+    const { item } = await makeScheduledWith("INSTAGRAM", { qc: null });
+    const reasons = await blockReasons(item.id, "INSTAGRAM");
+    expect(reasons.some((r) => r.includes("No QC report"))).toBe(true);
+  });
+
+  it("BLOCKs when the latest QC report for the render is BLOCK", async () => {
+    const { item } = await makeScheduledWith("TIKTOK", { qc: "BLOCK" });
+    const reasons = await blockReasons(item.id, "TIKTOK");
+    expect(reasons.some((r) => r.includes("BLOCK, not PASS"))).toBe(true);
+  });
+
+  it("a newer QC PASS for the same render supersedes an older BLOCK", async () => {
+    const { item } = await makeScheduledWith("TIKTOK", { qc: "BLOCK" });
+    const render = await prisma.render.findFirstOrThrow({ where: { contentItemId: item.id } });
+    await prisma.qCReport.create({
+      data: {
+        contentItemId: item.id,
+        renderId: render.id,
+        factualStatus: "PASS",
+        technicalStatus: "PASS",
+        brandStatus: "PASS",
+        creativeStatus: "PASS",
+        overallStatus: "PASS",
+        reasons: [],
+        createdAt: new Date(Date.now() + 1000),
+      },
+    });
+    expect(await blockReasons(item.id, "TIKTOK")).toEqual([]);
+  });
+
+  it("BLOCKs a landscape render (not 9:16)", async () => {
+    const { item } = await makeScheduledWith("YOUTUBE", { render: { width: 1920, height: 1080 } });
+    const reasons = await blockReasons(item.id, "YOUTUBE");
+    expect(reasons.some((r) => r.includes("not vertical 9:16"))).toBe(true);
+  });
+
+  it("BLOCKs a render longer than YouTube Shorts' 3 minutes", async () => {
+    const { item } = await makeScheduledWith("YOUTUBE", { render: { durationSeconds: 181 } });
+    const reasons = await blockReasons(item.id, "YOUTUBE");
+    expect(reasons.some((r) => r.includes("at most 180s"))).toBe(true);
+  });
+
+  it("BLOCKs when a live per-account duration cap is tighter than the platform limit", async () => {
+    const { item } = await makeScheduledWith("TIKTOK", { render: { durationSeconds: 90 } });
+    expect(await blockReasons(item.id, "TIKTOK", { maxDurationSecondsOverride: 60 })).toEqual([
+      "TIKTOK allows at most 60s; render is 90.0s.",
+    ]);
+  });
+
+  it("BLOCKs when render media facts are missing (fails closed)", async () => {
+    const { item } = await makeScheduledWith("INSTAGRAM", { render: { width: null } });
+    const reasons = await blockReasons(item.id, "INSTAGRAM");
+    expect(reasons.some((r) => r.includes("media spec can't be verified"))).toBe(true);
+  });
+
+  it("BLOCKs an Instagram file over 300MB", async () => {
+    const { item } = await makeScheduledWith("INSTAGRAM", { render: { fileSizeBytes: 301 * 1024 * 1024 } });
+    const reasons = await blockReasons(item.id, "INSTAGRAM");
+    expect(reasons.some((r) => r.includes("300MB"))).toBe(true);
+  });
+
+  it("BLOCKs an Instagram caption over 2,200 chars, and hashtags that would have to be dropped", async () => {
+    const { item } = await makeScheduledWith("INSTAGRAM", {
+      caption: "a".repeat(2201),
+      hashtags: Array.from({ length: 31 }, (_, i) => `tag${i}`),
+    });
+    const reasons = await blockReasons(item.id, "INSTAGRAM");
+    expect(reasons.some((r) => r.includes("2201 chars"))).toBe(true);
+    expect(reasons.some((r) => r.includes("would drop"))).toBe(true);
+  });
+
+  it("BLOCKs a YouTube title over 100 chars or containing < >", async () => {
+    const long = await makeScheduledWith("YOUTUBE", { title: "x".repeat(101) });
+    expect((await blockReasons(long.item.id, "YOUTUBE")).some((r) => r.includes("101 chars"))).toBe(true);
+    const angle = await makeScheduledWith("YOUTUBE", { title: "A <b>bold</b> idea" });
+    expect((await blockReasons(angle.item.id, "YOUTUBE")).some((r) => r.includes("'<' or '>'"))).toBe(true);
+  });
+
+  it("PASSes a normal package with hashtags within limits", async () => {
+    const { item } = await makeScheduledWith("INSTAGRAM", { caption: "Why X matters", hashtags: ["#science", "learn"] });
+    expect(await blockReasons(item.id, "INSTAGRAM")).toEqual([]);
+  });
+});
+
+describe("retrying a failed platform after the item is PUBLISHED", () => {
+  it("preflight allows a PUBLISHED item's failed platform but not an already-succeeded one; finalize doesn't re-transition or double-count", async () => {
+    const item = await makeReadyItem();
+    const ig = await recordPlatformPackage(prisma, { contentItemId: item.id, platform: "INSTAGRAM", caption: "c", hashtags: [] }, { actorId: "chris" });
+    const tt = await recordPlatformPackage(prisma, { contentItemId: item.id, platform: "TIKTOK", caption: "c", hashtags: [] }, { actorId: "chris" });
+    await scheduleContentItemForPublishing(
+      prisma,
+      { contentItemId: item.id, scheduledDate: new Date(), targetPlatforms: ["INSTAGRAM", "TIKTOK"] },
+      { actorId: "chris" },
+    );
+    await startPublishing(prisma, item.id, { actorId: "chris" });
+    await recordPublicationAttempt(prisma, { contentItemId: item.id, platform: "INSTAGRAM", platformPackageId: ig.id, idempotencyKey: "k1", status: "SUCCESS", platformPostId: "p" }, { actorId: "chris" });
+    await recordPublicationAttempt(prisma, { contentItemId: item.id, platform: "TIKTOK", platformPackageId: tt.id, idempotencyKey: "k2", status: "FAILED" }, { actorId: "chris" });
+    const first = await finalizePublishing(prisma, item.id, { actorId: "chris" });
+    expect(first.transitioned).toBe(true);
+
+    expect(await blockReasons(item.id, "TIKTOK")).toEqual([]);
+    expect((await blockReasons(item.id, "INSTAGRAM")).some((r) => r.includes("already published"))).toBe(true);
+
+    const before = await getAutonomyState(prisma, "PUBLISHING", "FAST");
+    await recordPublicationAttempt(prisma, { contentItemId: item.id, platform: "TIKTOK", platformPackageId: tt.id, idempotencyKey: "k2", status: "SUCCESS", platformPostId: "t" }, { actorId: "chris" });
+    const second = await finalizePublishing(prisma, item.id, { actorId: "chris" });
+    expect(second.transitioned).toBe(false);
+    expect(second.failedPlatforms).toEqual([]);
+    expect((await getAutonomyState(prisma, "PUBLISHING", "FAST")).approvedOutcomeCount).toBe(before.approvedOutcomeCount);
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("PUBLISHED");
   });
 });

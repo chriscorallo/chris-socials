@@ -12,3 +12,7 @@ export * from "./youtube-adapter";
 export * from "./tiktok-adapter";
 export * from "./youtube-quota";
 export * from "./token-crypto";
+export * from "./http";
+export * from "./oauth";
+export * from "./credential-store";
+export * from "./factory";

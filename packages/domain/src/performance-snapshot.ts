@@ -28,13 +28,26 @@ const SNAPSHOT_OFFSET_HOURS: Record<SnapshotOffset, number> = {
   T_PLUS_30D: 24 * 30,
 };
 
+const HOUR_MS = 60 * 60 * 1000;
+
+export function snapshotDueAt(publishedAt: Date, offset: SnapshotOffset): Date {
+  return new Date(publishedAt.getTime() + SNAPSHOT_OFFSET_HOURS[offset] * HOUR_MS);
+}
+
+/** How long after its target time an offset may still be captured honestly: max(1h, 25% of
+ * the offset). T+1h -> [1h, 2h), T+6h -> [6h, 7.5h), T+24h -> [24h, 30h), T+72h -> [72h, 90h),
+ * T+7d -> [7d, 8.75d), T+30d -> [30d, 37.5d). No window overlaps the next offset's, so a
+ * single capture can never be recorded under two labels. */
+export function snapshotCaptureWindowMs(offset: SnapshotOffset): number {
+  return Math.max(HOUR_MS, 0.25 * SNAPSHOT_OFFSET_HOURS[offset] * HOUR_MS);
+}
+
 /**
- * Pure, deterministic, no I/O — given when a platform's post actually went live and which
- * offsets are already captured, returns every offset whose target time has passed and hasn't
- * been captured yet, in chronological order. `now` defaults to the real current time but is
- * always overridable — every snapshot test in this repo passes a synthetic `now` rather than
- * waiting on real wall-clock time or risking a real-time collision (see /docs/DECISIONS.md's
- * test-date-collision entries).
+ * Pure, deterministic, no I/O — the offsets that may be captured *right now*: target time
+ * reached, still inside that offset's capture window, not yet captured. An offset whose window
+ * has passed is NOT returned (see `getMissedSnapshotOffsets`): capturing day-8 numbers and
+ * labelling them "T+1h" would fabricate history (spec §23: never fabricate a metric). A missed
+ * offset stays an honest gap. `now` is always overridable for tests.
  */
 export function getDueSnapshotOffsets(
   publishedAt: Date,
@@ -45,10 +58,29 @@ export function getDueSnapshotOffsets(
   const due: SnapshotOffset[] = [];
   for (const offset of SNAPSHOT_OFFSETS_IN_ORDER) {
     if (captured.has(offset)) continue;
-    const dueAt = publishedAt.getTime() + SNAPSHOT_OFFSET_HOURS[offset] * 60 * 60 * 1000;
-    if (now.getTime() >= dueAt) due.push(offset);
+    const dueAt = snapshotDueAt(publishedAt, offset).getTime();
+    if (now.getTime() >= dueAt && now.getTime() < dueAt + snapshotCaptureWindowMs(offset)) due.push(offset);
   }
   return due;
+}
+
+/** Offsets whose capture window closed without a capture — surfaced as gaps, never backfilled. */
+export function getMissedSnapshotOffsets(
+  publishedAt: Date,
+  alreadyCaptured: SnapshotOffset[],
+  now: Date = new Date(),
+): SnapshotOffset[] {
+  const captured = new Set(alreadyCaptured);
+  return SNAPSHOT_OFFSETS_IN_ORDER.filter((offset) => {
+    if (captured.has(offset)) return false;
+    return now.getTime() >= snapshotDueAt(publishedAt, offset).getTime() + snapshotCaptureWindowMs(offset);
+  });
+}
+
+/** When the final (T+30d) capture window closes — the measurement period is over whether or
+ * not every offset was captured. */
+export function measurementWindowClosesAt(publishedAt: Date): Date {
+  return new Date(snapshotDueAt(publishedAt, "T_PLUS_30D").getTime() + snapshotCaptureWindowMs("T_PLUS_30D"));
 }
 
 export class MeasuringRequiresPublishedStateError extends Error {
@@ -180,32 +212,25 @@ export class ArchiveRequiresMeasuringStateError extends Error {
   }
 }
 
-/** "Final snapshot window closes" (/docs/STATE_MACHINE.md) — every platform this item actually
- * published to (a Publication with status SUCCESS or DRAFT) must have its T_PLUS_30D snapshot
- * captured before the item is done being measured. Returns `false` (no-op, not an error) if
- * some platform's window hasn't closed yet — the snapshot job calls this after every capture
- * and simply keeps not-archiving until it's genuinely time. */
+/** "Final snapshot window closes" (/docs/STATE_MACHINE.md) — for every platform this item
+ * actually published to (latest SUCCESS/DRAFT Publication), either its T+30d snapshot is
+ * captured or its T+30d capture window has passed. Missed offsets never block archiving
+ * forever — they are honest gaps. Returns `false` (no-op) while any platform is still inside
+ * its measurement period. */
 export async function archiveIfMeasurementWindowClosed(
   prisma: PrismaClient,
   contentItemId: string,
   actor: { actorId: string },
+  options: { now?: Date } = {},
 ): Promise<boolean> {
+  const now = options.now ?? new Date();
   const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
   if (item.currentState !== "MEASURING") {
     throw new ArchiveRequiresMeasuringStateError(item.currentState);
   }
 
-  const publications = await prisma.publication.findMany({
-    where: { contentItemId, status: { in: ["SUCCESS", "DRAFT"] } },
-    select: { platform: true },
-  });
-  const publishedPlatforms = [...new Set(publications.map((p) => p.platform))];
-  if (publishedPlatforms.length === 0) return false;
-
-  for (const platform of publishedPlatforms) {
-    const captured = await getCapturedOffsets(prisma, contentItemId, platform);
-    if (!captured.includes("T_PLUS_30D")) return false;
-  }
+  const closed = await isMeasurementWindowClosed(prisma, contentItemId, now);
+  if (!closed) return false;
 
   await applyTransition(prisma, {
     contentItemId,
@@ -214,5 +239,30 @@ export async function archiveIfMeasurementWindowClosed(
     actorId: actor.actorId,
     reason: "Final snapshot window (T+30d) closed for every published platform",
   });
+  return true;
+}
+
+export async function isMeasurementWindowClosed(
+  prisma: PrismaClient,
+  contentItemId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const publications = await prisma.publication.findMany({
+    where: { contentItemId, status: { in: ["SUCCESS", "DRAFT"] } },
+    orderBy: { createdAt: "desc" },
+    select: { platform: true, publishedAt: true },
+  });
+  const latestByPlatform = new Map<ContentPlatform, Date | null>();
+  for (const pub of publications) {
+    if (!latestByPlatform.has(pub.platform)) latestByPlatform.set(pub.platform, pub.publishedAt);
+  }
+  if (latestByPlatform.size === 0) return false;
+
+  for (const [platform, publishedAt] of latestByPlatform) {
+    const captured = await getCapturedOffsets(prisma, contentItemId, platform);
+    if (captured.includes("T_PLUS_30D")) continue;
+    if (publishedAt && now.getTime() >= measurementWindowClosesAt(publishedAt).getTime()) continue;
+    return false;
+  }
   return true;
 }

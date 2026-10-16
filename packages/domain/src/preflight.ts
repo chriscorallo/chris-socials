@@ -1,4 +1,5 @@
-import type { PrismaClient, ContentPlatform } from "@prisma/client";
+import type { PrismaClient, ContentPlatform, ContentState } from "@prisma/client";
+import { validateMediaSpec, validatePackageText } from "./platform-limits";
 
 /**
  * Spec §9 step 21 — "verifies file/version/hash, credentials, account, packaging, schedule,
@@ -31,7 +32,15 @@ export interface PreflightInput {
    * what preflight checks; the value itself becomes part of the Publication record for later
    * audit (spec §22: "media hash"). */
   mediaHash: string | null;
+  /** Optional per-account duration cap discovered live (TikTok creator_info's
+   * `max_video_post_duration_sec`), tighter than the platform's static limit. */
+  maxDurationSecondsOverride?: number;
 }
+
+/** States from which a publish attempt for a platform may run. PUBLISHED/MEASURING are
+ * allowed only to retry a platform that has not yet succeeded (one platform failing after
+ * another succeeded must not strand the failed one forever) — never a state regression. */
+const PUBLISHABLE_STATES: ContentState[] = ["SCHEDULED", "PUBLISHING", "PUBLISHED", "MEASURING"];
 
 export async function runPreflight(prisma: PrismaClient, input: PreflightInput): Promise<PreflightStatus> {
   const reasons: string[] = [];
@@ -43,10 +52,18 @@ export async function runPreflight(prisma: PrismaClient, input: PreflightInput):
 
   // Approval state / no active block: only SCHEDULED items should ever reach a publish
   // attempt — CANCELLED, QC_BLOCKED, or anything earlier in the pipeline is a hard block.
-  if (item.currentState !== "SCHEDULED" && item.currentState !== "PUBLISHING") {
+  if (!PUBLISHABLE_STATES.includes(item.currentState)) {
     reasons.push(
       `ContentItem is at ${item.currentState}, not SCHEDULED/PUBLISHING — not approved to publish.`,
     );
+  } else if (item.currentState === "PUBLISHED" || item.currentState === "MEASURING") {
+    const latest = await prisma.publication.findFirst({
+      where: { contentItemId: input.contentItemId, platform: input.platform },
+      orderBy: { createdAt: "desc" },
+    });
+    if (latest && (latest.status === "SUCCESS" || latest.status === "DRAFT")) {
+      reasons.push(`${input.platform} already published for this item — nothing to retry.`);
+    }
   }
 
   const schedule = await prisma.scheduleEntry.findUnique({ where: { contentItemId: input.contentItemId } });
@@ -65,8 +82,35 @@ export async function runPreflight(prisma: PrismaClient, input: PreflightInput):
   });
   if (!render) {
     reasons.push("No successful Render found — nothing to publish (file/version check).");
-  } else if (!render.storageKey) {
-    reasons.push("Latest successful Render has no storageKey (file check).");
+  } else {
+    if (!render.storageKey) {
+      reasons.push("Latest successful Render has no storageKey (file check).");
+    }
+    // Hard-gate requirement (spec §9 step 17 -> 21): the exact render being published must
+    // have a QC report whose aggregate is PASS. A gate that was skipped, still pending, or
+    // BLOCKed for this render is a hard stop — never "probably fine". The latest report for
+    // this render is the one that counts (a re-run after a repair supersedes an older one).
+    const qc = await prisma.qCReport.findFirst({
+      where: { renderId: render.id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!qc) {
+      reasons.push("No QC report exists for the latest render — the quality gate has not passed (QC check).");
+    } else if (qc.overallStatus !== "PASS") {
+      reasons.push(`Latest QC report for this render is ${qc.overallStatus}, not PASS (QC check).`);
+    }
+    reasons.push(
+      ...validateMediaSpec(
+        input.platform,
+        {
+          durationSeconds: render.durationSeconds,
+          width: render.width,
+          height: render.height,
+          fileSizeBytes: render.fileSizeBytes,
+        },
+        { maxDurationSeconds: input.maxDurationSecondsOverride },
+      ),
+    );
   }
   if (!input.mediaHash) {
     reasons.push("No media hash computed for the render (hash check).");
@@ -78,6 +122,14 @@ export async function runPreflight(prisma: PrismaClient, input: PreflightInput):
   });
   if (!pkg) {
     reasons.push(`No PlatformPackage recorded for ${input.platform} (packaging check).`);
+  } else {
+    reasons.push(
+      ...validatePackageText(input.platform, {
+        caption: pkg.caption,
+        title: pkg.title,
+        hashtags: (pkg.hashtags as unknown as string[]) ?? [],
+      }),
+    );
   }
 
   if (!input.credentialsOk) {

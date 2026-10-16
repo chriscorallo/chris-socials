@@ -6,7 +6,7 @@ import {
 } from "@chris/domain";
 import type { PlatformAdapter } from "@chris/platforms";
 import type { StorageAdapter } from "@chris/media";
-import { publishContentItem, type PublishJobResult } from "./publish-job";
+import { publishContentItem, type PublishJobOptions, type PublishJobResult } from "./publish-job";
 
 export interface AutonomousPublishResult {
   attempted: boolean;
@@ -37,7 +37,10 @@ export async function tryAutonomousPublish(
   adapters: Partial<Record<ContentPlatform, PlatformAdapter>>,
   contentItemId: string,
   actor: { actorId: string },
-  options: { requiredLevel?: number } = {},
+  /** `publish` is forwarded to publishContentItem (getPublicVideoUrl etc.). The publish path
+   * is the same one a human click takes — including preflight's QC-PASS requirement — so
+   * autonomy can never bypass the quality gate. */
+  options: { requiredLevel?: number; publish?: PublishJobOptions } = {},
 ): Promise<AutonomousPublishResult> {
   const requiredLevel = options.requiredLevel ?? 3;
 
@@ -73,7 +76,7 @@ export async function tryAutonomousPublish(
     { contentItemId, scheduledDate: new Date(), targetPlatforms },
     actor,
   );
-  const publishResult = await publishContentItem(db, storage, adapters, contentItemId, actor);
+  const publishResult = await publishContentItem(db, storage, adapters, contentItemId, actor, options.publish);
 
   return {
     attempted: true,

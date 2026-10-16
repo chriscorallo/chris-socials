@@ -106,3 +106,9 @@ export type {
   ModelCallLog,
   LlmModelClass,
 } from "@prisma/client";
+
+// Platforms / publishing hardening (2026-10-16) — see docs/decisions-pending/platforms.md.
+export * from "./platform-limits";
+export * from "./platform-credential";
+export * from "./job-run";
+export type { JobRun } from "@prisma/client";

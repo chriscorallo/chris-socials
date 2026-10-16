@@ -50,7 +50,7 @@ describe("ingestCommentsForContentItem", () => {
       { actorId: "chris" },
     );
 
-    expect(result).toEqual({ ingestedCount: 2, skippedCount: 0 });
+    expect(result).toMatchObject({ ingestedCount: 2, skippedCount: 0 });
     const comments = await listCommentsForContentItem(prisma, item.id);
     expect(comments).toHaveLength(2);
   });
@@ -60,7 +60,7 @@ describe("ingestCommentsForContentItem", () => {
     const tiktok = new MockPlatformAdapter("TIKTOK"); // default commentsResult: []
 
     const result = await ingestCommentsForContentItem(prisma, { TIKTOK: tiktok }, item.id, { actorId: "chris" });
-    expect(result).toEqual({ ingestedCount: 0, skippedCount: 0 });
+    expect(result).toMatchObject({ ingestedCount: 0, skippedCount: 0 });
   });
 
   it("re-running ingestion is idempotent — already-ingested comments are skipped, not duplicated", async () => {
@@ -70,10 +70,10 @@ describe("ingestCommentsForContentItem", () => {
     });
 
     const first = await ingestCommentsForContentItem(prisma, { YOUTUBE: youtube }, item.id, { actorId: "chris" });
-    expect(first).toEqual({ ingestedCount: 1, skippedCount: 0 });
+    expect(first).toMatchObject({ ingestedCount: 1, skippedCount: 0 });
 
     const second = await ingestCommentsForContentItem(prisma, { YOUTUBE: youtube }, item.id, { actorId: "chris" });
-    expect(second).toEqual({ ingestedCount: 0, skippedCount: 1 });
+    expect(second).toMatchObject({ ingestedCount: 0, skippedCount: 1 });
 
     const comments = await listCommentsForContentItem(prisma, item.id);
     expect(comments).toHaveLength(1);
@@ -96,7 +96,9 @@ describe("ingestCommentsForContentItem", () => {
       item.id,
       { actorId: "chris" },
     );
-    expect(result).toEqual({ ingestedCount: 1, skippedCount: 0 });
+    expect(result).toMatchObject({ ingestedCount: 1, skippedCount: 0 });
+    // The failure is reported, not silently treated as "no comments".
+    expect(result.errors).toEqual([{ platform: "INSTAGRAM", message: "simulated Instagram API outage" }]);
 
     const comments = await listCommentsForContentItem(prisma, item.id);
     expect(comments).toHaveLength(1);

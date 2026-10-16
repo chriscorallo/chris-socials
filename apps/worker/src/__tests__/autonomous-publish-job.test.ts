@@ -17,6 +17,7 @@ import {
 import { LocalFsStorageAdapter } from "@chris/media";
 import { MockPlatformAdapter } from "@chris/platforms";
 import { tryAutonomousPublish } from "../autonomous-publish-job";
+import { FAST_PUBLISH_OPTIONS } from "./publish-fixtures";
 
 /** `AutonomyLevel` is a global row per (subsystem, productionTier) — see
  * /docs/DECISIONS.md's autonomy test-collision entry. Every test that depends on a known
@@ -39,7 +40,11 @@ describe("tryAutonomousPublish", () => {
     await rm(storageDir, { recursive: true, force: true });
   });
 
-  async function makeReadyItem(productionTier: "RAW" | "FAST" | "MEDIUM" | "HERO", platform: "INSTAGRAM" = "INSTAGRAM") {
+  async function makeReadyItem(
+    productionTier: "RAW" | "FAST" | "MEDIUM" | "HERO",
+    platform: "INSTAGRAM" = "INSTAGRAM",
+    qc: "PASS" | null = "PASS",
+  ) {
     const item = await createContentItem(prisma, { title: `Autonomous publish test (${productionTier})` }, {
       actorId: "test-user",
     });
@@ -62,9 +67,33 @@ describe("tryAutonomousPublish", () => {
     await applyTransition(prisma, { contentItemId: item.id, to: "EDITING", actorType: "SYSTEM" });
     const renderKey = `renders/${item.id}/v1.mp4`;
     await storage.put(renderKey, Buffer.from("fake mp4 bytes"));
-    await prisma.render.create({
-      data: { contentItemId: item.id, editPlanId: editPlan.id, status: "SUCCESS", storageKey: renderKey, technicalQCReport: { overall: "PASS", checks: [] } },
+    const render = await prisma.render.create({
+      data: {
+        contentItemId: item.id,
+        editPlanId: editPlan.id,
+        status: "SUCCESS",
+        storageKey: renderKey,
+        technicalQCReport: { overall: "PASS", checks: [] },
+        width: 1080,
+        height: 1920,
+        durationSeconds: 20,
+        fileSizeBytes: 3_000_000,
+      },
     });
+    if (qc) {
+      await prisma.qCReport.create({
+        data: {
+          contentItemId: item.id,
+          renderId: render.id,
+          factualStatus: "PASS",
+          technicalStatus: "PASS",
+          brandStatus: "PASS",
+          creativeStatus: "PASS",
+          overallStatus: "PASS",
+          reasons: [],
+        },
+      });
+    }
     await applyTransition(prisma, { contentItemId: item.id, to: "RENDERED", actorType: "SYSTEM" });
     await applyTransition(prisma, { contentItemId: item.id, to: "READY", actorType: "SYSTEM" });
 
@@ -103,7 +132,9 @@ describe("tryAutonomousPublish", () => {
     const item = await makeReadyItem("FAST");
     const instagram = new MockPlatformAdapter("INSTAGRAM");
 
-    const result = await tryAutonomousPublish(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
+    const result = await tryAutonomousPublish(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" }, {
+      publish: FAST_PUBLISH_OPTIONS,
+    });
 
     expect(result.attempted).toBe(true);
     expect(result.publishResult?.succeededPlatforms).toEqual(["INSTAGRAM"]);
@@ -111,6 +142,25 @@ describe("tryAutonomousPublish", () => {
 
     const updated = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
     expect(updated.currentState).toBe("PUBLISHED"); // no human click — genuinely autonomous
+  });
+
+  it("autonomy can never bypass the quality gate — an earned level still won't publish a render without QC PASS", async () => {
+    await resetAutonomyLevel("FAST");
+    for (let i = 0; i < AUTONOMY_LEVEL_THRESHOLDS[3]!; i++) {
+      await recordApprovedOutcome(prisma, "PUBLISHING", "FAST", { actorId: "system" });
+    }
+    const item = await makeReadyItem("FAST", "INSTAGRAM", null);
+    const instagram = new MockPlatformAdapter("INSTAGRAM");
+
+    const result = await tryAutonomousPublish(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" }, {
+      publish: FAST_PUBLISH_OPTIONS,
+    });
+
+    expect(result.attempted).toBe(true);
+    expect(result.publishResult?.failedPlatforms).toEqual(["INSTAGRAM"]);
+    expect(instagram.publishCalls).toHaveLength(0);
+    const pub = await prisma.publication.findFirstOrThrow({ where: { contentItemId: item.id } });
+    expect(pub.errorMessage).toContain("No QC report");
   });
 
   /** The literal Phase 8 acceptance criterion, at the worker/orchestration level this time —

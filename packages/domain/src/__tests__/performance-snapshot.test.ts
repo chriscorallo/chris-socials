@@ -10,6 +10,9 @@ import {
   getCapturedOffsets,
   listSnapshotsForContentItem,
   archiveIfMeasurementWindowClosed,
+  getMissedSnapshotOffsets,
+  snapshotCaptureWindowMs,
+  measurementWindowClosesAt,
   MeasuringRequiresPublishedStateError,
   ArchiveRequiresMeasuringStateError,
 } from "../performance-snapshot";
@@ -30,26 +33,46 @@ describe("getDueSnapshotOffsets (pure, deterministic — no I/O)", () => {
     expect(due).toEqual(["T_PLUS_1H"]);
   });
 
-  it("multiple offsets can become due at once (e.g. after a long gap since the last check)", () => {
+  it("a long gap does not back-fill earlier offsets — only the offset whose window is open is due", () => {
     const publishedAt = new Date("2026-01-01T00:00:00Z");
-    const due = getDueSnapshotOffsets(publishedAt, [], new Date(publishedAt.getTime() + 25 * HOUR));
-    expect(due).toEqual(["T_PLUS_1H", "T_PLUS_6H", "T_PLUS_24H"]);
+    const now = new Date(publishedAt.getTime() + 25 * HOUR);
+    expect(getDueSnapshotOffsets(publishedAt, [], now)).toEqual(["T_PLUS_24H"]);
+    expect(getMissedSnapshotOffsets(publishedAt, [], now)).toEqual(["T_PLUS_1H", "T_PLUS_6H"]);
   });
 
-  it("already-captured offsets are excluded even if their time has passed", () => {
+  it("already-captured offsets are excluded even if their window is open", () => {
     const publishedAt = new Date("2026-01-01T00:00:00Z");
-    const due = getDueSnapshotOffsets(
-      publishedAt,
-      ["T_PLUS_1H", "T_PLUS_6H"],
-      new Date(publishedAt.getTime() + 25 * HOUR),
-    );
-    expect(due).toEqual(["T_PLUS_24H"]);
+    const due = getDueSnapshotOffsets(publishedAt, ["T_PLUS_24H"], new Date(publishedAt.getTime() + 25 * HOUR));
+    expect(due).toEqual([]);
   });
 
-  it("every offset is due after 30 real days have passed, in chronological order", () => {
+  it("each window is max(1h, 25% of the offset) and windows never overlap", () => {
+    expect(snapshotCaptureWindowMs("T_PLUS_1H")).toBe(HOUR);
+    expect(snapshotCaptureWindowMs("T_PLUS_6H")).toBe(1.5 * HOUR);
+    expect(snapshotCaptureWindowMs("T_PLUS_24H")).toBe(6 * HOUR);
+    expect(snapshotCaptureWindowMs("T_PLUS_30D")).toBe(7.5 * DAY);
     const publishedAt = new Date("2026-01-01T00:00:00Z");
-    const due = getDueSnapshotOffsets(publishedAt, [], new Date(publishedAt.getTime() + 31 * DAY));
-    expect(due).toEqual(SNAPSHOT_OFFSETS_IN_ORDER);
+    for (let h = 0; h < 40 * 24; h += 0.25) {
+      expect(getDueSnapshotOffsets(publishedAt, [], new Date(publishedAt.getTime() + h * HOUR)).length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("T+1h is no longer due at exactly 2h (window closed) — it's missed", () => {
+    const publishedAt = new Date("2026-01-01T00:00:00Z");
+    const now = new Date(publishedAt.getTime() + 2 * HOUR);
+    expect(getDueSnapshotOffsets(publishedAt, [], now)).toEqual([]);
+    expect(getMissedSnapshotOffsets(publishedAt, [], now)).toEqual(["T_PLUS_1H"]);
+  });
+
+  it("day 8 can only capture T+7d", () => {
+    const publishedAt = new Date("2026-01-01T00:00:00Z");
+    expect(getDueSnapshotOffsets(publishedAt, [], new Date(publishedAt.getTime() + 8 * DAY))).toEqual(["T_PLUS_7D"]);
+  });
+
+  it("the measurement window closes at T+37.5d", () => {
+    const publishedAt = new Date("2026-01-01T00:00:00Z");
+    expect(measurementWindowClosesAt(publishedAt).getTime() - publishedAt.getTime()).toBe(37.5 * DAY);
+    expect(getMissedSnapshotOffsets(publishedAt, [], new Date(publishedAt.getTime() + 38 * DAY))).toEqual(SNAPSHOT_OFFSETS_IN_ORDER);
   });
 
   it("nothing is due one second before a boundary", () => {
@@ -171,7 +194,14 @@ describe("archiveIfMeasurementWindowClosed", () => {
       data: { contentItemId: item.id, platform: "YOUTUBE", caption: "x", hashtags: [] },
     });
     await prisma.publication.create({
-      data: { contentItemId: item.id, platform: "YOUTUBE", platformPackageId: pkg.id, idempotencyKey: "k", status: "SUCCESS" },
+      data: {
+        contentItemId: item.id,
+        platform: "YOUTUBE",
+        platformPackageId: pkg.id,
+        idempotencyKey: "k",
+        status: "SUCCESS",
+        publishedAt: new Date(Date.now() - 8 * DAY),
+      },
     });
     await startMeasuring(prisma, item.id, { actorId: "chris" });
     await recordPerformanceSnapshot(
@@ -184,6 +214,25 @@ describe("archiveIfMeasurementWindowClosed", () => {
     expect(archived).toBe(false);
     const updated = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
     expect(updated.currentState).toBe("MEASURING");
+  });
+
+  it("archives once the T+30d window has passed even with T+30d (and others) never captured", async () => {
+    const item = await makePublishedItem();
+    const pkg = await prisma.platformPackage.create({
+      data: { contentItemId: item.id, platform: "YOUTUBE", caption: "x", hashtags: [] },
+    });
+    const publishedAt = new Date("2026-01-01T00:00:00Z");
+    await prisma.publication.create({
+      data: { contentItemId: item.id, platform: "YOUTUBE", platformPackageId: pkg.id, idempotencyKey: "k", status: "SUCCESS", publishedAt },
+    });
+    await startMeasuring(prisma, item.id, { actorId: "chris" });
+
+    expect(
+      await archiveIfMeasurementWindowClosed(prisma, item.id, { actorId: "chris" }, { now: new Date(publishedAt.getTime() + 37 * DAY) }),
+    ).toBe(false);
+    expect(
+      await archiveIfMeasurementWindowClosed(prisma, item.id, { actorId: "chris" }, { now: new Date(publishedAt.getTime() + 38 * DAY) }),
+    ).toBe(true);
   });
 
   it("archives once every published platform's T+30d snapshot is in", async () => {

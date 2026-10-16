@@ -1,9 +1,11 @@
 import {
   getCapturedOffsets,
   getDueSnapshotOffsets,
+  getMissedSnapshotOffsets,
   recordPerformanceSnapshot,
   startMeasuring,
   archiveIfMeasurementWindowClosed,
+  isMeasurementWindowClosed,
   type PrismaClient,
   type ContentPlatform,
   type SnapshotOffset,
@@ -12,16 +14,23 @@ import type { PlatformAdapter } from "@chris/platforms";
 
 export interface CaptureDueSnapshotsResult {
   captured: { platform: ContentPlatform; offset: SnapshotOffset }[];
+  /** Offsets whose capture window passed uncaptured — honest gaps, never backfilled. */
+  missed: { platform: ContentPlatform; offset: SnapshotOffset }[];
+  /** Per-platform fetch errors (HTTP 401, network…) — the due offset stays due. */
+  errors: { platform: ContentPlatform; message: string }[];
   archived: boolean;
 }
 
 /**
- * Spec §9 step 23 — the actual metric fetch (real I/O against a platform adapter) plus the
- * state-machine side effects it drives: `PUBLISHED -> MEASURING` the first time anything is
- * captured, `MEASURING -> ARCHIVED` once every published platform's T+30d window has closed.
- * The due-offset math itself is pure (packages/domain's `getDueSnapshotOffsets`); this file's
- * only job is wiring that to a real adapter call per platform, one platform's outage never
- * stopping the others (same graceful-failure shape as the publish job).
+ * Spec §9 step 23 — metric capture + the PUBLISHED -> MEASURING -> ARCHIVED transitions.
+ *
+ * Honesty rules:
+ * - An offset is only captured inside its own window (packages/domain getDueSnapshotOffsets):
+ *   clicking on day 8 records T+7d at most, never "T+1h" with day-8 numbers.
+ * - A platform read error records nothing (adapters throw on non-2xx) and is reported.
+ * - Archiving happens once every published platform's T+30d window has closed, captured or
+ *   not — missed offsets don't hold an item in MEASURING forever.
+ * - All offsets due in the same run share one metrics read (they are the same moment).
  */
 export async function captureDueSnapshots(
   db: PrismaClient,
@@ -42,19 +51,22 @@ export async function captureDueSnapshots(
   }
 
   const captured: { platform: ContentPlatform; offset: SnapshotOffset }[] = [];
+  const missed: { platform: ContentPlatform; offset: SnapshotOffset }[] = [];
+  const errors: { platform: ContentPlatform; message: string }[] = [];
 
   for (const [platform, pub] of latestByPlatform) {
     if (!pub.publishedAt || !pub.platformPostId) continue;
+    const alreadyCaptured = await getCapturedOffsets(db, contentItemId, platform);
+    for (const offset of getMissedSnapshotOffsets(pub.publishedAt, alreadyCaptured, now)) missed.push({ platform, offset });
+
     const adapter = adapters[platform];
     if (!adapter) continue;
-
-    const alreadyCaptured = await getCapturedOffsets(db, contentItemId, platform);
     const due = getDueSnapshotOffsets(pub.publishedAt, alreadyCaptured, now);
     if (due.length === 0) continue;
 
     try {
+      const metrics = await adapter.getMetrics(pub.platformPostId);
       for (const offset of due) {
-        const metrics = await adapter.getMetrics(pub.platformPostId);
         await recordPerformanceSnapshot(
           db,
           {
@@ -74,17 +86,16 @@ export async function captureDueSnapshots(
         );
         captured.push({ platform, offset });
       }
-    } catch {
-      // One platform's metrics fetch failing (network error, expired token) never stops the
-      // others — the offsets simply remain "due" and get retried on the next run, same
-      // graceful-failure shape as the publish job.
-      continue;
+    } catch (err) {
+      errors.push({ platform, message: err instanceof Error ? err.message : String(err) });
     }
   }
 
-  if (captured.length > 0) {
-    const current = await db.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
-    if (current.currentState === "PUBLISHED") {
+  const current = await db.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
+  if (current.currentState === "PUBLISHED") {
+    // First capture, or the whole measurement period passed with nothing capturable (every
+    // read failed / never polled) — move on rather than strand the item at PUBLISHED.
+    if (captured.length > 0 || (await isMeasurementWindowClosed(db, contentItemId, now))) {
       await startMeasuring(db, contentItemId, actor);
     }
   }
@@ -92,8 +103,8 @@ export async function captureDueSnapshots(
   let archived = false;
   const afterCapture = await db.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
   if (afterCapture.currentState === "MEASURING") {
-    archived = await archiveIfMeasurementWindowClosed(db, contentItemId, actor);
+    archived = await archiveIfMeasurementWindowClosed(db, contentItemId, actor, { now });
   }
 
-  return { captured, archived };
+  return { captured, missed, errors, archived };
 }

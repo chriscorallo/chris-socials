@@ -4,13 +4,15 @@ import type { PlatformAdapter } from "@chris/platforms";
 export interface IngestCommentsForContentItemResult {
   ingestedCount: number;
   skippedCount: number;
+  /** Per-platform fetch errors — reported, never silently treated as "no comments". */
+  errors: { platform: ContentPlatform; message: string }[];
 }
 
 /**
- * Spec §9 step 24's raw material — real comments pulled per platform (real I/O), then
- * persisted via packages/domain's idempotent `ingestComments`. One platform's fetch failing
- * (or, for TikTok, genuinely having no accessible comment endpoint at this app's tier — see
- * /docs/DECISIONS.md) never blocks ingesting the others.
+ * Spec §9 step 24's raw material — real comments pulled per platform, persisted via
+ * packages/domain's idempotent `ingestComments`. One platform's failure (adapters throw on HTTP
+ * errors) never blocks the others; TikTok genuinely has no comment endpoint at this tier and
+ * returns [] (see /docs/DECISIONS.md).
  */
 export async function ingestCommentsForContentItem(
   db: PrismaClient,
@@ -29,6 +31,7 @@ export async function ingestCommentsForContentItem(
 
   let ingestedCount = 0;
   let skippedCount = 0;
+  const errors: { platform: ContentPlatform; message: string }[] = [];
 
   for (const [platform, pub] of latestByPlatform) {
     if (!pub.platformPostId) continue;
@@ -52,10 +55,10 @@ export async function ingestCommentsForContentItem(
       );
       ingestedCount += result.ingestedCount;
       skippedCount += result.skippedCount;
-    } catch {
-      continue;
+    } catch (err) {
+      errors.push({ platform, message: err instanceof Error ? err.message : String(err) });
     }
   }
 
-  return { ingestedCount, skippedCount };
+  return { ingestedCount, skippedCount, errors };
 }
