@@ -170,7 +170,10 @@ export function describePlatformError(body: unknown): string {
   if (!body || typeof body !== "object") return "";
   const b = body as Record<string, unknown>;
   const err = (b.error ?? b) as Record<string, unknown> | string;
-  if (typeof err === "string") return `: ${err.slice(0, 200)}`;
+  if (typeof err === "string") {
+    const description = typeof b.error_description === "string" ? ` — ${b.error_description}` : "";
+    return `: ${(err + description).slice(0, 200)}`;
+  }
   const message = err.message ?? err.error_description ?? err.error_message ?? b.error_description;
   const code = err.code ?? err.status ?? err.type;
   const parts = [code !== undefined ? String(code) : null, typeof message === "string" ? message : null].filter(Boolean);
