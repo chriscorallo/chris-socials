@@ -8,8 +8,18 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "eval": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@chris/agents": "workspace:*",
+    "dotenv": "^17.4.2",
+    "zod": "^4.5.4"
+  },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "@types/node": "^26.5.0"
+    "@types/node": "^26.5.0",
+    "tsx": "^4.23.13",
+    "vitest": "^5.0.0"
   }
 }
