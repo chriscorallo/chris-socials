@@ -7,6 +7,8 @@ import type {
   CredentialCheckResult,
   PlatformMetrics,
   PlatformComment,
+  ExistingPostLookup,
+  ExistingPost,
 } from "./adapter";
 
 /**
@@ -21,6 +23,10 @@ export class MockPlatformAdapter implements PlatformAdapter {
   public readonly verifyCalls: string[] = [];
   public readonly getMetricsCalls: string[] = [];
   public readonly listCommentsCalls: string[] = [];
+  public readonly findExistingPostCalls: ExistingPostLookup[] = [];
+  /** Present only when the behavior configures `existingPost` — mirrors adapters that can't
+   * search the platform. */
+  public findExistingPost?: (lookup: ExistingPostLookup) => Promise<ExistingPost | null>;
 
   constructor(
     public readonly platform: Platform,
@@ -29,8 +35,21 @@ export class MockPlatformAdapter implements PlatformAdapter {
       publishResult?: PublishResult | ((request: PublishRequest) => PublishResult);
       metricsResult?: PlatformMetrics | ((platformPostId: string) => PlatformMetrics);
       commentsResult?: PlatformComment[] | ((platformPostId: string) => PlatformComment[]);
+      verifyResult?: VerifyResult | ((platformPostId: string) => VerifyResult);
+      /** A function may throw (platform can't be checked). */
+      existingPost?: ExistingPost | null | ((lookup: ExistingPostLookup) => ExistingPost | null);
+      /** Simulated latency inside publish() — for concurrency tests. */
+      publishDelayMs?: number;
     } = {},
-  ) {}
+  ) {
+    if (behavior.existingPost !== undefined) {
+      const configured = behavior.existingPost;
+      this.findExistingPost = async (lookup) => {
+        this.findExistingPostCalls.push(lookup);
+        return typeof configured === "function" ? configured(lookup) : configured;
+      };
+    }
+  }
 
   async checkCredentials(): Promise<CredentialCheckResult> {
     return this.behavior.credentialsOk === false
@@ -40,6 +59,7 @@ export class MockPlatformAdapter implements PlatformAdapter {
 
   async publish(request: PublishRequest): Promise<PublishResult> {
     this.publishCalls.push(request);
+    if (this.behavior.publishDelayMs) await new Promise((resolve) => setTimeout(resolve, this.behavior.publishDelayMs));
     if (typeof this.behavior.publishResult === "function") {
       return this.behavior.publishResult(request);
     }
@@ -55,7 +75,8 @@ export class MockPlatformAdapter implements PlatformAdapter {
 
   async verify(platformPostId: string): Promise<VerifyResult> {
     this.verifyCalls.push(platformPostId);
-    return { verified: true, rawResponse: { mock: true, platformPostId } };
+    if (typeof this.behavior.verifyResult === "function") return this.behavior.verifyResult(platformPostId);
+    return this.behavior.verifyResult ?? { verified: true, rawResponse: { mock: true, platformPostId } };
   }
 
   async getMetrics(platformPostId: string): Promise<PlatformMetrics> {

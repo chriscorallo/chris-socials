@@ -4,36 +4,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   prisma,
-  createContentItem,
-  applyTransition,
-  recordPlatformPackage,
-  scheduleContentItemForPublishing,
   getLatestPublication,
   listPublicationsForContentItem,
+  acquirePublishLease,
+  releasePublishLease,
+  publishLeaseKind,
+  AMBIGUOUS_PUBLISH_PREFIX,
 } from "@chris/domain";
 import { LocalFsStorageAdapter } from "@chris/media";
-import { MockPlatformAdapter, YOUTUBE_UPLOAD_DAILY_BUDGET } from "@chris/platforms";
+import { MockPlatformAdapter, AmbiguousPublishError, YOUTUBE_UPLOAD_DAILY_BUDGET } from "@chris/platforms";
 import { publishContentItem } from "../publish-job";
+import { makeScheduledPublishableItem, FAST_PUBLISH_OPTIONS } from "./publish-fixtures";
 
 /** A synthetic future day, snapped to noon UTC — see /docs/DECISIONS.md's youtube-quota
- * date-range fix. Using real "today" for the quota-exhaustion test below would mean
- * pre-filling ~100 real rows that pollute every other real-time YouTube quota check for the
- * rest of the actual day. Noon UTC (not "real now + 30 days", which preserves real now's
- * time-of-day) avoids a second, related bug this file originally had: when real now happens
- * to fall late in the UTC day, "+30 days" lands near that same late hour, and this test's own
- * "check 1 hour later" then rolls into the *next* UTC day — outside the very day-bucket the
- * quota query and the 100 filler rows below both live in. Caught by a real test failure, not
- * inspection — see /docs/DECISIONS.md. */
+ * date-range fix (real "today" must never be polluted by quota filler rows). */
 const FUTURE_QUOTA_DAY = new Date(
   Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000)) * 24 * 60 * 60 * 1000 +
     12 * 60 * 60 * 1000,
 );
 
-/** `FUTURE_QUOTA_DAY` floors to a calendar day, so repeated invocations of this file *within
- * the same real day* keep landing on the exact same synthetic day rather than a fresh one —
- * the same class of same-day accumulation already documented (and fixed) in
- * packages/platforms/src/__tests__/youtube-quota.test.ts. Both tests below that rely on
- * FUTURE_QUOTA_DAY having known-clean quota state call this first. */
 async function clearYouTubeQuotaDayFillerRows() {
   const startOfDay = new Date(
     Date.UTC(FUTURE_QUOTA_DAY.getUTCFullYear(), FUTURE_QUOTA_DAY.getUTCMonth(), FUTURE_QUOTA_DAY.getUTCDate()),
@@ -44,13 +33,12 @@ async function clearYouTubeQuotaDayFillerRows() {
   });
 }
 
+const ACTOR = { actorId: "chris" };
+
 /**
- * The real proof of Phase 5's acceptance criteria (/docs/PHASE_PLAN.md): "publishing-mock
- * tests cover success, partial platform failure (the other platforms still proceed), and
- * idempotent retry of a publish call." Everything up through the render is real (real DB, real
- * state machine, a real file in real local storage); only the platform adapters are mocked —
- * exactly analogous to every other phase mocking its one genuinely-external dependency
- * (Anthropic API calls) while keeping everything else real.
+ * Phase 5 acceptance criteria plus the 2026-10-16 hardening (lease, verify, ambiguity, resume,
+ * retry-after-PUBLISHED, QC requirement). Real DB + state machine + local storage; only the
+ * platform adapters are mocked.
  */
 describe("publishContentItem (mock adapters, real everything else)", () => {
   let storageDir: string;
@@ -65,106 +53,34 @@ describe("publishContentItem (mock adapters, real everything else)", () => {
     await rm(storageDir, { recursive: true, force: true });
   });
 
-  async function makeScheduledItem(platforms: ("INSTAGRAM" | "TIKTOK" | "YOUTUBE")[]) {
-    const item = await createContentItem(prisma, { title: "Publish job test idea" }, {
-      actorId: "test-user",
-    });
-    for (const to of [
-      "SELECTED",
-      "CONTRACTED",
-      "RESEARCHING",
-      "RESEARCHED",
-      "SCRIPTING",
-      "SCRIPTED",
-      "READY_TO_FILM",
-      "FILMED",
-      "MEDIA_INGESTED",
-      "TAKE_SELECTED",
-      "EDIT_PLANNED",
-      "EDITING",
-      "RENDERED",
-    ] as const) {
-      await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM" });
-    }
-
-    const asset = await prisma.mediaAsset.create({
-      data: { contentItemId: item.id, kind: "RAW_TAKE", storageKey: `raw/${item.id}/t.mp4`, originalFilename: "t.mp4", mimeType: "video/mp4", sizeBytes: 4 },
-    });
-    const takeSelection = await prisma.takeSelection.create({
-      data: { contentItemId: item.id, selectedMediaAssetId: asset.id, confidence: 0.9, reason: "only take", materialDefects: [] },
-    });
-    const editPlan = await prisma.editPlan.create({
-      data: { contentItemId: item.id, takeSelectionId: takeSelection.id, productionTier: "FAST", targetDurationSeconds: 4, plan: {} },
-    });
-    const renderKey = `renders/${item.id}/v1.mp4`;
-    await storage.put(renderKey, Buffer.from("fake mp4 bytes for publish-job test"));
-    await prisma.render.create({
-      data: {
-        contentItemId: item.id,
-        editPlanId: editPlan.id,
-        status: "SUCCESS",
-        storageKey: renderKey,
-        technicalQCReport: { overall: "PASS", checks: [] },
-      },
-    });
-
-    await applyTransition(prisma, { contentItemId: item.id, to: "READY", actorType: "SYSTEM" });
-
-    for (const platform of platforms) {
-      await recordPlatformPackage(
-        prisma,
-        { contentItemId: item.id, platform, caption: `Caption for ${platform}`, hashtags: [] },
-        { actorId: "chris" },
-      );
-    }
-    await scheduleContentItemForPublishing(
-      prisma,
-      { contentItemId: item.id, scheduledDate: new Date(), targetPlatforms: platforms },
-      { actorId: "chris" },
-    );
-
-    return item;
-  }
-
-  // These two orchestration tests deliberately use INSTAGRAM+TIKTOK, not YOUTUBE — YOUTUBE's
-  // publish path is gated by a real, wall-clock-scoped daily quota check
-  // (packages/platforms/src/youtube-quota.ts), and `recordPublicationAttempt` always
-  // timestamps the `Publication` row it creates with real `now()` (no synthetic-date
-  // override, unlike other domain functions in this repo written with tests in mind) — so
-  // every real run of a YOUTUBE-touching test against this persistent dev DB permanently adds
-  // to *real* today's quota usage. Enough repeated `pnpm test` runs in one real day
-  // eventually exhausts real "today"'s simulated 100-upload budget, breaking any test that
-  // expects a YOUTUBE publish to succeed by default — caught by exactly that failure, not
-  // inspection. YOUTUBE's own quota *behavior* still gets full, dedicated coverage below,
-  // using synthetic filler rows created directly (not through this real path) so that test
-  // never touches real "today" at all. See /docs/DECISIONS.md.
-  it("all platforms succeeding reaches PUBLISHED, and each adapter is called exactly once", async () => {
-    const item = await makeScheduledItem(["INSTAGRAM", "TIKTOK"]);
+  it("all platforms succeeding reaches PUBLISHED; each adapter is called once and every post is verified", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM", "TIKTOK"]);
     const instagram = new MockPlatformAdapter("INSTAGRAM");
     const tiktok = new MockPlatformAdapter("TIKTOK");
 
-    const result = await publishContentItem(
-      prisma,
-      storage,
-      { INSTAGRAM: instagram, TIKTOK: tiktok },
-      item.id,
-      { actorId: "chris" },
-    );
+    const result = await publishContentItem(prisma, storage, { INSTAGRAM: instagram, TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
 
     expect(result.succeededPlatforms.sort()).toEqual(["INSTAGRAM", "TIKTOK"]);
-    expect(result.failedPlatforms).toEqual([]);
+    expect(result.verifiedPlatforms.sort()).toEqual(["INSTAGRAM", "TIKTOK"]);
     expect(result.transitioned).toBe(true);
     expect(instagram.publishCalls).toHaveLength(1);
     expect(tiktok.publishCalls).toHaveLength(1);
+    expect(instagram.verifyCalls).toEqual(["mock-instagram-1"]);
+    expect(instagram.publishCalls[0]?.publicVideoUrl).toBe(`https://blob.example.invalid/renders/${item.id}/v1.mp4`);
+    expect(instagram.publishCalls[0]?.durationSeconds).toBe(30);
 
-    const updated = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
-    expect(updated.currentState).toBe("PUBLISHED");
+    const igPub = await getLatestPublication(prisma, item.id, "INSTAGRAM");
+    expect(igPub?.verifiedAt).toBeInstanceOf(Date);
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("PUBLISHED");
+
+    // The publish lease was released (SUCCEEDED), not left RUNNING.
+    const lease = await prisma.jobRun.findFirstOrThrow({ where: { kind: publishLeaseKind(item.id, "INSTAGRAM") } });
+    expect(lease.status).toBe("SUCCEEDED");
   });
 
-  /** The literal acceptance criterion. */
   it("one platform failing does not block the others — they still publish and the item still reaches PUBLISHED", async () => {
     await clearYouTubeQuotaDayFillerRows();
-    const item = await makeScheduledItem(["INSTAGRAM", "TIKTOK", "YOUTUBE"]);
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM", "TIKTOK", "YOUTUBE"]);
     const instagram = new MockPlatformAdapter("INSTAGRAM");
     const tiktok = new MockPlatformAdapter("TIKTOK", {
       publishResult: { status: "FAILED", platformPostId: null, url: null, rawResponse: null, errorMessage: "simulated TikTok API outage" },
@@ -176,96 +92,75 @@ describe("publishContentItem (mock adapters, real everything else)", () => {
       storage,
       { INSTAGRAM: instagram, TIKTOK: tiktok, YOUTUBE: youtube },
       item.id,
-      { actorId: "chris" },
-      // Real "today" may already be at/near YouTube's real quota ceiling purely from this
-      // suite's own repeated runs (see the comment above) — this test is about TikTok's
-      // failure not blocking the others, not about YouTube's quota gate, so give YouTube a
-      // guaranteed-clean day rather than depending on real "today" having room left.
-      { now: FUTURE_QUOTA_DAY },
+      ACTOR,
+      { ...FAST_PUBLISH_OPTIONS, now: FUTURE_QUOTA_DAY },
     );
 
     expect(result.succeededPlatforms.sort()).toEqual(["INSTAGRAM", "YOUTUBE"]);
     expect(result.failedPlatforms).toEqual(["TIKTOK"]);
     expect(result.transitioned).toBe(true);
-
-    const updated = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
-    expect(updated.currentState).toBe("PUBLISHED");
-
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("PUBLISHED");
     const tiktokPub = await getLatestPublication(prisma, item.id, "TIKTOK");
     expect(tiktokPub?.status).toBe("FAILED");
     expect(tiktokPub?.errorMessage).toContain("simulated TikTok API outage");
   });
 
-  /** The other literal acceptance criterion. */
   it("retrying a publish call is idempotent — an already-succeeded platform is never re-called", async () => {
-    const item = await makeScheduledItem(["INSTAGRAM"]);
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM"]);
     const instagram = new MockPlatformAdapter("INSTAGRAM");
 
-    const first = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
+    const first = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
     expect(first.succeededPlatforms).toEqual(["INSTAGRAM"]);
-    expect(instagram.publishCalls).toHaveLength(1);
-
-    // Retry the exact same publish call — e.g. a worker retry after a crash, or a human
-    // clicking "publish" again out of caution.
-    const second = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
+    const second = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
     expect(second.succeededPlatforms).toEqual(["INSTAGRAM"]);
-    expect(instagram.publishCalls).toHaveLength(1); // still 1 — no second real call
-
-    const publications = await listPublicationsForContentItem(prisma, item.id);
-    expect(publications).toHaveLength(1); // no duplicate row either
+    expect(second.transitioned).toBe(false);
+    expect(instagram.publishCalls).toHaveLength(1);
+    expect(await listPublicationsForContentItem(prisma, item.id)).toHaveLength(1);
   });
 
-  it("a failed platform IS retried (idempotency protects successes, not failures)", async () => {
-    const item = await makeScheduledItem(["TIKTOK"]);
-    let callCount = 0;
+  it("a failed platform IS retried — and can be retried after the item already reached PUBLISHED (no state regression)", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM", "TIKTOK"]);
+    const instagram = new MockPlatformAdapter("INSTAGRAM");
+    let calls = 0;
     const tiktok = new MockPlatformAdapter("TIKTOK", {
       publishResult: () => {
-        callCount++;
-        return callCount === 1
+        calls++;
+        return calls === 1
           ? { status: "FAILED" as const, platformPostId: null, url: null, rawResponse: null, errorMessage: "transient" }
           : { status: "SUCCESS" as const, platformPostId: "tiktok-post-2", url: null, rawResponse: null };
       },
     });
 
-    const first = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, { actorId: "chris" });
+    const first = await publishContentItem(prisma, storage, { INSTAGRAM: instagram, TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
     expect(first.failedPlatforms).toEqual(["TIKTOK"]);
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("PUBLISHED");
 
-    const second = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, { actorId: "chris" });
-    expect(second.succeededPlatforms).toEqual(["TIKTOK"]);
-    expect(tiktok.publishCalls).toHaveLength(2); // real retry happened
-
-    const publications = await listPublicationsForContentItem(prisma, item.id);
-    expect(publications).toHaveLength(2); // both attempts kept as audit trail
+    const second = await publishContentItem(prisma, storage, { INSTAGRAM: instagram, TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(second.succeededPlatforms.sort()).toEqual(["INSTAGRAM", "TIKTOK"]);
+    expect(second.transitioned).toBe(false);
+    expect(tiktok.publishCalls).toHaveLength(2);
+    expect(instagram.publishCalls).toHaveLength(1);
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("PUBLISHED");
+    expect((await prisma.publication.findMany({ where: { contentItemId: item.id, platform: "TIKTOK" } })).length).toBe(2);
   });
 
   it("an unaudited TikTok adapter's DRAFT outcome counts as reaching PUBLISHED, not a failure", async () => {
-    const item = await makeScheduledItem(["TIKTOK"]);
+    const item = await makeScheduledPublishableItem(storage, ["TIKTOK"]);
     const tiktok = new MockPlatformAdapter("TIKTOK", {
-      publishResult: {
-        status: "DRAFT",
-        platformPostId: "draft-1",
-        url: null,
-        rawResponse: null,
-        errorMessage: "App is not TikTok-audited — posted as private.",
-      },
+      publishResult: { status: "DRAFT", platformPostId: "draft-1", url: null, rawResponse: null, errorMessage: "Sent to inbox." },
     });
-
-    const result = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, { actorId: "chris" });
+    const result = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
     expect(result.succeededPlatforms).toEqual(["TIKTOK"]);
-    const updated = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
-    expect(updated.currentState).toBe("PUBLISHED");
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("PUBLISHED");
   });
 
   it(
     "YouTube's daily upload quota gates the adapter call — exhausted quota fails without ever touching the network",
     async () => {
       await clearYouTubeQuotaDayFillerRows();
-      const item = await makeScheduledItem(["YOUTUBE"]);
+      const item = await makeScheduledPublishableItem(storage, ["YOUTUBE"]);
       const youtube = new MockPlatformAdapter("YOUTUBE");
-
-      // Pre-fill this synthetic day's YouTube budget via a *different* item so it's already
-      // exhausted before this item's own publish attempt.
-      const filler = await makeScheduledItem(["YOUTUBE"]);
+      const filler = await makeScheduledPublishableItem(storage, ["YOUTUBE"]);
       const fillerPkg = await prisma.platformPackage.findFirstOrThrow({ where: { contentItemId: filler.id, platform: "YOUTUBE" } });
       for (let i = 0; i < YOUTUBE_UPLOAD_DAILY_BUDGET; i++) {
         await prisma.publication.create({
@@ -280,60 +175,228 @@ describe("publishContentItem (mock adapters, real everything else)", () => {
           },
         });
       }
-
-      const result = await publishContentItem(
-        prisma,
-        storage,
-        { YOUTUBE: youtube },
-        item.id,
-        { actorId: "chris" },
-        { now: new Date(FUTURE_QUOTA_DAY.getTime() + 60 * 60 * 1000) },
-      );
-
+      const result = await publishContentItem(prisma, storage, { YOUTUBE: youtube }, item.id, ACTOR, {
+        ...FAST_PUBLISH_OPTIONS,
+        now: new Date(FUTURE_QUOTA_DAY.getTime() + 60 * 60 * 1000),
+      });
       expect(result.failedPlatforms).toEqual(["YOUTUBE"]);
-      expect(youtube.publishCalls).toHaveLength(0); // never called — quota gate caught it first
-
+      expect(youtube.publishCalls).toHaveLength(0);
       const pub = await getLatestPublication(prisma, item.id, "YOUTUBE");
-      expect(pub?.status).toBe("FAILED");
       expect(pub?.errorMessage).toContain("quota exhausted");
+      await clearYouTubeQuotaDayFillerRows();
     },
     30000,
   );
 
   it("a target platform with no PlatformPackage is skipped, not silently ignored", async () => {
-    const item = await createContentItem(prisma, { title: "Missing package test" }, { actorId: "test" });
-    for (const to of [
-      "SELECTED", "CONTRACTED", "RESEARCHING", "RESEARCHED", "SCRIPTING", "SCRIPTED",
-      "READY_TO_FILM", "FILMED", "MEDIA_INGESTED", "TAKE_SELECTED", "EDIT_PLANNED", "EDITING", "RENDERED",
-    ] as const) {
-      await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM" });
-    }
-    const asset = await prisma.mediaAsset.create({
-      data: { contentItemId: item.id, kind: "RAW_TAKE", storageKey: `raw/${item.id}/t.mp4`, originalFilename: "t.mp4", mimeType: "video/mp4", sizeBytes: 1 },
-    });
-    const takeSelection = await prisma.takeSelection.create({
-      data: { contentItemId: item.id, selectedMediaAssetId: asset.id, confidence: 0.9, reason: "x", materialDefects: [] },
-    });
-    const editPlan = await prisma.editPlan.create({
-      data: { contentItemId: item.id, takeSelectionId: takeSelection.id, productionTier: "FAST", targetDurationSeconds: 4, plan: {} },
-    });
-    await prisma.render.create({
-      data: { contentItemId: item.id, editPlanId: editPlan.id, status: "SUCCESS", storageKey: `renders/${item.id}/v1.mp4`, technicalQCReport: { overall: "PASS", checks: [] } },
-    });
-    await applyTransition(prisma, { contentItemId: item.id, to: "READY", actorType: "SYSTEM" });
-    // Deliberately skip recordPlatformPackage — scheduled for INSTAGRAM with no package ever made.
-    await scheduleContentItemForPublishing(
-      prisma,
-      { contentItemId: item.id, scheduledDate: new Date(), targetPlatforms: ["INSTAGRAM"] },
-      { actorId: "chris" },
-    );
-    await storage.put(`renders/${item.id}/v1.mp4`, Buffer.from("bytes"));
-
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM"]);
+    await prisma.publication.deleteMany({ where: { contentItemId: item.id } });
+    await prisma.platformPackage.deleteMany({ where: { contentItemId: item.id } });
     const instagram = new MockPlatformAdapter("INSTAGRAM");
-    const result = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
-
-    expect(result.skippedPlatforms).toHaveLength(1);
-    expect(result.skippedPlatforms[0]?.platform).toBe("INSTAGRAM");
+    const result = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(result.skippedPlatforms.map((s) => s.platform)).toEqual(["INSTAGRAM"]);
     expect(instagram.publishCalls).toHaveLength(0);
+  });
+
+  // --- hardening ---------------------------------------------------------------------------
+
+  it("CRITICAL: a render with no passing QC report is never published (gate-skipped video)", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["TIKTOK"], { qc: null });
+    const tiktok = new MockPlatformAdapter("TIKTOK");
+    const result = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(result.failedPlatforms).toEqual(["TIKTOK"]);
+    expect(tiktok.publishCalls).toHaveLength(0);
+    const pub = await getLatestPublication(prisma, item.id, "TIKTOK");
+    expect(pub?.errorMessage).toContain("No QC report");
+  });
+
+  it("Instagram without a public URL provider fails with a clear reason and never calls the adapter", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM"]);
+    const instagram = new MockPlatformAdapter("INSTAGRAM");
+    const result = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, {
+      verifyDelaysMs: [0],
+      sleep: async () => {},
+    });
+    expect(result.failedPlatforms).toEqual(["INSTAGRAM"]);
+    expect(instagram.publishCalls).toHaveLength(0);
+    expect((await getLatestPublication(prisma, item.id, "INSTAGRAM"))?.errorMessage).toContain("public video URL");
+  });
+
+  it("an unverifiable post stays unverified with a note (re-checked later), and a resolved id replaces the publish id", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["YOUTUBE", "TIKTOK"]);
+    const youtube = new MockPlatformAdapter("YOUTUBE", {
+      verifyResult: { verified: false, pending: true, rawResponse: { processing: true } },
+    });
+    const tiktok = new MockPlatformAdapter("TIKTOK", {
+      publishResult: { status: "SUCCESS", platformPostId: "v_pub_file~123", url: null, rawResponse: { init: true } },
+      verifyResult: { verified: true, rawResponse: { status: "PUBLISH_COMPLETE" }, resolvedPostId: "7400000000000000001", url: "https://www.tiktok.com/@chris/video/7400000000000000001" },
+    });
+    const result = await publishContentItem(prisma, storage, { YOUTUBE: youtube, TIKTOK: tiktok }, item.id, ACTOR, {
+      ...FAST_PUBLISH_OPTIONS,
+      verifyDelaysMs: [0, 0],
+    });
+    expect(result.verifiedPlatforms).toEqual(["TIKTOK"]);
+    expect(youtube.verifyCalls).toHaveLength(2);
+
+    const yt = await getLatestPublication(prisma, item.id, "YOUTUBE");
+    expect(yt?.verifiedAt).toBeNull();
+    expect(yt?.errorMessage).toContain("Not yet verified");
+
+    const tt = await getLatestPublication(prisma, item.id, "TIKTOK");
+    expect(tt?.verifiedAt).toBeInstanceOf(Date);
+    expect(tt?.platformPostId).toBe("7400000000000000001");
+    expect(tt?.url).toContain("/video/7400000000000000001");
+    expect((tt?.rawResponse as { originalPlatformPostId?: string }).originalPlatformPostId).toBe("v_pub_file~123");
+  });
+
+  it("a verification caveat (YouTube uploaded-but-private) is recorded on the attempt", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["YOUTUBE"]);
+    const youtube = new MockPlatformAdapter("YOUTUBE", {
+      verifyResult: { verified: true, rawResponse: {}, note: "Uploaded but private — YouTube API audit required." },
+    });
+    await publishContentItem(prisma, storage, { YOUTUBE: youtube }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    const pub = await getLatestPublication(prisma, item.id, "YOUTUBE");
+    expect(pub?.status).toBe("SUCCESS");
+    expect(pub?.errorMessage).toContain("Uploaded but private");
+  });
+
+  it("a held publish lease (another tab / cron already publishing) skips the platform instead of double-posting", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["TIKTOK"]);
+    const lease = await acquirePublishLease(prisma, item.id, "TIKTOK");
+    expect(lease.acquired).toBe(true);
+    const tiktok = new MockPlatformAdapter("TIKTOK");
+
+    const result = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(result.skippedPlatforms[0]?.reason).toContain("already in progress");
+    expect(tiktok.publishCalls).toHaveLength(0);
+
+    if (lease.acquired) await releasePublishLease(prisma, lease.leaseId, { status: "SUCCEEDED" });
+    const after = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(after.succeededPlatforms).toEqual(["TIKTOK"]);
+    expect(tiktok.publishCalls).toHaveLength(1);
+  });
+
+  it("a stale lease (crashed process) is taken over", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["TIKTOK"]);
+    await prisma.jobRun.create({
+      data: { kind: publishLeaseKind(item.id, "TIKTOK"), status: "RUNNING", startedAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    const tiktok = new MockPlatformAdapter("TIKTOK");
+    const result = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(result.succeededPlatforms).toEqual(["TIKTOK"]);
+    const stale = await prisma.jobRun.findFirstOrThrow({ where: { kind: publishLeaseKind(item.id, "TIKTOK"), status: "FAILED" } });
+    expect(stale.error).toContain("Stale publish lease");
+  });
+
+  it("two concurrent publish calls for the same item post each platform exactly once", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["TIKTOK"]);
+    const tiktok = new MockPlatformAdapter("TIKTOK", { publishDelayMs: 150 });
+    const results = await Promise.all([
+      publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS).catch((e: unknown) => e),
+      publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS).catch((e: unknown) => e),
+    ]);
+    expect(tiktok.publishCalls).toHaveLength(1);
+    const successes = await prisma.publication.count({ where: { contentItemId: item.id, platform: "TIKTOK", status: "SUCCESS" } });
+    expect(successes).toBe(1);
+    void results;
+  });
+
+  it("an ambiguous failure is marked, and the retry finds the existing post instead of re-posting", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM"]);
+    let first = true;
+    const instagram = new MockPlatformAdapter("INSTAGRAM", {
+      publishResult: () => {
+        if (first) {
+          first = false;
+          throw new AmbiguousPublishError("INSTAGRAM", "media_publish got no response — it may have been published.");
+        }
+        return { status: "SUCCESS", platformPostId: "should-not-happen", url: null, rawResponse: null };
+      },
+      existingPost: { platformPostId: "ig-media-77", url: "https://www.instagram.com/reel/ABC/", rawResponse: { id: "ig-media-77" } },
+    });
+
+    const r1 = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(r1.failedPlatforms).toEqual(["INSTAGRAM"]);
+    const ambiguous = await getLatestPublication(prisma, item.id, "INSTAGRAM");
+    expect(ambiguous?.errorMessage?.startsWith(AMBIGUOUS_PUBLISH_PREFIX)).toBe(true);
+
+    const r2 = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(r2.succeededPlatforms).toEqual(["INSTAGRAM"]);
+    expect(instagram.publishCalls).toHaveLength(1); // never re-posted
+    expect(instagram.findExistingPostCalls).toHaveLength(1);
+    const recovered = await getLatestPublication(prisma, item.id, "INSTAGRAM");
+    expect(recovered?.platformPostId).toBe("ig-media-77");
+    expect(recovered?.url).toBe("https://www.instagram.com/reel/ABC/");
+    expect(recovered?.verifiedAt).toBeInstanceOf(Date);
+  });
+
+  it("after an ambiguous failure, a confirmed-absent post is published normally", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["YOUTUBE"]);
+    let first = true;
+    const youtube = new MockPlatformAdapter("YOUTUBE", {
+      publishResult: () => {
+        if (first) {
+          first = false;
+          throw new AmbiguousPublishError("YOUTUBE", "upload interrupted");
+        }
+        return { status: "SUCCESS", platformPostId: "yt-1", url: "https://www.youtube.com/shorts/yt-1", rawResponse: null };
+      },
+      existingPost: null,
+    });
+    await publishContentItem(prisma, storage, { YOUTUBE: youtube }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    const r2 = await publishContentItem(prisma, storage, { YOUTUBE: youtube }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(r2.succeededPlatforms).toEqual(["YOUTUBE"]);
+    expect(youtube.publishCalls).toHaveLength(2);
+  });
+
+  it("after an ambiguous failure, if the platform can't be checked the retry stops for a human; a further retry posts", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["TIKTOK"]);
+    let first = true;
+    const tiktok = new MockPlatformAdapter("TIKTOK", {
+      publishResult: () => {
+        if (first) {
+          first = false;
+          throw new AmbiguousPublishError("TIKTOK", "final chunk got no response");
+        }
+        return { status: "DRAFT", platformPostId: "pub-2", url: null, rawResponse: null };
+      },
+      existingPost: () => {
+        throw new Error("TikTok inbox drafts can't be looked up");
+      },
+    });
+    await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    const r2 = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(r2.failedPlatforms).toEqual(["TIKTOK"]);
+    expect(tiktok.publishCalls).toHaveLength(1);
+    expect((await getLatestPublication(prisma, item.id, "TIKTOK"))?.errorMessage).toContain("check the account");
+
+    const r3 = await publishContentItem(prisma, storage, { TIKTOK: tiktok }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(r3.succeededPlatforms).toEqual(["TIKTOK"]);
+    expect(tiktok.publishCalls).toHaveLength(2);
+  });
+
+  it("a pending-processing attempt stores its resume token and the retry resumes with it (no re-upload)", async () => {
+    const item = await makeScheduledPublishableItem(storage, ["INSTAGRAM"]);
+    const instagram = new MockPlatformAdapter("INSTAGRAM", {
+      publishResult: (req) =>
+        req.resumeToken
+          ? { status: "SUCCESS", platformPostId: "ig-9", url: "https://www.instagram.com/reel/X/", rawResponse: {} }
+          : {
+              status: "FAILED",
+              platformPostId: null,
+              url: null,
+              rawResponse: { container: "IN_PROGRESS" },
+              errorMessage: "PENDING_PROCESSING: still processing container c-1",
+              resumeToken: { containerId: "c-1", createdAt: new Date().toISOString() },
+            },
+    });
+    const r1 = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(r1.failedPlatforms).toEqual(["INSTAGRAM"]);
+    const pending = await getLatestPublication(prisma, item.id, "INSTAGRAM");
+    expect((pending?.rawResponse as { resumeToken?: { containerId: string } }).resumeToken?.containerId).toBe("c-1");
+
+    const r2 = await publishContentItem(prisma, storage, { INSTAGRAM: instagram }, item.id, ACTOR, FAST_PUBLISH_OPTIONS);
+    expect(r2.succeededPlatforms).toEqual(["INSTAGRAM"]);
+    expect(instagram.publishCalls[1]?.resumeToken).toEqual({ containerId: "c-1", createdAt: expect.any(String) });
   });
 });

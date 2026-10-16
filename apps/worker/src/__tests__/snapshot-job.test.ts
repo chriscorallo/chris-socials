@@ -56,7 +56,7 @@ describe("captureDueSnapshots", () => {
   it(
     "captures only the metrics the adapter actually returns — absent fields stay null",
     async () => {
-      const publishedAt = new Date(Date.now() - 2 * HOUR);
+      const publishedAt = new Date(Date.now() - 1.5 * HOUR);
       const item = await makePublishedItemWithPublication("YOUTUBE", publishedAt);
       // Mirrors YouTube's real API: no shareCount/saveCount/reach/avgWatchTimeSeconds.
       const youtube = new MockPlatformAdapter("YOUTUBE", {
@@ -87,26 +87,77 @@ describe("captureDueSnapshots", () => {
     },
   );
 
-  it("captures every due offset in one call after a long gap, without re-capturing already-captured ones", async () => {
+  it("after a gap, captures only the offset whose window is open — earlier missed offsets stay honest gaps", async () => {
     const publishedAt = new Date(Date.now() - 25 * HOUR);
     const item = await makePublishedItemWithPublication("INSTAGRAM", publishedAt);
     const instagram = new MockPlatformAdapter("INSTAGRAM");
 
     const first = await captureDueSnapshots(prisma, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
-    expect(first.captured.map((c) => c.offset)).toEqual(["T_PLUS_1H", "T_PLUS_6H", "T_PLUS_24H"]);
-    expect(instagram.getMetricsCalls).toHaveLength(3);
+    expect(first.captured.map((c) => c.offset)).toEqual(["T_PLUS_24H"]);
+    expect(first.missed.map((m) => m.offset)).toEqual(["T_PLUS_1H", "T_PLUS_6H"]);
+    expect(instagram.getMetricsCalls).toHaveLength(1);
 
     // A second call right away has nothing new due.
     const second = await captureDueSnapshots(prisma, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
     expect(second.captured).toEqual([]);
-    expect(instagram.getMetricsCalls).toHaveLength(3); // unchanged — no redundant re-capture
+    expect(instagram.getMetricsCalls).toHaveLength(1); // no redundant re-capture
 
     const captured = await getCapturedOffsets(prisma, item.id, "INSTAGRAM");
-    expect(captured.sort()).toEqual(["T_PLUS_1H", "T_PLUS_24H", "T_PLUS_6H"].sort());
+    expect(captured).toEqual(["T_PLUS_24H"]);
+  });
+
+  it("a day-8 capture is recorded as T+7d only — never back-labelled as T+1h/6h/24h/72h", async () => {
+    const publishedAt = new Date(Date.now() - 8 * DAY);
+    const item = await makePublishedItemWithPublication("YOUTUBE", publishedAt);
+    const youtube = new MockPlatformAdapter("YOUTUBE");
+
+    const result = await captureDueSnapshots(prisma, { YOUTUBE: youtube }, item.id, { actorId: "chris" });
+    expect(result.captured.map((c) => c.offset)).toEqual(["T_PLUS_7D"]);
+    expect(result.missed.map((m) => m.offset)).toEqual(["T_PLUS_1H", "T_PLUS_6H", "T_PLUS_24H", "T_PLUS_72H"]);
+    expect(await getCapturedOffsets(prisma, item.id, "YOUTUBE")).toEqual(["T_PLUS_7D"]);
+  });
+
+  it("an HTTP error records nothing, reports the error, and leaves the offset due for the next run", async () => {
+    const publishedAt = new Date(Date.now() - 1.5 * HOUR);
+    const item = await makePublishedItemWithPublication("INSTAGRAM", publishedAt);
+    let fail = true;
+    const instagram = new MockPlatformAdapter("INSTAGRAM", {
+      metricsResult: () => {
+        if (fail) throw new Error("INSTAGRAM insights failed (HTTP 401).");
+        return { viewCount: 5, likeCount: 1, commentCount: 0, shareCount: 0, saveCount: 0, reach: 4, avgWatchTimeSeconds: 2.5, rawResponse: {} };
+      },
+    });
+
+    const first = await captureDueSnapshots(prisma, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
+    expect(first.captured).toEqual([]);
+    expect(first.errors).toEqual([{ platform: "INSTAGRAM", message: "INSTAGRAM insights failed (HTTP 401)." }]);
+    expect(await getCapturedOffsets(prisma, item.id, "INSTAGRAM")).toEqual([]);
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("PUBLISHED");
+
+    fail = false;
+    const second = await captureDueSnapshots(prisma, { INSTAGRAM: instagram }, item.id, { actorId: "chris" });
+    expect(second.captured).toEqual([{ platform: "INSTAGRAM", offset: "T_PLUS_1H" }]);
+  });
+
+  it("archives once the T+30d window has passed even if nothing could ever be captured", async () => {
+    const publishedAt = new Date(Date.now() - 38 * DAY);
+    const item = await makePublishedItemWithPublication("YOUTUBE", publishedAt);
+    const youtube = new MockPlatformAdapter("YOUTUBE", {
+      metricsResult: () => {
+        throw new Error("never reachable");
+      },
+    });
+
+    const result = await captureDueSnapshots(prisma, { YOUTUBE: youtube }, item.id, { actorId: "chris" });
+    expect(result.captured).toEqual([]);
+    expect(result.missed).toHaveLength(6);
+    expect(result.archived).toBe(true);
+    expect(youtube.getMetricsCalls).toHaveLength(0); // nothing due — no pointless call
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("ARCHIVED");
   });
 
   it("one platform's metrics fetch failing does not stop capturing the others", async () => {
-    const publishedAt = new Date(Date.now() - 2 * HOUR);
+    const publishedAt = new Date(Date.now() - 1.5 * HOUR);
     const item = await createContentItem(prisma, { title: "Multi-platform snapshot test" }, {
       actorId: "test-user",
     });
