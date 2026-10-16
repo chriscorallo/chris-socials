@@ -34,6 +34,10 @@ import {
   toggleShadowOnly,
 } from "./actions";
 
+// Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
+// Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
+export const maxDuration = 300;
+
 export default async function LearningsPage({
   searchParams,
 }: {

@@ -6,6 +6,10 @@ import { PageShell, PageHeader, Panel, Badge, EmptyState, contentStateTone } fro
 import { mondayOf, toWeekParam, parseWeekParam, toDatetimeLocal } from "../../lib/calendar-week";
 import { placeOnCalendar, runAutoFillWeek } from "./actions";
 
+// Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
+// Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
+export const maxDuration = 300;
+
 // Real week-grid Calendar — spec §9 step 19 ("Auto-Fill Week") and §20 (CALENDAR is one of
 // five primary nav items). Rebuilt from a flat date-grouped list into what the spec actually
 // describes: a week at a time, real time slots (not just dates), a pool of unplaced READY

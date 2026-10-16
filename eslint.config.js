@@ -12,6 +12,9 @@ export default tseslint.config(
       "**/.next/**",
       "**/generated/**",
       "**/.pglite/**",
+      "**/.pglite-*/**",
+      ".claude/worktrees/**",
+      "**/.cache/**",
     ],
   },
   {

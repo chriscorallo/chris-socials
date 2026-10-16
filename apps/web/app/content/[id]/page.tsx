@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { prisma, getContentItem, listManualTransitions } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
+import { storageMode } from "../../../lib/storage";
+import { RawTakeUploader } from "./RawTakeUploader";
 import { NavBar } from "../../components/NavBar";
 import { PageShell, Panel, SectionHeading, Badge, Button, contentStateTone } from "../../components/ui";
 import {
@@ -9,7 +11,6 @@ import {
   cancelItem,
   submitContract,
   submitCreatorCard,
-  uploadMedia,
   submitSchedule,
   runPipeline,
   runTakeSelector,
@@ -26,6 +27,10 @@ import {
   runAdversarialEvaluator,
   tryAutonomousPublishAction,
 } from "./actions";
+
+// Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
+// Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
+export const maxDuration = 300;
 
 export default async function ContentDetailPage({
   params,
@@ -747,23 +752,17 @@ export default async function ContentDetailPage({
 
           <Panel>
             <SectionHeading eyebrow="Assets" title="Media" />
-            <form action={uploadMedia} encType="multipart/form-data" className="flex flex-wrap items-center gap-3">
-              <input type="hidden" name="contentItemId" value={item.id} />
-              <input
-                type="file"
-                name="file"
-                required
-                className="text-[13px] text-[var(--color-text-muted)] file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-[13px] file:text-[var(--color-text)]"
-              />
-              <Button>Upload raw take</Button>
-            </form>
+            <RawTakeUploader contentItemId={item.id} mode={storageMode} />
             <ul className="mt-3 flex flex-col gap-1.5 text-[13px]">
               {item.mediaAssets.map((asset) => (
                 <li key={asset.id}>
                   <a href={`/api/media/${asset.storageKey}`} className="link-quiet underline">
                     {asset.originalFilename}
                   </a>{" "}
-                  <span className="text-[var(--color-text-faint)]">({(asset.sizeBytes / 1024).toFixed(1)} KB)</span>
+                  <span className="text-[var(--color-text-faint)]">
+                    ({asset.sizeBytes >= 1024 * 1024 ? `${(asset.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : `${(asset.sizeBytes / 1024).toFixed(1)} KB`}
+                    {asset.durationSeconds ? ` · ${asset.durationSeconds.toFixed(1)}s` : ""})
+                  </span>
                 </li>
               ))}
               {item.mediaAssets.length === 0 && <li className="text-[var(--color-text-faint)]">No media uploaded yet.</li>}

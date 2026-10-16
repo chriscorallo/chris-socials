@@ -1,8 +1,6 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeFile, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   prisma,
@@ -10,8 +8,6 @@ import {
   applyManualTransition,
   createProductionContractAndAdvance,
   createCreatorCardAndAdvance,
-  createMediaAsset,
-  analyzeMediaAsset,
   listMediaAssetsForContentItem,
   recordTakeSelection,
   getLatestTakeSelection,
@@ -38,7 +34,6 @@ import {
   getBrandContextText,
   type PackagingPlatform,
 } from "@chris/agents";
-import { probeMedia } from "@chris/media";
 import { renderContentItem } from "@chris/worker";
 import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
 import { publishContentItem } from "@chris/worker/publish-job";
@@ -46,7 +41,8 @@ import { captureDueSnapshots } from "@chris/worker/snapshot-job";
 import { ingestCommentsForContentItem } from "@chris/worker/comment-ingestion-job";
 import { tryAutonomousPublish } from "@chris/worker/autonomous-publish-job";
 import { requireSession } from "../../../lib/session";
-import { storage } from "../../../lib/storage";
+import { storage, downloadToFile, safeFilename } from "../../../lib/storage";
+import { registerUploadedRawTake, withTempDir } from "../../../lib/ingest-upload";
 import { getModelProvider } from "../../../lib/model-provider";
 import { getPlatformAdapters } from "../../../lib/platform-adapters";
 import { getRenderFontPath } from "../../../lib/render-config";
@@ -162,61 +158,33 @@ export async function submitCreatorCard(formData: FormData) {
 }
 
 /**
- * Uploads a raw take and immediately runs deterministic technical analysis (ffprobe — no
- * LLM, no cost) against it — see /docs/DECISIONS.md. Analyzing the first take for an item
- * still in FILMED is the canonical trigger for FILMED -> MEDIA_INGESTED.
+ * Production (blob-mode) upload completion: the browser has already uploaded the raw take
+ * directly to the private Blob store (app/api/blob-upload issued the token); this records
+ * the MediaAsset and runs deterministic ffprobe analysis against a streamed local copy.
+ * Local mode uses the streaming PUT /api/upload route instead. See /docs/DECISIONS.md
+ * ("Uploads: streaming locally, browser-direct to Blob in production").
  */
-export async function uploadMedia(formData: FormData) {
+export async function registerBlobUpload(input: {
+  contentItemId: string;
+  storageKey: string;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+}): Promise<{ mediaAssetId: string } | { error: string }> {
   const session = await requireSession();
-  const contentItemId = str(formData, "contentItemId");
-  const file = formData.get("file");
-
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("A file is required.");
-  }
-
-  const storageKey = `raw/${contentItemId}/${Date.now()}-${file.name}`;
-  const bytes = Buffer.from(await file.arrayBuffer());
-  await storage.put(storageKey, bytes);
-
-  const asset = await createMediaAsset(
-    prisma,
-    {
-      contentItemId,
-      kind: "RAW_TAKE",
-      storageKey,
-      originalFilename: file.name,
-      mimeType: file.type || "application/octet-stream",
-      sizeBytes: bytes.byteLength,
-    },
-    { actorId: session.user!.id! },
-  );
-
-  // ffprobe needs a real file path — write the just-uploaded bytes to a scratch temp file.
-  const workDir = await mkdtemp(join(tmpdir(), "chris-analyze-"));
   try {
-    const tempPath = join(workDir, file.name);
-    await writeFile(tempPath, bytes);
-    const probed = await probeMedia(tempPath);
-    await analyzeMediaAsset(
-      prisma,
-      asset.id,
-      {
-        durationSeconds: probed.durationSeconds,
-        width: probed.width,
-        height: probed.height,
-        frameRate: probed.frameRate,
-        hasAudio: probed.hasAudio,
-        videoCodec: probed.videoCodec,
-        audioCodec: probed.audioCodec,
-      },
-      { actorId: session.user!.id! },
-    );
-  } finally {
-    await rm(workDir, { recursive: true, force: true });
+    if (!input.storageKey.startsWith(`raw/${input.contentItemId}/`)) {
+      throw new Error("Storage key does not belong to this content item.");
+    }
+    const asset = await withTempDir(async (dir) => {
+      const localPath = join(dir, safeFilename(input.originalFilename));
+      await downloadToFile(input.storageKey, localPath);
+      return registerUploadedRawTake({ ...input, localPath, actorId: session.user!.id! });
+    });
+    return { mediaAssetId: asset.id };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Upload registration failed" };
   }
-
-  redirect(`/content/${contentItemId}`);
 }
 
 export async function submitSchedule(formData: FormData) {

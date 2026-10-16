@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -11,6 +12,17 @@ const nextConfig: NextConfig = {
   // opts a dependency out of that bundling and uses plain Node `require` instead, which
   // resolves `__dirname` correctly — see /docs/DECISIONS.md.
   serverExternalPackages: ["ffmpeg-static", "ffprobe-static"],
+
+  // Monorepo: trace server files from the repo root so files outside apps/web can be shipped.
+  outputFileTracingRoot: join(__dirname, "..", ".."),
+  // Files read from disk at RUNTIME (readFileSync/readdirSync), which the static tracer can't
+  // discover on its own. Without this, every agent action failed on Vercel with ENOENT — the
+  // prompt registry reads /prompts/** at call time — while working locally only because the
+  // repo happens to be on disk. Brand docs are read by the seed; fonts by the renderer. See
+  // /docs/DECISIONS.md ("Deploy: ship runtime-read files explicitly").
+  outputFileTracingIncludes: {
+    "/*": ["../../prompts/**/*.md", "../../brand/**/*.md", "../../packages/media/assets/**/*"],
+  },
 };
 
 export default nextConfig;

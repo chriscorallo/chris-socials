@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
-import { dirname, join, normalize, isAbsolute } from "node:path";
+import { mkdir, readFile, writeFile, rm, copyFile } from "node:fs/promises";
+import { dirname, join, normalize, isAbsolute, sep } from "node:path";
 import type { StorageAdapter } from "./index";
 
 export interface LocalFsStorageAdapterOptions {
@@ -19,7 +19,9 @@ function resolveSafePath(baseDir: string, key: string): string {
     throw new Error(`Storage key must be relative: "${key}"`);
   }
   const resolved = normalize(join(baseDir, key));
-  if (!resolved.startsWith(normalize(baseDir))) {
+  // Compare against baseDir WITH a trailing separator — a bare prefix check would let a
+  // sibling directory like "<baseDir>-other/..." through.
+  if (!resolved.startsWith(normalize(baseDir + sep))) {
     throw new Error(`Storage key escapes base directory: "${key}"`);
   }
   return resolved;
@@ -39,6 +41,20 @@ export class LocalFsStorageAdapter implements StorageAdapter {
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, data);
     return { url: `file://${filePath}` };
+  }
+
+  /** Moves an already-written local file into storage without loading it into memory —
+   * large raw takes are streamed to disk by the upload route first. */
+  async putFile(key: string, sourcePath: string): Promise<{ url: string }> {
+    const filePath = resolveSafePath(this.baseDir, key);
+    await mkdir(dirname(filePath), { recursive: true });
+    await copyFile(sourcePath, filePath);
+    return { url: `file://${filePath}` };
+  }
+
+  /** Absolute on-disk path for a key (for streaming reads, e.g. HTTP Range requests). */
+  pathFor(key: string): string {
+    return resolveSafePath(this.baseDir, key);
   }
 
   async get(key: string): Promise<Buffer> {

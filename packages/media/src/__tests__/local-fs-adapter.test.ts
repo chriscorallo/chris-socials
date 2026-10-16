@@ -42,4 +42,22 @@ describe("LocalFsStorageAdapter", () => {
   it("rejects a key that attempts to escape the base directory", async () => {
     await expect(adapter.put("../../escape.txt", Buffer.from("x"))).rejects.toThrow();
   });
+
+  it("rejects a key that resolves into a sibling directory sharing the base dir's prefix", async () => {
+    const siblingName = `${baseDir.split("/").pop()}-sibling`;
+    await expect(adapter.put(`../${siblingName}/x.txt`, Buffer.from("x"))).rejects.toThrow();
+  });
+
+  it("putFile copies an on-disk file into storage without the caller buffering it", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const src = join(baseDir, "..", `${baseDir.split("/").pop()}-src.bin`);
+    await writeFile(src, Buffer.from("large-ish payload"));
+    try {
+      await adapter.putFile("raw/item-2/take.bin", src);
+      expect((await adapter.get("raw/item-2/take.bin")).toString()).toBe("large-ish payload");
+      expect(adapter.pathFor("raw/item-2/take.bin")).toBe(join(baseDir, "raw/item-2/take.bin"));
+    } finally {
+      await rm(src, { force: true });
+    }
+  });
 });

@@ -5,6 +5,10 @@ import { NavBar } from "../../components/NavBar";
 import { PageShell, PageHeader, Panel, SectionHeading, EmptyState, Button } from "../../components/ui";
 import { addContent, analyzeContent } from "./actions";
 
+// Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
+// Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
+export const maxDuration = 300;
+
 export default async function ReferenceCreatorPage({
   params,
   searchParams,

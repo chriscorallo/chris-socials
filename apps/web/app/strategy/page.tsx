@@ -4,6 +4,10 @@ import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, SectionHeading, EmptyState, Button, Badge } from "../components/ui";
 import { generateThesis, generatePortfolio, approveProposal, rejectProposal } from "./actions";
 
+// Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
+// Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
+export const maxDuration = 300;
+
 function nextMonday(): string {
   const d = new Date();
   const day = d.getDay();
