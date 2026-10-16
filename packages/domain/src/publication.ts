@@ -257,10 +257,9 @@ export async function markPublicationVerified(
       : {}),
   };
   const note = input.note ?? null;
+  const withoutPending = stripVerificationPendingNotes(existing.errorMessage);
   const errorMessage =
-    note && !(existing.errorMessage ?? "").includes(note)
-      ? [existing.errorMessage, note].filter(Boolean).join(" ")
-      : existing.errorMessage;
+    note && !(withoutPending ?? "").includes(note) ? [withoutPending, note].filter(Boolean).join(" ") : withoutPending;
 
   const updated = await prisma.publication.update({
     where: { id: existing.id },
@@ -290,6 +289,20 @@ export async function markPublicationVerified(
   return updated;
 }
 
+const VERIFICATION_PENDING_NOTE = /\s*Not yet verified\b.*?re-checked by the snapshot sweep\./g;
+
+/** Every pending-verification note ends with this sentence, so it can be cleared once the
+ * post is verified. */
+export function verificationPendingNote(detail: string | null): string {
+  return detail ? `Not yet verified (${detail}) — re-checked by the snapshot sweep.` : "Not yet verified — re-checked by the snapshot sweep.";
+}
+
+function stripVerificationPendingNotes(message: string | null): string | null {
+  if (!message) return message;
+  const stripped = message.replace(VERIFICATION_PENDING_NOTE, "").trim();
+  return stripped.length > 0 ? stripped : null;
+}
+
 /** Records a verification problem/caveat without marking verified (e.g. "still processing",
  * or "resolved post id not yet available"). Idempotent on identical notes. */
 export async function notePublicationVerificationPending(
@@ -309,9 +322,8 @@ export async function notePublicationVerificationPending(
     where: { id: publicationId },
     data: {
       rawResponse: rawResponse as never,
-      errorMessage: (existing.errorMessage ?? "").includes(note)
-        ? existing.errorMessage
-        : [existing.errorMessage, note].filter(Boolean).join(" "),
+      // Replace any earlier pending note rather than accumulating one per sweep.
+      errorMessage: [stripVerificationPendingNotes(existing.errorMessage), note].filter(Boolean).join(" "),
     },
   });
 }
