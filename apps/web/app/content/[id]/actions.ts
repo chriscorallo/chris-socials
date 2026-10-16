@@ -12,6 +12,9 @@ import {
   recordTakeSelection,
   getLatestTakeSelection,
   recordEditPlan,
+  recordReplannedEditPlan,
+  recordTranscript,
+  parseTranscriptWords,
   getLatestScriptVersion,
   getProductionContract,
   setScheduleEntry,
@@ -35,6 +38,8 @@ import {
   type PackagingPlatform,
 } from "@chris/agents";
 import { renderContentItem } from "@chris/worker";
+import { autoRepairContentItem } from "@chris/worker/auto-repair-job";
+import { transcribeMediaAsset, transcribeContentItemTakes } from "@chris/worker/transcribe-job";
 import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
 import { publishContentItem } from "@chris/worker/publish-job";
 import { captureDueSnapshots } from "@chris/worker/snapshot-job";
@@ -45,7 +50,7 @@ import { storage, downloadToFile, safeFilename, getPublicVideoUrl } from "../../
 import { registerUploadedRawTake, withTempDir } from "../../../lib/ingest-upload";
 import { getModelProvider } from "../../../lib/model-provider";
 import { getPlatformAdapters } from "../../../lib/platform-adapters";
-import { getRenderFontPath } from "../../../lib/render-config";
+import { getRenderFontPath, isAutoTranscriptionEnabled } from "../../../lib/render-config";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -262,6 +267,7 @@ export async function runTakeSelector(formData: FormData) {
         mediaAssetId: a.id,
         transcript: a.transcript,
         durationSeconds: a.durationSeconds,
+        words: parseTranscriptWords(a.transcriptWords),
       })),
       brandContext,
     });
@@ -309,22 +315,31 @@ export async function runEditPlanner(formData: FormData) {
       contract,
       scriptText: script?.spokenScript ?? contract.primaryIdea,
       takeTranscript: selectedAsset.transcript,
+      takeWords: parseTranscriptWords(selectedAsset.transcriptWords),
       sourceDurationSeconds: selectedAsset.durationSeconds,
       brandContext,
     });
 
-    await recordEditPlan(
-      prisma,
-      {
-        contentItemId,
-        takeSelectionId: takeSelection.id,
-        productionTier: plan.productionTier,
-        targetDurationSeconds: plan.targetDurationSeconds,
-        doNothingElse: plan.doNothingElse,
-        plan,
-      },
-      { actorId: session.user!.id! },
-    );
+    const planFields = {
+      contentItemId,
+      takeSelectionId: takeSelection.id,
+      productionTier: plan.productionTier,
+      targetDurationSeconds: plan.targetDurationSeconds,
+      doNothingElse: plan.doNothingElse,
+      plan,
+    };
+    const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
+    if (item.currentState === "EDIT_PLANNED") {
+      // Human re-plan before rendering (e.g. after the QC_BLOCKED rollback): a fresh repair
+      // chain with a fresh budget — see packages/domain/src/edit-plan.ts.
+      await recordReplannedEditPlan(
+        prisma,
+        { ...planFields, revisionOfEditPlanId: null, revisionReason: "Re-planned by Chris" },
+        { actorId: session.user!.id! },
+      );
+    } else {
+      await recordEditPlan(prisma, planFields, { actorId: session.user!.id! });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown edit-plan error";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
@@ -693,5 +708,76 @@ export async function tryAutonomousPublishAction(formData: FormData) {
   if (notAttemptedReason) {
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(`Not autonomous yet: ${notAttemptedReason}`)}`);
   }
+  redirect(`/content/${contentItemId}`);
+}
+
+/** Transcribes raw takes with local Whisper (word-level timings), or one take when
+ * `mediaAssetId` is given. Never overwrites a manually typed transcript unless `force`. */
+export async function runTranscribe(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  const mediaAssetId = str(formData, "mediaAssetId");
+  let notice: string | null = null;
+  try {
+    if (!isAutoTranscriptionEnabled()) {
+      throw new Error(
+        "Automatic transcription is off in this deployment (local Whisper is too heavy for a " +
+          "serverless function) — paste the transcript instead, or run the app locally.",
+      );
+    }
+    const results = mediaAssetId
+      ? [await transcribeMediaAsset(prisma, storage, mediaAssetId, {}, { actorId: session.user!.id! })]
+      : await transcribeContentItemTakes(prisma, storage, contentItemId, { force: formData.get("force") === "1" }, {
+          actorId: session.user!.id!,
+        });
+    const failed = results.filter((r) => r.status === "FAILED");
+    if (failed.length > 0) notice = `Transcription failed: ${failed.map((r) => r.errorMessage).join("; ")}`;
+  } catch (err) {
+    notice = err instanceof Error ? err.message : "Unknown transcription error";
+  }
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
+  redirect(`/content/${contentItemId}`);
+}
+
+/** Manual transcript (no word timings) — for when Whisper isn't available or got it wrong. */
+export async function submitManualTranscript(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  const mediaAssetId = str(formData, "mediaAssetId");
+  const text = str(formData, "transcript");
+  if (text) {
+    await recordTranscript(
+      prisma,
+      { mediaAssetId, text, words: null, source: "MANUAL" },
+      { actorId: session.user!.id! },
+    );
+  }
+  redirect(`/content/${contentItemId}`);
+}
+
+/**
+ * Spec §9 step 15 — the automated EDIT -> RENDER -> INSPECT -> FIX loop (worker
+ * auto-repair-job): revises the edit plan against the blocking QC issues, re-renders, re-runs
+ * the Quality Gate, within the shared repair budget. Stops early (with the reason shown) on a
+ * factual/brand/creative block, which no re-edit can fix.
+ */
+export async function runAutoRepair(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  let notice: string | null = null;
+  try {
+    const result = await autoRepairContentItem(
+      prisma,
+      storage,
+      getModelProvider(),
+      contentItemId,
+      { fontPath: getRenderFontPath() },
+      { actorId: session.user!.id! },
+    );
+    if (result.stoppedBecause) notice = `Auto-repair stopped at ${result.finalState}: ${result.stoppedBecause}`;
+  } catch (err) {
+    notice = err instanceof Error ? err.message : "Unknown auto-repair error";
+  }
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
   redirect(`/content/${contentItemId}`);
 }

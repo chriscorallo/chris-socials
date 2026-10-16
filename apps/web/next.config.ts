@@ -11,7 +11,15 @@ const nextConfig: NextConfig = {
   // invoke packages/media's ffmpeg code through Next's own bundler. `serverExternalPackages`
   // opts a dependency out of that bundling and uses plain Node `require` instead, which
   // resolves `__dirname` correctly — see /docs/DECISIONS.md.
-  serverExternalPackages: ["ffmpeg-static", "ffprobe-static"],
+  // Local Whisper transcription (transformers.js) loads native onnxruntime/sharp binaries —
+  // same reason: must be required from node_modules at runtime, never bundled.
+  serverExternalPackages: [
+    "ffmpeg-static",
+    "ffprobe-static",
+    "@huggingface/transformers",
+    "onnxruntime-node",
+    "sharp",
+  ],
 
   // Monorepo: trace server files from the repo root so files outside apps/web can be shipped.
   outputFileTracingRoot: join(__dirname, "..", ".."),

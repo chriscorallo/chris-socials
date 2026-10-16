@@ -1,13 +1,21 @@
 /**
- * Font path for the renderer's text overlays — required, never left to ffmpeg's implicit
- * fontconfig fallback (see /docs/DECISIONS.md: that produced a random, wrong-language font
- * on the dev machine and isn't portable to a production host anyway).
- *
- * RENDER_FONT_PATH should point to a real, licensed, bundled font once the BrandAsset asset
- * library exists (deferred, see /docs/DECISIONS.md). Until then this falls back to a macOS
- * system font that only exists on a machine with Xcode's font set installed — genuinely
- * dev-only, not a production-ready default.
+ * Optional font override for the renderer. Unset (the normal case), every overlay style and
+ * caption uses the Inter weights bundled in packages/media/assets/fonts (shipped to Vercel via
+ * next.config.ts's outputFileTracingIncludes). If set, the path must exist — the renderer
+ * throws rather than letting ffmpeg silently fall back to a random system font.
  */
-export function getRenderFontPath(): string {
-  return process.env.RENDER_FONT_PATH ?? "/System/Library/Fonts/Supplemental/Arial.ttf";
+export function getRenderFontPath(): string | undefined {
+  return process.env.RENDER_FONT_PATH || undefined;
+}
+
+/**
+ * Local Whisper transcription is CPU-heavy (~290 MB model, onnxruntime) — fine on Chris's
+ * machine, unsuitable for a serverless function. Default: on locally, off on Vercel, where a
+ * transcript can still be pasted manually. TRANSCRIPTION=on|off overrides.
+ */
+export function isAutoTranscriptionEnabled(): boolean {
+  const flag = process.env.TRANSCRIPTION?.toLowerCase();
+  if (flag === "on") return true;
+  if (flag === "off") return false;
+  return !process.env.VERCEL;
 }

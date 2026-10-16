@@ -26,6 +26,9 @@ import {
   submitTasteFeedback,
   runAdversarialEvaluator,
   tryAutonomousPublishAction,
+  runTranscribe,
+  submitManualTranscript,
+  runAutoRepair,
 } from "./actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
@@ -118,16 +121,19 @@ export default async function ContentDetailPage({
             </Panel>
           )}
 
-          {item.currentState === "TAKE_SELECTED" && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Edit Planner" />
+          {(item.currentState === "TAKE_SELECTED" || item.currentState === "EDIT_PLANNED") && (
+            <Panel className={item.currentState === "TAKE_SELECTED" ? "panel-action" : ""}>
+              <SectionHeading eyebrow={item.currentState === "TAKE_SELECTED" ? "Next Step" : "Optional"} title="Edit Planner" />
               <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Produces a deterministic EditPlan (cuts, framing, text overlays) for the
-                selected take. Requires ANTHROPIC_API_KEY.
+                Plans cuts (snapped to real word boundaries when the take is transcribed), word
+                captions, punch-ins and text overlays for the selected take.
+                {item.currentState === "EDIT_PLANNED" && " Re-planning replaces the current plan (kept in history) with a fresh repair budget."}
               </p>
               <form action={runEditPlanner}>
                 <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Run Edit Planner</Button>
+                <Button tone={item.currentState === "TAKE_SELECTED" ? "primary" : "ghost"}>
+                  {item.currentState === "TAKE_SELECTED" ? "Run Edit Planner" : "Re-plan the edit"}
+                </Button>
               </form>
             </Panel>
           )}
@@ -138,14 +144,24 @@ export default async function ContentDetailPage({
             <Panel className="panel-action">
               <SectionHeading eyebrow="Next Step" title="Render" />
               <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Real deterministic ffmpeg render + technical QC — no API key needed, this step
-                isn&apos;t an LLM call. A QC failure automatically loops back for another
-                attempt, up to a repair-iteration limit.
+                {item.currentState === "QC_REPAIR"
+                  ? "Auto-repair revises the edit plan against the blocking QC issues, re-renders and re-runs the Quality Gate — repeating within the repair budget. Stops early on factual/brand/creative blocks, which a re-edit can't fix."
+                  : "Deterministic ffmpeg render + technical QC (loudness, black/frozen frames, format). No AI call."}
               </p>
-              <form action={runRender}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">{item.currentState === "EDIT_PLANNED" ? "Start render" : "Render again"}</Button>
-              </form>
+              <div className="flex flex-wrap gap-2">
+                {item.currentState === "QC_REPAIR" && (
+                  <form action={runAutoRepair}>
+                    <input type="hidden" name="contentItemId" value={item.id} />
+                    <Button tone="primary">Auto-repair</Button>
+                  </form>
+                )}
+                <form action={runRender}>
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <Button tone={item.currentState === "QC_REPAIR" ? "ghost" : "primary"}>
+                    {item.currentState === "EDIT_PLANNED" ? "Start render" : "Render again (same plan)"}
+                  </Button>
+                </form>
+              </div>
             </Panel>
           )}
 
@@ -511,6 +527,34 @@ export default async function ContentDetailPage({
                 {latestEditPlan.doNothingElse ? " · restraint: DO NOTHING ELSE" : ""}
               </p>
               <p className="text-sm">{(latestEditPlan.plan as { rationale?: string }).rationale}</p>
+              {(() => {
+                const plan = latestEditPlan.plan as {
+                  segments?: { startSeconds: number; endSeconds: number }[];
+                  textOverlays?: { text: string; style: string; startSeconds: number; endSeconds: number }[];
+                  captions?: { enabled: boolean; style: string; position: string } | null;
+                  punchIns?: { start: number; end: number; zoom: number }[];
+                };
+                return (
+                  <ul className="mt-2 flex flex-col gap-1 text-[13px] text-[var(--color-text-muted)]">
+                    <li>Cuts: {(plan.segments ?? []).map((g) => `${g.startSeconds.toFixed(1)}–${g.endSeconds.toFixed(1)}s`).join(", ") || "none"}</li>
+                    <li>
+                      Captions:{" "}
+                      {plan.captions == null
+                        ? "default (on, CLEAN, lower — when the take has word timings)"
+                        : plan.captions.enabled
+                          ? `${plan.captions.style}, ${plan.captions.position.toLowerCase()}`
+                          : "off"}
+                    </li>
+                    {(plan.textOverlays ?? []).length > 0 && (
+                      <li>Overlays: {plan.textOverlays!.map((o) => `“${o.text}” (${o.style}, ${o.startSeconds}–${o.endSeconds}s)`).join("; ")}</li>
+                    )}
+                    {(plan.punchIns ?? []).length > 0 && (
+                      <li>Punch-ins: {plan.punchIns!.map((p) => `${p.zoom}× ${p.start}–${p.end}s`).join(", ")}</li>
+                    )}
+                    {latestEditPlan.revisionReason && <li className="text-[var(--color-text-faint)]">Revision: {latestEditPlan.revisionReason}</li>}
+                  </ul>
+                );
+              })()}
             </Panel>
           )}
 
@@ -522,19 +566,45 @@ export default async function ContentDetailPage({
                 {latestRender.width && latestRender.height ? ` · ${latestRender.width}x${latestRender.height}` : ""}
                 {latestRender.durationSeconds ? ` · ${latestRender.durationSeconds.toFixed(1)}s` : ""}
               </p>
-              {latestRender.technicalQCReport != null && (
-                <p className="text-[13px]">
-                  <span className="font-medium">Technical QC: </span>
-                  {(latestRender.technicalQCReport as { overall?: string }).overall ?? "unknown"}
-                </p>
+              {latestRender.storageKey && latestRender.status === "SUCCESS" && (
+                <video
+                  src={`/api/media/${latestRender.storageKey}`}
+                  controls
+                  preload="metadata"
+                  className="mb-3 max-h-[480px] w-auto self-start rounded-lg border border-[var(--color-border)]"
+                />
               )}
-              {latestRender.storageKey && (
-                <p className="mt-1.5 text-[13px]">
-                  <a href={`/api/media/${latestRender.storageKey}`} className="link-quiet underline">
-                    View rendered output
-                  </a>
-                </p>
-              )}
+              {latestRender.technicalQCReport != null && (() => {
+                const qc = latestRender.technicalQCReport as {
+                  overall?: string;
+                  checks?: { name: string; passed: boolean; detail: string; severity?: string }[];
+                  measurements?: { integratedLufs?: number | null; truePeakDbtp?: number | null };
+                  unexecutedInstructions?: string[];
+                  captions?: { rendered: number; relocatedAroundOverlays: number };
+                };
+                const problems = (qc.checks ?? []).filter((c) => !c.passed);
+                return (
+                  <div className="flex flex-col gap-1 text-[13px]">
+                    <p>
+                      <span className="font-medium">Technical QC: </span>
+                      <Badge tone={qc.overall === "PASS" ? "emerald" : "rose"}>{qc.overall ?? "unknown"}</Badge>
+                      {qc.measurements?.integratedLufs != null && ` · ${qc.measurements.integratedLufs.toFixed(1)} LUFS`}
+                      {qc.measurements?.truePeakDbtp != null && ` · peak ${qc.measurements.truePeakDbtp.toFixed(1)} dBTP`}
+                      {qc.captions && ` · ${qc.captions.rendered} caption phrases${qc.captions.relocatedAroundOverlays ? ` (${qc.captions.relocatedAroundOverlays} moved around overlays)` : ""}`}
+                    </p>
+                    {problems.map((c) => (
+                      <p key={c.name} className={c.severity === "WARN" ? "text-[var(--color-gold-400)]" : "text-[var(--color-rose-400)]"}>
+                        {c.severity === "WARN" ? "Warning" : "Fail"} · {c.name}: {c.detail}
+                      </p>
+                    ))}
+                    {(qc.unexecutedInstructions ?? []).length > 0 && (
+                      <p className="text-[var(--color-text-faint)]">
+                        Planned but not executed by the renderer yet: {qc.unexecutedInstructions!.join("; ")}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               {latestRender.errorMessage && (
                 <p className="mt-1.5 text-[13px] text-[var(--color-rose-400)]">{latestRender.errorMessage}</p>
               )}
@@ -753,16 +823,50 @@ export default async function ContentDetailPage({
           <Panel>
             <SectionHeading eyebrow="Assets" title="Media" />
             <RawTakeUploader contentItemId={item.id} mode={storageMode} />
-            <ul className="mt-3 flex flex-col gap-1.5 text-[13px]">
+            {item.mediaAssets.length > 0 && !item.mediaAssets.some((a) => a.transcript) && (
+              <form action={runTranscribe} className="mt-3">
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button>Transcribe all takes</Button>
+              </form>
+            )}
+            <ul className="mt-3 flex flex-col gap-3 text-[13px]">
               {item.mediaAssets.map((asset) => (
-                <li key={asset.id}>
-                  <a href={`/api/media/${asset.storageKey}`} className="link-quiet underline">
-                    {asset.originalFilename}
-                  </a>{" "}
-                  <span className="text-[var(--color-text-faint)]">
-                    ({asset.sizeBytes >= 1024 * 1024 ? `${(asset.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : `${(asset.sizeBytes / 1024).toFixed(1)} KB`}
-                    {asset.durationSeconds ? ` · ${asset.durationSeconds.toFixed(1)}s` : ""})
-                  </span>
+                <li key={asset.id} className="flex flex-col gap-1.5">
+                  <div>
+                    <a href={`/api/media/${asset.storageKey}`} className="link-quiet underline">
+                      {asset.originalFilename}
+                    </a>{" "}
+                    <span className="text-[var(--color-text-faint)]">
+                      ({asset.sizeBytes >= 1024 * 1024 ? `${(asset.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : `${(asset.sizeBytes / 1024).toFixed(1)} KB`}
+                      {asset.durationSeconds ? ` · ${asset.durationSeconds.toFixed(1)}s` : ""})
+                    </span>{" "}
+                    {asset.transcript ? (
+                      <Badge tone="emerald">{asset.transcriptSource === "MANUAL" ? "transcript (typed)" : "transcript + word timings"}</Badge>
+                    ) : (
+                      <Badge tone="neutral">no transcript yet</Badge>
+                    )}
+                  </div>
+                  {asset.transcript && (
+                    <p className="line-clamp-3 text-[var(--color-text-muted)]">{asset.transcript}</p>
+                  )}
+                  <details className="text-[var(--color-text-muted)]">
+                    <summary className="cursor-pointer text-[12px] text-[var(--color-text-faint)]">
+                      {asset.transcript ? "Fix transcript / re-transcribe" : "Transcribe or paste transcript"}
+                    </summary>
+                    <div className="mt-2 flex flex-col gap-2">
+                      <form action={runTranscribe}>
+                        <input type="hidden" name="contentItemId" value={item.id} />
+                        <input type="hidden" name="mediaAssetId" value={asset.id} />
+                        <Button>Transcribe this take (local Whisper)</Button>
+                      </form>
+                      <form action={submitManualTranscript} className="flex flex-col gap-2">
+                        <input type="hidden" name="contentItemId" value={item.id} />
+                        <input type="hidden" name="mediaAssetId" value={asset.id} />
+                        <textarea name="transcript" rows={3} defaultValue={asset.transcript ?? ""} className="field-input" placeholder="Paste or type what's said in this take" />
+                        <div><Button>Save typed transcript</Button></div>
+                      </form>
+                    </div>
+                  </details>
                 </li>
               ))}
               {item.mediaAssets.length === 0 && <li className="text-[var(--color-text-faint)]">No media uploaded yet.</li>}

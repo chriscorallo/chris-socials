@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prisma, createMediaAsset, analyzeMediaAsset } from "@chris/domain";
 import { probeMedia } from "@chris/media";
+import { after } from "next/server";
+import { transcribeMediaAsset } from "@chris/worker/transcribe-job";
+import { storage } from "./storage";
+import { isAutoTranscriptionEnabled } from "./render-config";
 
 /**
  * Shared tail of every upload path (local streaming route, or a browser-direct Blob upload):
@@ -50,6 +54,18 @@ export async function registerUploadedRawTake(input: {
     },
     { actorId: input.actorId },
   );
+
+  // Transcribe in the background once the response is sent (word timings feed take
+  // selection, cut snapping and burned-in captions). Failure just leaves the transcript empty
+  // — the content page offers a retry and a manual-entry box.
+  if (isAutoTranscriptionEnabled() && probed.hasAudio) {
+    after(async () => {
+      const result = await transcribeMediaAsset(prisma, storage, asset.id, {}, { actorId: input.actorId });
+      if (result.status === "FAILED") {
+        console.error(JSON.stringify({ level: "error", event: "transcription_failed", mediaAssetId: asset.id, message: result.errorMessage }));
+      }
+    });
+  }
   return asset;
 }
 

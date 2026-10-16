@@ -6,6 +6,7 @@ import {
   getLatestResearchPacket,
   getLatestScriptVersion,
   recordQualityGateResult,
+  parseTranscriptWords,
   aggregateHardGates,
   brandGateFromScores,
   creativeGateFromScore,
@@ -15,7 +16,15 @@ import {
   type GateStatus,
 } from "@chris/domain";
 import { EditPlanOutputSchema, runVisualQAAgent, type ModelProvider } from "@chris/agents";
-import { probeMedia, extractFrames, pickSampleTimestamps, checkOverlayCollisions } from "@chris/media";
+import {
+  probeMedia,
+  extractFrames,
+  pickSampleTimestamps,
+  checkOverlayCollisions,
+  checkCaptionOverlayCollisions,
+  DEFAULT_CAPTIONS_CONFIG,
+  type CaptionCollision,
+} from "@chris/media";
 import type { StorageAdapter } from "@chris/media";
 
 export interface QualityGateJobResult {
@@ -26,6 +35,17 @@ export interface QualityGateJobResult {
 }
 
 const DEFAULT_MAX_FRAMES = 6;
+
+function captionCollisionToIssue(c: CaptionCollision): QCIssueInput {
+  return {
+    category: "CAPTION_COLLISION",
+    description: `Caption "${c.captionText}" overlaps overlay "${c.overlayText}" from ${c.overlapStartSeconds}s to ${c.overlapEndSeconds}s with no free position to move it to.`,
+    severity: "BLOCKING",
+    timestampSeconds: c.overlapStartSeconds,
+    recommendedRepair: "Shorten or move the overlay, shift its timing off this phrase, or move captions to CENTER for this stretch.",
+    source: "OVERLAY_COLLISION",
+  };
+}
 
 /**
  * Runs the Phase 4 Hard Gate quality check on a ContentItem currently at RENDERED (spec §9
@@ -122,6 +142,21 @@ export async function runQualityGateForContentItem(
     recommendedRepair: "Stagger the two overlays in time, or move one to a different screen position.",
     source: "OVERLAY_COLLISION",
   }));
+
+  // Word captions vs overlays — also deterministic. The renderer already relocates captions
+  // around overlays where it can; only collisions it couldn't avoid are reported here.
+  const takeSelection = await db.takeSelection.findUnique({ where: { id: editPlanRow.takeSelectionId } });
+  const sourceAsset = takeSelection
+    ? await db.mediaAsset.findUnique({ where: { id: takeSelection.selectedMediaAssetId } })
+    : null;
+  const captionCollisions = checkCaptionOverlayCollisions({
+    overlays: plan.textOverlays,
+    captions: plan.captions ?? DEFAULT_CAPTIONS_CONFIG,
+    sourceWords: parseTranscriptWords(sourceAsset?.transcriptWords) ?? [],
+    segments: plan.segments,
+    canvas: plan.targetDimensions ?? { width: 1080, height: 1920 },
+  });
+  for (const c of captionCollisions) collisionIssues.push(captionCollisionToIssue(c));
 
   const workDir = await mkdtemp(join(tmpdir(), "chris-quality-gate-"));
   // No initializer: either both are assigned before the try block ends, or it throws and
