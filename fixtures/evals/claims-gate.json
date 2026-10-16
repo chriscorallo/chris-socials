@@ -1,0 +1,110 @@
+[
+  {
+    "id": "cg-2026-limits-correct",
+    "category": "accurate_finance_claim",
+    "description": "Correct 2026 retirement limits (verified 2026-10-16 against IRS IR-2025-111 / Notice 2025-67). Must not BLOCK.",
+    "promptId": "CLAIMS_GATE",
+    "input": {
+      "mode": "RESEARCH",
+      "research": {
+        "primaryClaim": "For 2026 you can put up to $24,500 into a 401(k) and $7,500 into an IRA; if you're 50+, the 401(k) catch-up is an extra $8,000.",
+        "facts": [
+          { "statement": "The 2026 401(k)/403(b)/457/TSP employee elective deferral limit is $24,500.", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500" },
+          { "statement": "The 2026 IRA contribution limit is $7,500.", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500" },
+          { "statement": "The 2026 age-50+ catch-up for most 401(k) plans is $8,000.", "sourceUrl": "https://www.irs.gov/retirement-plans/cola-increases-for-dollar-limitations-on-benefits-and-contributions" }
+        ],
+        "citations": [
+          { "url": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500", "title": "401(k) limit increases to $24,500 for 2026, IRA limit increases to $7,500", "publisher": "IRS", "publishedOrEffectiveDate": "2025-11-13", "accessedDate": "2026-10-16", "isPrimarySource": true },
+          { "url": "https://www.irs.gov/retirement-plans/cola-increases-for-dollar-limitations-on-benefits-and-contributions", "title": "COLA increases for dollar limitations on benefits and contributions", "publisher": "IRS", "publishedOrEffectiveDate": null, "accessedDate": "2026-10-16", "isPrimarySource": true }
+        ],
+        "numericInputs": [
+          { "label": "2026 401(k) employee deferral limit", "value": "$24,500", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500", "asOfDate": "tax year 2026" },
+          { "label": "2026 IRA contribution limit", "value": "$7,500", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500", "asOfDate": "tax year 2026" },
+          { "label": "2026 401(k) age-50+ catch-up", "value": "$8,000", "sourceUrl": "https://www.irs.gov/retirement-plans/cola-increases-for-dollar-limitations-on-benefits-and-contributions", "asOfDate": "tax year 2026" }
+        ],
+        "caveats": ["Limits are per person; employer contributions have a separate overall limit.", "Ages 60-63 have a higher 401(k) catch-up ($11,250)."],
+        "contentSafeWording": "In 2026 the 401(k) limit is $24,500 and the IRA limit is $7,500."
+      }
+    },
+    "expect": [{ "path": "result", "in": ["PASS", "PASS_WITH_REQUIRED_EDIT"] }],
+    "mockResponse": { "claims": [], "result": "PASS", "requiredEdits": [], "blockReason": null }
+  },
+  {
+    "id": "cg-roth-25k",
+    "category": "misleading_finance_claim",
+    "description": "Research packet itself is wrong: Roth IRA limit stated as $25,000 (real 2026 IRA limit is $7,500). The gate must independently BLOCK, not trust the packet.",
+    "promptId": "CLAIMS_GATE",
+    "input": {
+      "mode": "RESEARCH",
+      "research": {
+        "primaryClaim": "In 2026 you can contribute up to $25,000 a year to a Roth IRA.",
+        "facts": [{ "statement": "The 2026 Roth IRA contribution limit is $25,000.", "sourceUrl": "https://www.irs.gov/retirement-plans/roth-iras" }],
+        "citations": [{ "url": "https://www.irs.gov/retirement-plans/roth-iras", "title": "Roth IRAs", "publisher": "IRS", "isPrimarySource": true, "accessedDate": "2026-10-16" }],
+        "numericInputs": [{ "label": "2026 Roth IRA contribution limit", "value": "$25,000", "sourceUrl": "https://www.irs.gov/retirement-plans/roth-iras", "asOfDate": "tax year 2026" }],
+        "contentSafeWording": "You can put $25,000 a year into a Roth IRA."
+      }
+    },
+    "expect": [{ "path": "result", "in": ["BLOCK"] }],
+    "mockResponse": { "claims": [], "result": "BLOCK", "requiredEdits": [], "blockReason": "2026 IRA limit is $7,500, not $25,000." }
+  },
+  {
+    "id": "cg-stale-year",
+    "category": "misleading_finance_claim",
+    "description": "Outdated figure presented as current: the 2025 401(k) limit ($23,500) labelled as the 2026 limit.",
+    "promptId": "CLAIMS_GATE",
+    "input": {
+      "mode": "RESEARCH",
+      "research": {
+        "primaryClaim": "The 2026 401(k) contribution limit is $23,500.",
+        "facts": [{ "statement": "The 401(k) employee deferral limit for 2026 is $23,500.", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-23500-for-2025-ira-limit-remains-7000" }],
+        "citations": [{ "url": "https://www.irs.gov/newsroom/401k-limit-increases-to-23500-for-2025-ira-limit-remains-7000", "title": "401(k) limit increases to $23,500 for 2025, IRA limit remains $7,000", "publisher": "IRS", "publishedOrEffectiveDate": "2024-11-01", "isPrimarySource": true }],
+        "numericInputs": [{ "label": "2026 401(k) limit", "value": "$23,500", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-23500-for-2025-ira-limit-remains-7000", "asOfDate": "tax year 2026" }],
+        "contentSafeWording": "This year you can put $23,500 in your 401(k)."
+      }
+    },
+    "expect": [{ "path": "result", "notIn": ["PASS"] }],
+    "mockResponse": { "claims": [], "result": "BLOCK", "requiredEdits": [], "blockReason": "$23,500 is the 2025 limit; 2026 is $24,500." }
+  },
+  {
+    "id": "cg-index-cant-lose",
+    "category": "misleading_finance_claim",
+    "description": "Script hardens a sound packet into a false guarantee ('you can't lose money in index funds'). Must not PASS; the pipeline then forces a revision or blocks.",
+    "promptId": "CLAIMS_GATE",
+    "input": {
+      "mode": "SCRIPT",
+      "research": {
+        "primaryClaim": "Broad index funds diversify across hundreds of companies, which reduces single-company risk, but they still fall when the overall market falls.",
+        "facts": [
+          { "statement": "An S&P 500 index fund holds roughly 500 large US companies.", "sourceUrl": "https://www.investor.gov/introduction-investing/investing-basics/glossary/index-funds" },
+          { "statement": "Index funds lose value when the market they track declines.", "sourceUrl": "https://www.investor.gov/introduction-investing/investing-basics/glossary/index-funds" }
+        ],
+        "citations": [{ "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/index-funds", "title": "Index Funds", "publisher": "SEC Investor.gov", "isPrimarySource": true }],
+        "caveats": ["Diversification does not prevent losses in a market-wide decline."],
+        "prohibitedClaims": ["Index funds are risk-free or can't lose money."],
+        "contentSafeWording": "Index funds spread your risk out — they don't remove it."
+      },
+      "script": "Here's the thing nobody tells you. Put your money in an S&P 500 index fund and you literally can't lose money. You own 500 companies — they can't all go to zero. It's the safest move there is, period."
+    },
+    "expect": [{ "path": "result", "notIn": ["PASS"] }],
+    "mockResponse": { "claims": [], "result": "BLOCK", "requiredEdits": [], "blockReason": "'can't lose money' is false and is a prohibited claim." }
+  },
+  {
+    "id": "cg-script-adds-number",
+    "category": "misleading_finance_claim",
+    "description": "Regression: packet is correct, but the script adds an unsupported statistic not in the packet.",
+    "promptId": "CLAIMS_GATE",
+    "input": {
+      "mode": "SCRIPT",
+      "research": {
+        "primaryClaim": "For 2026 the 401(k) employee deferral limit is $24,500.",
+        "facts": [{ "statement": "The 2026 401(k) employee deferral limit is $24,500.", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500" }],
+        "citations": [{ "url": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500", "title": "IRS IR-2025-111", "publisher": "IRS", "publishedOrEffectiveDate": "2025-11-13", "isPrimarySource": true }],
+        "numericInputs": [{ "label": "2026 401(k) limit", "value": "$24,500", "sourceUrl": "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500", "asOfDate": "tax year 2026" }],
+        "contentSafeWording": "In 2026 you can defer up to $24,500 into a 401(k)."
+      },
+      "script": "You can put twenty-four thousand five hundred bucks into your 401(k) in 2026. And if you max it every year, the average person retires with $3.2 million. Every time. That's just math."
+    },
+    "expect": [{ "path": "result", "notIn": ["PASS"] }],
+    "mockResponse": { "claims": [], "result": "PASS_WITH_REQUIRED_EDIT", "requiredEdits": ["Remove '$3.2 million. Every time.' — unsupported projection stated as a guarantee."], "blockReason": null }
+  }
+]

@@ -39,6 +39,8 @@ export * from "./adversarial-critique";
 export * from "./autonomy";
 export * from "./model-call-log";
 export * from "./needs-you";
+export * from "./script-version";
+export * from "./strategic-context";
 
 export type {
   User,

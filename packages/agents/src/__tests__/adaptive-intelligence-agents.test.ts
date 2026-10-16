@@ -75,7 +75,7 @@ describe("Taste Learner agent (mock provider — zero cost)", () => {
   it("returns a schema-valid result and routes to MEDIUM", async () => {
     const provider = new MockModelProvider(() => ({
       probabilities: [
-        { tag: "too_corny", context: { productionTier: "FAST" }, probability: 0.2, sampleSize: 2, generalizes: false, confidence: 0.4 },
+        { tag: "too_corny", context: { productionTier: "FAST", topic: null, format: null, platform: null }, probability: 0.2, sampleSize: 2, generalizes: false, confidence: 0.4 },
       ],
     }));
     const result = await runTasteLearnerAgent(provider, { artifactType: "EDIT_PLAN", feedback, brandContext: "" });

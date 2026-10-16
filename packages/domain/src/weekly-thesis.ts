@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "./audit";
 import { applyTransition } from "./state-machine";
+import { journalDecision } from "./decision-journal";
 
 /**
  * Weekly Programming Thesis + Portfolio — spec §9 steps 2-3. One thesis per week
@@ -184,6 +185,198 @@ export async function rejectPortfolioItem(
   });
 
   return item;
+}
+
+// --- New-idea proposals from the Weekly Strategist ---------------------------------------
+//
+// The Strategist may propose NEW ideas to fill portfolio gaps. Nothing is created until a
+// human approves. Pending proposals are stored as append-only AuditLog rows
+// (NEW_IDEA_PROPOSED, metadata = the proposal) and resolved by a later
+// NEW_IDEA_PROPOSAL_APPROVED / _REJECTED row pointing at it — no schema change needed, and
+// the full proposal history is permanent. See docs/decisions-pending/ai.md.
+
+export const ProposedNewIdeaInputSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
+  pillar: z.enum(["SKILL", "MINDSET", "LIFESTYLE", "PASSIONS"]).nullable().optional(),
+  topic: z.string().min(1),
+  format: z.string().min(1),
+  purpose: z.string().min(1),
+  productionTier: z.enum(["RAW", "FAST", "MEDIUM", "HERO"]),
+  primaryHypothesis: z.string().min(1),
+  whyThisWeek: z.string().min(1),
+  gapFilled: z.string().min(1),
+});
+export type ProposedNewIdeaInput = z.input<typeof ProposedNewIdeaInputSchema>;
+
+export interface PendingIdeaProposal {
+  proposalId: string;
+  weeklyThesisId: string;
+  proposal: z.infer<typeof ProposedNewIdeaInputSchema>;
+  proposedAt: Date;
+}
+
+/**
+ * Records one Weekly Strategist run as proposals: every per-item allocation (PROPOSED, via
+ * recordPortfolioItem) plus every new-idea proposal, and journals the allocation decision once.
+ */
+export async function recordPortfolioProposal(
+  prisma: PrismaClient,
+  weeklyThesisId: string,
+  allocation: { items: PortfolioItemInput[]; proposedNewIdeas?: ProposedNewIdeaInput[] },
+  actor: { actorId: string },
+) {
+  const items = [];
+  for (const item of allocation.items) {
+    items.push(await recordPortfolioItem(prisma, weeklyThesisId, item, actor));
+  }
+  const proposals = [];
+  for (const raw of allocation.proposedNewIdeas ?? []) {
+    const proposal = ProposedNewIdeaInputSchema.parse(raw);
+    const row = await recordAudit(prisma, {
+      actor: actor.actorId,
+      actorType: "SYSTEM",
+      action: "NEW_IDEA_PROPOSED",
+      entityType: "WeeklyProgrammingThesis",
+      entityId: weeklyThesisId,
+      metadata: { proposal },
+    });
+    proposals.push({ proposalId: row.id, proposal });
+  }
+
+  const selected = allocation.items.filter((i) => i.selected !== false);
+  await journalDecision(prisma, {
+    question: "Which ideas make up this week's portfolio?",
+    selectedDecision: `${selected.length} existing idea(s) selected, ${proposals.length} new idea(s) proposed`,
+    alternatives: allocation.items.filter((i) => i.selected === false).map((i) => `Not selected: ${i.topic}`),
+    rationale: [
+      ...selected.map((i) => `${i.topic}: ${i.whyThisWeek}`),
+      ...proposals.map((p) => `NEW "${p.proposal.title}": ${p.proposal.gapFilled}`),
+    ].join(" | ").slice(0, 4000),
+    decisionOwner: "WEEKLY_STRATEGIST",
+    agentOrModel: "WEEKLY_STRATEGIST",
+    evidenceIds: [weeklyThesisId],
+  });
+
+  return { items, proposals };
+}
+
+export async function listPendingIdeaProposals(
+  prisma: PrismaClient,
+  weeklyThesisId: string,
+): Promise<PendingIdeaProposal[]> {
+  const proposed = await prisma.auditLog.findMany({
+    where: { action: "NEW_IDEA_PROPOSED", entityType: "WeeklyProgrammingThesis", entityId: weeklyThesisId },
+    orderBy: { createdAt: "asc" },
+  });
+  const resolved = await prisma.auditLog.findMany({
+    where: { action: { in: ["NEW_IDEA_PROPOSAL_APPROVED", "NEW_IDEA_PROPOSAL_REJECTED"] }, entityId: { in: proposed.map((p) => p.id) } },
+    select: { entityId: true },
+  });
+  const done = new Set(resolved.map((r) => r.entityId));
+  return proposed
+    .filter((p) => !done.has(p.id))
+    .map((p) => ({
+      proposalId: p.id,
+      weeklyThesisId,
+      proposal: ProposedNewIdeaInputSchema.parse((p.metadata as { proposal: unknown }).proposal),
+      proposedAt: p.createdAt,
+    }));
+}
+
+export class IdeaProposalNotPendingError extends Error {
+  constructor(proposalId: string) {
+    super(`Idea proposal ${proposalId} doesn't exist or was already resolved.`);
+    this.name = "IdeaProposalNotPendingError";
+  }
+}
+
+async function getPendingProposal(prisma: PrismaClient, proposalId: string) {
+  const row = await prisma.auditLog.findUnique({ where: { id: proposalId } });
+  if (!row || row.action !== "NEW_IDEA_PROPOSED") throw new IdeaProposalNotPendingError(proposalId);
+  const resolved = await prisma.auditLog.findFirst({
+    where: { entityId: proposalId, action: { in: ["NEW_IDEA_PROPOSAL_APPROVED", "NEW_IDEA_PROPOSAL_REJECTED"] } },
+  });
+  if (resolved) throw new IdeaProposalNotPendingError(proposalId);
+  return { row, proposal: ProposedNewIdeaInputSchema.parse((row.metadata as { proposal: unknown }).proposal) };
+}
+
+/**
+ * Human approval of a proposed new idea: only now is a ContentItem created (IDEA), allocated
+ * to the week's portfolio, and approved (IDEA -> SELECTED) — same selection semantics as an
+ * existing idea.
+ */
+export async function approveIdeaProposal(prisma: PrismaClient, proposalId: string, actor: { actorId: string }) {
+  const { row, proposal } = await getPendingProposal(prisma, proposalId);
+  const contentItem = await prisma.contentItem.create({
+    data: {
+      title: proposal.title,
+      description: proposal.description,
+      pillar: proposal.pillar ?? null,
+      format: proposal.format,
+    },
+  });
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: "HUMAN",
+    action: "CONTENT_ITEM_CREATED",
+    entityType: "ContentItem",
+    entityId: contentItem.id,
+    after: { title: contentItem.title, currentState: contentItem.currentState, fromProposalId: proposalId },
+  });
+  const portfolioItem = await recordPortfolioItem(
+    prisma,
+    row.entityId,
+    {
+      contentItemId: contentItem.id,
+      purpose: proposal.purpose,
+      pillar: proposal.pillar ?? null,
+      topic: proposal.topic,
+      format: proposal.format,
+      productionTier: proposal.productionTier,
+      primaryHypothesis: proposal.primaryHypothesis,
+      whyThisWeek: proposal.whyThisWeek,
+      selected: true,
+    },
+    actor,
+  );
+  await approvePortfolioItem(prisma, portfolioItem.id, actor);
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: "HUMAN",
+    action: "NEW_IDEA_PROPOSAL_APPROVED",
+    entityType: "AuditLog",
+    entityId: proposalId,
+    after: { contentItemId: contentItem.id, weeklyPortfolioItemId: portfolioItem.id },
+  });
+  return { contentItem, portfolioItem };
+}
+
+export async function rejectIdeaProposal(
+  prisma: PrismaClient,
+  proposalId: string,
+  actor: { actorId: string },
+  reason?: string,
+) {
+  const { proposal } = await getPendingProposal(prisma, proposalId);
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: "HUMAN",
+    action: "NEW_IDEA_PROPOSAL_REJECTED",
+    entityType: "AuditLog",
+    entityId: proposalId,
+    metadata: { reason: reason ?? null },
+  });
+  // A rejected agent proposal is a human override — Taste Model raw material.
+  await journalDecision(prisma, {
+    question: `Add the proposed idea "${proposal.title}" to the week?`,
+    selectedDecision: "Rejected",
+    alternatives: ["Approve"],
+    rationale: reason?.trim() || "Chris rejected the Weekly Strategist's proposal.",
+    decisionOwner: actor.actorId,
+    agentOrModel: "WEEKLY_STRATEGIST",
+    userOverride: true,
+  });
 }
 
 export async function listPortfolioItems(prisma: PrismaClient, weeklyThesisId: string) {

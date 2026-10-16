@@ -10,7 +10,7 @@ describe("Platform Packaging agent (mock provider — zero cost)", () => {
       title: null,
       hashtags: ["#budgeting"],
       coverFrameSeconds: 1.5,
-      metadata: null,
+      metadataEntries: [],
     }));
 
     const result = await runPlatformPackagingAgent(provider, {
@@ -24,13 +24,25 @@ describe("Platform Packaging agent (mock provider — zero cost)", () => {
     expect(provider.calls[0]?.promptId).toBe("PLATFORM_PACKAGING_INSTAGRAM");
   });
 
+  it("folds metadataEntries ({key,value}[] — a schema the model can actually fill) back into a record", async () => {
+    const provider = new MockModelProvider(() => ({
+      caption: "x",
+      title: "t",
+      hashtags: [],
+      coverFrameSeconds: null,
+      metadataEntries: [{ key: "categoryId", value: "27" }, { key: "pinnedComment", value: "Sources in bio" }],
+    }));
+    const result = await runPlatformPackagingAgent(provider, { platform: "YOUTUBE", finalTranscript: "t", brandContext: "" });
+    expect(result.metadata).toEqual({ categoryId: "27", pinnedComment: "Sources in bio" });
+  });
+
   it("composes SYSTEM_BASE + PLATFORM_PACKAGING_BASE + the platform-specific prompt", async () => {
     const provider = new MockModelProvider(() => ({
       caption: "x",
       title: "A real YouTube title",
       hashtags: [],
       coverFrameSeconds: null,
-      metadata: null,
+      metadataEntries: [],
     }));
 
     await runPlatformPackagingAgent(provider, {
@@ -50,7 +62,7 @@ describe("Platform Packaging agent (mock provider — zero cost)", () => {
       title: "A real title",
       hashtags: [],
       coverFrameSeconds: null,
-      metadata: null,
+      metadataEntries: [],
     }));
     const result = await runPlatformPackagingAgent(provider, {
       platform: "YOUTUBE",

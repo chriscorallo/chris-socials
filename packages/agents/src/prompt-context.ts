@@ -5,7 +5,7 @@ import type { LlmModelClass } from "./model-provider";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // packages/agents/src -> repo root is three levels up.
-const REPO_ROOT = join(__dirname, "..", "..", "..");
+export const REPO_ROOT = join(__dirname, "..", "..", "..");
 const SHARED_DIR = join(REPO_ROOT, "prompts", "shared");
 const AGENTS_DIR = join(REPO_ROOT, "prompts", "agents");
 

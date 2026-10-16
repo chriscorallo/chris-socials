@@ -1,0 +1,223 @@
+{
+  "ranAt": "2026-10-16T19:17:30.782Z",
+  "models": {
+    "HIGH": "claude-opus-5-5",
+    "MEDIUM": "claude-sonnet-5-5",
+    "LOW": "claude-haiku-5-5"
+  },
+  "retrieval": "on",
+  "totalCostUsd": 0.0765387,
+  "passed": 4,
+  "total": 5,
+  "skipped": [],
+  "byPrompt": {
+    "BRAND_GUARDIAN": {
+      "passed": 4,
+      "total": 5,
+      "allPassed": false
+    }
+  },
+  "results": [
+    {
+      "id": "bg-chris-voice",
+      "category": "chris_voice",
+      "promptId": "BRAND_GUARDIAN",
+      "passed": true,
+      "failures": [],
+      "output": {
+        "brandScore": 72,
+        "voiceScore": 74,
+        "originalityScore": 55,
+        "strategicFit": "Fits the finance-as-acquisition-wedge role: it is plain-English, uses a concrete number, and reframes an intimidating rule into something doable for the ambitious-but-unsure 20s/30s audience. It serves the 'look at the actual numbers' ethos. It does little to build Chris himself as a character (no lived experience, opinion, or personal stake), so it transmits useful information more than it makes Chris memorable. Not off-brand; just not distinctive. Nothing in the provided context indicates the current Weekly Programming Thesis, so thesis alignment can't be assessed.",
+        "risks": [
+          "The $24,500 figure for 2026 is stated as fact with no source in the provided context; if wrong, it damages the 'real numbers' credibility the brand rests on. It must be verified by the factual gate.",
+          "'Free money' for the employer match is a mild finance-content cliche and slightly oversimplifies (vesting schedules, match formulas).",
+          "'Not a vibe — a number' and the 'Anyway —' closer feel slightly written/constructed, a small risk of reading as AI-polished rather than spoken.",
+          "'That's like two grand a month' is approximate ($24,500/12 is about $2,042) and is fine as spoken shorthand, but ignores that the limit excludes catch-up contributions and employer match, which could invite pedantic comments.",
+          "Ending line 'Your number doesn't have to be' is a nice turn but could be misread as discouraging maxing out for people who can afford it.",
+          "Generic enough that a dozen finance creators could post nearly the same script; low recognizability without the username."
+        ],
+        "requiredChanges": [
+          "Have the factual gate verify the 2026 401(k) employee deferral limit of $24,500 against an official IRS source before filming; if it differs, correct every instance of the number, including the final line and the 'two grand a month' math.",
+          "Replace or qualify 'literally free money' with a plain-English line that includes the real caveat, for example: 'get the full match first, that's part of your pay you're leaving on the table, just check your vesting schedule.' This keeps the claim accurate and removes the cliche."
+        ],
+        "optionalImprovements": [
+          "Add one Chris-specific beat: a personal anecdote, what he did at his first job, or a candid admission such as 'I didn't understand what a match was for way too long.' This is the single biggest lever for making the script recognizably Chris.",
+          "Open with a sharper, more skeptical hook than 'Okay, quick one,' for example questioning why everyone repeats the advice without ever saying the number.",
+          "Give a concrete dollar illustration of the match, e.g. 'if you make $70k and your employer matches 4%, that's $2,800 a year you're skipping.' It strengthens the 'real numbers' principle.",
+          "Cut 'Anyway —' and let the closing line land on its own, or loosen phrasing to sound more spoken.",
+          "Consider light, natural profanity if it fits Chris's real delivery, since the script is currently quite clean compared with his described voice.",
+          "Mention that the limit applies to employee contributions only, to preempt pedantic replies."
+        ]
+      },
+      "costUsd": 0.0194835,
+      "latencyMs": 11832,
+      "model": "claude-sonnet-5-5"
+    },
+    {
+      "id": "bg-generic-ai",
+      "category": "non_chris_voice",
+      "promptId": "BRAND_GUARDIAN",
+      "passed": true,
+      "failures": [],
+      "output": {
+        "brandScore": 4,
+        "voiceScore": 3,
+        "originalityScore": 2,
+        "strategicFit": "Poor fit. The script is generic finance-influencer copy that contradicts the Brand Constitution's principles (specific > generic, human > synthetic, real numbers > vague claims) and the Chris Brain voice. It does nothing to make Chris more memorable or move the brand toward 'people stay for Chris.' It also reinforces the 'Finance Guy' trap in its most interchangeable form. It contains no skepticism, no numbers, no personal perspective, and nothing that serves the audience of ambitious 20s/30s who want to get their shit together without pretending to understand everything.",
+        "risks": [
+          "Uses phrases the Chris Brain explicitly bans: 'unlock your financial future,' 'level up your finances,' 'game changer.'",
+          "Reads as obviously AI-written or corporate-educational; this directly contradicts 'AI makes Chris's brain visible' and risks the viewer thinking 'this is AI content.'",
+          "Zero specificity: no dollar amounts, no scenario, no explanation of what a 401(k) actually is or does. Violates 'real numbers > vague claims.'",
+          "Emoji use (🚀 💰 ✨) pushes toward emoji spam and finance-bro/guru aesthetics.",
+          "Fake-guru motivational tone ('build the life you deserve,' 'financial freedom') with no evidence; conflicts with 'evidence > guru folklore.'",
+          "Closes on a stock cliché ('best time to start was yesterday') that is unattributable to any person, so there is no recognizable Chris voice.",
+          "Opens with a generic engagement-bait question rather than a direct, concrete opening.",
+          "Content could be posted by any of thousands of accounts, so it builds no brand equity and may dilute existing identity.",
+          "'Power of compound interest' is invoked as a magic phrase without any numbers, which is the kind of pretending-to-understand the ethos opposes."
+        ],
+        "requiredChanges": [
+          "Rewrite the script from scratch; none of the existing copy is salvageable. Do not reuse any sentence.",
+          "Remove all banned phrases: 'unlock your financial future,' 'level up your finances,' 'game changer,' 'empowers you,' 'maximize your potential,' 'financial freedom,' 'build the life you deserve.'",
+          "Replace the opening question with a direct, concrete opener, such as a real scenario or a pointed 'okay, but what does that actually mean?' question about a 401(k) (e.g., what actually happens to a specific paycheck contribution).",
+          "Add at least one concrete dollar example with real math (e.g., a specific contribution amount, employer match, and the resulting figure over a stated time and assumed return, with the assumption stated openly). Do not fabricate statistics; label any illustration as hypothetical.",
+          "Pick one narrow, useful point about the 401(k) (e.g., employer match, vesting, or fees) instead of a broad pep talk, and explain it in plain English.",
+          "Remove all emojis.",
+          "Inject Chris's actual voice: skeptical, conversational, confident without false certainty, with light humor and occasional profanity where natural. Include at least one opinion or personal angle that only Chris would say.",
+          "Delete the 'best time to start was yesterday' closing line and end on a concrete takeaway or a sharp question instead."
+        ],
+        "optionalImprovements": [
+          "Add a brief personal anecdote or lived-experience detail (e.g., Chris's own first 401(k) confusion) to strengthen the 'stay for Chris' effect.",
+          "Include an honest caveat about what Chris isn't sure of or where the answer depends on the viewer's situation, matching 'confident without pretending certainty.'",
+          "Consider framing it as a fit for the 'Show Me The Numbers' or 'Why Does Money Work Like This?' franchise concept, as a test of those formats.",
+          "Give the Edit Planner a clear visual hook for the numbers (on-screen math) so the editing carries the explanation rather than AI aesthetics.",
+          "Tie it to a Mindset-pillar angle, such as skepticism about default advice, to move beyond pure Skill content."
+        ]
+      },
+      "costUsd": 0.014971799999999999,
+      "latencyMs": 12148,
+      "model": "claude-sonnet-5-5"
+    },
+    {
+      "id": "bg-cringe-cta",
+      "category": "cringe_cta",
+      "promptId": "BRAND_GUARDIAN",
+      "passed": true,
+      "failures": [],
+      "output": {
+        "brandScore": 22,
+        "voiceScore": 28,
+        "originalityScore": 30,
+        "strategicFit": "The first ~45 words are on-brand: a direct, plain-English opener on a real, relatable money question (credit score dip after paying off a card) that serves the Skill pillar and the acquisition-wedge role of finance. The CTA collapses it into the exact guru/engagement-bait register the Brand Constitution and Chris Brain forbid. It does not make Chris more memorable and does not move the brand toward 'people stay for Chris.' Salvageable by replacing the second half, not by tweaking it.",
+        "risks": [
+          "Fake urgency and scarcity ('before this video gets taken down', 'only the first 100 people') directly violates the Chris Brain avoid list and reads as scam/guru content.",
+          "'Secret credit hack' is generic-hack framing, contradicts 'Evidence > guru folklore' and 'Real numbers > vague claims,' and may imply a deceptive or unsubstantiated promise (platform and trust risk).",
+          "Comment-keyword DM funnel ('comment MONEY') is generic engagement bait and finance-bro/guru tone; erodes credibility built by the skeptical, plain-English opening.",
+          "All-caps shouting, triple exclamation marks, and fire emoji spam are inconsistent with Chris's conversational voice and trip the emoji-spam/fake-urgency anti-patterns.",
+          "Tonal whiplash: calm explanation then a hard-sell pivot makes the piece sound like two different people, or like templated AI copy.",
+          "Body content is generic: no real numbers, no concrete scenario (e.g., utilization going from X% to Y%, points of score change), no Chris perspective or personality, so it is merely informative rather than memorable.",
+          "'Don't panic-open a new card' is advice stated with unearned certainty and no nuance; 'usually bounces back' is vague and low-evidence. Risk of misleading viewers without specifics (factual-gate adjacent).",
+          "Promising a 'secret hack' that likely does not exist creates a deliverable Chris cannot honestly fulfill."
+        ],
+        "requiredChanges": [
+          "Delete the entire CTA from 'SMASH that follow button' through 'Only the first 100 people get it!' including the all caps, the exclamation marks, and the fire emojis.",
+          "Remove all fake urgency and scarcity language ('before this video gets taken down', 'first 100 people') and the 'secret credit hack' promise; do not replace with any equivalent teaser or bait.",
+          "Replace the CTA with either no CTA or one natural, low-pressure Chris-style close, such as a real question or a plain invitation to follow for more money explained without the BS, with no keyword-comment/DM gimmick.",
+          "Add at least one concrete, accurate numeric example to the body (e.g., a card with a $5,000 limit carrying $1,500 contributes 30% utilization; paying it off removes that line from utilization or may shift average account age) so the claim is real-number-based rather than vague; verify any figures before filming.",
+          "Rewrite 'it usually bounces back' to state the actual mechanism and what a normal dip range looks like, or hedge honestly (e.g., 'depends on your file'), rather than asserting certainty."
+        ],
+        "optionalImprovements": [
+          "Open with a sharper, more Chris-sounding hook that leans into the counterintuitive nature, e.g., 'You did the responsible thing and your score went down. Okay, but why?'",
+          "Add one line of Chris's skeptical personality or lived experience (a quick personal or relatable moment) so the piece is recognizable without the username.",
+          "Explain the 'why' in plain English: why closing or paying off a card can lower the score (utilization, average age of accounts, credit mix) in one or two short sentences.",
+          "Clarify the difference between paying off a card (usually fine, still open) and closing it (the one that can hurt age and utilization), since the script blurs these.",
+          "Consider a light profanity beat if it fits naturally (e.g., 'don't go opening a new card out of panic, that's how you make it worse'), without forcing it.",
+          "Note a follow-up idea, e.g., a 'Show Me The Numbers' style breakdown of one real credit score before and after paying off a card, to feed the franchise pipeline."
+        ]
+      },
+      "costUsd": 0.015339799999999999,
+      "latencyMs": 13266,
+      "model": "claude-sonnet-5-5"
+    },
+    {
+      "id": "bg-good-cta",
+      "category": "appropriate_cta",
+      "promptId": "BRAND_GUARDIAN",
+      "passed": false,
+      "failures": [
+        "brandScore: expected >= 70 (got 62)",
+        "voiceScore: expected >= 70 (got 60)"
+      ],
+      "output": {
+        "brandScore": 62,
+        "voiceScore": 60,
+        "originalityScore": 48,
+        "strategicFit": "Fits the Skill pillar and the acquisition-wedge role of finance content, and the teaser for a utilization follow-up is a reasonable series hook. But it is a generic credit explainer with little Chris personality, no concrete numbers, and nothing that makes Chris himself more memorable. It is serviceable and clean, not yet distinctly Chris.",
+        "risks": [
+          "Reads like a generic personal-finance FAQ answer; someone could not plausibly identify it as Chris without the username.",
+          "No concrete dollar or score examples, which violates the 'real numbers > vague claims' principle.",
+          "Claim 'it usually bounces back' is stated with unqualified certainty and the cause is vague (utilization and account age); the actual main driver (utilization change, or losing a card's available credit, or closing an account) is not explained, so the 'okay, but what does that actually mean?' gap remains.",
+          "'Yeah, that happens' and 'a small temporary dip is normal' lean toward a corporate-reassurance tone rather than a skeptical, curious one.",
+          "Follow-up teaser ('weirder than you'd think') is a mild engagement-bait pattern with no specific payoff promised.",
+          "Paying off a card typically does not raise concern unless it was closed or the payoff changes reported utilization or mix; the script does not distinguish paid-off vs closed, which could mislead viewers."
+        ],
+        "requiredChanges": [
+          "Clarify the factual mechanism: distinguish between paying a card down/off (which usually lowers utilization and should help) and closing the card (which cuts available credit and can shorten average age over time), and state which situation the script is addressing, so the explanation is not misleading.",
+          "Add at least one concrete numeric example (e.g., a $500 balance on a $5,000 limit is 10% utilization, and what happens if that limit disappears) in place of the vague 'utilization and account age shift around.'",
+          "Soften or qualify 'it usually bounces back' with plain-English uncertainty (e.g., it typically recovers within a few months, but it depends on your file), rather than a flat reassurance."
+        ],
+        "optionalImprovements": [
+          "Open with a sharper, more Chris-specific hook, such as a skeptical question or a slightly irreverent line ('You did the responsible thing and got punished for it. Cool.'), to add personality.",
+          "Add a light touch of Chris's natural profanity or humor where it fits, so the voice reads as a real person, not an explainer.",
+          "Replace 'weirder than you'd think' with a specific teaser (e.g., 'paying a card off before the statement date can matter more than paying it after') to avoid generic engagement bait.",
+          "Include a brief first-person anchor (something Chris has seen or experienced) to strengthen the human-over-synthetic and lived-experience elements.",
+          "Keep the restraint; the short length is fine and should not be padded."
+        ]
+      },
+      "costUsd": 0.010763799999999999,
+      "latencyMs": 9649,
+      "model": "claude-sonnet-5-5"
+    },
+    {
+      "id": "bg-reference-copying",
+      "category": "excessive_reference_copying",
+      "promptId": "BRAND_GUARDIAN",
+      "passed": true,
+      "failures": [],
+      "output": {
+        "brandScore": 4,
+        "voiceScore": 5,
+        "originalityScore": 0,
+        "strategicFit": "Poor. The script is a verbatim copy of the reference creator's transcript, including her signature series name 'Money Monday Truth Bomb', her 'besties' address, her catchphrases, and her sign-off. Publishing it would substitute Maya Lin Money's identity for Chris's, which directly violates the Constitution principle 'Original identity > copying creators'. It also conflicts with the goal of people staying for Chris. The only salvageable element is the underlying topic (paying off a card can lower your credit score), which is useful, relevant to the Skill pillar, and suits the audience. The topic is fine; the execution is not usable.",
+        "risks": [
+          "Verbatim plagiarism of a reference creator's script, series name, and catchphrases; reputational and potential legal/platform risk and loss of brand trust.",
+          "Brand dilution: viewers would associate the format with Maya Lin Money, not Chris, and Chris would look derivative.",
+          "Voice mismatch: 'besties', 'Here's the tea', 'Wild, right?', 'Mic drop' and 'Truth bomb' read as influencer filler, not Chris's direct, skeptical, plain-English voice.",
+          "'Credit score is basically your financial GPA' is a generic, cliché analogy that is also misleading, since credit scores are not cumulative grades; it clashes with 'Evidence > guru folklore' and 'Real numbers > vague claims'.",
+          "The claim 'paying off a card can make it drop' is stated with no explanation, no numbers, and no context (e.g., closing the account vs. paying it down, utilization, average age of accounts), so it is incomplete and potentially confusing or misleading.",
+          "Zero personality, lived experience, or opinion from Chris; it only transmits one fact and does not make Chris more memorable.",
+          "Fake-urgency and engagement-bait tone ('Truth bomb dropped') is on the Chris Brain avoid list; it also reads as obviously templated copy."
+        ],
+        "requiredChanges": [
+          "Discard the script as written and rewrite it from scratch in Chris's voice. Remove every phrase taken from the reference: 'Money Monday Truth Bomb', 'besties', 'Grab your iced coffee', 'Here's the tea', 'Wild, right?', 'Truth bomb dropped', 'Mic drop', and 'See you next Money Monday'.",
+          "Do not use the series name 'Money Monday Truth Bomb' or any near-variant. If a recurring Monday tie-in is wanted, route it through Chris's own properties (e.g., Monday Money Meetup) only by explicit Creative Director decision.",
+          "Replace the opening with a direct hook in Chris's voice, such as a real question or scenario (e.g., a person pays off a card and sees their score drop 30 points; 'okay, but why?').",
+          "Drop the 'credit score = financial GPA' analogy and explain the actual mechanism in plain English: credit utilization, and what happens when an account is closed (available credit shrinks, average account age can change). Distinguish paying a balance to $0 from closing the card, since paying off alone usually does not hurt a score.",
+          "Include at least one concrete dollar example with real numbers (e.g., $3,000 balance on a $10,000 limit equals 30% utilization) and state what changed and why. Use only figures that are labeled as illustrative, and have them verified by the fact-check step before filming.",
+          "Add Chris's own perspective or experience, plus a clear takeaway on what the viewer should actually do, so the script contains an opinion and not just a fact.",
+          "Replace the sign-off with a natural Chris-style close, with no catchphrase borrowed from the reference."
+        ],
+        "optionalImprovements": [
+          "Add light, natural profanity or dry humor only if it fits the take; do not force it.",
+          "Frame it as skepticism of a common claim ('everyone says paying off cards is always good for your score, so is it?') to match Chris's questioning stance.",
+          "Consider a follow-up idea such as 'closing a card vs. paying it off', or a 'Show Me The Numbers' style breakdown with a real before/after score example.",
+          "Use a short, memorable line of Chris's own that can become a recognizable signature over time, instead of a generic mic-drop.",
+          "Keep it short and plain; restraint is fine as long as the content is specific and sounds like a real person."
+        ]
+      },
+      "costUsd": 0.0159798,
+      "latencyMs": 12801,
+      "model": "claude-sonnet-5-5"
+    }
+  ]
+}

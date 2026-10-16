@@ -46,6 +46,27 @@ export async function createDecisionJournalEntry(
   });
 }
 
+/**
+ * Journals a meaningful decision made inside a domain flow (a Claims Gate verdict on a script,
+ * a portfolio allocation proposal, a human override). Best-effort by design: the journal is
+ * an intelligence store, and failing to write it must never undo or block the decision itself
+ * — the decision's own rows and AuditLog entries remain the system of record. Returns null on
+ * failure instead of throwing.
+ *
+ * Use only where there is a real choice with alternatives and a rationale — not for routine
+ * steps (keep the journal useful, not spammy).
+ */
+export async function journalDecision(
+  prisma: PrismaClient,
+  input: CreateDecisionJournalEntryInput,
+): Promise<DecisionJournalEntry | null> {
+  try {
+    return await createDecisionJournalEntry(prisma, input);
+  } catch {
+    return null;
+  }
+}
+
 export async function listDecisionJournalEntries(
   prisma: PrismaClient,
   opts?: { userOverrideOnly?: boolean },
