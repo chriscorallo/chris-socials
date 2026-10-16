@@ -1,6 +1,6 @@
 import type { ModelProvider } from "./model-provider";
 import { buildSystemPrompt } from "./prompt-context";
-import { TasteLearnerResultSchema, type TasteLearnerResult } from "./schemas";
+import { TasteLearnerResultSchema, compactTasteContext, type TasteLearnerResult } from "./schemas";
 
 export interface TasteFeedbackSummary {
   artifactType: string;
@@ -45,4 +45,18 @@ export async function runTasteLearnerAgent(
   });
 
   return result.output;
+}
+
+/** Shape ready for packages/domain recordChrisAcceptanceProbability (context compacted to
+ * just the dimensions the probability is scoped to). */
+export function toAcceptanceProbabilityInputs(artifactType: string, result: TasteLearnerResult) {
+  return result.probabilities.map((p) => ({
+    artifactType,
+    tag: p.tag,
+    context: compactTasteContext(p.context),
+    probability: p.probability,
+    sampleSize: p.sampleSize,
+    generalizes: p.generalizes,
+    confidence: p.confidence,
+  }));
 }

@@ -1,6 +1,6 @@
 import type { ModelProvider } from "./model-provider";
 import { getAgentPrompt, getSystemBase } from "./prompt-context";
-import { PlatformPackageOutputSchema, type PlatformPackageOutput } from "./schemas";
+import { PlatformPackageModelOutputSchema, type PlatformPackageOutput } from "./schemas";
 
 export type PackagingPlatform = "INSTAGRAM" | "TIKTOK" | "YOUTUBE";
 
@@ -38,7 +38,9 @@ ${input.finalTranscript}
 
 ## Task
 
-Package this finished video for ${input.platform} per your instructions above.`;
+Package this finished video for ${input.platform} per your instructions above. Put any
+platform-specific extras (e.g. YouTube category, pinned-comment text, alt text) in
+metadataEntries as {key, value} pairs; leave it empty when there are none.`;
 }
 
 export async function runPlatformPackagingAgent(
@@ -60,9 +62,13 @@ export async function runPlatformPackagingAgent(
     modelClass,
     systemPrompt,
     userPrompt: buildUserPrompt(input),
-    schema: PlatformPackageOutputSchema,
+    schema: PlatformPackageModelOutputSchema,
     promptId: PLATFORM_PROMPT_ID[input.platform],
   });
 
-  return result.output;
+  const { metadataEntries, ...rest } = result.output;
+  return {
+    ...rest,
+    metadata: metadataEntries.length ? Object.fromEntries(metadataEntries.map((e) => [e.key, e.value])) : null,
+  };
 }

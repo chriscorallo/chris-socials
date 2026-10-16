@@ -40,10 +40,19 @@ export function fixtureResearchPacket(overrides: Partial<ResearchPacket> = {}): 
     primaryClaim:
       "Paying off a credit card can temporarily lower your utilization-driven score boost and shift your average account age, which can drop your score even though you did something financially healthy.",
     facts: [
-      { statement: "Credit utilization is a scoring factor.", type: "FACT" },
-      { statement: "Closing the account after payoff affects average account age.", type: "FACT" },
+      { statement: "Credit utilization is a scoring factor.", type: "FACT", sourceUrl: "https://www.myfico.com/credit-education/whats-in-your-credit-score" },
+      { statement: "Closing the account after payoff affects average account age.", type: "FACT", sourceUrl: "https://www.myfico.com/credit-education/whats-in-your-credit-score" },
     ],
-    citations: ["myfico.com — credit scoring factors"],
+    citations: [
+      {
+        url: "https://www.myfico.com/credit-education/whats-in-your-credit-score",
+        title: "What's in my FICO Scores?",
+        publisher: "myFICO",
+        publishedOrEffectiveDate: null,
+        accessedDate: "2026-10-16",
+        isPrimarySource: true,
+      },
+    ],
     numericInputs: [],
     calculationNotes: null,
     caveats: ["Effect size varies by scoring model and existing credit history."],
@@ -179,6 +188,7 @@ export function fixturePortfolioAllocation(
         selected: true,
       },
     ],
+    proposedNewIdeas: [],
     ...overrides,
   };
 }

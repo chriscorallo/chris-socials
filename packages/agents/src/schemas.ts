@@ -10,13 +10,42 @@ import { z } from "zod";
 export const FactEntrySchema = z.object({
   statement: z.string(),
   type: z.enum(["FACT", "INTERPRETATION", "EXAMPLE", "ASSUMPTION", "UNKNOWN"]),
+  /** URL of the source supporting this statement — null only for non-FACT types or when no
+   * source was found (which the Claims Gate treats as unsupported). */
+  sourceUrl: z.string().nullable(),
 });
+
+/** A real, retrievable source. With web retrieval on, `url` must be a page the agent actually
+ * retrieved — never a URL reconstructed from memory. */
+export const CitationSchema = z.object({
+  url: z.string().nullable(),
+  title: z.string(),
+  publisher: z.string(),
+  /** Publication / effective date as stated by the source (e.g. "2025-11-13"), or null. */
+  publishedOrEffectiveDate: z.string().nullable(),
+  /** Date the source was retrieved (ISO date). */
+  accessedDate: z.string().nullable(),
+  /** Primary = the rule-maker or data owner (IRS, SSA, Federal Reserve, BLS, CFPB, SEC, ...). */
+  isPrimarySource: z.boolean(),
+});
+export type Citation = z.infer<typeof CitationSchema>;
+
+export const NumericInputSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  /** Every number must trace to a source; null means "unsourced" and fails the pipeline's
+   * deterministic pre-check before the Claims Gate. */
+  sourceUrl: z.string().nullable(),
+  /** The tax year / effective date / as-of date the number applies to. */
+  asOfDate: z.string().nullable(),
+});
+export type NumericInput = z.infer<typeof NumericInputSchema>;
 
 export const ResearchPacketSchema = z.object({
   primaryClaim: z.string(),
   facts: z.array(FactEntrySchema),
-  citations: z.array(z.string()),
-  numericInputs: z.array(z.object({ label: z.string(), value: z.string() })),
+  citations: z.array(CitationSchema),
+  numericInputs: z.array(NumericInputSchema),
   calculationNotes: z.string().nullable(),
   caveats: z.array(z.string()),
   confidence: z.number().min(0).max(1),
@@ -46,6 +75,7 @@ export const ClaimsGateResultSchema = z.object({
   blockReason: z.string().nullable(),
 });
 export type ClaimsGateResult = z.infer<typeof ClaimsGateResultSchema>;
+export type ClaimsGateVerdict = ClaimsGateResult["result"];
 
 // --- Script Agent -> /prompts/agents/SCRIPT.md ---
 export const ScriptBeatSchema = z.object({ label: z.string(), text: z.string() });
@@ -126,8 +156,27 @@ export const PortfolioItemAllocationSchema = z.object({
   selected: z.boolean(),
 });
 
+/** A NEW idea the Weekly Strategist proposes to fill a portfolio gap the existing backlog
+ * can't. Never created automatically — a ContentItem is only created on human approval
+ * (packages/domain createIdeaFromProposal). */
+export const ProposedNewIdeaSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  pillar: z.enum(["SKILL", "MINDSET", "LIFESTYLE", "PASSIONS"]).nullable(),
+  format: z.string(),
+  purpose: z.string(),
+  productionTier: z.enum(["RAW", "FAST", "MEDIUM", "HERO"]),
+  primaryHypothesis: z.string(),
+  whyThisWeek: z.string(),
+  /** Which portfolio gap this fills (e.g. "no relationship-building video this week"). */
+  gapFilled: z.string(),
+});
+export type ProposedNewIdea = z.infer<typeof ProposedNewIdeaSchema>;
+
 export const PortfolioAllocationResultSchema = z.object({
   items: z.array(PortfolioItemAllocationSchema),
+  /** May be empty — proposing nothing new is a valid answer when the backlog covers the week. */
+  proposedNewIdeas: z.array(ProposedNewIdeaSchema),
 });
 export type PortfolioAllocationResult = z.infer<typeof PortfolioAllocationResultSchema>;
 
@@ -229,14 +278,28 @@ export const VisualQAReportSchema = z.object({
 export type VisualQAReport = z.infer<typeof VisualQAReportSchema>;
 
 // --- Platform Packaging -> /prompts/agents/PLATFORM_PACKAGING_{BASE,INSTAGRAM,TIKTOK,YOUTUBE}.md ---
-export const PlatformPackageOutputSchema = z.object({
+// What the MODEL returns. Free-form metadata is an array of {key, value} pairs, not
+// z.record(): the structured-output schema transform turns a record into an object with no
+// properties + additionalProperties:false, so the model could only ever return {}.
+export const PlatformPackageModelOutputSchema = z.object({
   caption: z.string(),
   // Only YouTube's prompt actually asks for a distinct title; Instagram/TikTok legitimately
   // return null here rather than duplicating the caption into a fake title field.
   title: z.string().nullable(),
   hashtags: z.array(z.string()),
   coverFrameSeconds: z.number().nullable(),
-  metadata: z.record(z.string(), z.unknown()).nullable(),
+  metadataEntries: z.array(z.object({ key: z.string(), value: z.string() })),
+});
+export type PlatformPackageModelOutput = z.infer<typeof PlatformPackageModelOutputSchema>;
+
+/** What runPlatformPackagingAgent returns to callers: metadata folded back into a record (the
+ * shape packages/domain's recordPlatformPackage persists), null when the model gave none. */
+export const PlatformPackageOutputSchema = z.object({
+  caption: z.string(),
+  title: z.string().nullable(),
+  hashtags: z.array(z.string()),
+  coverFrameSeconds: z.number().nullable(),
+  metadata: z.record(z.string(), z.string()).nullable(),
 });
 export type PlatformPackageOutput = z.infer<typeof PlatformPackageOutputSchema>;
 
@@ -338,9 +401,25 @@ export const AdversarialCritiqueOutputSchema = z.object({
 export type AdversarialCritiqueOutput = z.infer<typeof AdversarialCritiqueOutputSchema>;
 
 // --- Taste Learner -> /prompts/agents/TASTE_LEARNER.md ---
+// Explicit context fields, not z.record (a record becomes an always-empty object under
+// structured outputs — see PlatformPackageModelOutputSchema). null = "applies across".
+export const TasteContextSchema = z.object({
+  productionTier: z.enum(["RAW", "FAST", "MEDIUM", "HERO"]).nullable(),
+  topic: z.string().nullable(),
+  format: z.string().nullable(),
+  platform: z.enum(["INSTAGRAM", "TIKTOK", "YOUTUBE"]).nullable(),
+});
+export type TasteContext = z.infer<typeof TasteContextSchema>;
+
+/** Drops null scoping fields — the persisted ChrisAcceptanceProbability.context only names
+ * the dimensions a probability is actually scoped to. */
+export function compactTasteContext(context: TasteContext): Record<string, string> {
+  return Object.fromEntries(Object.entries(context).filter(([, v]) => v !== null)) as Record<string, string>;
+}
+
 export const AcceptanceProbabilityItemSchema = z.object({
   tag: z.string(),
-  context: z.record(z.string(), z.unknown()),
+  context: TasteContextSchema,
   probability: z.number().min(0).max(1),
   sampleSize: z.number().int().positive(),
   generalizes: z.boolean(),
