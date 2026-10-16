@@ -1,0 +1,46 @@
+# Drives the app's background work: publishing scheduled posts at their time, capturing
+# metric snapshots at T+1h/6h/24h/72h/7d/30d, and ingesting comments.
+#
+# Why GitHub Actions and not only Vercel Cron: Vercel's Hobby plan only allows daily crons,
+# and a T+1h snapshot or a 7 PM post can't wait a day. vercel.json keeps a once-daily
+# safety-net cron that works on any plan. See /docs/DECISIONS.md ("Background jobs").
+#
+# Setup (one time, repo Settings -> Secrets and variables -> Actions):
+#   APP_BASE_URL  e.g. https://chris-content-intelligence.vercel.app   (variable or secret)
+#   CRON_SECRET   same value as the CRON_SECRET env var in Vercel       (secret)
+#   VERCEL_AUTOMATION_BYPASS_SECRET  only if Vercel Deployment Protection is on for the URL
+#                 above (Project -> Settings -> Deployment Protection -> Protection Bypass
+#                 for Automation)                                        (secret)
+# Until both exist this workflow exits successfully without doing anything.
+name: cron-tick
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: cron-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Call /api/cron/tick
+        env:
+          APP_BASE_URL: ${{ vars.APP_BASE_URL || secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          if [ -z "$APP_BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_BASE_URL / CRON_SECRET not configured yet — skipping."
+            exit 0
+          fi
+          extra=()
+          if [ -n "$BYPASS" ]; then extra=(-H "x-vercel-protection-bypass: $BYPASS"); fi
+          code=$(curl -sS -o response.json -w "%{http_code}" --max-time 300 "${extra[@]}" \
+            -H "Authorization: Bearer $CRON_SECRET" "$APP_BASE_URL/api/cron/tick")
+          cat response.json; echo
+          test "$code" -lt 400

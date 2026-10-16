@@ -31,11 +31,11 @@ export default async function ContentListPage({
   }
   const activeKey: ContentStageKey =
     (CONTENT_STAGES.find((s) => s.key === stageParam)?.key as ContentStageKey | undefined) ??
-    (CONTENT_STAGES.find((s) => s.key !== "done" && counts[s.key] > 0)?.key as ContentStageKey | undefined) ??
+    (CONTENT_STAGES.find((s) => s.key !== "done" && (counts[s.key] ?? 0) > 0)?.key as ContentStageKey | undefined) ??
     "plan";
   const active = CONTENT_STAGES.find((s) => s.key === activeKey)!;
   const items = await listContentItems(prisma, { state: [...active.states], limit: LIMIT });
-  const total = counts[activeKey];
+  const total = counts[activeKey] ?? 0;
 
   return (
     <>
@@ -51,7 +51,7 @@ export default async function ContentListPage({
               className={`badge ${s.key === activeKey ? "badge-gold" : "badge-neutral"} !px-3 !py-1.5`}
               aria-current={s.key === activeKey ? "page" : undefined}
             >
-              {s.label} <span className="ml-1 opacity-70">{counts[s.key]}</span>
+              {s.label} <span className="ml-1 opacity-70">{counts[s.key] ?? 0}</span>
             </Link>
           ))}
         </nav>
