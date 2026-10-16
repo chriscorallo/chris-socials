@@ -167,18 +167,23 @@ export async function finalizePublishing(
     return { transitioned: false, succeededPlatforms, failedPlatforms };
   }
 
-  if (item.currentState === "PUBLISHING") {
-    await applyTransition(prisma, {
-      contentItemId,
-      to: "PUBLISHED",
-      actorType: "SYSTEM",
-      actorId: actor.actorId,
-      reason:
-        failedPlatforms.length === 0
-          ? "All target platforms published successfully"
-          : `Published to ${succeededPlatforms.join(", ")}; ${failedPlatforms.join(", ")} did not succeed`,
-    });
+  // Only the PUBLISHING -> PUBLISHED transition itself is an item-level outcome. A retry of a
+  // failed platform on an already-PUBLISHED/MEASURING item (or an idempotent re-run) must not
+  // transition again nor double-count the autonomy reliability signal below.
+  if (item.currentState !== "PUBLISHING") {
+    return { transitioned: false, succeededPlatforms, failedPlatforms };
   }
+
+  await applyTransition(prisma, {
+    contentItemId,
+    to: "PUBLISHED",
+    actorType: "SYSTEM",
+    actorId: actor.actorId,
+    reason:
+      failedPlatforms.length === 0
+        ? "All target platforms published successfully"
+        : `Published to ${succeededPlatforms.join(", ")}; ${failedPlatforms.join(", ")} did not succeed`,
+  });
 
   // Phase 8 — every target platform succeeding with no failures is the real reliability
   // signal for PUBLISHING; a partial-failure publish is a genuine success (graceful
@@ -195,4 +200,135 @@ export async function finalizePublishing(
   }
 
   return { transitioned: true, succeededPlatforms, failedPlatforms };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Verification + ambiguity helpers (spec §22: "a publish isn't done until verified")
+// ---------------------------------------------------------------------------------------------
+
+/** Prefix on `Publication.errorMessage` for an attempt whose outcome is unknown — the request
+ * may have reached the platform (timeout / connection reset after upload). A retry must check
+ * the platform for an existing post before re-posting. */
+export const AMBIGUOUS_PUBLISH_PREFIX = "AMBIGUOUS:";
+/** Prefix for a FAILED attempt that left a resumable platform-side state (e.g. an Instagram
+ * container still processing) — a retry resumes instead of re-uploading. */
+export const PENDING_PROCESSING_PREFIX = "PENDING_PROCESSING:";
+
+export function isAmbiguousPublication(pub: { status: PublicationStatus; errorMessage: string | null }): boolean {
+  return pub.status === "FAILED" && (pub.errorMessage ?? "").startsWith(AMBIGUOUS_PUBLISH_PREFIX);
+}
+
+/** The adapter-specific resume token recorded on a PENDING_PROCESSING attempt, if any. */
+export function getResumeToken(pub: { status: PublicationStatus; rawResponse: unknown }): unknown {
+  if (pub.status !== "FAILED") return null;
+  const raw = pub.rawResponse as { resumeToken?: unknown } | null;
+  return raw && typeof raw === "object" && "resumeToken" in raw ? (raw.resumeToken ?? null) : null;
+}
+
+export interface MarkPublicationVerifiedInput {
+  publicationId: string;
+  verifiedAt?: Date;
+  /** The platform's durable post id when it differs from what publish() returned (TikTok's
+   * `publish_id` -> real video id once moderation finishes). */
+  resolvedPostId?: string | null;
+  url?: string | null;
+  verificationResponse: unknown;
+  /** A human-relevant caveat — e.g. "uploaded but private". Appended to errorMessage so the
+   * UI shows it next to the attempt. */
+  note?: string | null;
+}
+
+/** Sets `verifiedAt` (and resolved id/url) on an existing attempt row. This is the attempt's
+ * own outcome being completed, not a history rewrite: the original publish response stays in
+ * `rawResponse.publish`, verification goes in `rawResponse.verification`. Audit-logged. */
+export async function markPublicationVerified(
+  prisma: PrismaClient,
+  input: MarkPublicationVerifiedInput,
+  actor: { actorId: string },
+) {
+  const existing = await prisma.publication.findUniqueOrThrow({ where: { id: input.publicationId } });
+  const priorRaw = existing.rawResponse as Record<string, unknown> | null;
+  const alreadyWrapped = priorRaw !== null && typeof priorRaw === "object" && "publish" in priorRaw;
+  const rawResponse = {
+    ...(alreadyWrapped ? priorRaw : { publish: priorRaw }),
+    verification: input.verificationResponse ?? null,
+    ...(input.resolvedPostId && input.resolvedPostId !== existing.platformPostId
+      ? { originalPlatformPostId: existing.platformPostId }
+      : {}),
+  };
+  const note = input.note ?? null;
+  const errorMessage =
+    note && !(existing.errorMessage ?? "").includes(note)
+      ? [existing.errorMessage, note].filter(Boolean).join(" ")
+      : existing.errorMessage;
+
+  const updated = await prisma.publication.update({
+    where: { id: existing.id },
+    data: {
+      verifiedAt: input.verifiedAt ?? new Date(),
+      platformPostId: input.resolvedPostId ?? existing.platformPostId,
+      url: input.url ?? existing.url,
+      rawResponse: rawResponse as never,
+      errorMessage,
+    },
+  });
+
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: "SYSTEM",
+    action: "PUBLICATION_VERIFIED",
+    entityType: "ContentItem",
+    entityId: existing.contentItemId,
+    after: {
+      publicationId: existing.id,
+      platform: existing.platform,
+      platformPostId: updated.platformPostId,
+      url: updated.url,
+      note,
+    },
+  });
+  return updated;
+}
+
+/** Records a verification problem/caveat without marking verified (e.g. "still processing",
+ * or "resolved post id not yet available"). Idempotent on identical notes. */
+export async function notePublicationVerificationPending(
+  prisma: PrismaClient,
+  publicationId: string,
+  note: string,
+  verificationResponse: unknown,
+) {
+  const existing = await prisma.publication.findUniqueOrThrow({ where: { id: publicationId } });
+  const priorRaw = existing.rawResponse as Record<string, unknown> | null;
+  const alreadyWrapped = priorRaw !== null && typeof priorRaw === "object" && "publish" in priorRaw;
+  const rawResponse = {
+    ...(alreadyWrapped ? priorRaw : { publish: priorRaw }),
+    lastVerification: verificationResponse ?? null,
+  };
+  return prisma.publication.update({
+    where: { id: publicationId },
+    data: {
+      rawResponse: rawResponse as never,
+      errorMessage: (existing.errorMessage ?? "").includes(note)
+        ? existing.errorMessage
+        : [existing.errorMessage, note].filter(Boolean).join(" "),
+    },
+  });
+}
+
+/** Successful (SUCCESS/DRAFT) attempts not yet verified — the verify sweep's work list. */
+export async function listUnverifiedPublications(
+  prisma: PrismaClient,
+  options: { contentItemId?: string; since?: Date; limit?: number } = {},
+) {
+  return prisma.publication.findMany({
+    where: {
+      status: { in: ["SUCCESS", "DRAFT"] },
+      verifiedAt: null,
+      ...(options.contentItemId ? { contentItemId: options.contentItemId } : {}),
+      ...(options.since ? { createdAt: { gte: options.since } } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    take: options.limit ?? 100,
+  });
 }
