@@ -1,8 +1,16 @@
-import { prisma, getCurrentWeekThesis, getWeeklyThesisWithPortfolio } from "@chris/domain";
+import { prisma, getCurrentWeekThesis, getWeeklyThesisWithPortfolio, listPendingIdeaProposals } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, SectionHeading, EmptyState, Button, Badge } from "../components/ui";
-import { generateThesis, generatePortfolio, approveProposal, rejectProposal } from "./actions";
+import {
+  generateThesis,
+  generatePortfolio,
+  approveProposal,
+  rejectProposal,
+  approveAllRecommended,
+  approveNewIdea,
+  rejectNewIdea,
+} from "./actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
 // Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
@@ -35,6 +43,8 @@ export default async function StrategyPage({
   const withPortfolio = current ? await getWeeklyThesisWithPortfolio(prisma, current.id) : null;
   const proposed = withPortfolio?.portfolioItems.filter((p) => p.status === "PROPOSED") ?? [];
   const reviewed = withPortfolio?.portfolioItems.filter((p) => p.status !== "PROPOSED") ?? [];
+  const newIdeas = current ? await listPendingIdeaProposals(prisma, current.id) : [];
+  const recommendedCount = proposed.filter((p) => p.selected).length;
 
   return (
     <>
@@ -122,9 +132,43 @@ export default async function StrategyPage({
           </Panel>
         )}
 
+        {newIdeas.length > 0 && (
+          <Panel className="mb-5">
+            <SectionHeading eyebrow="New ideas" title={`Strategist proposes ${newIdeas.length} new idea${newIdeas.length === 1 ? "" : "s"}`} />
+            <div className="flex flex-col gap-3">
+              {newIdeas.map(({ proposalId, proposal }) => (
+                <div key={proposalId} className="rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-4">
+                  <p className="text-sm font-medium">{proposal.title}</p>
+                  <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">{proposal.description}</p>
+                  <p className="mt-1.5 text-xs text-[var(--color-text-faint)]">
+                    {proposal.productionTier}
+                    {proposal.pillar ? ` · ${proposal.pillar}` : ""} · {proposal.format} · Fills: {proposal.gapFilled} · Why now: {proposal.whyThisWeek}
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <form action={approveNewIdea}>
+                      <input type="hidden" name="proposalId" value={proposalId} />
+                      <Button tone="primary">Add &amp; select</Button>
+                    </form>
+                    <form action={rejectNewIdea}>
+                      <input type="hidden" name="proposalId" value={proposalId} />
+                      <Button tone="danger">Pass</Button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
+
         {proposed.length > 0 && (
           <Panel className="mb-5">
             <SectionHeading eyebrow="Review" title={`Needs your review (${proposed.length})`} />
+            {recommendedCount > 0 && withPortfolio && (
+              <form action={approveAllRecommended} className="mb-4">
+                <input type="hidden" name="weeklyThesisId" value={withPortfolio.id} />
+                <Button tone="primary">Approve all {recommendedCount} recommended</Button>
+              </form>
+            )}
             <div className="flex flex-col gap-3">
               {proposed.map((p) => (
                 <div key={p.id} className="rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-4">

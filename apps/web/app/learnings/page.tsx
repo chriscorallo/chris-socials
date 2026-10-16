@@ -30,6 +30,7 @@ import {
   startExperimentAction,
   concludeExperimentAction,
   runWeeklyReviewAction,
+  refreshTasteModelAction,
   submitAutonomyCeiling,
   toggleShadowOnly,
 } from "./actions";
@@ -41,10 +42,10 @@ export const maxDuration = 300;
 export default async function LearningsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ learningError?: string }>;
+  searchParams: Promise<{ learningError?: string; tasteRefreshed?: string }>;
 }) {
   await requireSession();
-  const { learningError } = await searchParams;
+  const { learningError, tasteRefreshed } = await searchParams;
 
   // Every list below is capped at the query level (not fetched-then-sliced) — found by
   // actually loading this page against the dev DB, where uncapped lists made it genuinely
@@ -367,6 +368,10 @@ export default async function LearningsPage({
             <p className="mt-3 text-xs text-[var(--color-text-faint)]">
               Recorded per artifact from each content item&apos;s own detail page.
             </p>
+            <form action={refreshTasteModelAction} className="mt-3 flex flex-wrap items-center gap-3">
+              <Button>Refresh taste model</Button>
+              {tasteRefreshed && <span className="text-[13px] text-[var(--color-text-muted)]">{tasteRefreshed}</span>}
+            </form>
           </Panel>
 
           {/* Autonomy */}

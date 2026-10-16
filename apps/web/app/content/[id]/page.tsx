@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
 import { RawTakeUploader } from "./RawTakeUploader";
@@ -29,6 +29,9 @@ import {
   runTranscribe,
   submitManualTranscript,
   runAutoRepair,
+  draftContractAction,
+  draftCreatorCardAction,
+  editScriptAction,
 } from "./actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
@@ -309,8 +312,18 @@ export default async function ContentDetailPage({
 
           {item.currentState === "SELECTED" && (
             <Panel className="panel-action">
-              <form action={submitContract} className="flex flex-col gap-4">
-                <SectionHeading eyebrow="Next Step" title="Production Contract" />
+              <SectionHeading eyebrow="Next Step" title="Production Contract" />
+              <p className="mb-3 text-[13px] text-[var(--color-text-muted)]">
+                The Production Director drafts the whole contract (tier, length, research depth,
+                factual risk, scope, what not to expand into) from the idea and this week&apos;s thesis.
+              </p>
+              <form action={draftContractAction}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button tone="primary">Draft &amp; issue contract</Button>
+              </form>
+              <details className="mt-4">
+                <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">Or fill it in by hand</summary>
+              <form action={submitContract} className="mt-3 flex flex-col gap-4">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <label className="block">
                   <span className="field-label">Purpose</span>
@@ -392,15 +405,33 @@ export default async function ContentDetailPage({
                   <span className="field-label">DO NOT expand into</span>
                   <textarea name="doNotExpandInto" required rows={2} className="field-input" />
                 </label>
-                <Button tone="primary">Issue contract &amp; move to CONTRACTED</Button>
+                <Button>Issue contract &amp; move to CONTRACTED</Button>
               </form>
+              </details>
             </Panel>
           )}
 
           {item.currentState === "SCRIPTED" && (
             <Panel className="panel-action">
-              <form action={submitCreatorCard} className="flex flex-col gap-4">
-                <SectionHeading eyebrow="Next Step" title="Creator Card" />
+              <SectionHeading eyebrow="Next Step" title="Creator Card" />
+              {latestScript && !isScriptVersionFilmable(latestScript).ok ? (
+                <p className="mb-3 text-[13px] text-[var(--color-rose-400)]">
+                  {(isScriptVersionFilmable(latestScript) as { reason: string }).reason}
+                </p>
+              ) : (
+                <>
+                  <p className="mb-3 text-[13px] text-[var(--color-text-muted)]">
+                    Drafts only what you need on set — hook, talking points, setup — from the fact-checked script.
+                  </p>
+                  <form action={draftCreatorCardAction}>
+                    <input type="hidden" name="contentItemId" value={item.id} />
+                    <Button tone="primary">Draft &amp; issue Creator Card</Button>
+                  </form>
+                </>
+              )}
+              <details className="mt-4">
+                <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">Or write it by hand</summary>
+              <form action={submitCreatorCard} className="mt-3 flex flex-col gap-4">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <label className="block">
                   <span className="field-label">Hook</span>
@@ -431,8 +462,9 @@ export default async function ContentDetailPage({
                   <span className="field-label">Notes (optional)</span>
                   <textarea name="notes" rows={2} className="field-input" />
                 </label>
-                <Button tone="primary">Issue Creator Card &amp; move to READY_TO_FILM</Button>
+                <Button>Issue Creator Card &amp; move to READY_TO_FILM</Button>
               </form>
+              </details>
             </Panel>
           )}
 
@@ -492,22 +524,80 @@ export default async function ContentDetailPage({
             </Panel>
           )}
 
-          {latestScript && (
-            <Panel>
-              <SectionHeading eyebrow="Script" title="Latest Draft" />
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{latestScript.spokenScript}</p>
-              <p className="mt-2 text-[13px] text-[var(--color-text-muted)]">
-                Target: {latestScript.targetRuntimeSeconds}s · Estimated speaking:{" "}
-                {latestScript.estimatedSpeakingRuntimeSeconds}s
-              </p>
-              {latestScript.brandGuardianReport != null && (
-                <p className="mt-1.5 text-[13px]">
-                  <span className="font-medium">Brand Guardian score: </span>
-                  {(latestScript.brandGuardianReport as { brandScore?: number }).brandScore ?? "n/a"}/100
+          {latestScript && (() => {
+            const gate = latestScript.scriptClaimsGateResult as
+              | { result?: string; blockReason?: string | null; requiredEdits?: string[] }
+              | null;
+            const brand = latestScript.brandGuardianReport as
+              | { brandScore?: number; voiceScore?: number; requiredChanges?: string[] }
+              | null;
+            const editable = item.currentState === "SCRIPTED" || item.currentState === "RESEARCH_BLOCKED";
+            return (
+              <Panel>
+                <SectionHeading
+                  eyebrow={`Script · v${item.scriptVersions.length}${latestScript.authorType === "HUMAN" ? " · your edit" : ""}`}
+                  title="Latest Draft"
+                />
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">{latestScript.spokenScript}</p>
+                <p className="mt-2 text-[13px] text-[var(--color-text-muted)]">
+                  Target: {latestScript.targetRuntimeSeconds}s · Estimated speaking:{" "}
+                  {latestScript.estimatedSpeakingRuntimeSeconds}s
                 </p>
-              )}
-            </Panel>
-          )}
+                <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px]">
+                  <span className="font-medium">Fact check of this script:</span>
+                  {gate?.result ? (
+                    <Badge tone={gate.result === "PASS" ? "emerald" : "rose"}>{gate.result}</Badge>
+                  ) : (
+                    <Badge tone="neutral">not run</Badge>
+                  )}
+                  {brand && (
+                    <span className="text-[var(--color-text-muted)]">
+                      · Brand {brand.brandScore ?? "n/a"} / Voice {brand.voiceScore ?? "n/a"}
+                    </span>
+                  )}
+                </p>
+                {gate?.result && gate.result !== "PASS" && (
+                  <p className="mt-1 text-[13px] text-[var(--color-rose-400)]">
+                    {gate.blockReason ?? (gate.requiredEdits ?? []).join("; ")}
+                  </p>
+                )}
+                {(brand?.requiredChanges ?? []).length > 0 && (
+                  <p className="mt-1 text-[13px] text-[var(--color-gold-400)]">
+                    Brand Guardian: {brand!.requiredChanges!.join("; ")}
+                  </p>
+                )}
+                {editable && (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">Edit the script in your own words</summary>
+                    <form action={editScriptAction} className="mt-2 flex flex-col gap-2">
+                      <input type="hidden" name="contentItemId" value={item.id} />
+                      <input type="hidden" name="baseScriptVersionId" value={latestScript.id} />
+                      <textarea name="spokenScript" rows={8} defaultValue={latestScript.spokenScript} className="field-input" />
+                      <input name="note" placeholder="What you changed (optional)" className="field-input" />
+                      <p className="text-[12px] text-[var(--color-text-faint)]">
+                        Saved as a new version, then re-checked by the Claims Gate and Brand Guardian before it can be filmed.
+                      </p>
+                      <div><Button tone="primary">Save &amp; re-check</Button></div>
+                    </form>
+                  </details>
+                )}
+                {item.scriptVersions.length > 1 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">History ({item.scriptVersions.length} versions)</summary>
+                    <ol className="mt-2 flex flex-col gap-1 text-[12px] text-[var(--color-text-muted)]">
+                      {item.scriptVersions.map((v, i) => (
+                        <li key={v.id}>
+                          v{item.scriptVersions.length - i} · {v.authorType === "HUMAN" ? "you" : "AI"} ·{" "}
+                          {(v.scriptClaimsGateResult as { result?: string } | null)?.result ?? "unchecked"}
+                          {v.revisionNote ? ` — ${v.revisionNote}` : ""} ({v.createdAt.toLocaleString()})
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+              </Panel>
+            );
+          })()}
 
           {latestTakeSelection && (
             <Panel>

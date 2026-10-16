@@ -16,6 +16,9 @@ import {
   recordTranscript,
   parseTranscriptWords,
   getLatestScriptVersion,
+  getLatestResearchPacket,
+  createHumanScriptVersion,
+  recordScriptRegate,
   getProductionContract,
   setScheduleEntry,
   applyPipelineResult,
@@ -29,6 +32,11 @@ import {
 } from "@chris/domain";
 import {
   runResearchToScriptPipeline,
+  toPipelineResultInput,
+  regateEditedScript,
+  researchPacketFromRow,
+  draftAndIssueProductionContract,
+  draftAndIssueCreatorCard,
   runTakeSelectorAgent,
   runEditPlannerAgent,
   runPlatformPackagingAgent,
@@ -215,6 +223,7 @@ export async function submitSchedule(formData: FormData) {
 export async function runPipeline(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
+  let notice: string | null = null;
 
   try {
     const contract = await getProductionContract(prisma, contentItemId);
@@ -223,30 +232,25 @@ export async function runPipeline(formData: FormData) {
     }
 
     const brandContext = await getBrandContextText(prisma);
-    const pipelineResult = await runResearchToScriptPipeline(getModelProvider(), {
-      contract,
-      brandContext,
-    });
-
-    await applyPipelineResult(
-      prisma,
-      contentItemId,
-      {
-        status: pipelineResult.status,
-        research: pipelineResult.research,
-        claimsGateResult:
-          "claimsGateResult" in pipelineResult ? pipelineResult.claimsGateResult : undefined,
-        script: "script" in pipelineResult ? pipelineResult.script : undefined,
-        brandGuardianReport:
-          "brandGuardianReport" in pipelineResult ? pipelineResult.brandGuardianReport : undefined,
-      },
-      { actorId: session.user!.id! },
+    const pipelineResult = await runResearchToScriptPipeline(
+      getModelProvider(),
+      { contract, brandContext },
+      { contentItemId },
     );
+    await applyPipelineResult(prisma, contentItemId, toPipelineResultInput(pipelineResult), {
+      actorId: session.user!.id!,
+    });
+    if (pipelineResult.status === "SCRIPT_BLOCKED") {
+      notice = `Claims Gate blocked the script: ${pipelineResult.blockReason ?? "see the script's gate result below"}`;
+    } else if (pipelineResult.status === "READY" && pipelineResult.brandNeedsHumanReview) {
+      notice = "Script is fact-checked, but Brand Guardian still has concerns — review it below before filming.";
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown pipeline error";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
   }
 
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
   redirect(`/content/${contentItemId}`);
 }
 
@@ -777,6 +781,89 @@ export async function runAutoRepair(formData: FormData) {
     if (result.stoppedBecause) notice = `Auto-repair stopped at ${result.finalState}: ${result.stoppedBecause}`;
   } catch (err) {
     notice = err instanceof Error ? err.message : "Unknown auto-repair error";
+  }
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
+  redirect(`/content/${contentItemId}`);
+}
+
+/** One click: the Production Director drafts the full Production Contract from the idea, the
+ * week's thesis and its portfolio allocation, and issues it (SELECTED -> CONTRACTED). The
+ * manual form stays available for anything Chris wants to set by hand. */
+export async function draftContractAction(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  let notice: string | null = null;
+  try {
+    await draftAndIssueProductionContract(prisma, getModelProvider(), {
+      contentItemId,
+      actorId: session.user!.id!,
+      triggeredByHuman: true,
+    });
+  } catch (err) {
+    notice = err instanceof Error ? err.message : "Unknown Production Director error";
+  }
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
+  redirect(`/content/${contentItemId}`);
+}
+
+/** One click: drafts the Creator Card (hook, talking points, setup) from the fact-checked
+ * script and issues it (SCRIPTED -> READY_TO_FILM). Refused by the domain if the latest script
+ * hasn't cleared the script-level Claims Gate. */
+export async function draftCreatorCardAction(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  let notice: string | null = null;
+  try {
+    await draftAndIssueCreatorCard(prisma, getModelProvider(), {
+      contentItemId,
+      actorId: session.user!.id!,
+      triggeredByHuman: true,
+    });
+  } catch (err) {
+    notice = err instanceof Error ? err.message : "Unknown Production Director error";
+  }
+  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
+  redirect(`/content/${contentItemId}`);
+}
+
+/** Chris edits the script in his own words: saved as a NEW ScriptVersion (history kept), then
+ * re-run through the Claims Gate (against the same research) and Brand Guardian — a hand edit
+ * can't introduce an unchecked number. A PASS on a RESEARCH_BLOCKED item un-blocks it. */
+export async function editScriptAction(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  let notice: string | null = null;
+  try {
+    const spokenScript = str(formData, "spokenScript");
+    if (!spokenScript) throw new Error("The script can't be empty.");
+    const version = await createHumanScriptVersion(prisma, {
+      contentItemId,
+      baseScriptVersionId: str(formData, "baseScriptVersionId"),
+      spokenScript,
+      note: str(formData, "note") || undefined,
+      actorId: session.user!.id!,
+    });
+    const packet = await getLatestResearchPacket(prisma, contentItemId);
+    if (!packet) throw new Error("No research packet to check the edited script against.");
+    const { scriptClaimsGateResult, brandGuardianReport } = await regateEditedScript(getModelProvider(), {
+      research: researchPacketFromRow(packet),
+      spokenScript,
+      brandContext: await getBrandContextText(prisma),
+      contentItemId,
+    });
+    await recordScriptRegate(prisma, {
+      scriptVersionId: version.id,
+      scriptClaimsGateResult,
+      brandGuardianReport,
+      actorId: session.user!.id!,
+    });
+    if (scriptClaimsGateResult.result !== "PASS") {
+      notice = `Your edit was saved, but the Claims Gate says ${scriptClaimsGateResult.result}: ${
+        scriptClaimsGateResult.blockReason ?? scriptClaimsGateResult.requiredEdits.join("; ")
+      }`;
+    }
+  } catch (err) {
+    notice = err instanceof Error ? err.message : "Unknown script edit error";
   }
   if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
   redirect(`/content/${contentItemId}`);

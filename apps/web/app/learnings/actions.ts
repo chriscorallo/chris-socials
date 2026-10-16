@@ -26,6 +26,7 @@ import {
   runExperimentAgent,
   runWeeklyReviewAgent,
   getBrandContextText,
+  refreshTasteModel,
 } from "@chris/agents";
 import { requireSession } from "../../lib/session";
 import { getModelProvider } from "../../lib/model-provider";
@@ -329,4 +330,19 @@ export async function toggleShadowOnly(formData: FormData) {
     actorType: "HUMAN",
   });
   redirect("/learnings");
+}
+
+/** Runs the Taste Learner over accumulated feedback, per artifact type (spec §7 Human Taste
+ * Model) — interpretations are stored alongside the raw feedback, never replacing it, and a
+ * single instance is never turned into a universal rule (TASTE_LEARNER.md). */
+export async function refreshTasteModelAction() {
+  const session = await requireSession();
+  let summary = "";
+  try {
+    const results = await refreshTasteModel(prisma, getModelProvider(), { actorId: session.user!.id! });
+    summary = results.map((r) => `${r.artifactType}: ${r.status}${r.error ? ` (${r.error})` : ""}`).join(" · ") || "No feedback recorded yet.";
+  } catch (err) {
+    redirect(`/learnings?learningError=${encodeURIComponent(err instanceof Error ? err.message : "Taste refresh failed")}`);
+  }
+  redirect(`/learnings?tasteRefreshed=${encodeURIComponent(summary)}`);
 }
