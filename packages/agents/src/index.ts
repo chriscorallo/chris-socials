@@ -32,3 +32,5 @@ export * from "./experiment-agent";
 export * from "./weekly-review-agent";
 export * from "./retrieval-config";
 export * from "./script-regate";
+export * from "./production-director-agent";
+export * from "./taste-refresh";

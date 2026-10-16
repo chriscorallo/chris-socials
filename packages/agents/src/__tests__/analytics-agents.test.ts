@@ -77,7 +77,7 @@ describe("Audience Intelligence agent (mock provider — zero cost)", () => {
     { platform: "INSTAGRAM" as const, authorHandle: "@b", text: "What about Roth accounts specifically?" },
   ];
 
-  it("returns a schema-valid result and routes to LOW", async () => {
+  it("returns a schema-valid result and routes to MEDIUM (spec §16: audience intelligence is MEDIUM)", async () => {
     const provider = new MockModelProvider(() => ({
       insights: [
         {
@@ -92,7 +92,7 @@ describe("Audience Intelligence agent (mock provider — zero cost)", () => {
 
     const result = await runAudienceIntelligenceAgent(provider, { comments, brandContext: "" });
     expect(result.insights).toHaveLength(1);
-    expect(provider.calls[0]?.modelClass).toBe("LOW");
+    expect(provider.calls[0]?.modelClass).toBe("MEDIUM");
     expect(provider.calls[0]?.promptId).toBe("AUDIENCE_INTELLIGENCE");
   });
 

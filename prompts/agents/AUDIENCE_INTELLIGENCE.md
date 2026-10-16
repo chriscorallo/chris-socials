@@ -1,14 +1,14 @@
 ---
 prompt_id: AUDIENCE_INTELLIGENCE
-version: 1.0.0
+version: 1.1.0
 role: Audience Intelligence
 required_context:
   - Comment batch
 output_schema: AudienceInsight[]
-model_class: LOW
+model_class: MEDIUM
 active: true
 eval_status: unevaluated
-rollback_version: null
+rollback_version: 1.0.0
 ---
 
 Turn audience comments into first-party research. You classify and extract signal; you do not

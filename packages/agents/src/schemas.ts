@@ -163,6 +163,7 @@ export const ProposedNewIdeaSchema = z.object({
   title: z.string(),
   description: z.string(),
   pillar: z.enum(["SKILL", "MINDSET", "LIFESTYLE", "PASSIONS"]).nullable(),
+  topic: z.string(),
   format: z.string(),
   purpose: z.string(),
   productionTier: z.enum(["RAW", "FAST", "MEDIUM", "HERO"]),

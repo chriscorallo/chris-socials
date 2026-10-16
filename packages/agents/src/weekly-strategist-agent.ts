@@ -16,19 +16,29 @@ export class PortfolioAllocationInvalidIdsError extends Error {
   }
 }
 
-function buildUserPrompt(
-  thesis: WeeklyProgrammingThesisOutput,
-  backlog: BacklogItemSummary[],
-  editingBudgetMinutesPerWeek: number,
-  brandContext: string,
-): string {
-  return `${brandContext}
+/** Spec §9 step 3: "build ~30 videos as one coherent portfolio." */
+export const DEFAULT_TARGET_PORTFOLIO_SIZE = 30;
 
-## This Week's Programming Thesis
+interface WeeklyStrategistInput {
+  thesis: WeeklyProgrammingThesisOutput;
+  backlog: BacklogItemSummary[];
+  editingBudgetMinutesPerWeek: number;
+  brandContext: string;
+  /** packages/domain buildStrategicContext(prisma) — optional for backward compatibility. */
+  strategicContext?: string;
+  /** Target number of videos for the week (default 30). */
+  targetPortfolioSize?: number;
+}
+
+function buildUserPrompt(input: WeeklyStrategistInput): string {
+  const { thesis, backlog } = input;
+  const target = input.targetPortfolioSize ?? DEFAULT_TARGET_PORTFOLIO_SIZE;
+  return `## This Week's Programming Thesis
 
 ${thesis.thesis}
 
 Primary objectives: ${thesis.primaryObjectives.join("; ") || "(none stated)"}
+Active experiments: ${thesis.activeExperiments.join("; ") || "(none stated)"}
 Areas to exploit: ${thesis.areasToExploit.join("; ") || "(none stated)"}
 Areas to explore: ${thesis.areasToExplore.join("; ") || "(none stated)"}
 Areas to reduce: ${thesis.areasToReduce.join("; ") || "(none stated)"}
@@ -37,11 +47,19 @@ Areas to reduce: ${thesis.areasToReduce.join("; ") || "(none stated)"}
 
 ${formatBacklog(backlog)}
 
-## Production Constraint
+${input.strategicContext ? `${input.strategicContext}\n\n` : ""}## Production Constraint
 
-Human editing budget: approximately ${editingBudgetMinutesPerWeek} minutes/week total (spec
+Human editing budget: approximately ${input.editingBudgetMinutesPerWeek} minutes/week total (spec
 default is ~5 hours/week unless Chris has explicitly changed it) — do not select more than
 the week can realistically produce.
+
+## Portfolio target
+
+Aim for a coherent portfolio of about ${target} videos (fewer if the editing budget can't
+support it). The backlog has ${backlog.length} candidate(s). If the selected existing ideas
+fall short of the target or leave a real gap (pillar, funnel role, format, experiment), propose
+new ideas in proposedNewIdeas to close it — they are proposals for Chris to approve, never
+auto-created. Propose nothing when the backlog already covers the week well.
 
 ## Task
 
@@ -53,23 +71,14 @@ not force variety merely for its own sake if evidence supports concentration.`;
 
 export async function runWeeklyStrategistAgent(
   provider: ModelProvider,
-  input: {
-    thesis: WeeklyProgrammingThesisOutput;
-    backlog: BacklogItemSummary[];
-    editingBudgetMinutesPerWeek: number;
-    brandContext: string;
-  },
+  input: WeeklyStrategistInput,
 ): Promise<PortfolioAllocationResult> {
   const { systemPrompt, modelClass } = buildSystemPrompt("WEEKLY_STRATEGIST");
   const result = await provider.completeStructured({
     modelClass,
     systemPrompt,
-    userPrompt: buildUserPrompt(
-      input.thesis,
-      input.backlog,
-      input.editingBudgetMinutesPerWeek,
-      input.brandContext,
-    ),
+    stableContext: input.brandContext || undefined,
+    userPrompt: buildUserPrompt(input),
     schema: PortfolioAllocationResultSchema,
     promptId: "WEEKLY_STRATEGIST",
   });
