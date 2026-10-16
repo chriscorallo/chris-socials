@@ -160,6 +160,16 @@ export function fitText(input: {
   return { lines, fontSize, blockWidth: Math.max(0, ...lineWidths), lineWidths };
 }
 
+/** Replaces C0 control characters and DEL with a space. */
+export function replaceControlChars(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    out += code < 0x20 || code === 0x7f ? " " : ch;
+  }
+  return out;
+}
+
 /**
  * Normalizes untrusted overlay text for rendering: strips control characters (a raw newline
  * or tab would otherwise become a stray glyph/line in drawtext), collapses whitespace. Every
@@ -167,8 +177,7 @@ export function fitText(input: {
  * renderer passes text via `textfile=` + `expansion=none`, so nothing needs escaping.
  */
 export function normalizeOverlayText(text: string): string {
-  return text
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+  return replaceControlChars(text)
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 300);

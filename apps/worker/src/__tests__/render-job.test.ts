@@ -11,7 +11,10 @@ import {
   analyzeMediaAsset,
   recordTakeSelection,
   recordEditPlan,
+  recordTranscript,
 } from "@chris/domain";
+import { EditPlanOutputSchema } from "@chris/agents";
+import { mapEditPlanToRenderInstructions, listUnexecutedPlanInstructions } from "../render-job";
 import { FFMPEG_PATH, LocalFsStorageAdapter, probeMedia } from "@chris/media";
 import { renderContentItem } from "../render-job";
 
@@ -25,7 +28,6 @@ import { renderContentItem } from "../render-job";
  * provider) in packages/agents; this test proves the render pipeline actually consumes a
  * real EditPlan correctly, which is the part that couldn't be proven there.
  */
-const DEV_FONT_PATH = "/System/Library/Fonts/Supplemental/Arial.ttf";
 
 function runFfmpegRaw(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -181,7 +183,7 @@ describe("renderContentItem (real ffmpeg, real storage, real state machine)", ()
         prisma,
         storage,
         item.id,
-        { fontPath: DEV_FONT_PATH },
+        {},
         { actorId: "chris" },
       );
 
@@ -239,7 +241,7 @@ describe("renderContentItem (real ffmpeg, real storage, real state machine)", ()
         prisma,
         storage,
         item.id,
-        { fontPath: DEV_FONT_PATH },
+        {},
         { actorId: "chris" },
       );
 
@@ -274,7 +276,7 @@ describe("renderContentItem (real ffmpeg, real storage, real state machine)", ()
         prisma,
         storage,
         item.id,
-        { fontPath: DEV_FONT_PATH },
+        {},
         { actorId: "chris" },
       );
 
@@ -284,4 +286,102 @@ describe("renderContentItem (real ffmpeg, real storage, real state machine)", ()
     },
     30000,
   );
+
+  it(
+    "burns in captions from the take's word timings, executes punch-ins, and records unexecuted plan instructions",
+    async () => {
+      const { item, asset, editPlan } = await makeEditPlannedItemWithRealMedia();
+      await recordTranscript(
+        prisma,
+        {
+          mediaAssetId: asset.id,
+          text: "This is a real take about a synthetic test pattern.",
+          words: [
+            { word: "This", start: 1.2, end: 1.4 },
+            { word: "is", start: 1.4, end: 1.5 },
+            { word: "a", start: 1.5, end: 1.6 },
+            { word: "real", start: 1.6, end: 1.9 },
+            { word: "take.", start: 1.9, end: 2.3 },
+            { word: "About", start: 3.0, end: 3.3 },
+            { word: "a", start: 3.3, end: 3.4 },
+            { word: "pattern.", start: 3.4, end: 3.9 },
+          ],
+          source: "LOCAL_WHISPER",
+        },
+        { actorId: "job" },
+      );
+      const plan = editPlan.plan as Record<string, unknown>;
+      await prisma.editPlan.update({
+        where: { id: editPlan.id },
+        data: {
+          plan: {
+            ...plan,
+            captions: { enabled: true, style: "BOLD_HIGHLIGHT", position: "LOWER" },
+            punchIns: [{ startSeconds: 1, endSeconds: 2, zoom: 1.2, focus: "UPPER_THIRD" }],
+            bRollRequests: ["city skyline at dusk"],
+          },
+        },
+      });
+
+      const result = await renderContentItem(prisma, storage, item.id, {}, { actorId: "chris" });
+      expect(result.status).toBe("SUCCESS");
+      expect(result.unexecutedInstructions).toEqual([
+        'B-roll request not executed (no asset library): "city skyline at dusk"',
+      ]);
+      const report = result.technicalQCReport as {
+        overall: string;
+        unexecutedInstructions: string[];
+        captions: { rendered: number };
+      };
+      expect(report.overall).toBe("PASS");
+      expect(report.captions.rendered).toBeGreaterThanOrEqual(2);
+      const row = await prisma.render.findFirst({
+        where: { contentItemId: item.id },
+        orderBy: { createdAt: "desc" },
+      });
+      expect((row?.technicalQCReport as { unexecutedInstructions: string[] }).unexecutedInstructions).toHaveLength(1);
+    },
+    60000,
+  );
+});
+
+describe("mapEditPlanToRenderInstructions (pure)", () => {
+  const legacy = EditPlanOutputSchema.parse({
+    segments: [{ startSeconds: 0, endSeconds: 2 }],
+    targetDimensions: { width: 1080, height: 1920 },
+    textOverlays: [{ text: "Hi", startSeconds: 0, endSeconds: 1, position: "TOP", style: "NUMBER_CALLOUT" }],
+    normalizeAudio: true,
+    bRollRequests: [],
+    musicTrack: "lofi",
+    sfxEvents: [{ atSeconds: 1, sfx: "whoosh" }],
+    transitions: [{ atSeconds: 1, type: "crossfade" }],
+    targetDurationSeconds: 2,
+    productionTier: "FAST",
+    doNothingElse: false,
+    rationale: "legacy row without captions/punchIns",
+  });
+
+  it("defaults captions on (CLEAN, LOWER) for a legacy plan when word timings exist, off when they don't", () => {
+    const words = [{ word: "Hi", start: 0, end: 0.4 }];
+    const withWords = mapEditPlanToRenderInstructions(legacy, "/in.mp4", "/out.mp4", undefined, words);
+    expect(withWords.captions?.config).toEqual({ enabled: true, style: "CLEAN", position: "LOWER" });
+    expect(withWords.textOverlays[0]!.style).toBe("NUMBER_CALLOUT");
+    expect(withWords.fontPath).toBeUndefined();
+    const without = mapEditPlanToRenderInstructions(legacy, "/in.mp4", "/out.mp4", undefined, null);
+    expect(without.captions).toBeNull();
+  });
+
+  it("respects an explicit captions-off decision", () => {
+    const off = { ...legacy, captions: { enabled: false, style: "CLEAN" as const, position: "LOWER" as const } };
+    const words = [{ word: "Hi", start: 0, end: 0.4 }];
+    expect(mapEditPlanToRenderInstructions(off, "/in", "/out", undefined, words).captions).toBeNull();
+  });
+
+  it("lists music/SFX/transitions as unexecuted rather than dropping them", () => {
+    expect(listUnexecutedPlanInstructions(legacy)).toEqual([
+      'Music track not executed (no asset library): "lofi"',
+      'SFX not executed (no asset library): "whoosh" at 1s',
+      'Transition not executed (all cuts are hard cuts): "crossfade" at 1s',
+    ]);
+  });
 });

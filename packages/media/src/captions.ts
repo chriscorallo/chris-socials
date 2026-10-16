@@ -1,7 +1,7 @@
 import { BUNDLED_FONT_FAMILIES, resolveBundledFontPath, type BundledFontWeight } from "./fonts";
 import { ACCENT_COLOR_HEX, canvasScale, type OverlayLayout } from "./overlay-layout";
 import { getSafeArea, rectInsideSafeArea, rectsIntersect, type Rect } from "./safe-zones";
-import { assFontSizeToEmPixels, measureTextWidth, wrapText } from "./text-layout";
+import { assFontSizeToEmPixels, measureTextWidth, replaceControlChars, wrapText } from "./text-layout";
 
 /**
  * Word-level burned-in captions. Pipeline (all deterministic, no model calls):
@@ -357,8 +357,7 @@ function padRect(r: Rect, pad: number): Rect {
  * documented tiny fidelity loss for characters that essentially never occur in speech.
  */
 export function sanitizeAssText(text: string): string {
-  return text
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+  return replaceControlChars(text)
     .replace(/\\/g, "/")
     .replace(/\{/g, "(")
     .replace(/\}/g, ")");

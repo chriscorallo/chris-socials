@@ -75,9 +75,6 @@ export interface SnapOptions {
   /** Breathing room kept before the first kept word / after the last kept word. */
   preRollSeconds?: number;
   postRollSeconds?: number;
-  /** A cut point further than this from any word boundary (and not inside a word) is left
-   * alone — it's already in silence. */
-  maxSnapSeconds?: number;
 }
 
 export interface SnapResult {
@@ -86,11 +83,11 @@ export interface SnapResult {
 }
 
 /**
- * Snaps model-chosen cut points onto real speech boundaries. A segment start moves to just
- * before the nearest word onset; a segment end moves to just after the nearest word offset;
- * a cut that lands inside a word always moves to that word's edge (a clipped syllable is
- * the most obvious "this was edited by a machine" tell). Pre/post-roll never reaches into
- * the neighbouring word.
+ * Snaps model-chosen cut points onto real speech boundaries. A cut that lands inside a word
+ * moves to that word's nearer edge (a clipped syllable is the most obvious "this was edited
+ * by a machine" tell); a cut in silence but within the pre/post-roll of a word moves out to
+ * give the word its breath; a cut comfortably inside a pause is left exactly where the
+ * planner put it. Pre/post-roll never reaches into the neighbouring word.
  */
 export function snapSegmentsToWordBoundaries(
   segments: Array<{ startSeconds: number; endSeconds: number }>,
@@ -99,7 +96,6 @@ export function snapSegmentsToWordBoundaries(
 ): SnapResult {
   const pre = options.preRollSeconds ?? 0.08;
   const post = options.postRollSeconds ?? 0.15;
-  const maxSnap = options.maxSnapSeconds ?? 0.75;
   const duration = options.sourceDurationSeconds ?? Number.POSITIVE_INFINITY;
   const ws = [...words].filter((w) => w.end > w.start).sort((a, b) => a.start - b.start);
   const adjustments: string[] = [];
@@ -113,16 +109,10 @@ export function snapSegmentsToWordBoundaries(
       // Nearer edge: keep the whole word (its start) or drop it (next word's start).
       idx = t - w.start <= w.end - t || inside === ws.length - 1 ? inside : inside + 1;
     } else {
-      idx = -1;
-      let best = Infinity;
-      ws.forEach((w, i) => {
-        const d = Math.abs(w.start - t);
-        if (d < best) {
-          best = d;
-          idx = i;
-        }
-      });
-      if (best > maxSnap) return t;
+      // In silence: only move it if it's so close to the next word's onset that the attack
+      // would be clipped; a cut comfortably in a pause is already correct.
+      idx = ws.findIndex((w) => w.start >= t);
+      if (idx < 0 || ws[idx]!.start - t >= pre) return t;
     }
     const w = ws[idx]!;
     const prevEnd = idx > 0 ? ws[idx - 1]!.end : 0;
@@ -136,16 +126,13 @@ export function snapSegmentsToWordBoundaries(
       const w = ws[inside]!;
       idx = w.end - t <= t - w.start || inside === 0 ? inside : inside - 1;
     } else {
+      // In silence: only move it if it's so close to the previous word's offset that the
+      // word's tail would be clipped.
       idx = -1;
-      let best = Infinity;
       ws.forEach((w, i) => {
-        const d = Math.abs(w.end - t);
-        if (d < best) {
-          best = d;
-          idx = i;
-        }
+        if (w.end <= t) idx = i;
       });
-      if (best > maxSnap) return Math.min(t, duration);
+      if (idx < 0 || t - ws[idx]!.end >= post) return Math.min(t, duration);
     }
     const w = ws[idx]!;
     const nextStart = idx < ws.length - 1 ? ws[idx + 1]!.start : duration;
