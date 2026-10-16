@@ -5,30 +5,49 @@ import {
   getLatestEditPlan,
   startRendering,
   recordRenderAttempt,
+  parseTranscriptWords,
   type PrismaClient,
 } from "@chris/domain";
 import { EditPlanOutputSchema, type EditPlanOutput } from "@chris/agents";
-import { renderVideo, runTechnicalQC, type RenderInstructions } from "@chris/media";
+import {
+  renderVideo,
+  runTechnicalQC,
+  DEFAULT_CAPTIONS_CONFIG,
+  type RenderInstructions,
+  type TranscriptWord,
+} from "@chris/media";
 import type { StorageAdapter } from "@chris/media";
 
 /**
- * The one place that maps packages/agents' rich EditPlanOutput onto packages/media's leaner
- * RenderInstructions. Only the fields the renderer currently executes are used — see
- * /docs/DECISIONS.md for exactly which EditPlan capabilities are implemented vs. gracefully
- * skipped (B-roll, music/SFX, transitions).
- *
- * Known simplification: EditPlanOutput's textOverlays carry a `style`
- * (HEADLINE/CAPTION/NUMBER_CALLOUT/LOWER_THIRD) meant to drive different visual treatment
- * per style; the renderer doesn't yet differentiate — every overlay renders with the same
- * plain white-on-black-box treatment regardless of style. Worth real styling once there's a
- * BrandAsset-backed typography preset to apply.
+ * EditPlan fields the renderer does not execute yet (no approved asset library / transition
+ * engine). Listed — never silently dropped — so the gap is visible on the Render row and in
+ * the UI. Pure.
+ */
+export function listUnexecutedPlanInstructions(plan: EditPlanOutput): string[] {
+  const out: string[] = [];
+  for (const b of plan.bRollRequests) out.push(`B-roll request not executed (no asset library): "${b}"`);
+  if (plan.musicTrack) out.push(`Music track not executed (no asset library): "${plan.musicTrack}"`);
+  for (const s of plan.sfxEvents) out.push(`SFX not executed (no asset library): "${s.sfx}" at ${s.atSeconds}s`);
+  for (const t of plan.transitions) {
+    out.push(`Transition not executed (all cuts are hard cuts): "${t.type}" at ${t.atSeconds}s`);
+  }
+  return out;
+}
+
+/**
+ * The one place that maps packages/agents' rich EditPlanOutput onto packages/media's
+ * RenderInstructions. Captions: the plan's explicit `captions` config wins; a plan without
+ * one (incl. EditPlans persisted before captions existed) gets the default — on, CLEAN,
+ * LOWER — whenever the take has word timings.
  */
 export function mapEditPlanToRenderInstructions(
   editPlan: EditPlanOutput,
   sourcePath: string,
   outputPath: string,
-  fontPath: string,
+  fontPath?: string,
+  sourceWords?: TranscriptWord[] | null,
 ): RenderInstructions {
+  const captionsConfig = editPlan.captions ?? DEFAULT_CAPTIONS_CONFIG;
   return {
     sourcePath,
     outputPath,
@@ -39,9 +58,17 @@ export function mapEditPlanToRenderInstructions(
       startSeconds: o.startSeconds,
       endSeconds: o.endSeconds,
       position: o.position,
+      style: o.style,
     })),
     normalizeAudio: editPlan.normalizeAudio,
-    fontPath,
+    fontPath: fontPath || undefined,
+    captions:
+      captionsConfig.enabled && (sourceWords?.length ?? 0) > 0
+        ? { config: captionsConfig, sourceWords: sourceWords! }
+        : editPlan.captions?.enabled
+          ? { config: captionsConfig, sourceWords: [] } // renderer reports "no word timings"
+          : null,
+    punchIns: editPlan.punchIns,
   };
 }
 
@@ -50,6 +77,8 @@ export interface RenderJobResult {
   outputStorageKey?: string;
   technicalQCReport?: unknown;
   errorMessage?: string;
+  /** EditPlan instructions present but not executed (also stored inside technicalQCReport). */
+  unexecutedInstructions?: string[];
 }
 
 /**
@@ -57,12 +86,16 @@ export interface RenderJobResult {
  * fetch the latest EditPlan + its selected take, download the source, render, QC, upload,
  * persist. This is the process apps/worker exists for — see /docs/DECISIONS.md ("Phase 3
  * renderer: ffmpeg-static + ffprobe-static, hosted in apps/worker").
+ *
+ * `fontPath` is optional: omitted, the renderer uses the bundled Inter weights per overlay
+ * style (packages/media/assets/fonts). If given it must exist — the render fails loudly
+ * otherwise rather than letting ffmpeg substitute a random system font.
  */
 export async function renderContentItem(
   db: PrismaClient,
   storage: StorageAdapter,
   contentItemId: string,
-  options: { fontPath: string; targetVideoCodec?: string; targetAudioCodec?: string },
+  options: { fontPath?: string; targetVideoCodec?: string; targetAudioCodec?: string } = {},
   actor: { actorId: string },
 ): Promise<RenderJobResult> {
   const editPlanRow = await getLatestEditPlan(db, contentItemId);
@@ -78,12 +111,12 @@ export async function renderContentItem(
   });
 
   const plan = EditPlanOutputSchema.parse(editPlanRow.plan);
+  const sourceWords = parseTranscriptWords(sourceAsset.transcriptWords);
 
   // startRendering only accepts EDIT_PLANNED (the state table has no QC_REPAIR -> EDITING
   // or EDITING -> EDITING transition — see /docs/STATE_MACHINE.md). A repair re-render from
   // QC_REPAIR, or a retry after a technical FAILED attempt that left the item in EDITING
-  // (see render-record.ts), both skip straight to the render attempt instead. Found while
-  // wiring the UI's "Render again" action, which is reachable from all three states.
+  // (see render-record.ts), both skip straight to the render attempt instead.
   const current = await db.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
   if (current.currentState === "EDIT_PLANNED") {
     await startRendering(db, contentItemId, actor);
@@ -102,6 +135,7 @@ export async function renderContentItem(
       sourcePath,
       outputPath,
       options.fontPath,
+      sourceWords,
     );
 
     let renderResult: Awaited<ReturnType<typeof renderVideo>>;
@@ -117,6 +151,11 @@ export async function renderContentItem(
       return { status: "FAILED", errorMessage };
     }
 
+    const unexecutedInstructions = [
+      ...listUnexecutedPlanInstructions(plan),
+      ...renderResult.unexecutedInstructions,
+    ];
+
     const qc = await runTechnicalQC(outputPath, {
       targetWidth: plan.targetDimensions?.width,
       targetHeight: plan.targetDimensions?.height,
@@ -125,6 +164,18 @@ export async function renderContentItem(
       requiredVideoCodec: options.targetVideoCodec ?? "h264",
       requiredAudioCodec: options.targetAudioCodec ?? "aac",
     });
+    // Stored alongside the QC report (Render.technicalQCReport is Json) so what the renderer
+    // did NOT do is visible on the Render row without a schema change. `overall`/`checks`
+    // keep their shape; these are additive keys.
+    const storedReport = {
+      ...qc,
+      unexecutedInstructions,
+      captions: {
+        rendered: renderResult.captionLayout?.layouts.length ?? 0,
+        relocatedAroundOverlays:
+          renderResult.captionLayout?.layouts.filter((l) => l.relocated).length ?? 0,
+      },
+    };
 
     const outputBytes = await readFile(outputPath);
     const outputStorageKey = `renders/${contentItemId}/${editPlanRow.id}-${Date.now()}.mp4`;
@@ -141,12 +192,17 @@ export async function renderContentItem(
         width: renderResult.width,
         height: renderResult.height,
         fileSizeBytes: outputBytes.byteLength,
-        technicalQCReport: qc,
+        technicalQCReport: storedReport,
       },
       actor,
     );
 
-    return { status: "SUCCESS", outputStorageKey, technicalQCReport: qc };
+    return {
+      status: "SUCCESS",
+      outputStorageKey,
+      technicalQCReport: storedReport,
+      unexecutedInstructions,
+    };
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }

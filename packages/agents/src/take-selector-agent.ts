@@ -1,11 +1,53 @@
 import type { ModelProvider } from "./model-provider";
 import { buildSystemPrompt } from "./prompt-context";
 import { TakeSelectionResultSchema, type TakeSelectionResult } from "./schemas";
+import { buildTranscriptPhrases, formatTimestampedTranscript } from "./transcript-timing";
+import type { TranscriptWord } from "./transcription-provider";
 
 export interface CandidateTake {
   mediaAssetId: string;
   transcript: string | null;
   durationSeconds: number | null;
+  /** MediaAsset.transcriptWords when available — lets the selector see real pacing, dead
+   * air and restarts instead of guessing from plain text. */
+  words?: TranscriptWord[] | null;
+}
+
+/** Deterministic delivery stats from word timings (no model call). */
+export function summarizeDelivery(words: TranscriptWord[], durationSeconds: number | null) {
+  const sorted = [...words].sort((a, b) => a.start - b.start);
+  if (sorted.length === 0) return null;
+  const speechStart = sorted[0]!.start;
+  const speechEnd = sorted[sorted.length - 1]!.end;
+  const spoken = Math.max(0.001, speechEnd - speechStart);
+  let longestPause = 0;
+  let pausesOver1s = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i]!.start - sorted[i - 1]!.end;
+    longestPause = Math.max(longestPause, gap);
+    if (gap > 1) pausesOver1s++;
+  }
+  return {
+    wordsPerMinute: Math.round((sorted.length / spoken) * 60),
+    leadingSilenceSeconds: Math.round(speechStart * 100) / 100,
+    trailingSilenceSeconds:
+      durationSeconds != null ? Math.round(Math.max(0, durationSeconds - speechEnd) * 100) / 100 : null,
+    longestPauseSeconds: Math.round(longestPause * 100) / 100,
+    pausesOver1s,
+  };
+}
+
+function describeTake(t: CandidateTake): string {
+  if (t.words && t.words.length > 0) {
+    const stats = summarizeDelivery(t.words, t.durationSeconds);
+    const phrases = formatTimestampedTranscript(buildTranscriptPhrases(t.words));
+    return `Delivery (measured): ${stats?.wordsPerMinute} wpm, leading silence ${stats?.leadingSilenceSeconds}s, trailing silence ${
+      stats?.trailingSilenceSeconds ?? "unknown"
+    }s, longest pause ${stats?.longestPauseSeconds}s, pauses >1s: ${stats?.pausesOver1s}
+Timestamped transcript (seconds):
+${phrases}`;
+  }
+  return `Transcript: ${t.transcript ?? "(no transcript available)"}`;
 }
 
 export class TakeSelectionInvalidIdError extends Error {
@@ -19,9 +61,7 @@ function buildUserPrompt(takes: CandidateTake[], brandContext: string): string {
   const list = takes
     .map(
       (t, i) =>
-        `Take ${i + 1} [${t.mediaAssetId}] — duration ${t.durationSeconds ?? "unknown"}s\nTranscript: ${
-          t.transcript ?? "(no transcript available)"
-        }`,
+        `Take ${i + 1} [${t.mediaAssetId}] — duration ${t.durationSeconds ?? "unknown"}s\n${describeTake(t)}`,
     )
     .join("\n\n");
 

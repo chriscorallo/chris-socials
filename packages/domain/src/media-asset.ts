@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "./audit";
 import { applyTransition } from "./state-machine";
@@ -118,4 +118,93 @@ export async function analyzeMediaAsset(
   }
 
   return asset;
+}
+
+// ---------------------------------------------------------------------------------------
+// Transcripts
+// ---------------------------------------------------------------------------------------
+
+export const TranscriptWordSchema = z.object({
+  word: z.string(),
+  start: z.number().nonnegative(),
+  end: z.number().nonnegative(),
+});
+export type TranscriptWordRecord = z.infer<typeof TranscriptWordSchema>;
+
+export const TranscriptSourceSchema = z.enum(["LOCAL_WHISPER", "MANUAL"]);
+export type TranscriptSource = z.infer<typeof TranscriptSourceSchema>;
+
+const RecordTranscriptSchema = z.object({
+  mediaAssetId: z.string().min(1),
+  text: z.string(),
+  /** Word timings on the source timeline, or null (e.g. a manually typed transcript). */
+  words: z.array(TranscriptWordSchema).nullable(),
+  source: TranscriptSourceSchema,
+  /** Provenance detail, e.g. the Whisper model id. Audit-logged, not stored on the row. */
+  model: z.string().optional(),
+});
+export type RecordTranscriptInput = z.input<typeof RecordTranscriptSchema>;
+
+/**
+ * Writes a take's transcript (+ word timings + provenance) and audit-logs it. Re-recording
+ * replaces the row's current transcript, but the previous value's provenance is preserved
+ * in the AuditLog `before` — the audit trail is the history (CLAUDE.md: never silently
+ * delete an audit trail). A MANUAL transcript (words=null) clears stale word timings, since
+ * typed text no longer matches them.
+ */
+export async function recordTranscript(
+  prisma: PrismaClient,
+  input: RecordTranscriptInput,
+  actor: { actorId: string; actorType?: "HUMAN" | "SYSTEM" | "JOB" },
+) {
+  const parsed = RecordTranscriptSchema.parse(input);
+  const words = parsed.words
+    ? [...parsed.words]
+        .sort((a, b) => a.start - b.start)
+        .map((w) => ({ word: w.word, start: w.start, end: Math.max(w.start, w.end) }))
+    : null;
+
+  const before = await prisma.mediaAsset.findUniqueOrThrow({
+    where: { id: parsed.mediaAssetId },
+  });
+
+  const asset = await prisma.mediaAsset.update({
+    where: { id: parsed.mediaAssetId },
+    data: {
+      transcript: parsed.text,
+      transcriptWords: words ?? Prisma.DbNull,
+      transcriptSource: parsed.source,
+      transcribedAt: new Date(),
+    },
+  });
+
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: actor.actorType ?? (parsed.source === "MANUAL" ? "HUMAN" : "JOB"),
+    action: "MEDIA_ASSET_TRANSCRIBED",
+    entityType: "ContentItem",
+    entityId: asset.contentItemId,
+    before: {
+      mediaAssetId: before.id,
+      transcriptSource: before.transcriptSource,
+      transcriptLength: before.transcript?.length ?? 0,
+      transcribedAt: before.transcribedAt,
+    },
+    after: {
+      mediaAssetId: asset.id,
+      transcriptSource: parsed.source,
+      transcriptLength: parsed.text.length,
+      wordCount: words?.length ?? null,
+    },
+    metadata: parsed.model ? { model: parsed.model } : undefined,
+  });
+
+  return asset;
+}
+
+/** Parses MediaAsset.transcriptWords (Json) defensively; null when absent or malformed. */
+export function parseTranscriptWords(value: unknown): TranscriptWordRecord[] | null {
+  if (value == null) return null;
+  const result = z.array(TranscriptWordSchema).safeParse(value);
+  return result.success ? result.data : null;
 }

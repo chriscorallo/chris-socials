@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { prisma } from "../prisma";
 import { createContentItem } from "../content-item";
-import { createMediaAsset, listMediaAssetsForContentItem, getMediaAsset } from "../media-asset";
+import {
+  createMediaAsset,
+  listMediaAssetsForContentItem,
+  getMediaAsset,
+  recordTranscript,
+  parseTranscriptWords,
+} from "../media-asset";
 
 describe("media assets (raw upload)", () => {
   it("records an uploaded raw take against a content item", async () => {
@@ -53,5 +59,82 @@ describe("media assets (raw upload)", () => {
       where: { entityType: "ContentItem", entityId: item.id, action: "MEDIA_ASSET_UPLOADED" },
     });
     expect(audit).toHaveLength(1);
+  });
+});
+
+describe("recordTranscript", () => {
+  async function makeAsset() {
+    const item = await createContentItem(prisma, { title: "Transcript test" }, { actorId: "test-user" });
+    return createMediaAsset(
+      prisma,
+      {
+        contentItemId: item.id,
+        kind: "RAW_TAKE",
+        storageKey: `raw/${item.id}/take-1.mp4`,
+        originalFilename: "take-1.mp4",
+        mimeType: "video/mp4",
+        sizeBytes: 1,
+      },
+      { actorId: "chris" },
+    );
+  }
+
+  it("stores text, sorted word timings and provenance, and audit-logs with the model", async () => {
+    const asset = await makeAsset();
+    const updated = await recordTranscript(
+      prisma,
+      {
+        mediaAssetId: asset.id,
+        text: "Hello world.",
+        words: [
+          { word: "world.", start: 0.5, end: 0.9 },
+          { word: "Hello", start: 0.1, end: 0.5 },
+        ],
+        source: "LOCAL_WHISPER",
+        model: "onnx-community/whisper-base.en_timestamped",
+      },
+      { actorId: "transcribe-job", actorType: "JOB" },
+    );
+    expect(updated.transcript).toBe("Hello world.");
+    expect(updated.transcriptSource).toBe("LOCAL_WHISPER");
+    expect(updated.transcribedAt).toBeInstanceOf(Date);
+    const words = parseTranscriptWords(updated.transcriptWords);
+    expect(words?.map((w) => w.word)).toEqual(["Hello", "world."]);
+
+    const audit = await prisma.auditLog.findMany({
+      where: { entityType: "ContentItem", entityId: asset.contentItemId, action: "MEDIA_ASSET_TRANSCRIBED" },
+    });
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.actorType).toBe("JOB");
+    expect(audit[0]!.metadata).toMatchObject({ model: "onnx-community/whisper-base.en_timestamped" });
+    expect(audit[0]!.after).toMatchObject({ wordCount: 2, transcriptSource: "LOCAL_WHISPER" });
+  });
+
+  it("a manual transcript clears stale word timings and keeps the prior provenance in the audit trail", async () => {
+    const asset = await makeAsset();
+    await recordTranscript(
+      prisma,
+      { mediaAssetId: asset.id, text: "auto", words: [{ word: "auto", start: 0, end: 0.3 }], source: "LOCAL_WHISPER" },
+      { actorId: "job" },
+    );
+    const manual = await recordTranscript(
+      prisma,
+      { mediaAssetId: asset.id, text: "What I actually said.", words: null, source: "MANUAL" },
+      { actorId: "chris" },
+    );
+    expect(manual.transcriptWords).toBeNull();
+    expect(manual.transcriptSource).toBe("MANUAL");
+    const audit = await prisma.auditLog.findMany({
+      where: { entityId: asset.contentItemId, action: "MEDIA_ASSET_TRANSCRIBED" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(audit).toHaveLength(2);
+    expect(audit[1]!.actorType).toBe("HUMAN");
+    expect(audit[1]!.before).toMatchObject({ transcriptSource: "LOCAL_WHISPER" });
+  });
+
+  it("parseTranscriptWords tolerates absent/malformed JSON", () => {
+    expect(parseTranscriptWords(null)).toBeNull();
+    expect(parseTranscriptWords([{ nope: 1 }])).toBeNull();
   });
 });

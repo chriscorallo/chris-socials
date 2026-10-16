@@ -21,3 +21,8 @@ export * from "./render";
 export * from "./technical-qc";
 export * from "./frame-extractor";
 export * from "./overlay-collision";
+export * from "./fonts";
+export * from "./safe-zones";
+export * from "./text-layout";
+export * from "./overlay-layout";
+export * from "./captions";

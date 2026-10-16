@@ -155,12 +155,40 @@ export const EditPlanTextOverlaySchema = z.object({
   style: z.enum(["HEADLINE", "CAPTION", "NUMBER_CALLOUT", "LOWER_THIRD"]),
 });
 
+/** Burned-in word-level captions, generated deterministically from the take's word timings. */
+export const EditPlanCaptionsSchema = z.object({
+  enabled: z.boolean(),
+  style: z
+    .enum(["CLEAN", "BOLD_HIGHLIGHT"])
+    .describe(
+      "CLEAN = understated white phrase captions; BOLD_HIGHLIGHT = heavier type with the spoken word lit in the accent colour.",
+    ),
+  position: z.enum(["LOWER", "CENTER"]),
+});
+export type EditPlanCaptions = z.infer<typeof EditPlanCaptionsSchema>;
+
+/** Hard "jump" punch-in on the OUTPUT timeline. */
+export const EditPlanPunchInSchema = z.object({
+  startSeconds: z.number().nonnegative().describe("Output (post-cut) timeline."),
+  endSeconds: z.number().positive().describe("Output (post-cut) timeline."),
+  zoom: z.number().min(1).max(1.3).describe("1.0-1.3; 1.1-1.2 is a typical emphasis punch-in."),
+  focus: z.enum(["CENTER", "UPPER_THIRD"]),
+});
+export type EditPlanPunchIn = z.infer<typeof EditPlanPunchInSchema>;
+
 /**
- * The renderer (packages/media) currently executes: segments, targetDimensions,
- * textOverlays, normalizeAudio. Everything else here is a real, validated field the spec
- * calls for that the renderer gracefully skips for now (B-roll/music/SFX need an approved
- * asset library; transitions beyond hard cuts aren't implemented) — see /docs/DECISIONS.md.
- * Reserving the field now means no schema migration is needed when those land.
+ * Timelines: `segments` are on the SOURCE take's timeline; `textOverlays`, `punchIns` and
+ * caption timing are on the OUTPUT (post-cut) timeline.
+ *
+ * The renderer (packages/media) executes: segments, targetDimensions, textOverlays (styled
+ * per `style`), captions, punchIns, normalizeAudio. bRollRequests / musicTrack / sfxEvents /
+ * transitions are kept for forward compatibility but are NOT executed (no approved asset
+ * library or transition engine yet): the planner is told to leave them empty, and anything
+ * present is reported as an unexecuted instruction rather than dropped silently. See
+ * docs/decisions-pending/media.md.
+ *
+ * `captions` / `punchIns` carry `.default()`s so EditPlan rows persisted before they existed
+ * still parse (captions null = renderer default: on, CLEAN, LOWER when word timings exist).
  */
 export const EditPlanOutputSchema = z.object({
   segments: z.array(EditPlanSegmentSchema).min(1),
@@ -168,17 +196,35 @@ export const EditPlanOutputSchema = z.object({
     .object({ width: z.number().int().positive(), height: z.number().int().positive() })
     .nullable(),
   textOverlays: z.array(EditPlanTextOverlaySchema),
+  captions: EditPlanCaptionsSchema.nullable().default(null),
+  punchIns: z.array(EditPlanPunchInSchema).default([]),
   normalizeAudio: z.boolean(),
-  bRollRequests: z.array(z.string()),
-  musicTrack: z.string().nullable(),
-  sfxEvents: z.array(z.object({ atSeconds: z.number(), sfx: z.string() })),
-  transitions: z.array(z.object({ atSeconds: z.number(), type: z.string() })),
+  bRollRequests: z.array(z.string()).describe("NOT YET EXECUTED by the renderer — leave empty."),
+  musicTrack: z.string().nullable().describe("NOT YET EXECUTED by the renderer — leave null."),
+  sfxEvents: z
+    .array(z.object({ atSeconds: z.number(), sfx: z.string() }))
+    .describe("NOT YET EXECUTED by the renderer — leave empty."),
+  transitions: z
+    .array(z.object({ atSeconds: z.number(), type: z.string() }))
+    .describe("NOT YET EXECUTED by the renderer (every cut is a hard cut) — leave empty."),
   targetDurationSeconds: z.number().positive(),
   productionTier: z.enum(["RAW", "FAST", "MEDIUM", "HERO"]),
   doNothingElse: z.boolean(),
   rationale: z.string(),
 });
 export type EditPlanOutput = z.infer<typeof EditPlanOutputSchema>;
+
+/** Input to an Edit Planner repair pass: the plan that rendered + the QC issues to fix. */
+export interface EditPlanRepairContext {
+  previousPlan: EditPlanOutput;
+  qcIssues: Array<{
+    category: string;
+    severity: string;
+    description: string;
+    timestampSeconds?: number | null;
+    recommendedRepair?: string | null;
+  }>;
+}
 
 // --- Visual QA -> /prompts/agents/VISUAL_QA.md ---
 // Category list mirrors the prompt's "## Check" list exactly, plus a catch-all bucket — see

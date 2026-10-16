@@ -18,6 +18,7 @@ export * from "./creative-director-agent";
 export * from "./weekly-strategist-agent";
 export * from "./transcription-provider";
 export * from "./providers/mock-transcription-provider";
+export * from "./transcript-timing";
 export * from "./take-selector-agent";
 export * from "./edit-planner-agent";
 export * from "./visual-qa-agent";

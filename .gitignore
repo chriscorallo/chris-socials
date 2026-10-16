@@ -30,3 +30,6 @@ packages/domain/.pglite-*/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# local ML model cache (transformers.js Whisper — see packages/media/src/transcription)
+.cache/

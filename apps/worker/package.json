@@ -12,7 +12,8 @@
     "./snapshot-job": "./src/snapshot-job.ts",
     "./comment-ingestion-job": "./src/comment-ingestion-job.ts",
     "./autonomous-publish-job": "./src/autonomous-publish-job.ts",
-    "./scheduled-jobs": "./src/scheduled-jobs.ts"
+    "./scheduled-jobs": "./src/scheduled-jobs.ts",
+    "./transcribe-job": "./src/transcribe-job.ts"
   },
   "scripts": {
     "start": "tsx src/index.ts"
