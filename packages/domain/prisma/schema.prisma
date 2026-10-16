@@ -327,6 +327,14 @@ model ScriptVersion {
   estimatedSpeakingRuntimeSeconds Int
   followUpIdeas                   Json
   brandGuardianReport             Json?
+  // Claims Gate run against THIS script's final wording (not just the research packet) —
+  // see /docs/DECISIONS.md ("Claims Gate reviews the final script").
+  scriptClaimsGateResult          Json?
+  // "AGENT" for Script Agent output, "HUMAN" for a version Chris edited by hand.
+  authorType                      String   @default("AGENT")
+  // The version this one was revised from (human edit or agent revision), if any.
+  revisedFromId                   String?
+  revisionNote                    String?
   createdAt                       DateTime @default(now())
 
   contentItem ContentItem @relation(fields: [contentItemId], references: [id])
@@ -398,9 +406,15 @@ model MediaAsset {
   hasAudio        Boolean?
   videoCodec      String?
   audioCodec      String?
-  // Transcript — plain text for now; a real transcription provider is a Phase 3 open item,
-  // see /docs/DECISIONS.md ("Transcription: interface only, no provider chosen yet").
-  transcript      String?
+  // Transcript — plain text, plus word-level timings when produced by a real transcription
+  // provider (or null for a manually typed transcript). See /docs/DECISIONS.md
+  // ("Real transcription: local Whisper, word-level timings").
+  transcript       String?
+  // [{ word: string, start: number, end: number }] in seconds, source-media timeline.
+  transcriptWords  Json?
+  // "LOCAL_WHISPER" | "MANUAL" — provenance of `transcript`.
+  transcriptSource String?
+  transcribedAt    DateTime?
 
   contentItem    ContentItem     @relation(fields: [contentItemId], references: [id])
   takeSelections TakeSelection[] @relation("SelectedTake")
@@ -440,6 +454,9 @@ model EditPlan {
   targetDurationSeconds Float
   doNothingElse         Boolean        @default(false)
   plan                  Json
+  // Repair-loop provenance: the plan this one revises, and why (the QC issues it addresses).
+  revisionOfEditPlanId  String?
+  revisionReason        String?
   createdAt             DateTime       @default(now())
 
   contentItem   ContentItem   @relation(fields: [contentItemId], references: [id])
@@ -620,6 +637,8 @@ model PlatformCredential {
   encryptedAccessToken  String
   encryptedRefreshToken String?
   expiresAt             DateTime?
+  // Platform-specific non-secret extras (e.g. TikTok open_id, granted scopes).
+  metadata              Json?
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 }
@@ -1028,4 +1047,19 @@ model BrandMemory {
   createdAt   DateTime        @default(now())
 
   @@unique([kind, version])
+}
+
+// One row per background/cron job run — spec §22 observability ("job IDs ... retries ...
+// errors"). Written by apps/web's /api/cron/* handlers. See /docs/DECISIONS.md
+// ("Scheduled publishing + snapshot cron").
+model JobRun {
+  id         String    @id @default(cuid())
+  kind       String
+  status     String // "RUNNING" | "SUCCEEDED" | "FAILED"
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  summary    Json?
+  error      String?
+
+  @@index([kind, startedAt])
 }

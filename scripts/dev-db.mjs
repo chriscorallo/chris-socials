@@ -57,9 +57,18 @@ server.addEventListener("error", (event) => {
 
 await server.start();
 
-process.on("SIGINT", async () => {
+// Close cleanly on every normal stop signal, not just Ctrl-C. An unclean exit (e.g. SIGTERM
+// from a closing terminal/IDE task) left the PGlite data dir unopenable once already — see
+// /docs/DECISIONS.md ("Local dev DB corrupted by an unclean shutdown").
+let stopping = false;
+async function shutdown(signal) {
+  if (stopping) return;
+  stopping = true;
   await server.stop();
   await db.close();
-  console.log("[dev-db] stopped");
+  console.log(`[dev-db] stopped (${signal})`);
   process.exit(0);
-});
+}
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => void shutdown(signal));
+}

@@ -4,10 +4,11 @@ export default defineConfig({
   test: {
     include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts", "apps/*/lib/**/*.test.ts"],
     environment: "node",
+    // A fresh, migrated, seeded throwaway Postgres per run — never the dev database. See
+    // vitest.global-setup.ts and /docs/DECISIONS.md ("Tests get their own throwaway database").
+    globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.ts"],
-    // Integration tests hit the real local dev DB (pnpm db:up) — not mocked, per
-    // /docs/EVALUATION_PLAN.md's Phase 0 test list. Sequential to avoid transaction
-    // interleaving against the single-writer PGlite dev database.
+    // Sequential: PGlite is a single-writer embedded engine (see /docs/DECISIONS.md).
     fileParallelism: false,
   },
 });
