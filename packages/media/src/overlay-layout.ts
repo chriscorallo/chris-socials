@@ -72,8 +72,8 @@ export const OVERLAY_STYLE_PRESETS: Record<OverlayStyle, StylePreset> = {
     lineHeight: 1.02,
     textColor: `#${ACCENT_COLOR_HEX}`,
     plate: null,
-    borderWidth: 3,
-    borderColor: "black@0.35",
+    borderWidth: 4,
+    borderColor: "black@0.6",
     shadow: { x: 0, y: 6, color: "black@0.45" },
     align: "CENTER",
     accentBarWidth: 0,
@@ -182,7 +182,7 @@ export function layoutOverlay(
   const descenderAllowance = fs * 0.2;
   const textBlockHeight = capPx + (fitted.lines.length - 1) * lineHeightPx + descenderAllowance;
   const blockHeight = Math.round(textBlockHeight + 2 * padY);
-  const blockWidth = Math.round(fitted.blockWidth / MEASUREMENT_SAFETY + 2 * padX + accentBar);
+  const blockWidth = Math.round(fitted.blockWidth * 1.01 + 2 * padX + accentBar);
 
   const gap = Math.round(40 * s);
   let blockTop: number;

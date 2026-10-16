@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Bundled, open-licensed typography (Inter 4.1 by Rasmus Andersson, SIL Open Font License 1.1
- * — see packages/media/assets/fonts/Inter-OFL-LICENSE.txt). Shipped as static TTFs, not
+ * — see packages/media/assets/Inter-OFL-LICENSE.txt (kept outside fonts/ because libass tries to load every file in its fontsdir)). Shipped as static TTFs, not
  * WOFF2: ffmpeg's drawtext (FreeType) and libass only read WOFF2 when FreeType was built with
  * brotli, which isn't something we can assume of a static ffmpeg binary.
  *
