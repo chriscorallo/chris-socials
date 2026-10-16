@@ -43,6 +43,22 @@ export class SpendCapExceededError extends Error {
   }
 }
 
+/** The cap check itself couldn't read today's spend (e.g. a DB outage). The governor fails
+ * CLOSED: no metered call is sent while it can't see its own state. */
+export class SpendCapCheckFailedError extends Error {
+  constructor(
+    public readonly promptId: string,
+    public readonly underlying: unknown,
+  ) {
+    super(
+      `Blocked before calling the model: couldn't read today's model spend to enforce the daily ` +
+        `cap (${underlying instanceof Error ? underlying.message : String(underlying)}). Prompt ` +
+        `"${promptId}" was not sent — no tokens were spent. Check the database connection and retry.`,
+    );
+    this.name = "SpendCapCheckFailedError";
+  }
+}
+
 export function startOfUtcDay(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }

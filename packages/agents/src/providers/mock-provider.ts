@@ -32,4 +32,10 @@ export class MockModelProvider implements ModelProvider {
       latencyMs: 0,
     };
   }
+
+  /** Context is irrelevant to a mock, but returning `this` keeps `calls` shared so tests can
+   * assert on every call a pipeline made through scoped providers. */
+  withContext(): ModelProvider {
+    return this;
+  }
 }
