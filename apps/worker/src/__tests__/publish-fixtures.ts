@@ -43,7 +43,7 @@ export async function makeScheduledPublishableItem(
     qc?: "PASS" | "BLOCK" | null;
     scheduledDate?: Date;
     schedule?: boolean;
-    productionTier?: "FAST" | "STANDARD" | "PREMIUM";
+    productionTier?: "RAW" | "FAST" | "MEDIUM" | "HERO";
   } = {},
 ) {
   const item = await createContentItem(prisma, { title: "Publish test idea" }, { actorId: "test-user" });

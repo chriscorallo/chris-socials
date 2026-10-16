@@ -49,7 +49,7 @@ export function createMockFetch() {
   return {
     fetchImpl,
     calls,
-    on(method: string | undefined, match: string | RegExp, respond: Responder | unknown, options: { times?: number; status?: number; headers?: Record<string, string> } = {}) {
+    on(method: string | undefined, match: string | RegExp, respond: Responder | Record<string, unknown> | unknown[], options: { times?: number; status?: number; headers?: Record<string, string> } = {}) {
       const responder: Responder =
         typeof respond === "function"
           ? (respond as Responder)

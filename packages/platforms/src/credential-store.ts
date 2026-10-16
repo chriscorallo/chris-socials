@@ -157,6 +157,7 @@ export class PlatformCredentialStore {
       if (stored.expiresAt && stored.expiresAt > now) return stored; // still valid; retry refresh next call
       throw new Error(
         `${stored.platform} token expired and refresh failed (${err instanceof Error ? err.message : String(err)}) — reconnect in Settings → Connections.`,
+        { cause: err },
       );
     }
   }
