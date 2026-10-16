@@ -8,21 +8,13 @@ import {
   applyManualTransition,
   createProductionContractAndAdvance,
   createCreatorCardAndAdvance,
-  listMediaAssetsForContentItem,
-  recordTakeSelection,
-  getLatestTakeSelection,
-  recordEditPlan,
-  recordReplannedEditPlan,
   recordTranscript,
-  parseTranscriptWords,
   getLatestScriptVersion,
   getLatestResearchPacket,
   createHumanScriptVersion,
   recordScriptRegate,
   getProductionContract,
   setScheduleEntry,
-  applyPipelineResult,
-  recordPlatformPackage,
   scheduleContentItemForPublishing,
   listSnapshotsForContentItem,
   recordPerformanceEvaluation,
@@ -31,15 +23,10 @@ import {
   type ContentState,
 } from "@chris/domain";
 import {
-  runResearchToScriptPipeline,
-  toPipelineResultInput,
   regateEditedScript,
   researchPacketFromRow,
   draftAndIssueProductionContract,
   draftAndIssueCreatorCard,
-  runTakeSelectorAgent,
-  runEditPlannerAgent,
-  runPlatformPackagingAgent,
   runAnalyticsAgent,
   runAdversarialEvaluatorAgent,
   getBrandContextText,
@@ -57,6 +44,13 @@ import { requireSession } from "../../../lib/session";
 import { storage, downloadToFile, safeFilename, getPublicVideoUrl } from "../../../lib/storage";
 import { registerUploadedRawTake, withTempDir } from "../../../lib/ingest-upload";
 import { getModelProvider } from "../../../lib/model-provider";
+import {
+  runPipelineStep,
+  runTakeSelectionStep,
+  runEditPlanStep,
+  runPackagingStep,
+  runAutopilot,
+} from "../../../lib/content-steps";
 import { getPlatformAdapters } from "../../../lib/platform-adapters";
 import { getRenderFontPath, isAutoTranscriptionEnabled } from "../../../lib/render-config";
 
@@ -226,20 +220,7 @@ export async function runPipeline(formData: FormData) {
   let notice: string | null = null;
 
   try {
-    const contract = await getProductionContract(prisma, contentItemId);
-    if (!contract) {
-      throw new Error("No Production Contract found for this item — issue one first.");
-    }
-
-    const brandContext = await getBrandContextText(prisma);
-    const pipelineResult = await runResearchToScriptPipeline(
-      getModelProvider(),
-      { contract, brandContext },
-      { contentItemId },
-    );
-    await applyPipelineResult(prisma, contentItemId, toPipelineResultInput(pipelineResult), {
-      actorId: session.user!.id!,
-    });
+    const pipelineResult = await runPipelineStep(contentItemId, { actorId: session.user!.id! });
     if (pipelineResult.status === "SCRIPT_BLOCKED") {
       notice = `Claims Gate blocked the script: ${pipelineResult.blockReason ?? "see the script's gate result below"}`;
     } else if (pipelineResult.status === "READY" && pipelineResult.brandNeedsHumanReview) {
@@ -261,33 +242,7 @@ export async function runTakeSelector(formData: FormData) {
   const contentItemId = str(formData, "contentItemId");
 
   try {
-    const assets = await listMediaAssetsForContentItem(prisma, contentItemId);
-    if (assets.length === 0) {
-      throw new Error("No raw takes uploaded yet.");
-    }
-    const brandContext = await getBrandContextText(prisma);
-    const result = await runTakeSelectorAgent(getModelProvider(), {
-      takes: assets.map((a) => ({
-        mediaAssetId: a.id,
-        transcript: a.transcript,
-        durationSeconds: a.durationSeconds,
-        words: parseTranscriptWords(a.transcriptWords),
-      })),
-      brandContext,
-    });
-
-    await recordTakeSelection(
-      prisma,
-      {
-        contentItemId,
-        selectedMediaAssetId: result.selectedMediaAssetId,
-        backupMediaAssetId: result.backupMediaAssetId,
-        confidence: result.confidence,
-        reason: result.reason,
-        materialDefects: result.materialDefects,
-      },
-      { actorId: session.user!.id! },
-    );
+    await runTakeSelectionStep(contentItemId, { actorId: session.user!.id! });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown take-selection error";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
@@ -303,47 +258,7 @@ export async function runEditPlanner(formData: FormData) {
   const contentItemId = str(formData, "contentItemId");
 
   try {
-    const contract = await getProductionContract(prisma, contentItemId);
-    if (!contract) throw new Error("No Production Contract found for this item.");
-
-    const takeSelection = await getLatestTakeSelection(prisma, contentItemId);
-    if (!takeSelection) throw new Error("No take has been selected yet.");
-
-    const selectedAsset = await prisma.mediaAsset.findUniqueOrThrow({
-      where: { id: takeSelection.selectedMediaAssetId },
-    });
-    const script = await getLatestScriptVersion(prisma, contentItemId);
-    const brandContext = await getBrandContextText(prisma);
-
-    const plan = await runEditPlannerAgent(getModelProvider(), {
-      contract,
-      scriptText: script?.spokenScript ?? contract.primaryIdea,
-      takeTranscript: selectedAsset.transcript,
-      takeWords: parseTranscriptWords(selectedAsset.transcriptWords),
-      sourceDurationSeconds: selectedAsset.durationSeconds,
-      brandContext,
-    });
-
-    const planFields = {
-      contentItemId,
-      takeSelectionId: takeSelection.id,
-      productionTier: plan.productionTier,
-      targetDurationSeconds: plan.targetDurationSeconds,
-      doNothingElse: plan.doNothingElse,
-      plan,
-    };
-    const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
-    if (item.currentState === "EDIT_PLANNED") {
-      // Human re-plan before rendering (e.g. after the QC_BLOCKED rollback): a fresh repair
-      // chain with a fresh budget — see packages/domain/src/edit-plan.ts.
-      await recordReplannedEditPlan(
-        prisma,
-        { ...planFields, revisionOfEditPlanId: null, revisionReason: "Re-planned by Chris" },
-        { actorId: session.user!.id! },
-      );
-    } else {
-      await recordEditPlan(prisma, planFields, { actorId: session.user!.id! });
-    }
+    await runEditPlanStep(contentItemId, { actorId: session.user!.id! });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown edit-plan error";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
@@ -415,28 +330,7 @@ export async function runPlatformPackaging(formData: FormData) {
   const platform = str(formData, "platform") as PackagingPlatform;
 
   try {
-    const takeSelection = await getLatestTakeSelection(prisma, contentItemId);
-    const selectedAsset = takeSelection
-      ? await prisma.mediaAsset.findUnique({ where: { id: takeSelection.selectedMediaAssetId } })
-      : null;
-    const finalTranscript = selectedAsset?.transcript ?? "(no transcript available)";
-    const brandContext = await getBrandContextText(prisma);
-
-    const pkg = await runPlatformPackagingAgent(getModelProvider(), { platform, finalTranscript, brandContext });
-
-    await recordPlatformPackage(
-      prisma,
-      {
-        contentItemId,
-        platform,
-        caption: pkg.caption,
-        title: pkg.title,
-        hashtags: pkg.hashtags,
-        coverFrameSeconds: pkg.coverFrameSeconds,
-        metadata: pkg.metadata as Record<string, unknown> | null,
-      },
-      { actorId: session.user!.id! },
-    );
+    await runPackagingStep(contentItemId, platform, { actorId: session.user!.id! });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown packaging error";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
@@ -867,4 +761,14 @@ export async function editScriptAction(formData: FormData) {
   }
   if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
   redirect(`/content/${contentItemId}`);
+}
+
+/** Autopilot for this one item — see lib/content-steps.ts runAutopilot. Shows what it did and
+ * why it stopped. */
+export async function runAutopilotAction(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  const result = await runAutopilot(contentItemId, { actorId: session.user!.id! });
+  const summary = `${result.steps.length ? `Autopilot did: ${result.steps.join(" → ")}. ` : ""}${result.stoppedBecause}`;
+  redirect(`/content/${contentItemId}?autopilot=${encodeURIComponent(summary)}`);
 }

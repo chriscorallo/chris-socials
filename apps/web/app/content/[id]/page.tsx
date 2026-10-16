@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, NEXT_STEP } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
 import { RawTakeUploader } from "./RawTakeUploader";
@@ -32,6 +32,7 @@ import {
   draftContractAction,
   draftCreatorCardAction,
   editScriptAction,
+  runAutopilotAction,
 } from "./actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
@@ -43,11 +44,11 @@ export default async function ContentDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ pipelineError?: string }>;
+  searchParams: Promise<{ pipelineError?: string; autopilot?: string }>;
 }) {
   await requireSession();
   const { id } = await params;
-  const { pipelineError } = await searchParams;
+  const { pipelineError, autopilot } = await searchParams;
   const item = await getContentItem(prisma, id);
   if (!item) notFound();
 
@@ -76,6 +77,31 @@ export default async function ContentDetailPage({
             {item.format && <span>· {item.format}</span>}
           </div>
         </header>
+
+        {autopilot && (
+          <Panel className="mb-5">
+            <p className="text-sm"><span className="font-medium">Autopilot: </span>{autopilot}</p>
+          </Panel>
+        )}
+
+        {!isTerminal && NEXT_STEP[item.currentState].owner === "SYSTEM" && item.currentState !== "SCHEDULED" && item.currentState !== "PUBLISHED" && item.currentState !== "MEASURING" && (
+          <Panel className="mb-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow">Autopilot</p>
+                <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
+                  Runs every step the system can do from here — through every hard gate — and
+                  stops the moment it needs you (filming, uploads, a blocked gate, a script concern)
+                  or once it&apos;s ready to schedule. Never schedules or publishes on its own.
+                </p>
+              </div>
+              <form action={runAutopilotAction}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button tone="primary">Run Autopilot</Button>
+              </form>
+            </div>
+          </Panel>
+        )}
 
         {pipelineError && (
           <Panel className="mb-5 !border-[var(--color-rose-500)]/40">
