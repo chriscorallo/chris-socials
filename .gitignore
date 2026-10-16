@@ -27,3 +27,6 @@ npm-debug.log*
 .DS_Store
 
 packages/domain/.pglite-*/
+
+# Claude Code agent worktrees
+.claude/worktrees/

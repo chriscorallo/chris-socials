@@ -1,6 +1,7 @@
 import type { PrismaClient, ContentState } from "@prisma/client";
 import { z } from "zod";
 import { writeTransition } from "./state-machine";
+import { recordAudit } from "./audit";
 
 /** Spec §9 step 12. "The LLM decides, the renderer executes." Creating an EditPlan moves
  * TAKE_SELECTED -> EDIT_PLANNED. `plan` carries the full structured instruction set —
@@ -69,4 +70,94 @@ export async function getLatestEditPlan(prisma: PrismaClient, contentItemId: str
     where: { contentItemId },
     orderBy: { createdAt: "desc" },
   });
+}
+
+/** States from which a NEW plan may replace the current one without a state transition:
+ * EDIT_PLANNED (re-plan before rendering — e.g. after the QC_BLOCKED -> EDIT_PLANNED rollback)
+ * and QC_REPAIR (the auto-repair loop's revised plan, rendered next straight from QC_REPAIR). */
+const REPLAN_STATES = new Set<ContentState>(["EDIT_PLANNED", "QC_REPAIR"]);
+
+export class ReplanNotAllowedError extends Error {
+  constructor(actual: ContentState) {
+    super(`An Edit Plan can only be revised from EDIT_PLANNED or QC_REPAIR (current state: ${actual}).`);
+    this.name = "ReplanNotAllowedError";
+  }
+}
+
+export const RecordReplannedEditPlanSchema = RecordEditPlanSchema.extend({
+  /** The plan this one revises. Set by the automated repair loop, so the revision stays in
+   * the same repair chain and shares its MAX_REPAIR_ATTEMPTS budget (render-record.ts).
+   * Null for a human-initiated re-plan, which deliberately starts a fresh chain/budget. */
+  revisionOfEditPlanId: z.string().min(1).nullable(),
+  revisionReason: z.string().min(1),
+});
+export type RecordReplannedEditPlanInput = z.input<typeof RecordReplannedEditPlanSchema>;
+
+/** Append-only: the previous plan and its renders stay as history. No state transition — the
+ * next render reads getLatestEditPlan. See /docs/DECISIONS.md ("Repair loop: revised plans"). */
+export async function recordReplannedEditPlan(
+  prisma: PrismaClient,
+  input: RecordReplannedEditPlanInput,
+  actor: { actorId: string; actorType?: "HUMAN" | "SYSTEM" },
+) {
+  const parsed = RecordReplannedEditPlanSchema.parse(input);
+  const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: parsed.contentItemId } });
+  if (!REPLAN_STATES.has(item.currentState)) {
+    throw new ReplanNotAllowedError(item.currentState);
+  }
+
+  const editPlan = await prisma.editPlan.create({
+    data: {
+      contentItemId: parsed.contentItemId,
+      takeSelectionId: parsed.takeSelectionId,
+      productionTier: parsed.productionTier,
+      targetDurationSeconds: parsed.targetDurationSeconds,
+      doNothingElse: parsed.doNothingElse,
+      plan: parsed.plan as never,
+      revisionOfEditPlanId: parsed.revisionOfEditPlanId,
+      revisionReason: parsed.revisionReason,
+    },
+  });
+
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: actor.actorType ?? "HUMAN",
+    action: parsed.revisionOfEditPlanId ? "EDIT_PLAN_REVISED" : "EDIT_PLAN_REPLANNED",
+    entityType: "ContentItem",
+    entityId: parsed.contentItemId,
+    after: {
+      editPlanId: editPlan.id,
+      revisionOfEditPlanId: parsed.revisionOfEditPlanId,
+      revisionReason: parsed.revisionReason,
+    },
+  });
+
+  return editPlan;
+}
+
+/** Every EditPlan id in the same repair chain as `editPlanId` (its root plus all automated
+ * revisions descending from that root). Chains are tiny (bounded by MAX_REPAIR_ATTEMPTS), so
+ * a simple walk is fine. */
+export async function getRepairChainEditPlanIds(
+  prisma: PrismaClient,
+  editPlanId: string,
+): Promise<string[]> {
+  let rootId = editPlanId;
+  for (let hops = 0; hops < 50; hops++) {
+    const row = await prisma.editPlan.findUniqueOrThrow({
+      where: { id: rootId },
+      select: { revisionOfEditPlanId: true },
+    });
+    if (!row.revisionOfEditPlanId) break;
+    rootId = row.revisionOfEditPlanId;
+  }
+  const chain = [rootId];
+  for (let i = 0; i < chain.length; i++) {
+    const children = await prisma.editPlan.findMany({
+      where: { revisionOfEditPlanId: chain[i] },
+      select: { id: true },
+    });
+    chain.push(...children.map((c) => c.id));
+  }
+  return chain;
 }

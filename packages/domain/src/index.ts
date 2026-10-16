@@ -1,7 +1,9 @@
 export { prisma } from "./prisma";
 export type { PrismaClient } from "./prisma";
+export { Prisma } from "./prisma";
 
 export * from "./state-machine";
+export * from "./manual-transition";
 export * from "./audit";
 export * from "./decision-journal";
 export * from "./feature-flags";

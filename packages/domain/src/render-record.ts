@@ -1,6 +1,7 @@
 import type { PrismaClient, ContentState } from "@prisma/client";
 import { z } from "zod";
 import { applyTransition } from "./state-machine";
+import { getRepairChainEditPlanIds } from "./edit-plan";
 
 /**
  * Render persistence + the EDITING -> RENDERED -> (QC_REPAIR | READY) loop — spec §9 steps
@@ -66,8 +67,12 @@ export async function recordRenderAttempt(
 ) {
   const parsed = RecordRenderAttemptSchema.parse(input);
 
+  // Counted across the whole repair chain (the plan plus any automated revisions of it), not
+  // just this one plan — otherwise every revised plan would reset the counter and the repair
+  // loop could never hit MAX_REPAIR_ATTEMPTS. A human re-plan starts a new chain.
+  const chainPlanIds = await getRepairChainEditPlanIds(prisma, parsed.editPlanId);
   const priorAttempts = await prisma.render.count({
-    where: { contentItemId: parsed.contentItemId, editPlanId: parsed.editPlanId },
+    where: { contentItemId: parsed.contentItemId, editPlanId: { in: chainPlanIds } },
   });
   const attempt = priorAttempts + 1;
 

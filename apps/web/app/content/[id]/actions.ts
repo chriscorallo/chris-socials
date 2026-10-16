@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   prisma,
   applyTransition,
+  applyManualTransition,
   createProductionContractAndAdvance,
   createCreatorCardAndAdvance,
   createMediaAsset,
@@ -74,20 +75,20 @@ export async function selectForWeek(formData: FormData) {
   redirect(`/content/${contentItemId}`);
 }
 
-/** Generic advance for the states Phase 2/3 will eventually automate (CONTRACTED ->
- * RESEARCHING -> RESEARCHED -> SCRIPTING -> SCRIPTED, and anything past READY_TO_FILM). See
- * /docs/PHASE_PLAN.md — Phase 1 acceptance criteria explicitly calls these "(stub)" steps. */
-export async function advanceStub(formData: FormData) {
+/** The bare "advance" button — restricted to MANUAL_TRANSITIONS (facts only Chris can attest
+ * to, plus explicit rollbacks). Every gated transition goes through its own action; see
+ * packages/domain/src/manual-transition.ts and /docs/DECISIONS.md. */
+export async function advanceManual(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
   const to = str(formData, "to") as ContentState;
-  await applyTransition(prisma, {
-    contentItemId,
-    to,
-    actorType: "HUMAN",
-    actorId: session.user!.id!,
-    reason: "Manual advance (Phase 1 stub — a later phase automates this transition)",
-  });
+  let error: string | null = null;
+  try {
+    await applyManualTransition(prisma, { contentItemId, to, actorId: session.user!.id! });
+  } catch (err) {
+    error = err instanceof Error ? err.message : "Unknown transition error";
+  }
+  if (error) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(error)}`);
   redirect(`/content/${contentItemId}`);
 }
 

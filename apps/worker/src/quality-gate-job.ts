@@ -72,13 +72,35 @@ export async function runQualityGateForContentItem(
   const researchPacket = await getLatestResearchPacket(db, contentItemId);
   const scriptVersion = await getLatestScriptVersion(db, contentItemId);
 
-  const claimsGateResult = researchPacket?.claimsGateResult as
-    | { result?: string; blockReason?: string | null }
-    | null;
-  // RESEARCH_BLOCKED items never reach FILMED/RENDERED at all (see /docs/STATE_MACHINE.md),
-  // so a genuine BLOCK here would mean the persisted record was mutated after the fact — not
-  // reachable through normal flow, but checked explicitly rather than assumed away.
-  const factualStatus: GateStatus = claimsGateResult?.result === "BLOCK" ? "BLOCK" : "PASS";
+  // FACTUAL fails CLOSED. The authoritative verdict is the Claims Gate run against the final
+  // script's own wording (ScriptVersion.scriptClaimsGateResult — added so numbers the Script
+  // Agent or a human edit introduced are checked too); the research-packet verdict is the
+  // fallback for scripts recorded before that existed. No verdict at all used to PASS
+  // silently (e.g. after a manual RESEARCHING -> RESEARCHED skip); now it BLOCKs, except for
+  // content whose contract explicitly declares no factual surface (research depth NONE + low
+  // factual risk — opinion/lifestyle pieces). See /docs/DECISIONS.md ("FACTUAL gate fails
+  // closed").
+  type ClaimsVerdict = { result?: string; blockReason?: string | null } | null;
+  const scriptVerdict = (scriptVersion?.scriptClaimsGateResult ?? null) as ClaimsVerdict;
+  const researchVerdict = (researchPacket?.claimsGateResult ?? null) as ClaimsVerdict;
+  const claimsGateResult = scriptVerdict?.result ? scriptVerdict : researchVerdict;
+  const contract = await db.productionContract.findUnique({ where: { contentItemId } });
+  const factCheckExempt = contract?.researchDepth === "NONE" && contract?.factualRisk === "LOW";
+  let factualStatus: GateStatus;
+  let factualBlockReason: string | null = null;
+  if (claimsGateResult?.result === "BLOCK") {
+    factualStatus = "BLOCK";
+    factualBlockReason = claimsGateResult.blockReason ?? "Claims Gate result was BLOCK";
+  } else if (claimsGateResult?.result) {
+    factualStatus = "PASS";
+  } else if (factCheckExempt) {
+    factualStatus = "PASS";
+  } else {
+    factualStatus = "BLOCK";
+    factualBlockReason =
+      "No Claims Gate verdict on record for this item's research or script — run the AI " +
+      "Research -> Script pipeline (or re-gate the edited script) before this can pass.";
+  }
 
   const brandGuardianReport = scriptVersion?.brandGuardianReport as
     | { brandScore?: number; voiceScore?: number; originalityScore?: number }
@@ -158,7 +180,7 @@ export async function runQualityGateForContentItem(
 
   const reasonsByGate: Partial<Record<"factual" | "technical" | "brand" | "creative", string>> = {};
   if (factualStatus === "BLOCK") {
-    reasonsByGate.factual = claimsGateResult?.blockReason ?? "Claims Gate result was BLOCK";
+    reasonsByGate.factual = factualBlockReason ?? "Claims Gate result was BLOCK";
   }
   if (technicalStatus === "BLOCK") {
     reasonsByGate.technical =

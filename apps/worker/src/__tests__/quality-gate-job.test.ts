@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   prisma,
+  Prisma,
   createContentItem,
   applyTransition,
   applyPipelineResult,
@@ -245,6 +246,35 @@ describe("runQualityGateForContentItem (real ffmpeg render, real state machine, 
       expect(qcReport?.id).toBe(result.qcReportId);
       const issues = await getQCIssuesForReport(prisma, result.qcReportId);
       expect(issues).toEqual([]);
+    },
+    30000,
+  );
+
+  it(
+    "FACTUAL fails closed: no Claims Gate verdict on record BLOCKs instead of silently passing",
+    async () => {
+      const { item } = await makeRenderedItem();
+      // Simulates the old gate-skip path (research advanced without a Claims Gate run).
+      await prisma.researchPacket.updateMany({
+        where: { contentItemId: item.id },
+        data: { claimsGateResult: Prisma.DbNull },
+      });
+      const cleanVisualQA = new MockModelProvider(() => ({ issues: [], overallImpression: "Clean." }));
+
+      const result = await runQualityGateForContentItem(
+        prisma,
+        storage,
+        cleanVisualQA,
+        item.id,
+        { actorId: "chris" },
+        { maxFrames: 2 },
+      );
+
+      expect(result.gates.factual).toBe("BLOCK");
+      expect(result.overallStatus).toBe("BLOCK");
+      expect(result.reasons.join(" ")).toMatch(/No Claims Gate verdict/);
+      const updated = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
+      expect(updated.currentState).toBe("QC_REPAIR");
     },
     30000,
   );

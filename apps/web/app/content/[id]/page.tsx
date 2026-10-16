@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listValidNextStates } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { NavBar } from "../../components/NavBar";
 import { PageShell, Panel, SectionHeading, Badge, Button, contentStateTone } from "../../components/ui";
 import {
   selectForWeek,
-  advanceStub,
+  advanceManual,
   cancelItem,
   submitContract,
   submitCreatorCard,
@@ -41,12 +41,7 @@ export default async function ContentDetailPage({
   if (!item) notFound();
 
   const isTerminal = item.currentState === "ARCHIVED" || item.currentState === "CANCELLED";
-  const nextStates = listValidNextStates(item.currentState).filter((s) => s !== "CANCELLED");
-  // States with a dedicated form below instead of a bare "advance" button.
-  const hasSpecialForm =
-    item.currentState === "IDEA" ||
-    item.currentState === "SELECTED" ||
-    item.currentState === "SCRIPTED";
+  const manualTransitions = listManualTransitions(item.currentState);
   const latestResearch = item.researchPackets[0];
   const latestScript = item.scriptVersions[0];
   const latestTakeSelection = item.takeSelections[0];
@@ -100,9 +95,6 @@ export default async function ContentDetailPage({
                   <input type="hidden" name="contentItemId" value={item.id} />
                   <Button tone="primary">Run AI Research → Script pipeline</Button>
                 </form>
-                <span className="text-[13px] text-[var(--color-text-faint)]">
-                  or advance manually in the Advance section below (stub)
-                </span>
               </div>
             </Panel>
           )}
@@ -423,21 +415,19 @@ export default async function ContentDetailPage({
             </Panel>
           )}
 
-          {!hasSpecialForm && !isTerminal && nextStates.length > 0 && (
+          {!isTerminal && manualTransitions.length > 0 && (
             <Panel className="panel-action">
               <SectionHeading eyebrow="Next Step" title="Advance" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Manual stub — a later phase automates this transition.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {nextStates.map((s) => (
-                  <form key={s} action={advanceStub}>
+              {manualTransitions.map((t) => (
+                <div key={t.to} className="flex flex-wrap items-center gap-3">
+                  <form action={advanceManual}>
                     <input type="hidden" name="contentItemId" value={item.id} />
-                    <input type="hidden" name="to" value={s} />
-                    <Button>→ {s}</Button>
+                    <input type="hidden" name="to" value={t.to} />
+                    <Button tone="primary">{t.label}</Button>
                   </form>
-                ))}
-              </div>
+                  <span className="text-[13px] text-[var(--color-text-muted)]">{t.description}</span>
+                </div>
+              ))}
             </Panel>
           )}
 
