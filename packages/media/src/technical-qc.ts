@@ -9,14 +9,20 @@ export interface TechnicalQCCheck {
   name: string;
   passed: boolean;
   detail: string;
+  /** FAIL (default) makes the whole report FAIL when !passed; WARN is surfaced but never
+   * fails the report on its own. */
+  severity?: "FAIL" | "WARN";
 }
 
-/** Discriminated union, not a numeric score — a single FAIL check makes the whole report
- * FAIL, by construction (the type can't express "average it away"). See
+/** Discriminated union, not a numeric score — a single failed FAIL-severity check makes the
+ * whole report FAIL, by construction (the type can't express "average it away"). See
  * /docs/ARCHITECTURE.md's authority-enforcement rule for hard gates. */
 export interface TechnicalQCReport {
   overall: "PASS" | "FAIL";
   checks: TechnicalQCCheck[];
+  /** Names of failed WARN-severity checks (empty when clean). */
+  warnings?: string[];
+  measurements?: TechnicalQCMeasurements;
 }
 
 export interface TechnicalQCExpectations {
@@ -28,30 +34,96 @@ export interface TechnicalQCExpectations {
   requiredAudioCodec?: string;
 }
 
-async function measureLoudness(
+/** Thresholds for short-form vertical video. Exported so tests/QC UI can cite them. */
+export const LOUDNESS_TARGET_LUFS = -14;
+export const LOUDNESS_MIN_LUFS = -24;
+export const LOUDNESS_MAX_LUFS = -8;
+export const TRUE_PEAK_MAX_DBTP = -0.5;
+export const BLACK_WARN_SECONDS = 0.5;
+export const BLACK_FAIL_SECONDS = 1.0;
+export const OPENING_BLACK_FAIL_SECONDS = 0.3;
+export const FREEZE_WARN_SECONDS = 2.0;
+
+export interface TechnicalQCMeasurements {
+  integratedLufs: number | null;
+  truePeakDbtp: number | null;
+  loudnessRangeLu: number | null;
+  blackIntervals: Array<{ start: number; end: number; duration: number }>;
+  freezeIntervals: Array<{ start: number; end: number | null; duration: number | null }>;
+}
+
+/** Parses ffmpeg's ebur128 summary block + blackdetect/freezedetect log lines. Pure. */
+export function parseAnalysisStderr(stderr: string): TechnicalQCMeasurements {
+  // The summary block is printed last; take the LAST occurrences.
+  const summaryIdx = stderr.lastIndexOf("Summary:");
+  const summary = summaryIdx >= 0 ? stderr.slice(summaryIdx) : "";
+  const num = (re: RegExp, text: string): number | null => {
+    const m = re.exec(text);
+    if (!m?.[1]) return null;
+    const v = parseFloat(m[1]);
+    return Number.isFinite(v) ? v : null;
+  };
+  const integratedLufs = num(/Integrated loudness:\s*I:\s*(-?[\d.]+|-inf)\s*LUFS/, summary);
+  const loudnessRangeLu = num(/Loudness range:\s*LRA:\s*(-?[\d.]+)\s*LU/, summary);
+  const truePeakDbtp = num(/True peak:\s*Peak:\s*(-?[\d.]+|-inf)\s*dBFS/, summary);
+
+  const blackIntervals: TechnicalQCMeasurements["blackIntervals"] = [];
+  for (const m of stderr.matchAll(
+    /black_start:\s*(-?[\d.]+)\s+black_end:\s*(-?[\d.]+)\s+black_duration:\s*(-?[\d.]+)/g,
+  )) {
+    blackIntervals.push({ start: +m[1]!, end: +m[2]!, duration: +m[3]! });
+  }
+
+  const freezeIntervals: TechnicalQCMeasurements["freezeIntervals"] = [];
+  const lines = stderr.split("\n");
+  for (const line of lines) {
+    const start = /freezedetect\.freeze_start:\s*(-?[\d.]+)/.exec(line);
+    if (start) {
+      freezeIntervals.push({ start: +start[1]!, end: null, duration: null });
+      continue;
+    }
+    const dur = /freezedetect\.freeze_duration:\s*(-?[\d.]+)/.exec(line);
+    const last = freezeIntervals[freezeIntervals.length - 1];
+    if (dur && last) last.duration = +dur[1]!;
+    const end = /freezedetect\.freeze_end:\s*(-?[\d.]+)/.exec(line);
+    if (end && last) last.end = +end[1]!;
+  }
+
+  return { integratedLufs, truePeakDbtp, loudnessRangeLu, blackIntervals, freezeIntervals };
+}
+
+async function analyze(
   filePath: string,
-): Promise<{ meanVolumeDb: number | null; maxVolumeDb: number | null }> {
-  // ffmpeg's volumedetect filter writes its results to stderr (via -f null, no real output).
+  hasAudio: boolean,
+  hasVideo: boolean,
+): Promise<TechnicalQCMeasurements> {
+  const graphs: string[] = [];
+  const maps: string[] = [];
+  if (hasVideo) {
+    graphs.push("[0:v]blackdetect=d=0.2:pix_th=0.10,freezedetect=n=0.003:d=1[vout]");
+    maps.push("-map", "[vout]");
+  }
+  if (hasAudio) {
+    graphs.push("[0:a]ebur128=peak=true[aout]");
+    maps.push("-map", "[aout]");
+  }
+  if (graphs.length === 0) {
+    return { integratedLufs: null, truePeakDbtp: null, loudnessRangeLu: null, blackIntervals: [], freezeIntervals: [] };
+  }
   const { stderr } = await execFileAsync(
     FFMPEG_PATH,
-    ["-i", filePath, "-af", "volumedetect", "-f", "null", "-"],
-    { maxBuffer: 10 * 1024 * 1024 },
+    ["-hide_banner", "-nostats", "-i", filePath, "-filter_complex", graphs.join(";"), ...maps, "-f", "null", "-"],
+    { maxBuffer: 64 * 1024 * 1024 },
   );
-
-  const meanMatch = /mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/.exec(stderr);
-  const maxMatch = /max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/.exec(stderr);
-
-  return {
-    meanVolumeDb: meanMatch?.[1] ? parseFloat(meanMatch[1]) : null,
-    maxVolumeDb: maxMatch?.[1] ? parseFloat(maxMatch[1]) : null,
-  };
+  return parseAnalysisStderr(stderr);
 }
 
 /**
  * Deterministic technical QC — spec §9 step 14's "Technical" hard gate. No LLM judgment;
- * every check here is a plain assertion against ffprobe/ffmpeg output. Semantic checks
- * (does the caption collide with a face, is the chart legible) are Visual QA's job (Phase 4,
- * LLM-based) — this module only checks what's actually deterministic.
+ * every check here is a plain assertion against ffprobe/ffmpeg measurements:
+ * container/stream sanity, EBU R128 integrated loudness + true peak (ebur128), long or
+ * opening black stretches (blackdetect), and frozen video (freezedetect). Semantic checks
+ * (caption over a face, chart legibility) are Visual QA's job.
  */
 export async function runTechnicalQC(
   filePath: string,
@@ -112,23 +184,73 @@ export async function runTechnicalQC(
     });
   }
 
+  const m = await analyze(filePath, probed.hasAudio, probed.hasVideo);
+
   if (probed.hasAudio) {
-    const loudness = await measureLoudness(filePath);
-    // volumedetect reports dBFS (peak/mean sample level), not LUFS (perceptual loudness) —
-    // a true platform-loudness-standard check needs the loudnorm filter's measured-JSON pass,
-    // not volumedetect. This is a coarser sanity check (not silent, not clipping) rather than
-    // "meets -14 LUFS" — see /docs/DECISIONS.md for why that distinction matters here.
-    const notSilent = loudness.meanVolumeDb != null && loudness.meanVolumeDb > -50;
-    const notClipping = loudness.maxVolumeDb != null && loudness.maxVolumeDb <= 0.5;
+    const i = m.integratedLufs;
+    const loudOk = i != null && i >= LOUDNESS_MIN_LUFS && i <= LOUDNESS_MAX_LUFS;
     checks.push({
-      name: "audio_loudness_sanity",
-      passed: notSilent && notClipping,
-      detail: `mean_volume=${loudness.meanVolumeDb ?? "n/a"}dB, max_volume=${
-        loudness.maxVolumeDb ?? "n/a"
-      }dB.`,
+      name: "integrated_loudness",
+      passed: loudOk,
+      detail:
+        i == null
+          ? "Integrated loudness could not be measured (silent or unreadable audio)."
+          : `Integrated ${i.toFixed(1)} LUFS (target ${LOUDNESS_TARGET_LUFS}, allowed ${LOUDNESS_MIN_LUFS} to ${LOUDNESS_MAX_LUFS}).`,
+    });
+    const tp = m.truePeakDbtp;
+    checks.push({
+      name: "true_peak",
+      passed: tp != null && tp <= TRUE_PEAK_MAX_DBTP,
+      detail:
+        tp == null
+          ? "True peak could not be measured."
+          : `True peak ${tp.toFixed(1)} dBTP (max ${TRUE_PEAK_MAX_DBTP}).`,
     });
   }
 
-  const overall: TechnicalQCReport["overall"] = checks.every((c) => c.passed) ? "PASS" : "FAIL";
-  return { overall, checks };
+  if (probed.hasVideo) {
+    const opening = m.blackIntervals.find((b) => b.start <= 0.05);
+    const longest = m.blackIntervals.reduce((max, b) => Math.max(max, b.duration), 0);
+    const openingFail = opening != null && opening.duration >= OPENING_BLACK_FAIL_SECONDS;
+    checks.push({
+      name: "black_frames",
+      passed: !openingFail && longest < BLACK_FAIL_SECONDS,
+      detail:
+        m.blackIntervals.length === 0
+          ? "No black stretches detected."
+          : `Black stretches: ${m.blackIntervals
+              .map((b) => `${b.start.toFixed(2)}-${b.end.toFixed(2)}s`)
+              .join(", ")}${openingFail ? " (opens on black)" : ""}.`,
+    });
+    if (longest >= BLACK_WARN_SECONDS && longest < BLACK_FAIL_SECONDS && !openingFail) {
+      checks.push({
+        name: "black_frames_short",
+        passed: false,
+        severity: "WARN",
+        detail: `A ${longest.toFixed(2)}s black stretch — likely an unintended gap at a cut.`,
+      });
+    }
+
+    const longFreezes = m.freezeIntervals.filter(
+      (f) => (f.duration ?? probed.durationSeconds - f.start) >= FREEZE_WARN_SECONDS,
+    );
+    // WARN, not FAIL: a deliberate held frame (chart, still) is legitimate; a stuck decoder is
+    // not, but telling them apart is semantic — Visual QA's job, with this as its pointer.
+    checks.push({
+      name: "frozen_video",
+      passed: longFreezes.length === 0,
+      severity: "WARN",
+      detail:
+        longFreezes.length === 0
+          ? "No frozen stretches >= 2s."
+          : `Frozen video: ${longFreezes
+              .map((f) => `${f.start.toFixed(2)}s for ${(f.duration ?? probed.durationSeconds - f.start).toFixed(2)}s`)
+              .join(", ")}.`,
+    });
+  }
+
+  const failing = checks.filter((c) => !c.passed && (c.severity ?? "FAIL") === "FAIL");
+  const warnings = checks.filter((c) => !c.passed && c.severity === "WARN").map((c) => c.name);
+  const overall: TechnicalQCReport["overall"] = failing.length === 0 ? "PASS" : "FAIL";
+  return { overall, checks, warnings, measurements: m };
 }

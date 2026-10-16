@@ -27,3 +27,6 @@ npm-debug.log*
 .DS_Store
 
 packages/domain/.pglite-*/
+
+# local ML model cache (transformers.js Whisper — see packages/media/src/transcription)
+.cache/
