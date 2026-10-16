@@ -1328,3 +1328,1216 @@ the stuck/wrong-week behavior from the bug report.
 
 **Reversibility:** trivial — pure function extraction plus a bug fix, no schema or API surface
 changed.
+
+---
+
+# 2026-10-16 — "Usable v1" pass (branch `fix/usable-v1`)
+
+Entries below were written by four parallel workstreams (integration, media, platforms, AI layer) with disjoint file ownership, then merged. Evidence frames: `docs/evidence/2026-10-16-usable-v1/`.
+
+## 2026-10-16 — Full audit; "Phases 0–8 complete" did not mean "usable"
+
+**What happened:** a deep audit (5 parallel reviews + hands-on verification: fresh-DB test run,
+production build, a real Anthropic call, a real ffmpeg render inspected frame-by-frame, live
+HTTP against the Vercel deployment) found the suite green (304/304) but the product not
+usable for real work: uploads capped at 1 MB, every AI action broken on Vercel (prompts not
+shipped), a one-click bypass of all four hard gates that could then genuinely publish, Claims
+Gate never seeing the final script, no transcription, Instagram publishing hardcoded to fail,
+no scheduler of any kind, and a test suite that mutated the dev database's safety state.
+
+**Decision:** a "usable v1" pass (branch `fix/usable-v1`) fixing those, split into four
+parallel workstreams with disjoint file ownership (media / platforms / AI layer / web +
+domain integration). Each workstream's own decisions follow below or in the merged entries.
+
+**Reversibility:** each fix is its own commit on the branch.
+
+---
+
+## 2026-10-16 — Tests get their own throwaway database
+
+**Problem:** `pnpm test` ran against the same dev DB the app used (vitest.setup loaded
+`.env`'s `DATABASE_URL`). Tests legitimately reset global tables, so one test run turned the
+`autonomy.shadow_only` kill switch OFF, left PUBLISHING autonomy at level 3–4 for RAW/FAST/
+MEDIUM (unearned), deleted every WeeklyProgrammingThesis, and left thousands of junk rows.
+After any test run, "Try autonomous publish" would really have published.
+
+**Decision:** `vitest.global-setup.ts` starts a fresh PGlite instance in a temp dir on a free
+port per run, applies the real migration history (`prisma migrate deploy`) and the real seed,
+injects that URL into every test file (`vitest.setup.ts` overwrites `DATABASE_URL` before any
+import), and deletes the dir afterwards. `ANTHROPIC_API_KEY` is deleted inside tests so a
+billed call is impossible, not just unlikely. Migrate/seed run via async `execFile` — the DB
+server lives in the same process, so a blocking `execFileSync` deadlocks it.
+
+**Alternatives:** a second long-lived "test" PGlite (state still accumulates); per-test
+transaction rollback (doesn't cover code that opens its own transactions).
+
+**Reversibility:** trivial — revert the three vitest files.
+
+---
+
+## 2026-10-16 — Local dev DB corrupted by an unclean shutdown
+
+`packages/domain/.pglite` no longer opened (PGlite `RuntimeError: Aborted()` on start, stale
+`postmaster.pid`); a fresh PGlite opened fine, so the data dir itself was damaged. It was
+moved (not deleted) to `packages/domain/.pglite-corrupted-2026-10-16/` and a fresh dev DB was
+migrated + seeded (same seed user). `scripts/dev-db.mjs` now closes cleanly on SIGTERM/SIGHUP
+too (it only handled SIGINT — a closing terminal/IDE task sends SIGTERM).
+
+---
+
+## 2026-10-16 — Manual transitions are an explicit allowlist
+
+**Problem:** the content page rendered a generic "→ {next state}" button (`advanceStub`) for
+nearly every state. One click took RENDERED → READY with no Quality Gate, preflight never
+checked for a passing QCReport, so the ungated render could be scheduled and really published
+— the exact "a BLOCK is never averaged away" violation CLAUDE.md forbids. Same for
+RESEARCHING → RESEARCHED (skipping Claims Gate), PUBLISHING → PUBLISHED (no Publication row),
+MEASURING → ARCHIVED, etc.
+
+**Decision:** `packages/domain/src/manual-transition.ts` — `MANUAL_TRANSITIONS` lists the only
+bare-button transitions: facts only Chris can attest to (CONTRACTED → RESEARCHING "Start
+research", READY_TO_FILM → FILMED "I've filmed this") and the two documented rollbacks.
+`applyManualTransition` rejects anything else (`ManualTransitionNotAllowedError`); the web
+action and page use it. A test asserts no manual path exists into READY, PUBLISHED,
+PUBLISHING, RESEARCHED, SCRIPTED, RENDERED, SCHEDULED or ARCHIVED. Preflight additionally
+requires a passing QCReport (platforms workstream) — defense in depth.
+
+**Reversibility:** add a row to the allowlist.
+
+---
+
+## 2026-10-16 — FACTUAL gate fails closed
+
+**Problem:** `quality-gate-job.ts` returned FACTUAL = PASS whenever no Claims Gate verdict
+existed (`result === "BLOCK" ? "BLOCK" : "PASS"`).
+
+**Decision:** prefer the verdict on the final script (`ScriptVersion.scriptClaimsGateResult`,
+AI workstream), fall back to the research-packet verdict, and BLOCK when neither exists —
+except when the contract explicitly declares no factual surface (`researchDepth = NONE` and
+`factualRisk = LOW`). Regression test included.
+
+---
+
+## 2026-10-16 — Repair loop: revised plans share one repair budget
+
+**Problem:** QC_REPAIR could only re-render the identical EditPlan (`recordEditPlan` required
+TAKE_SELECTED), so "Render again" produced the same defect until QC_BLOCKED; QCIssue
+`recommendedRepair` was stored and never used. Attempts were counted per EditPlan, so any
+future "new plan" fix would also have reset the budget.
+
+**Decision:** `recordReplannedEditPlan` (EDIT_PLANNED or QC_REPAIR, no state change, append-
+only, audited) with `revisionOfEditPlanId` + `revisionReason`. Render attempts are counted
+across the whole repair chain (`getRepairChainEditPlanIds`), so automated revisions share
+`MAX_REPAIR_ATTEMPTS`; a human re-plan (`revisionOfEditPlanId: null`, e.g. after the
+QC_BLOCKED → EDIT_PLANNED rollback) deliberately starts a fresh chain. The automated
+EDIT → RENDER → INSPECT → FIX loop itself lives in the worker (`auto-repair-job`).
+
+---
+
+## 2026-10-16 — Uploads: streaming locally, browser-direct to Blob in production
+
+**Problem:** uploads went through a Server Action — Next's default 1 MB body limit rejected
+every real phone video (verified: 4.6 MB → "Body exceeded 1 MB limit"); even raised, Vercel
+caps function request bodies at 4.5 MB, and the whole file was buffered in memory.
+
+**Decision:**
+- Local mode: `PUT /api/upload` streams the raw request body to a temp file, `putFile`s it
+  into local storage (no buffering), runs ffprobe. Verified with a real 100 MB / 40 s file
+  over HTTP: stored, analyzed, FILMED → MEDIA_INGESTED.
+- Blob mode: the browser uploads directly to the private Blob store (`@vercel/blob/client`
+  `upload()`, token from `POST /api/blob-upload`, restricted to signed-in users, `raw/<id>/…`
+  pathnames, video/audio types, ≤5 GB; multipart above 50 MB), then calls the
+  `registerBlobUpload` server action, which streams the blob to a temp file for ffprobe and
+  records the MediaAsset. Not an upload-completed webhook: that can't reach a local server.
+- `RawTakeUploader` client component picks the transport, supports several files, shows
+  progress. Filenames are sanitized before they touch a storage key or temp path.
+
+---
+
+## 2026-10-16 — Production storage: private Vercel Blob + presigned URLs
+
+**Decision:** `apps/web/lib/storage.ts` selects `VercelBlobStorageAdapter` whenever
+`BLOB_READ_WRITE_TOKEN` is set, else `LocalFsStorageAdapter`. The Blob store is **private**;
+`signedUrl()` is a real presigned GET (`issueSignedToken` + `presignUrl`, one pathname,
+expiring) — finally the "real signed URLs" SECURITY.md promised. `/api/media` redirects to a
+10-minute presigned URL in blob mode (proxying video through a function would hit response
+limits) and streams from disk with HTTP Range support locally (seekable `<video>`).
+`getPublicVideoUrl(key)` returns a 2-hour presigned URL — what Instagram's Content Publishing
+API needs to fetch a Reel — or null locally (Instagram then fails with a clear reason).
+Adapter lives in apps/web (not packages/media) so the shared StorageAdapter interface didn't
+change. Also fixed: `LocalFsStorageAdapter`'s traversal check was a bare prefix match that
+let a sibling dir like `.storage-x/` through.
+
+**Owner action:** create a Blob store (private) in the Vercel project; that sets
+`BLOB_READ_WRITE_TOKEN` automatically.
+
+---
+
+## 2026-10-16 — Deploy: ship runtime-read files explicitly
+
+**Problem:** the prompt registry reads `/prompts/**` with `readdirSync`/`readFileSync` at call
+time; Next's file tracer can't see that, so the deployed functions contained 0 prompt files
+and every AI action on Vercel would have thrown ENOENT.
+
+**Decision:** `outputFileTracingRoot` = repo root and `outputFileTracingIncludes` for
+`prompts/**/*.md`, `brand/**/*.md`, `packages/media/assets/**` on every route. Verified in
+the build's `.nft.json` (25/25 prompts, 2/2 brand docs) and by reading Turbopack's runtime:
+`import.meta.url` in bundled packages resolves against the tracing root, so the existing
+relative path math finds the shipped files. `maxDuration = 300` on every page whose Server
+Actions run model calls or ffmpeg.
+
+---
+
+## 2026-10-16 — App time zone
+
+**Problem:** schedule times come from `<input type="datetime-local">` parsed with
+`new Date(...)` in the server's zone — UTC on Vercel — so "7 PM" was stored as 7 PM UTC; the
+calendar's day grouping and time displays had the same assumption.
+
+**Decision:** `apps/web/instrumentation.ts` sets `process.env.TZ` from `APP_TIMEZONE` (default
+`America/Los_Angeles`) once at server start (Vercel reserves the `TZ` env var itself; a
+runtime assignment re-points Node's Date everywhere). One fix for every call site instead of
+threading a zone through a dozen. Also adds structured `onRequestError` logging.
+
+---
+
+## 2026-10-16 — Content list grouped by stage, as a to-do list
+
+`CONTENT_STAGES` / `NEXT_STEP` (domain, pure data) map the 24 states onto 7 stages and say
+who moves each item next ("You" vs system). `/content` shows stage tabs with counts and the
+next step per row, instead of 50 undifferentiated rows.
+
+
+---
+
+## 2026-10-16 — Overlay text goes through drawtext `textfile=` + `expansion=none`, not inline `text=`
+
+**Decision:** every overlay line is written to its own temp UTF-8 file and drawn with
+`drawtext=textfile='…':expansion=none`. `sanitizeDrawtextValue` is deleted. Only file paths
+(developer-controlled) are escaped for the filtergraph; untrusted text never enters it.
+
+**Bug fixed (verified):** `sanitizeDrawtextValue` didn't escape `%`, so "Save 50% more" made
+drawtext log `Stray %` and draw *nothing* while ffmpeg still exited 0. It also rewrote `:` to
+`–` and stripped commas, semicolons and brackets.
+
+**Alternatives:** (a) better escaping of inline `text=`, rejected: ffmpeg's nested quoting
+plus `%{}` expansion is fragile, and getting it wrong lets text inject into the filtergraph;
+(b) render all text through libass, rejected for overlays because drawtext + our own
+font-metric layout gives exact pixel rects that the collision and safe-zone code can reason
+about.
+
+**Regression tests:** `render-pipeline.test.ts` renders `Save 50% more: "don't" [yes], ok;
+café \ naïve`. It asserts no ffmpeg warnings (no `Stray %`), that the laid-out text equals the
+input byte-for-byte, and that the measured **ink width of each rendered line** matches the
+font-metric width of the full line (a dropped glyph makes the line measurably narrower).
+A NUMBER_CALLOUT of just "50%" must put ink in its rect.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Bundled Inter (OFL) fonts; missing font is a hard error
+
+**Decision:** ship Inter 4.1 static TTFs in `packages/media/assets/fonts/`
+(`Inter-SemiBold`, `InterDisplay-Bold`, `InterDisplay-ExtraBold`, about 1.2 MB total). They
+come from the official rsms/inter GitHub release, and the OFL license sits at
+`packages/media/assets/Inter-OFL-LICENSE.txt`. It lives outside `fonts/` because libass tries
+to load every file in its `fontsdir`. `resolveBundledFontPath()`, `resolveBundledFontsDir()`
+and `DEFAULT_FONT_PATH` are exported from `@chris/media`. `renderVideo` now **throws
+`RenderFontNotFoundError`** if a given `fontPath` doesn't exist, or if any bundled weight is
+missing. Before this, ffmpeg silently substituted a random fontconfig font and exited 0.
+
+`RenderInstructions.fontPath` is now optional. Omitted, or pointing at a bundled file, each
+overlay style uses its own bundled weight. Any other existing path is used for all overlays,
+as an explicit brand-font override.
+
+**Alternatives:** `@fontsource*` packages ship WOFF2 only. FreeType reads WOFF2 only when
+built with brotli, which we can't assume of a static ffmpeg, so we use TTF. DejaVu Sans was
+also considered; Inter reads as more premium and has proper display cuts.
+
+**Font discovery** order: `RENDER_FONTS_DIR` env, then a path relative to the module
+(`import.meta.url`), then a walk up from `cwd`. The cwd walk exists because Next's server
+bundling rewrites `import.meta.url`, the same bug class as the ffmpeg-static `__dirname` entry.
+
+**Reversibility:** high. Replace the TTFs or set `RENDER_FONTS_DIR`.
+
+---
+
+## 2026-10-16 — Deterministic text layout: font-metric wrapping, auto-shrink, per-style presets, safe zones
+
+**Decision:**
+- Text is measured with `opentype.js` (pure JS) reading the same TTF that drawtext renders.
+  ffmpeg 6's drawtext does no shaping or GPOS kerning, so summed advances match the screen.
+  A 4% margin absorbs FreeType's per-glyph rounding.
+- Wrapping is greedy and then balanced (no orphan last line). Font size shrinks in steps of
+  about 6% down to a per-style minimum to respect max lines. Text is **never truncated**: a
+  word too wide for a line is hard-broken by character.
+- Multi-line blocks use one drawtext per line with `y=<baseline>-ascent`, so baselines are
+  exact whatever glyphs a line contains.
+- Styles (`OVERLAY_STYLE_PRESETS`) are restrained by design: one family, one accent colour
+  (`#FFD84D`), flat translucent plates.
+  - HEADLINE: Inter Display Bold, 78→50 px, ≤3 lines, black@0.58 plate.
+  - CAPTION: Inter SemiBold, 54→40 px, black@0.48 plate.
+  - NUMBER_CALLOUT: Inter Display ExtraBold, 170→92 px, accent colour, outline + soft shadow,
+    no plate.
+  - LOWER_THIRD: Inter SemiBold, 46→36 px, left-aligned, black@0.62 plate with an accent bar.
+- Safe zones (`SAFE_ZONE_9X16_REFERENCE`, `getSafeArea()`): on a 1080×1920 canvas, top 250,
+  bottom 420, right 140 and left 60 px are off limits, scaled for other 9:16 sizes. Landscape
+  canvases get a 5% margin. Centred blocks are at most `2·min(540−60, 940−540)` = 800 px wide.
+  Every block is clamped inside the safe area.
+
+**Alternatives:** an average char-width heuristic was rejected as less accurate, and real
+metrics only cost about 170 KB of JS. Rasterising text in JS (canvas/sharp) was rejected as a
+heavier dependency for no gain.
+
+**Reversibility:** high. The presets are data.
+
+---
+
+## 2026-10-16 — Word-level burned-in captions via libass (`ass` filter)
+
+**Decision:** the bundled ffmpeg-static 6.0 has `--enable-libass`, so captions are generated
+as an ASS script and burned in with `ass=filename=…:fontsdir=<bundled fonts>`. The pipeline:
+
+1. Source-timeline words are remapped through the kept segments
+   (`remapWordsToOutputTimeline`). Words in cut regions are dropped. Partially cut words are
+   kept only if at least 50% or at least 0.12 s survives.
+2. `buildCaptionChunks` makes 2–4-word phrases. It breaks on sentence or clause punctuation,
+   on pauses over 0.35 s, and at a per-preset char limit. It merges orphan words, bridges gaps
+   under 0.3 s, and enforces at least 0.45 s on screen without overlap.
+3. `layoutCaptionChunks` pre-wraps lines with real metrics (`WrapStyle: 2`), so libass draws
+   exactly what the layout computed.
+4. Each chunk is placed with `\an2\pos()`.
+
+Presets: `CLEAN` (Inter Display Bold, white, soft outline) and `BOLD_HIGHLIGHT` (Inter Display
+ExtraBold, one event per word with the spoken word in the accent colour). Positions: `LOWER`
+(bottom just above the bottom safe zone) and `CENTER`.
+
+**Collision avoidance:** the renderer lays out overlays first. A caption phrase whose rect
+would intersect a time-overlapping overlay is moved above that overlay, or below it, or to the
+other caption band, whichever is first to fit inside the safe area without collision. Any
+residual collision is reported in `unexecutedInstructions`. The new
+`checkCaptionOverlayCollisions()` in `overlay-collision.ts` runs the exact same layout, so QC
+sees only real residual collisions.
+
+**Text safety:** in caption text, `{`/`}` become `(`/`)` and `\` becomes `/`, so ASS override
+syntax can't be injected. This is a tiny, documented fidelity loss for characters that
+essentially never occur in speech.
+
+**Defaults:** an EditPlan with `captions: null` (incl. every row persisted before this change)
+renders captions on, `CLEAN`, `LOWER` whenever the take has word timings. An explicit
+`{enabled:false}` is respected.
+
+**Alternatives:** one drawtext per chunk with `enable=between()` was rejected: no per-word
+highlight, and hundreds of filters for a 60 s video.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Punch-ins: split-trim-crop-concat (hard jump zooms)
+
+**Decision:** `punchIns: [{startSeconds,endSeconds,zoom 1.0–1.3,focus CENTER|UPPER_THIRD}]`
+on the output timeline. The renderer splits the concatenated video into pieces at the punch-in
+boundaries and frames each piece with a **static crop in source pixels**:
+`crop=min(iw,ih·W/H)/z × …`, then `scale=W:H:flags=lanczos`. The pieces are then
+concatenated (video only; audio is untouched).
+
+Zoom 1.0 is exactly the old cover-crop. Because the crop happens in source resolution, a
+punch-in re-samples the original footage rather than upscaling an already-upscaled frame.
+UPPER_THIRD centres the crop at 38% height to keep the face in frame.
+
+Overlapping, out-of-range or sub-0.2 s punch-ins are skipped or clamped and listed in
+`unexecutedInstructions`. The schema also enforces zoom 1.0–1.3.
+
+**Alternatives:** `zoompan` was rejected. It is built for stills, has frame-rate/duration
+pitfalls on video, and adds jitter. Per-frame `scale eval=frame` was rejected because
+mid-stream size changes are fragile. Animated (eased) zooms are deferred: hard punch-ins are
+the standard talking-head grammar and carry zero artifact risk.
+
+**Test:** pixel diff vs a no-punch-in render is large inside the window and below 3 outside
+it; output stays 1080×1920 at the right duration.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Unexecuted EditPlan instructions are surfaced, and the planner is told the truth
+
+**Decision:** `bRollRequests`, `musicTrack`, `sfxEvents` and `transitions` stay in the schema
+for forward compatibility. They are now `.describe()`d as "NOT YET EXECUTED — leave empty",
+and the Edit Planner prompt (v1.1.0) lists exactly what the renderer executes.
+`listUnexecutedPlanInstructions(plan)` (worker) plus `RenderResult.unexecutedInstructions`
+(renderer: skipped punch-ins, captions with no word timings, residual caption collisions) are
+merged and stored **inside `Render.technicalQCReport`** under
+`unexecutedInstructions` (plus `captions.rendered` / `captions.relocatedAroundOverlays`). They
+are also returned on `RenderJobResult.unexecutedInstructions`. No schema change:
+`technicalQCReport` is Json, and `overall`/`checks` keep their shape.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Technical QC: EBU R128 loudness, true peak, blackdetect, freezedetect
+
+**Decision:** the `volumedetect` dBFS sanity check is replaced by a single ffmpeg analysis
+pass: `ebur128=peak=true` on audio, and `blackdetect=d=0.2:pix_th=0.10,freezedetect=n=0.003:d=1`
+on video.
+
+| Check | Rule | Severity |
+|---|---|---|
+| `integrated_loudness` | Integrated loudness must be within −24…−8 LUFS (target −14) | FAIL |
+| `true_peak` | True peak must be ≤ −0.5 dBTP | FAIL |
+| `black_frames` | Opening black ≥ 0.3 s, or any black stretch ≥ 1.0 s | FAIL |
+| `black_frames_short` | A 0.5–1.0 s black stretch | WARN |
+| `frozen_video` | A freeze ≥ 2 s | WARN, never FAIL |
+
+Freezes are WARN only because a deliberate held frame (chart, still) is legitimate, and
+telling it from a stuck decoder is Visual QA's semantic job.
+
+`loudnorm` in the renderer now targets I=−14 (was −16), matching the QC target. On the demo
+render: −14.4 LUFS, −1.4 dBTP.
+
+**Shape compatibility:** `TechnicalQCReport` is still `{overall: "PASS"|"FAIL", checks}`. Checks
+gain an optional `severity` (absent = FAIL). New optional fields `warnings` and `measurements`
+are added. Only FAIL-severity failures make `overall` FAIL, so render-record's
+`qc.overall === "FAIL"` logic is unchanged.
+
+**Reversibility:** high. Thresholds are exported constants.
+
+---
+
+## 2026-10-16 — Real transcription: local Whisper via transformers.js (zero credentials)
+
+**Decision:** `LocalWhisperTranscriptionProvider` lives in `@chris/media/transcription`. It is
+a **subpath export**, so importing `@chris/media` never loads onnxruntime, and
+`@huggingface/transformers` is imported dynamically inside it.
+
+- Audio is decoded by the bundled ffmpeg to 16 kHz mono f32le.
+- The pipeline is `automatic-speech-recognition` with `return_timestamps:"word"`,
+  `chunk_length_s:30`, `stride_length_s:5`.
+- Whisper sub-word continuations ("50" + "%") are merged into one word.
+
+The default model is `onnx-community/whisper-base.en_timestamped`, fp32. The plain
+`whisper-base.en` export fails with "Model outputs must contain cross attentions", so a
+`_timestamped` export is required for word timings. Override with env `TRANSCRIPTION_MODEL`.
+
+The model downloads once (about 290 MB) into `TRANSCRIPTION_CACHE_DIR`, default
+`<repo>/.cache/transformers` (git-ignored). The provider satisfies packages/agents'
+`TranscriptionProvider` structurally, because media and agents don't depend on each other.
+That interface now has optional `words`.
+
+The domain gains `recordTranscript(prisma, {mediaAssetId, text, words|null, source:
+"LOCAL_WHISPER"|"MANUAL", model?}, actor)` and `parseTranscriptWords(json)`.
+`recordTranscript` writes the new MediaAsset fields plus a `MEDIA_ASSET_TRANSCRIBED` AuditLog
+row, with the previous provenance in `before` and the model in `metadata`. A MANUAL transcript
+clears stale word timings.
+
+The worker gains `apps/worker/src/transcribe-job.ts` (`@chris/worker/transcribe-job`) with
+`transcribeMediaAsset` and `transcribeContentItemTakes`. It fails safely: a provider error
+returns `{status:"FAILED"}` and leaves the existing transcript untouched. A batch never
+overwrites a MANUAL transcript unless `force`.
+
+**Verified for real:** the `say`-generated speech sample came back word-perfect: "Most people
+think a credit score is a grade, it is not. Save 50% more by paying your card twice a month.
+That is the whole trick." It returned 27 words with plausible timings (e.g. "50%" 3.60–4.02 s).
+Model load took about 19 s on first use and about 1 s per 10 s of audio after that.
+
+`RUN_WHISPER_TESTS=1` runs a 37 s, four-repeat `say` sample through the 30 s chunking. It
+**passed** (more than 70 words, monotonic timings, the last repetition placed in the last
+quarter). That test is skipped by default so `pnpm test` stays offline.
+
+**Alternatives:**
+- An OpenAI-compatible hosted `/audio/transcriptions` API was rejected: no key is available,
+  and it adds cost and data egress.
+- whisper.cpp was rejected as a native build step.
+
+pnpm reports `onnxruntime-node`/`sharp` build scripts as "ignored". They aren't needed: the
+macOS arm64 binaries ship prebuilt in the package. This should be re-verified on the Linux
+production host.
+
+**Reversibility:** high. Any `TranscriptionProvider` can be injected into the job.
+
+---
+
+## 2026-10-16 — Edit Planner / Take Selector grounded in timestamped speech; deterministic cut snapping; repair context
+
+**Decision:**
+- New pure module `packages/agents/src/transcript-timing.ts`.
+  - `buildTranscriptPhrases` groups words into phrases at sentence ends and at pauses over
+    0.3 s.
+  - `formatTimestampedTranscript` prints lines like
+    `[2.00-3.30] (pause 1.00s before) Most people think wrong.`
+  - `snapSegmentsToWordBoundaries` handles cut points:
+    - A cut **inside a word** moves to the nearer word edge.
+    - A cut in silence but within the pre-roll (0.08 s) or post-roll (0.15 s) of a word moves
+      out to give the word its breath.
+    - A cut comfortably in a pause is left alone.
+    - Pre/post-roll never reaches into the neighbouring word.
+- `runEditPlannerAgent` takes an optional `takeWords`. When present, the prompt shows
+  timestamped phrases and returned segments are snapped. The bounds check still runs on the
+  model's raw output first. Adjustments are appended to `rationale` as `[deterministic] …` for
+  provenance.
+- `runEditPlannerAgent` also takes an optional `repairContext: {previousPlan, qcIssues[]}`.
+  It adds a REPAIR PASS section: fix every listed issue with minimal change, keep everything
+  else identical, explain per issue.
+- `CandidateTake.words` gives the Take Selector measured delivery stats (`summarizeDelivery`:
+  wpm, leading/trailing silence, longest pause, pauses over 1 s) plus the timestamped
+  transcript.
+- Schema: `captions` (`{enabled, style CLEAN|BOLD_HIGHLIGHT, position LOWER|CENTER}`,
+  nullable, default null) and `punchIns` (default []) are added to `EditPlanOutputSchema`.
+  Both use `.default()`, so legacy rows still parse; zodOutputFormat still marks them required
+  for the model. A new `EditPlanRepairContext` type is added.
+- Prompts: EDIT_PLANNER 1.1.0, TAKE_SELECTOR 1.1.0 and VISUAL_QA 1.1.0 (rollback 1.0.0).
+  VISUAL_QA now knows what the renderer guarantees, so it focuses on face/legibility and emits
+  repair parameters the planner can consume.
+
+**Reversibility:** high. Prompt rollback is "flip to 1.0.0 from git history".
+
+---
+
+### Known limitations / left undone
+
+- B-roll, music, SFX and transitions remain unexecuted (no asset library). They are reported,
+  not hidden.
+- Caption/overlay vs **face** collisions need vision; that stays Visual QA's job. Our layout
+  can't know where the face is. A future improvement is face-aware placement via a lightweight
+  detector.
+- Punch-ins are hard cuts only (no eased zoom).
+- Whisper `base.en` is English-only. Set `TRANSCRIPTION_MODEL` (e.g.
+  `onnx-community/whisper-small_timestamped`) for multilingual or higher accuracy at about 3×
+  the CPU.
+- The `quality-gate-job.ts` integration of `checkCaptionOverlayCollisions` is not done (file
+  not owned). See wiring below.
+
+---
+
+### Evidence (real end-to-end render, 2026-10-16)
+
+The source was synthetic: a 1920×1080 talking-head stand-in (grid background, face and body
+blocks), 9 s long, with a real macOS `say` voice track. The steps:
+
+1. It was transcribed with `LocalWhisperTranscriptionProvider` (27 words).
+2. Two segments, as a planner would return them, were snapped:
+   `0.00-3.05 → 0.00-3.17` and `3.38-8.00 → 3.36-8.00`.
+3. The plan was rendered to 1080×1920 with these instructions:
+   - HEADLINE "Save 50% more: the twice-a-month card trick nobody explains" (TOP)
+   - NUMBER_CALLOUT "50%" (CENTER)
+   - LOWER_THIRD "Chris — credit, explained" (BOTTOM)
+   - captions (BOLD_HIGHLIGHT and CLEAN)
+   - a 1.2× UPPER_THIRD punch-in at 3.1–5.3 s
+
+Results: 7.9 s output, zero ffmpeg warnings, zero unexecuted instructions, Technical QC PASS
+(−14.4 LUFS, −1.4 dBTP).
+
+- `docs/evidence/2026-10-16-usable-v1/frame-BOLD_HIGHLIGHT-0.5.png`: the headline wraps to 3 balanced lines inside
+  the safe area; "%" and ":" render verbatim; the caption "Most people think" has the spoken
+  word lit.
+- `docs/evidence/2026-10-16-usable-v1/frame-BOLD_HIGHLIGHT-3.5.png`: the punch-in is active (grid visibly larger),
+  the "50%" callout shows, and the caption "Save **50%**" is in sync with the audio (output
+  3.5 s = source 3.69 s, inside the word "50%" at 3.60–4.02).
+- `docs/evidence/2026-10-16-usable-v1/frame-BOLD_HIGHLIGHT-5.6.png`: the caption was automatically moved above the
+  lower third instead of colliding; the active word "twice" matches source 5.79 s.
+- `docs/evidence/2026-10-16-usable-v1/frame-BOLD_HIGHLIGHT-7.2.png`, `frame-CLEAN-1.5.png`, `frame-CLEAN-6.png`
+  show the remaining frames.
+- `docs/evidence/2026-10-16-usable-v1/contact-sheet-bold-highlight.png` shows six frames side by side.
+
+Visible but *by content, not renderer*: the TOP headline sits over the stand-in's eyes and the
+CENTER callout over the mouth. These are exactly the FACE/EYE/MOUTH_OBSTRUCTION findings
+Visual QA exists to catch, and the repair pass to fix (move the headline to BOTTOM, etc.).
+
+---
+
+
+---
+
+## 2026-10-16 — Preflight requires a QC PASS for the exact render being published (critical)
+
+**Decision:** `runPreflight` now BLOCKs unless the latest QC report for the latest successful
+render has `overallStatus = PASS`. A missing QC report counts as a block too: a skipped gate
+fails closed. Preflight also now checks:
+- **Media spec, per platform** (`packages/domain/src/platform-limits.ts`):
+  - vertical 9:16 within ±3%
+  - Instagram Reels: 3s–15min, ≤300MB, width ≤1920
+  - YouTube Shorts: ≤180s
+  - TikTok: 3s–10min (API cap), ≤4GB, 360–4096px; the live `creator_info`
+    `max_video_post_duration_sec` overrides when available
+  - Missing duration/dimensions/size fail closed.
+- **Text limits:**
+  - Instagram: caption ≤2,200 chars, ≤30 hashtags, ≤20 @-mentions, measured on the *composed*
+    caption (caption + appended package hashtags)
+  - TikTok: ≤2,200 UTF-16 units
+  - YouTube: an explicit title ≤100 chars with no `<` `>`; description ≤5,000 bytes
+  - Overflowing hashtags block instead of being silently dropped.
+- **Credentials:** through the adapter's `checkCredentials()`, which now goes through the
+  refreshing credential store, so an expired-and-unrefreshable token shows up as a specific
+  "reconnect" reason.
+
+Every failure is its own specific reason string.
+
+**Alternatives:**
+- Check QC once at READY. Rejected: READY doesn't stop a re-render from slipping through.
+- Warn instead of block. Rejected: this is a hard gate (CLAUDE.md: a BLOCK is never averaged
+  away).
+
+**Rationale:** the audit found that a gate-skipped video could be published. This is the one
+place every publish path passes through: human click, autonomy, and the scheduled cron.
+`tryAutonomousPublish` is covered by a test proving earned autonomy can't bypass it.
+
+**Reversibility:** high. Pure, deterministic checks; the limits are constants in one file.
+
+---
+
+## 2026-10-16 — Retrying a failed platform after the item is PUBLISHED
+
+**Decision:**
+- Preflight accepts `PUBLISHED`/`MEASURING` in addition to `SCHEDULED`/`PUBLISHING`, but only
+  for a platform whose latest attempt is not SUCCESS/DRAFT.
+- `publishContentItem` only calls `startPublishing` from SCHEDULED.
+- `finalizePublishing` transitions only from PUBLISHING. It also records the PUBLISHING
+  autonomy outcome only on that transition, which fixes a pre-existing double count on
+  idempotent re-runs.
+
+**Alternatives:** a separate "retry platform" state. Rejected: it would need a schema/state-machine change, and
+nothing regresses this way.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Per-(item, platform) publish lease: advisory-locked claim + JobRun row
+
+**Decision:** before calling an adapter, the publish job claims a lease:
+1. A short `$transaction` takes `pg_advisory_xact_lock(hashtext('publish-lease:<item>:<platform>'))`.
+2. Inside it, it checks for a RUNNING `JobRun` of that kind (younger than 20 min) and inserts
+   one if there isn't one.
+3. The slow network work runs *outside* any transaction. The lease row is closed as
+   SUCCEEDED/FAILED in `finally`.
+4. A lease older than 20 min is treated as a crashed process and taken over. The old row is
+   marked FAILED with a reason.
+5. A held lease means the platform is *skipped* ("already in progress"), not FAILED.
+
+**Alternatives:**
+- A unique-constrained "pending" Publication: needs a schema/enum change, which isn't allowed
+  here.
+- A session advisory lock held for the whole publish: unsafe with a connection pool (lock and
+  unlock can land on different connections) and on serverless.
+- A JobRun row without the advisory lock: racy (two inserts can both see "no lease").
+
+**Rationale:** prevents double-click, two tabs, and cron + human from double-posting, with no
+schema change. Verified on the PGlite test database: advisory xact locks work there, and a
+`Promise.all` of two concurrent `publishContentItem` calls posts exactly once.
+
+**Reversibility:** high. Lease rows are ordinary JobRun rows with kind `publish-lease:*`.
+
+---
+
+## 2026-10-16 — Ambiguous publish outcomes and recovery
+
+**Decision:**
+- Adapters throw `AmbiguousPublishError` when the *committing* step gets no response:
+  - Instagram `media_publish`
+  - a YouTube upload whose session status can't be read
+  - TikTok's final chunk
+- The publish job records it as FAILED with errorMessage prefix `AMBIGUOUS:`.
+- On the next attempt, before posting again, it calls the adapter's optional
+  `findExistingPost` (I chose matchers that cost little or no quota):
+  - **Instagram:** recent `/{ig-user}/media` whose caption equals the composed caption,
+    posted after the attempt minus 15 min
+  - **YouTube:** the channel's uploads playlist (1 unit, not search.list's 100) matching the
+    exact composed title
+  - **TikTok DIRECT:** `/v2/video/list/` (scope `video.list`), matching title + `create_time`
+  - **TikTok INBOX:** drafts can't be looked up, so this throws
+- Outcomes:
+  - **Found:** a SUCCESS attempt is recorded with the recovered id/url ("Recovered: … not
+    re-posted") and verified.
+  - **Confirmed absent:** it posts normally.
+  - **Can't check:** it records a FAILED "check the account; if the post isn't there, retry to
+    post" and doesn't post. The next deliberate retry posts.
+
+**Alternatives:**
+- Treat every network error as FAILED. That's the old behavior, and it causes double-posts.
+- Block forever until a human marks it resolved. That needs new UI/state.
+- Embed an idempotency marker in the public caption/description. That pollutes public text.
+
+**Rationale:** the safest reversible behavior that keeps Chris's workflow to "retry".
+
+**Reversibility:** high. The matchers are adapter-internal.
+
+---
+
+## 2026-10-16 — Publish verification actually runs (verifiedAt)
+
+**Decision:** after every SUCCESS/DRAFT, the publish job calls `adapter.verify()` with a short
+budget (default delays 2s/5s/10s, injectable).
+- On success, `markPublicationVerified` sets `verifiedAt`, can replace `platformPostId`/`url`
+  with a resolved value (TikTok publish_id → video id), and appends caveats to `errorMessage`.
+  The original id is kept in `rawResponse.originalPlatformPostId`; the publish response moves
+  to `rawResponse.publish` and verification goes to `rawResponse.verification`.
+- If the post isn't verified in time, it gets a "Not yet verified … re-checked by the snapshot
+  sweep." note, which is cleared once verified.
+- `captureDueSnapshotsForAll` re-verifies unverified publications from the last 7 days.
+
+**Alternatives:** a separate Verification table. Rejected: `verifiedAt` already exists on
+Publication.
+
+**Rationale:** spec §22: a publish isn't done until verified. Updating the attempt's own
+verification fields completes that row; it doesn't rewrite history, and both responses are
+kept.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — OAuth connect flow, encrypted credential store, automatic refresh
+
+**Decision:**
+- **Domain:** `packages/domain/src/platform-credential.ts` persists already-encrypted strings
+  and lists non-secret summaries. Audit entries never contain token material.
+- **Platforms:**
+  - `packages/platforms/src/oauth.ts`: authorization URLs, code exchange, refresh.
+  - `credential-store.ts` (`PlatformCredentialStore`): decrypts (AES-256-GCM,
+    `TOKEN_ENCRYPTION_KEY`), refreshes near expiry, persists refreshed tokens, and falls back
+    to the legacy `*_ACCESS_TOKEN` env vars when no row exists.
+  - `factory.ts` (`createPlatformAdapters({ prisma, env?, fetchImpl? })`): the replacement for
+    `apps/web/lib/platform-adapters.ts`.
+- **Adapters** take a token provider per call. Their old static-credential constructor shapes
+  still work, so the current web code compiles unchanged.
+- **Refresh windows:**
+  - YouTube: ~1h tokens, refreshed within 5 min of expiry with the Google `refresh_token`
+    grant.
+  - TikTok: access 24h, refreshed within 5 min of expiry. The refresh token (365d) may rotate,
+    and the new one is always stored. Its expiry goes in `metadata.refreshExpiresAt`.
+  - Instagram: the long-lived token (60d) refreshes itself with `ig_refresh_token` within 7
+    days of expiry, but only once it's ≥24h old (Meta's rule).
+  - A failed refresh of a still-valid token falls back to that token; an expired one surfaces
+    a "reconnect in Settings → Connections" error.
+- **Scopes:**
+  - Instagram: `instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_business_manage_comments`
+  - YouTube: `youtube.upload youtube.readonly`, with `access_type=offline&prompt=consent` so a
+    refresh token is always issued. If one is missing, the exchange errors and tells Chris how
+    to fix it.
+  - TikTok: `user.info.basic,video.publish,video.upload,video.list`
+- **PKCE:** TikTok documents PKCE only for mobile/desktop. The web flow uses `client_secret`
+  server-side, so no PKCE.
+- **Instagram account id:** taken from `GET /me?fields=user_id,username` after the long-lived
+  exchange.
+- **CSRF:** a random 32-byte `state` in an httpOnly, SameSite=Lax cookie (path `/api/oauth`,
+  10 min), compared with `timingSafeEqual` in the callback.
+- **Web:** `/settings/connections` (new) shows each platform's status, account, expiry,
+  scopes, missing scopes, and missing server env, with Connect/Reconnect/Disconnect. It also
+  has the `publishing.scheduled_auto` toggle and recent cron JobRuns.
+
+**Alternatives:**
+- Credential store in packages/domain: impossible without a circular dependency (domain must
+  not depend on platforms, and the crypto lives in platforms).
+- NextAuth account linking: that's for app sign-in, not long-lived posting credentials.
+
+**Reversibility:** high. The env-token fallback keeps old deployments working.
+
+---
+
+## 2026-10-16 — Instagram adapter corrections
+
+**Decision:**
+- **Host/version:** stays on `graph.instagram.com` (Instagram Login, consistent with OAuth).
+  The version comes from `INSTAGRAM_GRAPH_API_VERSION`, default `v25.0`, which is the current
+  docs' examples.
+- **URL:** taken from `permalink` after publish and again on verify. The old `/reel/{media-id}/`
+  was wrong: media ids aren't shortcodes.
+- **Insights:**
+  - `views, likes, comments, shares, saved, reach, ig_reels_avg_watch_time`. `plays` is gone;
+    `views` is currently marked "in development".
+  - `ig_reels_avg_watch_time` is converted from ms to seconds. The reference page doesn't state
+    the unit; ms matches observed API behavior and the audit finding.
+  - Reads now throw `PlatformHttpError` on non-2xx.
+- **Caption:** package hashtags are appended to the caption, normalized and deduped
+  case-insensitively, within limits. `coverFrameSeconds` maps to `thumb_offset` in ms, and
+  `share_to_feed=true` is set.
+- **Status polling:** the budget is configurable (default 6 × 10s ≈ 1 min, down from 5 min
+  inside a request).
+  - **Still IN_PROGRESS:** FAILED with a `PENDING_PROCESSING:` prefix plus a `resumeToken`
+    (container id + createdAt). The publish job stores it in `rawResponse.resumeToken`; the
+    next retry, or the scheduled sweep within 23h, resumes without re-uploading.
+  - **Container already PUBLISHED:** the adapter recovers the post with `findExistingPost`.
+- **Comments:** paginated through `paging.next` (up to 20 pages of 50).
+
+**Not done:** Instagram's resumable upload (`rupload.facebook.com`). The docs restrict it to
+Facebook Login for Business, so it doesn't apply here.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — YouTube adapter corrections
+
+**Decision:**
+- **Upload:** the resumable upload protocol (session POST → PUT). On a dropped connection or a
+  5xx it queries `Content-Range: bytes */N` and resumes from the acknowledged `Range`, up to 3
+  times. A session it can't read is AMBIGUOUS.
+- **Metadata:**
+  - Title: explicit title, or the caption's first line; `<` `>` stripped, ≤100 code points (no
+    split surrogate pairs).
+  - Description: caption + deduped hashtags, ≤5,000 bytes, no `<` `>`.
+  - Tags: ≤500 chars counted the YouTube way (commas, plus quotes for tags with spaces).
+- **Privacy:** `privacyStatus` comes from `YOUTUBE_PRIVACY_STATUS` (default `public`).
+  `verify()` reads `status.uploadStatus`/`privacyStatus`: rejected/failed/deleted means not
+  verified, with the reason. A requested-public video that comes back private is verified with
+  the note "Uploaded but private — YouTube API audit required …".
+
+**Correction to the brief:** the current `videos.insert` page says "Videos uploaded from
+unverified API projects are not restricted to private viewing mode." The lock-to-private
+situation can still happen (older policy, or a channel that defaults uploads to private), so
+the check stays, but the note names both causes.
+
+- **Read errors:** metrics/comments throw on HTTP errors; metrics also throw for a missing
+  video. Comments are paginated by `pageToken`, and `commentsDisabled` yields `[]`.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — TikTok adapter: INBOX by default, creator_info, chunking, id resolution
+
+**Decision:**
+- **Post mode:** `TIKTOK_POST_MODE` = `INBOX` | `DIRECT`. Default is INBOX unless
+  `TIKTOK_APP_AUDITED=true`.
+  - **INBOX:** `/v2/post/publish/inbox/video/init/` (scope `video.upload`). The video lands in
+    Chris's TikTok inbox to finish in the app, so the outcome is DRAFT with that message.
+    Limit: 5 pending shares per 24h; the error code is mapped to a hint.
+  - **DIRECT:**
+    - Calls `creator_info/query` first.
+    - Privacy: `PUBLIC_TO_EVERYONE` only when audited and allowed, else `SELF_ONLY` when
+      offered. If nothing is usable it fails before uploading and points at INBOX: unaudited
+      clients can only post to *private* accounts.
+    - Respects `comment/duet/stitch_disabled` and the creator's max duration, and sends
+      `video_cover_timestamp_ms`.
+- **Chunking** follows the media transfer guide: ≤64MB is a single chunk; otherwise 10MB chunks
+  (clamped 5–64MB, ≤1000 chunks), `total_chunk_count = floor(size / chunk)`, with the trailing
+  bytes merged into the last chunk (≤128MB). Sequential PUTs with `Content-Range`.
+- **Status and ids:**
+  - A short status poll after upload catches an immediate FAILED (`fail_reason`).
+  - `publicaly_available_post_id` (sic) is parsed from the raw JSON text, because those int64
+    ids exceed 2^53.
+  - A resolved id becomes `platformPostId` (via verify/sweep).
+  - `getMetrics` refuses an unresolved publish_id (throws, so the offset stays due) and throws
+    on API errors.
+- **Comments:** `listComments` stays `[]`; there's no endpoint at this tier (unchanged
+  decision).
+
+**Known limit:**
+- TikTok exposes the video id only for *public* posts after moderation. Private/inbox posts
+  never get one, so they have no TikTok metrics. That's an honest gap.
+- The post URL needs `creator_username` from creator_info. It's cached per adapter instance,
+  so a URL resolved in a later sweep (new instance) may stay null.
+
+**Reversibility:** high. An env flag switches modes.
+
+---
+
+## 2026-10-16 — Honest snapshot windows; archiving no longer waits forever
+
+**Decision:**
+- An offset can only be captured inside its own window, `[dueAt, dueAt + max(1h, 25% of the
+  offset))`: T+1h → [1h, 2h), 6h → [6h, 7.5h), 24h → [24h, 30h), 72h → [72h, 90h),
+  7d → [7d, 8.75d), 30d → [30d, 37.5d). The windows never overlap.
+- A capture on day 8 records only T+7d. Earlier offsets are reported as `missed` and never
+  backfilled.
+- All offsets due in one run share one metrics read.
+- An adapter read error records nothing, is reported in `errors`, and leaves the offset due.
+- Archiving happens when every published platform has T+30d captured *or* its T+30d window has
+  closed (37.5d).
+- An item stuck at PUBLISHED with nothing capturable moves PUBLISHED → MEASURING → ARCHIVED
+  once the window closes.
+
+**Alternatives:** capture late offsets with a "late" flag. Rejected: that needs a schema
+change, and a late number labelled T+1h still misleads downstream evaluation.
+
+**Rationale:** spec §23: never fabricate a metric.
+
+**Consequence:** the sweep must run at least hourly to catch T+1h.
+
+**Reversibility:** high. The window function is one pure function.
+
+---
+
+## 2026-10-16 — Scheduled publishing and measurement sweeps (`apps/worker/src/scheduled-jobs.ts`)
+
+**Decision:**
+- **`publishDueScheduledItems({ prisma, storage, adapters, now?, getPublicVideoUrl?, … })`**
+  - Gated by feature flag `publishing.scheduled_auto`. It's OFF when the row is absent; the
+    toggle is on Settings → Connections.
+  - Publishes SCHEDULED items with `scheduledDate <= now`. Items more than 24h overdue are
+    reported as `missed` and never posted late.
+  - Also resumes only `PENDING_PROCESSING` platforms (resume token less than 23h old) through
+    `publishContentItem(..., { onlyPlatforms })`. It never blanket-retries real failures.
+  - Each item is isolated; every run writes a `JobRun` (kind `scheduled-publish`) with a
+    summary.
+- **`captureDueSnapshotsForAll({ prisma, adapters, now? })`** (JobRun kind `snapshot-sweep`)
+  - Re-verifies unverified publications, captures due snapshots for every PUBLISHED/MEASURING
+    item, and archives finished ones.
+  - Ingests comments only for items that hit a measurement point this run, to bound API cost.
+  - It's read-only toward the platforms, so it has no flag.
+
+**Rationale:** a human scheduled the item, so the content is approved. Posting with nobody
+clicking is still new autonomous behavior, so it's flagged off by default (CLAUDE.md).
+
+**Reversibility:** high. Turn the flag off.
+
+---
+
+## 2026-10-16 — Instagram public video URL is an injected dependency
+
+**Decision:** `publishContentItem(..., { getPublicVideoUrl?: (storageKey) => Promise<string | null> })`.
+It's only called for Instagram, once per run. If it's absent or returns null, Instagram is
+recorded as FAILED with a clear reason, and the adapter is never called.
+
+**Rationale:** Instagram fetches the video itself. The storage choice (Vercel Blob) belongs to
+`apps/web`.
+
+**Reversibility:** high.
+
+---
+
+
+---
+
+## 2026-10-16 — The Claims Gate reviews the FINAL SCRIPT, not just the research
+
+**Decision:** The pipeline is now Research → Claims Gate (MODE: RESEARCH) → Script →
+Claims Gate (MODE: SCRIPT, on the script's actual wording vs. the packet) → bounded revision →
+Brand Guardian → bounded brand revision. Research-level `requiredEdits` and the packet's
+`prohibitedClaims` are handed to the Script Agent from the first draft. A script-level
+`PASS_WITH_REQUIRED_EDIT` triggers up to `maxScriptRevisions` (default 1) Script revisions
+that apply the edits, each re-gated; anything other than `PASS` after that is
+`SCRIPT_BLOCKED`. A Brand Guardian revision is a new script, so it is re-gated too; if it
+doesn't `PASS` it is discarded and the last gated script stands. Every model call in a run is
+counted against `maxModelCalls` (default = worst case, 10) and refused past it
+(`PipelineBudgetExceededError`). The gate's own output is normalised deterministically, only
+ever stricter (PASS with edits → PASS_WITH_REQUIRED_EDIT; PASS_WITH_REQUIRED_EDIT with no edits
+→ BLOCK). A deterministic pre-check lists numbers/FACTs without a source URL and hands them to
+the gate as unsupported.
+
+**Alternatives considered:** gate only the research (status quo — the script could add a
+number nobody checked); gate only the script (loses the early, cheap stop before drafting);
+unbounded revise-until-pass loops (unpredictable spend, can oscillate).
+
+**Rationale:** viewers hear the script, not the packet. For finance content the most likely
+failure is the script hardening "can" into "will", dropping a caveat, or adding a punchy
+number. Regression test: `pipeline.test.ts` "a script that adds an unsupported number is
+caught at the script-level gate".
+
+**Reversibility:** high — `maxScriptRevisions`/`maxModelCalls` are options; the extra gate
+call can be removed in one place (`pipeline.ts`).
+
+---
+
+## 2026-10-16 — A script-level BLOCK routes RESEARCHING → RESEARCH_BLOCKED (no new state)
+
+**Decision:** The state machine is unchanged. When the final script fails the gate,
+`applyPipelineResult` records the research packet AND every gated script version (the final
+one carrying its BLOCK/unresolved result in `ScriptVersion.scriptClaimsGateResult`), then
+transitions RESEARCHING → RESEARCH_BLOCKED with reason "Script-level Claims Gate …". Defense in
+depth: a `READY` input whose final `scriptClaimsGateResult` is present and not `PASS` is
+downgraded to this path. Script history is an append-only `revisedFromId` chain.
+
+**Alternatives considered:** leave the item at SCRIPTING (the brief's other option) — rejected
+because SCRIPTING has only one exit (→ SCRIPTED), so a blocked item would be stuck with no
+legal recovery transition, and NEEDS YOU doesn't surface SCRIPTING; add a SCRIPT_BLOCKED state —
+out of scope (state machine owned elsewhere; doc + migration + UI change).
+
+**Rationale:** RESEARCH_BLOCKED is already the factual-hard-gate state, already surfaced in
+NEEDS YOU (FACTUAL_NUANCE), and already has both recovery paths: rollback to RESEARCHING to
+re-run, or a human fix that re-gates PASS (`recordScriptRegate` walks RESEARCH_BLOCKED →
+RESEARCHING → RESEARCHED → SCRIPTING → SCRIPTED, each a real audited transition). The
+transition reason distinguishes research-level from script-level blocks.
+
+**Reversibility:** high — if a dedicated state is added later, only `applyPipelineResult`'s
+SCRIPT_BLOCKED branch and `recordScriptRegate`'s walk change.
+
+---
+
+## 2026-10-16 — Human script edits are new versions and must re-pass the gate before filming
+
+**Decision:** `createHumanScriptVersion` creates a new `ScriptVersion` (authorType HUMAN,
+`revisedFromId`, `revisionNote`) — never an overwrite — allowed only while SCRIPTED or
+RESEARCH_BLOCKED; writes AuditLog `SCRIPT_VERSION_HUMAN_EDIT` and a Decision Journal entry
+(`userOverride: true` when the base was agent-written — ARCHITECTURE.md requires overrides to
+be journaled). Beat/pause/emphasis annotations are cleared (they described the agent's
+wording). `regateEditedScript` (agents) re-runs Claims Gate (+ Brand Guardian unless BLOCK);
+`recordScriptRegate` (domain) stores the verdict once (never overwrites an existing verdict).
+`createCreatorCardAndAdvance` now refuses (`ScriptNotClearedForFilmingError`) when the latest
+version is HUMAN and un-regated, or has any recorded verdict other than PASS. Legacy agent rows
+with no verdict (written before this change) are still allowed — backward compatible.
+
+**Alternatives considered:** trust human edits (a hand-typed "$25k Roth limit" would film);
+block legacy rows too (would strand every existing SCRIPTED item).
+
+**Rationale:** the factual hard gate applies to what gets filmed regardless of author.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Web retrieval for Research and Claims Gate (Anthropic server-side tools)
+
+**Decision:** Research and Claims Gate calls attach Anthropic's server-side `web_search` and
+`web_fetch` tools (`web_search_20260209` / `web_fetch_20260209` with dynamic filtering on
+Opus/Sonnet 5.x; basic `_20250305` / `_20250910` on other models). Configurable:
+`RESEARCH_WEB_SEARCH=on|off` (default on), `RESEARCH_WEB_SEARCH_MAX_USES` (5),
+`CLAIMS_GATE_WEB_SEARCH_MAX_USES` (3), `RESEARCH_WEB_FETCH_MAX_USES` (3). Structured outputs
+and server tools combine in ONE call — verified with a real request on 2026-10-16 (sonnet-5-5,
+web search + `output_config.format` + refusal fallback: valid parsed JSON, 1 search) — so no
+two-step search-then-extract was needed. `pause_turn` is resumed up to 3 times. The
+`ModelProvider` interface gained a vendor-neutral `tools?: {webSearch?: {maxUses,
+allowedDomains?}, webFetch?: {maxUses}}`. `ResearchPacket.citations` became structured
+(`url, title, publisher, publishedOrEffectiveDate, accessedDate, isPrimarySource`), facts and
+numeric inputs carry `sourceUrl` (+ `asOfDate`); prompts (RESEARCH/CLAIMS_GATE 1.1.0) require
+primary sources (IRS, SSA, Fed, BLS, Treasury, CFPB, SEC, FINRA, FDIC) and forbid URLs not
+actually retrieved. Search fees ($10/1,000) are priced into `costUsd`; per-call
+search/fetch/cache counts go to an AuditLog `MODEL_SERVER_TOOL_USAGE` row (ModelCallLog has no
+columns for them — see "Known gaps").
+
+**Alternatives considered:** a third-party search API + our own fetch loop (more code, another
+secret, no benefit); retrieval off by default (facts from model memory — the original problem).
+
+**Rationale:** finance limits change every year; model memory is not a source.
+
+**Reversibility:** high — `RESEARCH_WEB_SEARCH=off` restores memory-only behaviour (prompts then
+instruct the model to mark everything unsourced and prefer NEEDS_MORE_RESEARCH/BLOCK). Old
+string citations in existing rows are still readable (`researchPacketFromRow`).
+
+---
+
+## 2026-10-16 — Current model generation, explicit effort, per-model pricing
+
+**Decision:** Defaults HIGH `claude-opus-5-5`, MEDIUM `claude-sonnet-5-5`, LOW
+`claude-haiku-5-5` (each verified with `models.retrieve` on 2026-10-16). Thinking is adaptive
+(always on for these models; `budget_tokens`/disabled are 400s), so `output_config.effort` is
+always sent: HIGH→high, MEDIUM→medium, LOW→low (Opus 5.5 and Haiku 5.5 default to medium, so
+leaving it unset would silently under-think HIGH calls). `max_tokens` 64K/32K/16K and calls are
+streamed (`finalMessage()`), so thinking can't truncate the answer and large caps don't trip the
+SDK's non-streaming timeout guard. `pricing.ts` is keyed by model ID (input, output, 1.25x cache
+write, published cache read, Haiku 5.5's >100K long-context tier, $0.01/web search); an unknown
+model logs a warning and is priced at the most expensive known rate ($10/$50) so it can only be
+over-counted against the cap. Dated aliases (`-20251001`) resolve to their family. Server-side
+refusal fallback (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) is enabled for
+Opus 5.5 / Sonnet 5.5 (disable with `MODEL_REFUSAL_FALLBACK=off`); the call is costed at
+`response.model` (the serving model).
+
+**Alternatives considered:** keep class-keyed pricing (env overrides mis-costed); omit effort
+(HIGH calls run at medium on Opus 5.5).
+
+**Reversibility:** high — env `MODEL_HIGH/MEDIUM/LOW` overrides; price table is one file.
+
+---
+
+## 2026-10-16 — Model routing alignment with spec §16
+
+**Decision:** AUDIENCE_INTELLIGENCE moves LOW → MEDIUM (prompt 1.1.0) — spec §16 lists
+"audience intelligence" under MEDIUM and the spec wins over frontmatter. PRODUCTION_DIRECTOR
+(newly implemented) is MEDIUM (AGENT_CONTRACTS says LOW/MEDIUM; contract drafting sets factual
+risk and scope fences — judgment, not formatting). **Not changed (owned by another workstream):**
+EDIT_PLANNER frontmatter says HIGH while spec §16 / ARCHITECTURE.md say MEDIUM ("editing plans")
+— recommend the Edit Planner owner set MEDIUM or log why HIGH is earned. `/docs/ARCHITECTURE.md`
+and `/docs/AGENT_CONTRACTS.md` should list Audience Intelligence and Production Director as
+MEDIUM (integrator: not editable from this workstream).
+
+**Reversibility:** high (frontmatter flip, rollback_version 1.0.0).
+
+---
+
+## 2026-10-16 — Provider robustness: typed stop reasons, billed failures count, fail-CLOSED cap
+
+**Decision:** `stop_reason` is checked before reading content: `max_tokens` →
+`ModelOutputTruncatedError`, `refusal` → `ModelRefusalError` (with `stop_details.category`),
+unparseable/invalid → `ModelOutputParseError`; all extend `BilledModelCallError` carrying the
+usage, so `CostTrackingModelProvider` logs failed-but-billed calls WITH tokens and cost (they
+now count toward the spend cap). Prompt caching: `cache_control` on the system prompt and on the
+new `stableContext` block (brand docs, rendered before the per-call prompt; agents moved brand
+context there). Attribution: `provider.withContext({contentItemId})` (helper `scopeProvider`)
+sets `ModelCallLog.contentItemId` per call on a shared instance; the pipeline accepts
+`options.contentItemId`. **The spend-cap check now fails CLOSED:** if today's spend can't be
+read, the call is refused with `SpendCapCheckFailedError` and audited
+(`MODEL_SPEND_CAP_CHECK_FAILED`). This reverses the earlier fail-open entry.
+
+**Alternatives considered:** keep fail-open (a DB hiccup = unmetered spend; and if the DB is
+down the agent's result can't be persisted anyway, so refusing loses nothing real).
+
+**Reversibility:** high — one branch in `cost-tracking-provider.ts`.
+
+**Cache verification:** a real call on 2026-10-16 (sonnet-5-5, cached system block) reported
+`cache_creation_input_tokens: 6892` and `cache_read_input_tokens: 11632` across the server-tool
+iterations of a single request, i.e. caching is active. A cross-request hit on the brand-context
+block could not be measured: the shared API key ran out of credit mid-session (see eval entry).
+The eval runner now records per-case `usage.cacheReadInputTokens` so the next run shows it.
+
+---
+
+## 2026-10-16 — Structured-output schemas must not use z.record
+
+**Decision:** `PlatformPackageOutputSchema.metadata` (model side) is now `metadataEntries:
+{key, value}[]` (`PlatformPackageModelOutputSchema`), folded back into a record by
+`runPlatformPackagingAgent` — the public return type still has `metadata: Record<string,string>
+| null`, so the existing web call compiles unchanged. Taste Learner `context` is now explicit
+nullable fields `{productionTier, topic, format, platform}`; `toAcceptanceProbabilityInputs`
+compacts nulls away for persistence.
+
+**Rationale:** the SDK's schema transform renders a record as an object with no properties and
+`additionalProperties: false`, so the model could only ever return `{}`.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Production Director implemented (contract + creator card drafts)
+
+**Decision:** `runProductionDirectorAgent` (modes CONTRACT / CREATOR_CARD; also
+`runProductionDirectorContractAgent`, `runProductionDirectorCreatorCardAgent`) drafts every
+field of `CreateProductionContractSchema` (plus a `rationale`) from the idea, the current week's
+thesis, its portfolio allocation and brand; and a Creator Card from the latest gated script.
+`toCreateProductionContractInput` / `toCreateCreatorCardInput` map drafts to the existing domain
+create functions. Non-interactive: `draftAndIssueProductionContract` /
+`draftAndIssueCreatorCard` — gated by feature flag `AUTOPILOT_PRODUCTION_DIRECTOR` (off by
+default) unless `triggeredByHuman: true`; the contract path journals the tier/risk decision. The
+creator-card path still goes through the filming gate. Inverted min/max lengths are repaired
+deterministically.
+
+**Reversibility:** high — drafts are suggestions; the existing manual forms remain.
+
+---
+
+## 2026-10-16 — Learning loop closes into strategy; Strategist may propose new ideas
+
+**Decision:** `buildStrategicContext(prisma, {maxChars=8000})` (domain) assembles a
+token-bounded (~2K tokens) block: accepted Beliefs, last WeeklyBrief, recent
+PerformanceEvaluations (with titles), AudienceInsights, TasteFeedback counts + recent verbatim,
+recent ReferenceObservations — each section explicitly says "no data yet" when empty. Creative
+Director and Weekly Strategist accept optional `strategicContext` (backward compatible). The
+Strategist returns `proposedNewIdeas[]` (with `targetPortfolioSize`, default 30); nothing is
+created until a human approves. Pending proposals are stored as append-only AuditLog rows
+(`NEW_IDEA_PROPOSED`, metadata = proposal) and resolved by `NEW_IDEA_PROPOSAL_APPROVED/_REJECTED`
+rows — no schema change. `approveIdeaProposal` creates the ContentItem (IDEA), records its
+portfolio allocation and approves it (IDEA → SELECTED). `refreshTasteModel(prisma, provider)`
+runs the Taste Learner per artifact type with ≥2 feedback rows and appends
+ChrisAcceptanceProbability rows. `journalDecision` (best-effort, never throws) is written for:
+research-level and script-level Claims Gate BLOCKs, multi-version script selection, portfolio
+allocation proposals, Production Director contracts, human script edits (override), and rejected
+idea proposals (override) — not for routine passes.
+
+**Alternatives considered:** a `ProposedIdea` table (cleaner querying — recommended when the
+schema owner next migrates; the AuditLog rows migrate 1:1); auto-creating IDEA items (violates
+"proposals require review").
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Brand voice grounding scaffold
+
+**Decision:** `brand/VOICE_SAMPLES.md` ships EMPTY with instructions for Chris (3–8 verbatim
+transcripts between `SAMPLES START/END` markers; optional labelled `NOT ME` counter-example).
+`getBrandContextText` appends the samples only when the region is non-empty. No samples were
+invented — a fake "real transcript" would teach every agent the wrong voice with false
+authority. Filling it is a brand change Chris logs like any `/brand` edit.
+
+**Reversibility:** high.
+
+---
+
+## 2026-10-16 — Eval harness (spec §24) and first real results
+
+**Decision:** `packages/evals`: gold-standard fixtures in `fixtures/evals/*.json` (case = prompt
+under test, input, deterministic assertions, known-good `mockResponse`). Runner
+`pnpm --filter @chris/evals eval` (flags `--only=`, `--prompt=`, `--mock`, `--max-cost=`;
+`ENV_FILE=` for the key) runs against real models, prints a pass/fail table + cost, writes
+`fixtures/evals/results/<timestamp>.json`. Mock self-test in the normal suite proves fixtures
+parse, known-good answers pass through the real agent functions/schemas, and wrong answers fail.
+`packages/evals/src/e2e-pipeline.ts` runs one real end-to-end pipeline (no DB).
+
+Coverage now: accurate vs misleading finance claims (Claims Gate: correct 2026 limits must not
+BLOCK; "$25,000 Roth IRA limit" in the packet must BLOCK; 2025 limit labelled 2026; "you can't
+lose money in index funds" in a script; a script adding an unsupported "$3.2 million every time"
+projection); Chris vs non-Chris voice; generic-AI copy; good vs cringe CTA; excessive reference
+copying (Brand Guardian). Figures verified 2026-10-16 against IRS IR-2025-111: 401(k) $24,500,
+IRA $7,500, 50+ catch-up $8,000 (IRA catch-up $1,100; ages 60–63 $11,250). Note the misleading
+SCRIPT-mode cases accept `BLOCK` or `PASS_WITH_REQUIRED_EDIT` (either stops filming: the
+pipeline forces a revision and re-gates); RESEARCH-mode false numbers require `BLOCK` (the stale
+year case accepts either non-PASS verdict).
+
+**First real run (2026-10-16, Brand Guardian on sonnet-5-5, $0.077):** 4/5 — chris-voice PASS
+(brand 72 / voice 74, borderline), generic-AI PASS (4/3), cringe-CTA PASS (22/28, 5 required
+changes), reference-copying PASS (originality 0), good-CTA **FAIL** (62/60). Inspection: the
+good-CTA fixture's body was genuinely vague (no numbers, "it usually bounces back") and the
+Guardian's critique was correct — the case tested script quality, not the CTA. Fixture v2 gives
+the good/cringe pair the SAME concrete body so only the CTA differs; it has **not** been re-run.
+**Claims Gate evals and the end-to-end run could not run:** the shared Anthropic key hit "credit
+balance is too low" mid-session (other workstreams share it). No prompt's `eval_status` was
+changed (none has fully passed).
+
+**Reversibility:** n/a (additive).
+
+---
+
+### Known gaps / follow-ups
+
+- Run `pnpm --filter @chris/evals eval` and `npx tsx src/e2e-pipeline.ts` (in packages/evals)
+  once API credit is restored (~$0.6 for evals incl. 5 Opus Claims Gate cases with search,
+  ~$0.3–0.8 for e2e); set `eval_status: passed` only for prompts whose cases all pass.
+- ModelCallLog lacks columns for cache read/write tokens and web search/fetch counts (breakdown
+  is in AuditLog `MODEL_SERVER_TOOL_USAGE` for retrieval calls only). Recommend adding
+  `cacheReadTokens`, `cacheWriteTokens`, `webSearchRequests` columns.
+- Refusal fallback: cost is computed at the serving model's price; a fallback run's iterations
+  could be costed per-iteration from `usage.iterations` for exactness.
+- A `ProposedIdea` table would replace the AuditLog-backed proposal store.
+- Spend cap remains a single daily ceiling; the per-run `maxModelCalls` budget is the first
+  per-job limit (spec §16), only for the research→script pipeline.
+
+---
+
+---
+
+## 2026-10-16 — Integration: shared step functions + Autopilot; wiring of all workstreams
+
+**Decision:** the per-state production steps (research → script pipeline, take selection,
+edit planning, packaging) live once in `apps/web/lib/content-steps.ts`, used by both the
+individual buttons and **Autopilot** (`runAutopilot`), so the two can't drift. Autopilot is
+started by a human click and acts with that authority for steps Chris would otherwise click
+one by one: Production Director contract → start research → pipeline → Creator Card
+(only if the script cleared the script-level Claims Gate and Brand Guardian has no concerns)
+→ stop for filming/upload → transcribe → take → edit plan → render → Quality Gate + auto-repair
+→ package for all three platforms → stop ("ready to schedule"). It goes through every hard gate
+via the same domain functions, and it **never schedules or publishes** — those stay explicit
+(or the flag-gated scheduled-publish cron). The Content list can run it over a checked batch in
+the background (`after()`), recorded as one `JobRun` (`autopilot.batch`) whose per-item outcome
+is shown on the page.
+
+**Other wiring:** credential-store adapters per call; Instagram gets a 2-hour presigned private
+Blob URL (not a public upload — SECURITY.md's "no permanently public media"); `/api/cron/[job]`
+(`tick` | `publish-scheduled` | `snapshots`, `Authorization: Bearer $CRON_SECRET`, timing-safe);
+`vercel.json` keeps a once-daily cron (safe on every plan) and `.github/workflows/cron-tick.yml`
+calls `tick` every 10 minutes (Hobby can't run sub-daily Vercel crons); transcription runs in
+the background after upload locally (off by default on Vercel — too heavy for a function; a
+manual transcript box is always available); auto-repair, re-plan, script edit + re-gate,
+one-click Production Director, strategic context, new-idea proposals, approve-all-recommended,
+taste refresh, Film Queue.
+
+**Verified live (local `next dev`, real HTTP):** all 12 pages 200; cron 401 without/with a wrong
+secret and a clean `tick` run with the right one (scheduled publishing correctly off by
+default); a 100 MB upload streamed and ingested; a real spoken take uploaded → background local
+Whisper → word-perfect transcript with word timings; that take rendered through the real render
+job with a HEADLINE containing `:`/`()`/`%`, a NUMBER_CALLOUT and BOLD_HIGHLIGHT word captions →
+Technical QC PASS (frames in `docs/evidence/2026-10-16-usable-v1/integration-*.png`).
+
+**Not verifiable today:** any step needing a model call — the shared Anthropic key ran out of
+credit mid-run ("credit balance is too low"). All of it is covered by mock-provider tests; the
+real evals (`pnpm --filter @chris/evals eval`) and the e2e pipeline script are ready to run once
+the key has credit.
+
+## 2026-10-16 — Edit Planner routed MEDIUM, per spec §16
+
+Spec §16 lists "editing plans" under MEDIUM; the prompt frontmatter said HIGH (Opus). Spec
+wins (CLAUDE.md): `EDIT_PLANNER.md` → `model_class: MEDIUM`, version 1.1.1 (rollback 1.1.0).
+The planner's hard parts are now deterministic (cut snapping to word boundaries, bounds
+validation, caption layout, collision relocation), so the judgment left for the model is
+mid-tier. Reversible by flipping the frontmatter back if real evals show quality loss.

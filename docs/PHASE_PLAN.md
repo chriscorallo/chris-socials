@@ -910,3 +910,39 @@ outcomes, evaluated per subsystem, never globally, and HERO/high-risk content ca
 level 0/1 indefinitely — by default policy, and permanently if a human sets its ceiling there
 — even after RAW/FAST content on the same subsystem earns higher autonomy. This completes
 Phases 0-8, the entire spec-defined phase plan.
+
+### Usable v1 pass — 2026-10-16 (post-Phase-8 audit + fixes)
+
+A full audit (see `/docs/DECISIONS.md`, "Full audit; 'Phases 0–8 complete' did not mean
+'usable'") found the suite green but the product not usable for real work. **Corrections to
+the records above**, kept rather than rewritten:
+- Phase 2's acceptance criterion ("gold-standard fixtures pass their assigned evals" with real
+  model calls) was never met — there was no eval harness. One now exists (`packages/evals`,
+  `fixtures/evals/`); first real run: Brand Guardian 4/5; Claims Gate cases not yet run (API key
+  out of credit). No prompt's `eval_status` is marked passed yet.
+- Phase 4's "factual gate" never checked the final script, and its FACTUAL verdict failed open;
+  the generic manual-advance buttons let any item skip all four hard gates and be published.
+- Phase 3's renderer could not produce a publishable short (no captions, text overflowed and
+  `%` vanished, macOS-only font, no transcription, repair loop replayed the same plan).
+- Phase 5/6 adapters had never worked for real: Instagram hardcoded to fail, static tokens
+  with no refresh, no scheduler, verification never called, late snapshots fabricated history.
+
+**Fixed in this pass (branch `fix/usable-v1`):** every item above, plus uploads of any size
+(local streaming / browser-direct private Vercel Blob), deploy file tracing for prompts/brand/
+fonts, isolated test database, app time zone, OAuth connect + encrypted auto-refreshing
+credentials, publish lease/verify/ambiguity handling, honest snapshot windows, scheduled
+publish + measurement jobs (flag-gated) with cron route + GitHub Actions tick, word-level
+captions + styled verbatim text + punch-ins + bundled fonts + EBU R128 QC, local Whisper with
+word timings, auto-repair loop, script-level Claims Gate with web research and real citations,
+human script edits that must re-pass the gate, Production Director, learning loop into
+strategy, current models + per-model pricing + fail-closed spend cap, Film Queue, stage-grouped
+Content list, and Autopilot (single + background batch).
+
+**Evidence:** `pnpm test` 513 passed / 1 skipped (real-Whisper test, opt-in) across 72 files on
+a fresh throwaway DB; `tsc --noEmit` and lint clean; production build clean; live HTTP checks
+listed in the DECISIONS integration entry.
+
+**Still open (by design or owner-only):** B-roll/music/SFX/transitions (no asset library);
+captions/overlays can't avoid faces on their own (Visual QA catches it); transcription on
+Vercel (needs a worker host or a hosted transcription API); platform app review/audits and
+OAuth app credentials; Vercel Blob store + env vars; Anthropic credit for real evals.

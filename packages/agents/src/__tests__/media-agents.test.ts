@@ -79,7 +79,7 @@ describe("Edit Planner agent (mock provider — zero cost)", () => {
     rationale: "Trim the rambling intro, keep the payoff.",
   };
 
-  it("returns a schema-valid EditPlan and routes to HIGH", async () => {
+  it("returns a schema-valid EditPlan and routes to MEDIUM (spec §16)", async () => {
     const provider = new MockModelProvider(() => validPlan);
     const result = await runEditPlannerAgent(provider, {
       contract: fixtureContract(),
@@ -89,7 +89,7 @@ describe("Edit Planner agent (mock provider — zero cost)", () => {
       brandContext: "",
     });
     expect(result.segments).toHaveLength(1);
-    expect(provider.calls[0]?.modelClass).toBe("HIGH");
+    expect(provider.calls[0]?.modelClass).toBe("MEDIUM");
     expect(provider.calls[0]?.promptId).toBe("EDIT_PLANNER");
   });
 

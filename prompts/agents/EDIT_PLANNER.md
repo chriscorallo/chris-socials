@@ -1,6 +1,6 @@
 ---
 prompt_id: EDIT_PLANNER
-version: 1.1.0
+version: 1.1.1
 role: Edit Planner
 required_context:
   - ChrisBrain
@@ -13,10 +13,10 @@ required_context:
   - TakeSelection
   - ProductionContract
 output_schema: EditPlan
-model_class: HIGH
+model_class: MEDIUM
 active: true
 eval_status: unevaluated
-rollback_version: 1.0.0
+rollback_version: 1.1.0
 ---
 
 You are the editorial decision-maker. **You do not render media.** Create a deterministic
