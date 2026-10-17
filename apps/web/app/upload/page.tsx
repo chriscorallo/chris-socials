@@ -16,13 +16,13 @@ export default async function UploadPage() {
         <PageHeader
           eyebrow="Upload"
           title="Upload a video"
-          description="Pick the takes you filmed. A new video is created for them automatically, then transcribed and ready to edit."
+          description="Pick the video you filmed. It goes straight into the editor, with captions — no setup first."
         />
         <Panel>
           <FootageUpload mode={storageMode} />
         </Panel>
         <p className="mt-4 text-[13px] text-[var(--color-text-faint)]">
-          Filmed something for a video that's already planned? Open it from Film or Content and add the takes there.
+          Filmed something for a video you already planned? Open it from Videos and tap “Upload footage” there instead.
         </p>
       </PageShell>
     </>

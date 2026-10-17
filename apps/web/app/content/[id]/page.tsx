@@ -1,11 +1,17 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, NEXT_STEP, FINISHING_EDIT_STATES } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
+import { formatWhen } from "../../../lib/video-cards";
 import { RawTakeUploader } from "./RawTakeUploader";
+import { FlowProgress } from "./FlowProgress";
+import { startEditing } from "./flow-actions";
+import { FootageUpload } from "../../upload/FootageUpload";
 import { NavBar } from "../../components/NavBar";
-import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, BackLink, CollapsiblePanel, StickyActionBar, contentStateTone, stateLabel, platformLabel } from "../../components/ui";
+import { VideoThumb } from "../../components/VideoCard";
+import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, BackLink, CollapsiblePanel, StickyActionBar, StatusPill, stateLabel, platformLabel } from "../../components/ui";
 import {
   selectForWeek,
   advanceManual,
@@ -40,6 +46,15 @@ import {
 // Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
 export const maxDuration = 300;
 
+// The video page, simple first (docs/decisions-pending/flow.md): the video itself, a plain
+// status, Plan → Write → Film → Edit → Post, and ONE big button for the next step (+ at most
+// two secondary ones). Only the input the current step needs (uploading, scheduling, a plan
+// or shot notes by hand) is shown open. Everything else — every AI step, the contract,
+// research, script versions, take selection, edit plan, renders and checks, publications,
+// feedback, the audit trail — is still here, unchanged, under "Details & history".
+
+type Act = { label: string; big: ReactNode; small: ReactNode };
+
 export default async function ContentDetailPage({
   params,
   searchParams,
@@ -53,15 +68,15 @@ export default async function ContentDetailPage({
   const item = await getContentItem(prisma, id);
   if (!item) notFound();
 
-  const isTerminal = item.currentState === "ARCHIVED" || item.currentState === "CANCELLED";
+  const state = item.currentState;
+  const isTerminal = state === "ARCHIVED" || state === "CANCELLED";
   // Takes and music beds share the MediaAsset table; this panel is about the takes. Music is
   // listed separately (it's added and used in the finishing editor's Sound sheet).
   const rawTakes = item.mediaAssets.filter((a) => a.kind === "RAW_TAKE");
   const musicAssets = item.mediaAssets.filter((a) => a.kind === "MUSIC");
-  const manualTransitions = listManualTransitions(item.currentState);
-  // Waiting on footage → the upload box goes to the very top (it used to sit at the bottom of a
-  // long page, which read as "there is nowhere to upload").
-  const needsFootage = item.currentState === "READY_TO_FILM" || item.currentState === "FILMED" || item.currentState === "MEDIA_INGESTED";
+  const manualTransitions = listManualTransitions(state);
+  // Waiting on footage → the simple upload box (straight into the editor afterwards).
+  const needsFootage = state === "READY_TO_FILM" || state === "FILMED";
   const latestResearch = item.researchPackets[0];
   const latestScript = item.scriptVersions[0];
   const latestTakeSelection = item.takeSelections[0];
@@ -70,57 +85,156 @@ export default async function ContentDetailPage({
   const latestQCReport = item.qcReports[0];
   const ALL_PLATFORMS = ["INSTAGRAM", "TIKTOK", "YOUTUBE"] as const;
   const packagedPlatforms = new Set(item.platformPackages.map((p) => p.platform));
+  const scriptFilmable = latestScript ? isScriptVersionFilmable(latestScript).ok : false;
+  const canEdit = FINISHING_EDIT_STATES.has(state) && !!latestEditPlan;
+  const editHref = `/content/${item.id}/edit`;
 
-  // The one obvious next action, pinned in the thumb zone on phones (StickyActionBar hides at
-  // lg+, where the gold "Next Step" panels below are all visible). Same server actions as the
-  // panels — this is a second entry point, never a different behavior. Steps that need input
-  // (scheduling, uploads) jump to their panel instead of acting blind.
-  const oneTap = (action: (fd: FormData) => Promise<void>, label: string, pending = "Working…") => (
-    <form action={action}>
+  // Hero media: the latest good render, else the chosen (or first) take, else a placeholder.
+  const goodRender = item.renders.find((r) => r.status === "SUCCESS" && r.storageKey);
+  const heroTake = rawTakes.find((a) => a.id === latestTakeSelection?.selectedMediaAssetId) ?? rawTakes[0];
+  const heroKey = goodRender?.storageKey ?? heroTake?.storageKey ?? null;
+  const livePost = item.publications.find((p) => p.status === "SUCCESS" && p.url);
+  const next = nextActionFor(state);
+  const when =
+    (state === "SCHEDULED" || state === "READY") && item.scheduleEntry
+      ? `Scheduled for ${formatWhen(item.scheduleEntry.scheduledDate)}`
+      : livePost?.publishedAt
+        ? `Posted ${formatWhen(livePost.publishedAt)}`
+        : null;
+
+  // --- The one primary action (same on the big button and the sticky bar) -------------------
+  const big = "btn btn-primary w-full !min-h-[54px] !text-[17px]";
+  const small = "btn btn-primary !px-5";
+  const formAct = (action: (fd: FormData) => Promise<void>, label: string, pending = "Working…", extra?: Record<string, string>): Act => {
+    const make = (cls: string) => (
+      <form action={action} className={cls.includes("w-full") ? "w-full" : ""}>
+        <input type="hidden" name="contentItemId" value={item.id} />
+        {Object.entries(extra ?? {}).map(([k, v]) => (
+          <input key={k} type="hidden" name={k} value={v} />
+        ))}
+        <Button tone="primary" className={cls.replace("btn btn-primary", "")} pendingLabel={pending}>
+          {label}
+        </Button>
+      </form>
+    );
+    return { label, big: make(big), small: make(small) };
+  };
+  const linkAct = (href: string, label: string, external = false): Act => {
+    const make = (cls: string) =>
+      external || href.startsWith("#") ? (
+        <a href={href} className={cls} {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+          {label}
+        </a>
+      ) : (
+        <Link href={href} className={cls}>
+          {label}
+        </Link>
+      );
+    return { label, big: make(big), small: make(small) };
+  };
+  const secLink = (href: string, label: string) => (
+    <Link key={href + label} href={href} className="btn btn-ghost flex-1 !min-h-[46px]">
+      {label}
+    </Link>
+  );
+  const secForm = (action: (fd: FormData) => Promise<void>, label: string, pending = "Working…", extra?: Record<string, string>) => (
+    <form key={label} action={action} className="flex-1">
       <input type="hidden" name="contentItemId" value={item.id} />
-      <Button tone="primary" className="!px-5" pendingLabel={pending}>{label}</Button>
+      {Object.entries(extra ?? {}).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
+      <Button className="w-full !min-h-[46px]" pendingLabel={pending}>
+        {label}
+      </Button>
     </form>
   );
-  const jump = (href: string, label: string) => (
-    <a href={href} className="btn btn-primary !px-5">{label}</a>
-  );
-  const scriptFilmable = latestScript ? isScriptVersionFilmable(latestScript).ok : false;
-  let sticky: { label: string; node: ReactNode } | null = null;
-  switch (item.currentState) {
-    case "IDEA": sticky = { label: "Select for this week", node: oneTap(selectForWeek, "Select") }; break;
-    case "SELECTED": sticky = { label: "Draft the production contract", node: oneTap(draftContractAction, "Draft", "Drafting…") }; break;
-    case "RESEARCHING": sticky = { label: "Research → script pipeline", node: oneTap(runPipeline, "Run", "Running…") }; break;
-    case "SCRIPTED": if (scriptFilmable) sticky = { label: "Draft the Creator Card", node: oneTap(draftCreatorCardAction, "Draft", "Drafting…") }; break;
-    case "FILMED": sticky = { label: "Upload your raw takes", node: jump("#media", "Upload") }; break;
-    case "MEDIA_INGESTED": sticky = { label: "Pick the best take", node: oneTap(runTakeSelector, "Run", "Picking…") }; break;
-    case "TAKE_SELECTED": sticky = { label: "Plan the edit", node: oneTap(runEditPlanner, "Plan", "Planning…") }; break;
-    case "EDIT_PLANNED": sticky = { label: "Render the video", node: oneTap(runRender, "Render", "Rendering…") }; break;
-    case "EDITING": sticky = { label: "Render again", node: oneTap(runRender, "Render", "Rendering…") }; break;
-    case "QC_REPAIR": sticky = { label: "Auto-repair and re-check", node: oneTap(runAutoRepair, "Repair", "Repairing…") }; break;
-    case "RENDERED": sticky = { label: "Run the Quality Gate", node: oneTap(runQualityGate, "Run", "Checking…") }; break;
-    case "READY": sticky = { label: "Pick a date and schedule", node: jump("#schedule", "Schedule") }; break;
-    case "SCHEDULED": sticky = { label: "Publish now", node: oneTap(runPublish, "Publish", "Publishing…") }; break;
-    case "PUBLISHING": sticky = { label: "Retry publishing", node: oneTap(runPublish, "Retry", "Publishing…") }; break;
+
+  let primary: Act | null = null;
+  const secondary: ReactNode[] = [];
+  switch (state) {
+    case "IDEA":
+      primary = formAct(selectForWeek, "Start this video");
+      break;
+    case "SELECTED":
+      primary = formAct(draftContractAction, "Plan it with AI", "Planning…");
+      secondary.push(secLink("#step", "Plan it myself"));
+      break;
+    case "CONTRACTED":
+      primary = formAct(advanceManual, "Start writing", "Starting…", { to: "RESEARCHING" });
+      break;
+    case "RESEARCHING":
+      primary = formAct(runPipeline, "Write the script with AI", "Writing…");
+      break;
+    case "RESEARCH_BLOCKED":
+      primary = formAct(advanceManual, "Try the research again", "Starting…", { to: "RESEARCHING" });
+      if (latestScript) secondary.push(secLink("#script", "Edit the script"));
+      break;
+    case "RESEARCHED":
+    case "SCRIPTING":
+      primary = formAct(runAutopilotAction, "Continue with AI", "Working…");
+      break;
+    case "SCRIPTED":
+      primary = scriptFilmable ? formAct(draftCreatorCardAction, "Make shot notes with AI", "Drafting…") : linkAct("#script", "Fix the script");
+      secondary.push(secLink("#step", "Write shot notes myself"));
+      break;
+    case "READY_TO_FILM":
+      primary = linkAct("#upload", "Upload footage");
+      secondary.push(secLink("/film", "Film it"));
+      secondary.push(secForm(advanceManual, "I've filmed it", "Saving…", { to: "FILMED" }));
+      break;
+    case "FILMED":
+      primary = linkAct("#upload", "Upload footage");
+      break;
+    case "MEDIA_INGESTED":
+      primary = formAct(startEditing, "Edit video", "Opening editor…");
+      secondary.push(secForm(runTakeSelector, "Let AI pick the best take", "Picking…"));
+      break;
+    case "TAKE_SELECTED":
+      primary = formAct(startEditing, "Edit video", "Opening editor…");
+      secondary.push(secForm(runEditPlanner, "Let AI plan the edit", "Planning…"));
+      break;
+    case "EDIT_PLANNED":
+      primary = linkAct(editHref, "Edit video");
+      secondary.push(secForm(runEditPlanner, "Improve with AI", "Planning…"));
+      break;
+    case "EDITING":
+      primary = linkAct(editHref, "Edit video");
+      secondary.push(secForm(runRender, "Render again", "Rendering…"));
+      break;
+    case "RENDERED":
+      primary = linkAct(editHref, "Edit video");
+      secondary.push(secForm(runQualityGate, "Run the final check", "Checking…"));
+      break;
+    case "QC_REPAIR":
+      primary = linkAct(editHref, "Fix in the editor");
+      secondary.push(secForm(runAutoRepair, "Let AI fix it", "Repairing…"));
+      break;
+    case "QC_BLOCKED":
+      primary = linkAct(editHref, "Fix in the editor");
+      if (latestQCReport && latestQCReport.overallStatus !== "PASS") secondary.push(secLink("#problems", "What's wrong?"));
+      break;
+    case "READY":
+      primary = linkAct("#schedule", "Schedule");
+      secondary.push(secLink(editHref, "Edit video"));
+      break;
+    case "SCHEDULED":
+      primary = formAct(runPublish, "Post now", "Posting…");
+      secondary.push(secLink(editHref, "Edit video"));
+      secondary.push(secLink("/calendar", "Calendar"));
+      break;
+    case "PUBLISHING":
+      primary = formAct(runPublish, "Retry posting", "Posting…");
+      break;
     case "PUBLISHED":
-    case "MEASURING": sticky = { label: "Capture due snapshots", node: oneTap(runCaptureSnapshots, "Capture", "Capturing…") }; break;
-  }
-  if (!sticky && !isTerminal && manualTransitions.length > 0) {
-    const t = manualTransitions[0]!;
-    sticky = {
-      label: t.label,
-      node: (
-        <form action={advanceManual}>
-          <input type="hidden" name="contentItemId" value={item.id} />
-          <input type="hidden" name="to" value={t.to} />
-          <Button tone="primary" className="!px-5">Go</Button>
-        </form>
-      ),
-    };
+    case "MEASURING":
+      primary = livePost?.url ? linkAct(livePost.url, "View post", true) : formAct(runCaptureSnapshots, "Update stats", "Updating…");
+      if (livePost?.url) secondary.push(secForm(runCaptureSnapshots, "Update stats", "Updating…"));
+      break;
   }
 
   const mediaPanel = (
-          <Panel id="media" className={item.currentState === "FILMED" ? "panel-action" : ""}>
-      <SectionHeading eyebrow="Assets" title="Media" />
+          <Panel id="media">
+      <SectionHeading eyebrow="Footage" title="Takes & transcripts" />
       <RawTakeUploader contentItemId={item.id} mode={storageMode} />
       {rawTakes.length > 0 && !rawTakes.some((a) => a.transcript) && (
         <form action={runTranscribe} className="mt-3">
@@ -178,21 +292,57 @@ export default async function ContentDetailPage({
     </Panel>
   );
 
+  const problems = latestQCReport && latestQCReport.overallStatus !== "PASS" ? ((latestQCReport.reasons as string[] | null) ?? []) : [];
+
   return (
     <>
       <NavBar />
-      <PageShell maxWidth={760}>
-        <BackLink href="/content">Content</BackLink>
-        <header className="mb-5 sm:mb-6">
-          <p className="eyebrow mb-1">Content Item</p>
-          <h1 className="text-[26px] font-semibold leading-tight tracking-tight sm:text-2xl">{item.title}</h1>
-          {item.description && <p className="mt-2 text-[15px] text-[var(--color-text-muted)] sm:text-sm">{item.description}</p>}
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-muted)]">
-            <Badge tone={contentStateTone(item.currentState)}>{stateLabel(item.currentState)}</Badge>
-            {item.pillar && <span>{item.pillar}</span>}
-            {item.format && <span>· {item.format}</span>}
+      <PageShell maxWidth={960}>
+        <BackLink href="/content">Videos</BackLink>
+
+        {/* HERO: the video, its status, where it is, and the one next step. */}
+        <section className="mb-5 grid grid-cols-[124px_minmax(0,1fr)] items-start gap-x-4 gap-y-4 md:grid-cols-[300px_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-8">
+          {/* Phones: a small playable video beside the title, so the next step stays above the
+              fold. Desktop: a big player on the left. */}
+          <div className="w-full md:row-span-2">
+            {heroKey ? (
+              <video
+                key={heroKey}
+                src={`/api/media/${heroKey}#t=0.5`}
+                controls
+                preload="metadata"
+                playsInline
+                className="aspect-[9/16] w-full rounded-2xl border border-[var(--color-border)] bg-black object-contain"
+              />
+            ) : (
+              <VideoThumb url={null} title={item.title} className="aspect-[9/16] w-full rounded-2xl border border-[var(--color-border)]" />
+            )}
+            {heroKey && (
+              <p className="mt-1.5 text-center text-[11px] text-[var(--color-text-faint)] md:text-[12px]">
+                {goodRender ? "Latest finished version" : "Your footage"}
+              </p>
+            )}
           </div>
-        </header>
+
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[28px]">{item.title}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-muted)] sm:text-[14px]">
+              <StatusPill state={state} />
+              {when && <span>{when}</span>}
+            </div>
+            {!when && <p className="mt-2 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-[15px]">{next.hint}</p>}
+          </div>
+
+          <div className="col-span-2 flex min-w-0 flex-col gap-4 self-start md:col-span-1 md:col-start-2">
+            <FlowProgress state={state} />
+            {primary && (
+              <div className="flex flex-col gap-2.5">
+                {primary.big}
+                {secondary.length > 0 && <div className="flex gap-2.5">{secondary.slice(0, 2)}</div>}
+              </div>
+            )}
+          </div>
+        </section>
 
         {autopilot && (
           <Panel className="mb-5">
@@ -200,183 +350,55 @@ export default async function ContentDetailPage({
           </Panel>
         )}
 
-        {!isTerminal && NEXT_STEP[item.currentState].owner === "SYSTEM" && item.currentState !== "SCHEDULED" && item.currentState !== "PUBLISHED" && item.currentState !== "MEASURING" && (
-          <Panel className="mb-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="eyebrow">Autopilot</p>
-                <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
-                  Runs every step the system can do from here — through every hard gate — and
-                  stops the moment it needs you (filming, uploads, a blocked gate, a script concern)
-                  or once it&apos;s ready to schedule. Never schedules or publishes on its own.
-                </p>
-              </div>
-              <form action={runAutopilotAction}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary" className="w-full sm:w-auto" pendingLabel="Autopilot running…">Run Autopilot</Button>
-              </form>
-            </div>
-          </Panel>
-        )}
-
         {pipelineError && (
           <Panel className="mb-5 !border-[var(--color-rose-500)]/40">
-            <p className="text-sm text-[var(--color-rose-400)]">
-              <span className="font-medium">Pipeline error: </span>
+            <p className="text-[15px] text-[var(--color-rose-400)]">
+              <span className="font-medium">That didn&apos;t work: </span>
               {pipelineError}
             </p>
-            {pipelineError.toLowerCase().includes("api key") && (
+            {/api key|credit|anthropic/i.test(pipelineError) && (
               <p className="mt-1.5 text-[13px] text-[var(--color-text-muted)]">
-                Set ANTHROPIC_API_KEY in your environment to enable real AI pipeline runs — see
-                /docs/DECISIONS.md.
+                The AI steps need Anthropic credit. Everything else — uploading, editing, scheduling — works without it.
               </p>
             )}
           </Panel>
         )}
 
         <div className="flex flex-col gap-5">
-          {needsFootage && mediaPanel}
-          {/* Finishing editor entry point (app/content/[id]/edit) — once there's an edit plan and
-              until it publishes, Chris can open the in-house editor to finish the video. */}
-          {latestEditPlan && FINISHING_EDIT_STATES.has(item.currentState) && (
-            <Panel className="panel-action">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="eyebrow">Editor</p>
-                  <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
-                    Trim clips, fix captions, change text, color and framing — then finish and put it on the calendar.
-                  </p>
-                </div>
-                <ButtonLink href={`/content/${item.id}/edit`} tone="primary" className="w-full sm:w-auto">
-                  Open editor
-                </ButtonLink>
-              </div>
+          {/* Only the input the CURRENT step needs is open on the page. */}
+          {needsFootage && (
+            <Panel id="upload" className="panel-action scroll-mt-24">
+              <SectionHeading eyebrow="Upload" title="Upload your footage" />
+              <p className="-mt-2 mb-4 text-[14px] text-[var(--color-text-muted)]">
+                Pick what you filmed — it opens straight in the editor, with captions.
+              </p>
+              <FootageUpload mode={storageMode} contentItemId={item.id} />
             </Panel>
           )}
 
-          {item.currentState === "RESEARCHING" && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="AI Pipeline" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Runs Research → Claims Gate → Script → Brand Guardian against this item&apos;s
-                Production Contract. A Claims Gate BLOCK stops before any script is drafted.
-                Requires ANTHROPIC_API_KEY.
-              </p>
-              <div className="flex flex-wrap items-center gap-3">
-                <form action={runPipeline}>
-                  <input type="hidden" name="contentItemId" value={item.id} />
-                  <Button tone="primary">Run AI Research → Script pipeline</Button>
-                </form>
-              </div>
-            </Panel>
-          )}
-
-          {item.currentState === "MEDIA_INGESTED" && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Take Selector" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Evaluates every uploaded raw take and picks the strongest one. Requires
-                ANTHROPIC_API_KEY.
-              </p>
-              <form action={runTakeSelector}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Run Take Selector</Button>
-              </form>
-            </Panel>
-          )}
-
-          {(item.currentState === "TAKE_SELECTED" || item.currentState === "EDIT_PLANNED") && (
-            <Panel className={item.currentState === "TAKE_SELECTED" ? "panel-action" : ""}>
-              <SectionHeading eyebrow={item.currentState === "TAKE_SELECTED" ? "Next Step" : "Optional"} title="Edit Planner" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Plans cuts (snapped to real word boundaries when the take is transcribed), word
-                captions, punch-ins and text overlays for the selected take.
-                {item.currentState === "EDIT_PLANNED" && " Re-planning replaces the current plan (kept in history) with a fresh repair budget."}
-              </p>
-              <form action={runEditPlanner}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone={item.currentState === "TAKE_SELECTED" ? "primary" : "ghost"}>
-                  {item.currentState === "TAKE_SELECTED" ? "Run Edit Planner" : "Re-plan the edit"}
-                </Button>
-              </form>
-            </Panel>
-          )}
-
-          {(item.currentState === "EDIT_PLANNED" ||
-            item.currentState === "EDITING" ||
-            item.currentState === "QC_REPAIR") && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Render" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                {item.currentState === "QC_REPAIR"
-                  ? "Auto-repair revises the edit plan against the blocking QC issues, re-renders and re-runs the Quality Gate — repeating within the repair budget. Stops early on factual/brand/creative blocks, which a re-edit can't fix."
-                  : "Deterministic ffmpeg render + technical QC (loudness, black/frozen frames, format). No AI call."}
-              </p>
-              <div className="btn-stack">
-                {item.currentState === "QC_REPAIR" && (
-                  <form action={runAutoRepair}>
-                    <input type="hidden" name="contentItemId" value={item.id} />
-                    <Button tone="primary">Auto-repair</Button>
-                  </form>
-                )}
-                <form action={runRender}>
-                  <input type="hidden" name="contentItemId" value={item.id} />
-                  <Button tone={item.currentState === "QC_REPAIR" ? "ghost" : "primary"}>
-                    {item.currentState === "EDIT_PLANNED" ? "Start render" : "Render again (same plan)"}
-                  </Button>
-                </form>
-              </div>
-            </Panel>
-          )}
-
-          {item.currentState === "RENDERED" && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Quality Gate" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Evaluates all four hard gates — FACTUAL, TECHNICAL, BRAND, CREATIVE (spec §9
-                step 16) — against this render. A single BLOCK on any gate sends this back to
-                QC_REPAIR; all four must PASS to reach READY. Runs a real Visual QA vision call
-                against sampled frames — requires ANTHROPIC_API_KEY.
-              </p>
-              <form action={runQualityGate}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Run Quality Gate</Button>
-              </form>
-            </Panel>
-          )}
-
-          {(item.currentState === "READY" || item.currentState === "SCHEDULED") && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Platform Packaging" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Packages the final video per platform (spec §9 step 20) — required before
-                publishing. Requires ANTHROPIC_API_KEY.
-              </p>
-              <div className="btn-stack">
-                {ALL_PLATFORMS.map((platform) => (
-                  <form action={runPlatformPackaging} key={platform}>
-                    <input type="hidden" name="contentItemId" value={item.id} />
-                    <input type="hidden" name="platform" value={platform} />
-                    <Button>
-                      {packagedPlatforms.has(platform) ? "Re-package" : "Package"} {platformLabel(platform)}
-                    </Button>
-                  </form>
+          {problems.length > 0 && (state === "QC_BLOCKED" || state === "QC_REPAIR") && (
+            <Panel id="problems" className="scroll-mt-24 !border-[var(--color-rose-500)]/40">
+              <SectionHeading eyebrow="Needs a fix" title="What the final check found" />
+              <ul className="list-disc pl-5 text-[14px] text-[var(--color-text-muted)]">
+                {problems.map((reason, i) => (
+                  <li key={i}>{reason}</li>
                 ))}
-              </div>
+              </ul>
             </Panel>
           )}
 
-          {item.currentState === "READY" && (
+          {state === "READY" && (
+            <div className="flex flex-col gap-5">
+              {item.currentState === "READY" && (
             <Panel className="panel-action" id="schedule">
               <form action={submitPublishSchedule}>
-                <SectionHeading eyebrow="Next Step" title="Schedule for Publishing" />
-                <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                  Drives READY → SCHEDULED (spec §9 step 19). Pick every platform this item was
-                  packaged for above.
+                <SectionHeading eyebrow="Schedule" title="When should it go out?" />
+                <p className="-mt-2 mb-4 text-[14px] text-[var(--color-text-muted)]">
+                  Pick a day and time and where to post it.
                 </p>
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <label className="block">
-                  <span className="field-label">Scheduled date/time</span>
+                  <span className="field-label">Date and time</span>
                   <input type="datetime-local" name="scheduledDate" required className="field-input" />
                 </label>
                 <div className="mt-3 mb-4 grid grid-cols-3 gap-2 text-[13px]">
@@ -393,99 +415,19 @@ export default async function ContentDetailPage({
               </form>
             </Panel>
           )}
-
-          {item.currentState === "READY" && (
-            <Panel>
-              <SectionHeading eyebrow="Optional" title="Try Autonomous Publish" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Spec §23 Level 3 — schedules and publishes without a manual click, but only if
-                this item&apos;s production tier has genuinely earned PUBLISHING autonomy (see
-                Learnings). A no-op with a clear reason if not — Schedule/Publish above still
-                works either way.
-              </p>
-              <form action={tryAutonomousPublishAction}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button>Try autonomous publish</Button>
-              </form>
-            </Panel>
+            </div>
           )}
 
-          {item.currentState === "SCHEDULED" && (
+          {state === "SELECTED" && (
+            <div id="step" className="scroll-mt-24">
+              {item.currentState === "SELECTED" && (
             <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Publish" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Runs Preflight + Publish + Verify (spec §9 steps 21-22) against every scheduled
-                target platform. One platform failing never blocks the others; safe to retry —
-                an already-succeeded platform is never re-published.
+              <SectionHeading eyebrow="Plan" title="Plan it yourself" />
+              <p className="mb-1 text-[14px] text-[var(--color-text-muted)]">
+                Or tap “Plan it with AI” above and it fills this in for you.
               </p>
-              <form action={runPublish}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Publish now</Button>
-              </form>
-            </Panel>
-          )}
-
-          {item.currentState === "PUBLISHING" && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Publish" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Still in progress, or a previous attempt didn&apos;t fully succeed — safe to
-                retry below (idempotent per platform).
-              </p>
-              <form action={runPublish}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Retry publish</Button>
-              </form>
-            </Panel>
-          )}
-
-          {(item.currentState === "PUBLISHED" || item.currentState === "MEASURING") && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Analytics" />
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
-                Spec §9 steps 23-25: metric snapshots (T+1h…T+30d, real platform data only —
-                absent metrics stay absent, never fabricated), comment ingestion, and a
-                performance evaluation across all eight categories.
-              </p>
-              <div className="btn-stack">
-                <form action={runCaptureSnapshots}>
-                  <input type="hidden" name="contentItemId" value={item.id} />
-                  <Button tone="primary">Capture due snapshots</Button>
-                </form>
-                <form action={runIngestComments}>
-                  <input type="hidden" name="contentItemId" value={item.id} />
-                  <Button>Ingest comments</Button>
-                </form>
-                <form action={runAnalytics}>
-                  <input type="hidden" name="contentItemId" value={item.id} />
-                  <Button>Run performance evaluation</Button>
-                </form>
-              </div>
-            </Panel>
-          )}
-
-          {item.currentState === "IDEA" && (
-            <Panel className="panel-action">
-              <form action={selectForWeek}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Select for this week</Button>
-              </form>
-            </Panel>
-          )}
-
-          {item.currentState === "SELECTED" && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Production Contract" />
-              <p className="mb-3 text-[13px] text-[var(--color-text-muted)]">
-                The Production Director drafts the whole contract (tier, length, research depth,
-                factual risk, scope, what not to expand into) from the idea and this week&apos;s thesis.
-              </p>
-              <form action={draftContractAction}>
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Draft &amp; issue contract</Button>
-              </form>
-              <details className="mt-4">
-                <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">Or fill it in by hand</summary>
+              <details className="mt-2">
+                <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] font-medium text-[var(--color-gold-400)] sm:text-[13px]">Fill in the plan</summary>
               <form action={submitContract} className="mt-3 flex flex-col gap-4">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <label className="block">
@@ -568,32 +510,32 @@ export default async function ContentDetailPage({
                   <span className="field-label">DO NOT expand into</span>
                   <textarea name="doNotExpandInto" required rows={2} className="field-input" />
                 </label>
-                <Button>Issue contract &amp; move to CONTRACTED</Button>
+                <Button tone="primary">Save the plan</Button>
               </form>
               </details>
             </Panel>
           )}
+            </div>
+          )}
 
-          {item.currentState === "SCRIPTED" && (
+          {state === "SCRIPTED" && (
+            <div id="step" className="scroll-mt-24">
+              {item.currentState === "SCRIPTED" && (
             <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Creator Card" />
+              <SectionHeading eyebrow="Before you film" title="Shot notes" />
               {latestScript && !isScriptVersionFilmable(latestScript).ok ? (
                 <p className="mb-3 text-[13px] text-[var(--color-rose-400)]">
                   {(isScriptVersionFilmable(latestScript) as { reason: string }).reason}
                 </p>
               ) : (
                 <>
-                  <p className="mb-3 text-[13px] text-[var(--color-text-muted)]">
-                    Drafts only what you need on set — hook, talking points, setup — from the fact-checked script.
+                  <p className="mb-1 text-[14px] text-[var(--color-text-muted)]">
+                    Just what you need on set — hook, talking points, setup. Tap “Make shot notes with AI” above, or write them yourself.
                   </p>
-                  <form action={draftCreatorCardAction}>
-                    <input type="hidden" name="contentItemId" value={item.id} />
-                    <Button tone="primary">Draft &amp; issue Creator Card</Button>
-                  </form>
                 </>
               )}
               <details className="mt-4">
-                <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">Or write it by hand</summary>
+                <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] font-medium text-[var(--color-gold-400)] sm:text-[13px]">Write them myself</summary>
               <form action={submitCreatorCard} className="mt-3 flex flex-col gap-4">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <label className="block">
@@ -625,15 +567,234 @@ export default async function ContentDetailPage({
                   <span className="field-label">Notes (optional)</span>
                   <textarea name="notes" rows={2} className="field-input" />
                 </label>
-                <Button>Issue Creator Card &amp; move to READY_TO_FILM</Button>
+                <Button tone="primary">Save shot notes</Button>
               </form>
               </details>
             </Panel>
           )}
+            </div>
+          )}
 
+          {/* DETAILS & HISTORY — every technical panel and AI step, unchanged, folded away. */}
+          <details id="details" className="group mt-2">
+            <summary className="flex min-h-[56px] cursor-pointer items-center justify-between gap-3 rounded-2xl border border-[var(--color-border)] bg-white/[0.03] px-4 py-3 active:bg-white/[0.05]">
+              <span>
+                <span className="block text-[16px] font-semibold">Details &amp; history</span>
+                <span className="block text-[13px] text-[var(--color-text-faint)]">AI steps, script, takes, checks, posts, feedback, history</span>
+              </span>
+              <svg width="14" height="9" viewBox="0 0 14 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="chevron shrink-0 text-[var(--color-text-faint)] transition-transform group-open:rotate-180" aria-hidden>
+                <path d="m1 1.5 6 6 6-6" />
+              </svg>
+            </summary>
+            <div className="mt-4 flex flex-col gap-5">
+              {!isTerminal && state !== "SCHEDULED" && state !== "PUBLISHED" && state !== "MEASURING" && (
+                <Panel>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="eyebrow">Autopilot (AI)</p>
+                      <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
+                        Runs every step the AI can do from here — through every check — and stops the moment it
+                        needs you or once it&apos;s ready to schedule. Never schedules or posts on its own.
+                      </p>
+                    </div>
+                    <form action={runAutopilotAction}>
+                      <input type="hidden" name="contentItemId" value={item.id} />
+                      <Button className="w-full sm:w-auto" pendingLabel="Autopilot running…">Run Autopilot</Button>
+                    </form>
+                  </div>
+                </Panel>
+              )}
+
+              {canEdit && (
+                <Panel>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="eyebrow">Editor</p>
+                      <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
+                        Trim clips, fix captions, change text, color and framing — then finish and put it on the calendar.
+                      </p>
+                    </div>
+                    <ButtonLink href={editHref} className="w-full sm:w-auto">Open editor</ButtonLink>
+                  </div>
+                </Panel>
+              )}
+
+              {item.currentState === "RESEARCHING" && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="AI Pipeline" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Runs Research → Claims Gate → Script → Brand Guardian against this item&apos;s
+                Production Contract. A Claims Gate BLOCK stops before any script is drafted.
+                Requires ANTHROPIC_API_KEY.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <form action={runPipeline}>
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <Button tone="primary">Run AI Research → Script pipeline</Button>
+                </form>
+              </div>
+            </Panel>
+          )}
+          {item.currentState === "MEDIA_INGESTED" && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Take Selector" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Evaluates every uploaded raw take and picks the strongest one. Requires
+                ANTHROPIC_API_KEY.
+              </p>
+              <form action={runTakeSelector}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button tone="primary">Run Take Selector</Button>
+              </form>
+            </Panel>
+          )}
+          {(item.currentState === "TAKE_SELECTED" || item.currentState === "EDIT_PLANNED") && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Edit Planner" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Plans cuts (snapped to real word boundaries when the take is transcribed), word
+                captions, punch-ins and text overlays for the selected take.
+                {item.currentState === "EDIT_PLANNED" && " Re-planning replaces the current plan (kept in history) with a fresh repair budget."}
+              </p>
+              <form action={runEditPlanner}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button tone={item.currentState === "TAKE_SELECTED" ? "primary" : "ghost"}>
+                  {item.currentState === "TAKE_SELECTED" ? "Run Edit Planner" : "Re-plan the edit"}
+                </Button>
+              </form>
+            </Panel>
+          )}
+          {(item.currentState === "EDIT_PLANNED" ||
+            item.currentState === "EDITING" ||
+            item.currentState === "QC_REPAIR") && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Render" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                {item.currentState === "QC_REPAIR"
+                  ? "Auto-repair revises the edit plan against the blocking QC issues, re-renders and re-runs the Quality Gate — repeating within the repair budget. Stops early on factual/brand/creative blocks, which a re-edit can't fix."
+                  : "Deterministic ffmpeg render + technical QC (loudness, black/frozen frames, format). No AI call."}
+              </p>
+              <div className="btn-stack">
+                {item.currentState === "QC_REPAIR" && (
+                  <form action={runAutoRepair}>
+                    <input type="hidden" name="contentItemId" value={item.id} />
+                    <Button tone="primary">Auto-repair</Button>
+                  </form>
+                )}
+                <form action={runRender}>
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <Button tone={item.currentState === "QC_REPAIR" ? "ghost" : "primary"}>
+                    {item.currentState === "EDIT_PLANNED" ? "Start render" : "Render again (same plan)"}
+                  </Button>
+                </form>
+              </div>
+            </Panel>
+          )}
+          {item.currentState === "RENDERED" && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Quality Gate" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Evaluates all four hard gates — FACTUAL, TECHNICAL, BRAND, CREATIVE (spec §9
+                step 16) — against this render. A single BLOCK on any gate sends this back to
+                QC_REPAIR; all four must PASS to reach READY. Runs a real Visual QA vision call
+                against sampled frames — requires ANTHROPIC_API_KEY.
+              </p>
+              <form action={runQualityGate}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button tone="primary">Run Quality Gate</Button>
+              </form>
+            </Panel>
+          )}
+          {(item.currentState === "READY" || item.currentState === "SCHEDULED") && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Platform Packaging" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Packages the final video per platform (spec §9 step 20) — required before
+                publishing. Requires ANTHROPIC_API_KEY.
+              </p>
+              <div className="btn-stack">
+                {ALL_PLATFORMS.map((platform) => (
+                  <form action={runPlatformPackaging} key={platform}>
+                    <input type="hidden" name="contentItemId" value={item.id} />
+                    <input type="hidden" name="platform" value={platform} />
+                    <Button>
+                      {packagedPlatforms.has(platform) ? "Re-package" : "Package"} {platformLabel(platform)}
+                    </Button>
+                  </form>
+                ))}
+              </div>
+            </Panel>
+          )}
+          {item.currentState === "READY" && (
+            <Panel>
+              <SectionHeading eyebrow="Optional" title="Try Autonomous Publish" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Spec §23 Level 3 — schedules and publishes without a manual click, but only if
+                this item&apos;s production tier has genuinely earned PUBLISHING autonomy (see
+                Learnings). A no-op with a clear reason if not — Schedule/Publish above still
+                works either way.
+              </p>
+              <form action={tryAutonomousPublishAction}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button>Try autonomous publish</Button>
+              </form>
+            </Panel>
+          )}
+          {item.currentState === "SCHEDULED" && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Publish" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Runs Preflight + Publish + Verify (spec §9 steps 21-22) against every scheduled
+                target platform. One platform failing never blocks the others; safe to retry —
+                an already-succeeded platform is never re-published.
+              </p>
+              <form action={runPublish}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button tone="primary">Publish now</Button>
+              </form>
+            </Panel>
+          )}
+
+          {item.currentState === "PUBLISHING" && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Publish" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Still in progress, or a previous attempt didn&apos;t fully succeed — safe to
+                retry below (idempotent per platform).
+              </p>
+              <form action={runPublish}>
+                <input type="hidden" name="contentItemId" value={item.id} />
+                <Button tone="primary">Retry publish</Button>
+              </form>
+            </Panel>
+          )}
+          {(item.currentState === "PUBLISHED" || item.currentState === "MEASURING") && (
+            <Panel>
+              <SectionHeading eyebrow="AI step" title="Analytics" />
+              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+                Spec §9 steps 23-25: metric snapshots (T+1h…T+30d, real platform data only —
+                absent metrics stay absent, never fabricated), comment ingestion, and a
+                performance evaluation across all eight categories.
+              </p>
+              <div className="btn-stack">
+                <form action={runCaptureSnapshots}>
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <Button tone="primary">Capture due snapshots</Button>
+                </form>
+                <form action={runIngestComments}>
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <Button>Ingest comments</Button>
+                </form>
+                <form action={runAnalytics}>
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <Button>Run performance evaluation</Button>
+                </form>
+              </div>
+            </Panel>
+          )}
           {!isTerminal && manualTransitions.length > 0 && (
-            <Panel className="panel-action">
-              <SectionHeading eyebrow="Next Step" title="Advance" />
+            <Panel>
+              <SectionHeading eyebrow="Move it along" title="Advance" />
               {manualTransitions.map((t) => (
                 <div key={t.to} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                   <form action={advanceManual}>
@@ -647,7 +808,7 @@ export default async function ContentDetailPage({
             </Panel>
           )}
 
-          {item.productionContract && (
+              {item.productionContract && (
             <CollapsiblePanel eyebrow="Contracted" title="Production Contract">
               <p className="text-sm">
                 <span className="font-medium">{item.productionContract.purpose}</span> —{" "}
@@ -1098,9 +1259,9 @@ export default async function ContentDetailPage({
             </CollapsiblePanel>
           )}
 
-          {!needsFootage && mediaPanel}
+              {mediaPanel}
 
-          <Panel>
+              <Panel>
             <SectionHeading eyebrow="Distribution" title="Schedule" />
             <form action={submitSchedule} className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <input type="hidden" name="contentItemId" value={item.id} />
@@ -1114,7 +1275,7 @@ export default async function ContentDetailPage({
             </form>
           </Panel>
 
-          {!isTerminal && (
+              {!isTerminal && (
             <CollapsiblePanel eyebrow="Feedback" title="Taste Feedback & Second Opinion">
               <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
                 Spec §7&apos;s Human Taste Model — Chris&apos;s real, raw feedback on any
@@ -1203,8 +1364,8 @@ export default async function ContentDetailPage({
             <ul className="flex flex-col gap-1.5 text-[13px] text-[var(--color-text-muted)]">
               {item.transitions.map((t) => (
                 <li key={t.id}>
-                  <span className="text-[var(--color-text)]">
-                    {t.fromState} → {t.toState}
+                  <span className="text-[var(--color-text)]" title={`${t.fromState} → ${t.toState}`}>
+                    {stateLabel(t.fromState)} → {stateLabel(t.toState)}
                   </span>
                   {t.reason ? ` — ${t.reason}` : ""} ({t.createdAt.toLocaleString()})
                 </li>
@@ -1212,8 +1373,10 @@ export default async function ContentDetailPage({
               {item.transitions.length === 0 && <li>No transitions yet.</li>}
             </ul>
           </CollapsiblePanel>
+            </div>
+          </details>
         </div>
-        {sticky && <StickyActionBar label={sticky.label}>{sticky.node}</StickyActionBar>}
+        {primary && <StickyActionBar label={primary.label}>{primary.small}</StickyActionBar>}
       </PageShell>
     </>
   );

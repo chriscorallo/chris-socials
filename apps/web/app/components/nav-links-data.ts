@@ -4,42 +4,39 @@
 // component doesn't reliably carry the real value across the RSC boundary (every export of a
 // "use client" module becomes an opaque client reference, not just the components) — found by
 // actually loading the page, not by inspection.
-export const NAV_LINKS = [
+/** The four places Chris goes every day — the desktop top bar shows these; everything else
+ * sits under "More". Same split as the phone tab bar. See docs/decisions-pending/flow.md. */
+export const PRIMARY_LINKS = [
   { href: "/", label: "Home" },
-  { href: "/calendar", label: "Calendar" },
-  { href: "/todo", label: "To-do" },
-  { href: "/content", label: "Content" },
+  { href: "/content", label: "Videos" },
   { href: "/upload", label: "Upload" },
-  { href: "/film", label: "Film" },
-  { href: "/ideas", label: "Ideas" },
-  { href: "/strategy", label: "Strategy" },
-  { href: "/reference", label: "Reference" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/learnings", label: "Learnings" },
-  { href: "/settings/connections", label: "Connections" },
+  { href: "/calendar", label: "Calendar" },
 ];
 
-export type TabIcon = "home" | "content" | "upload" | "film" | "calendar";
-
-/** Phone/tablet bottom tab bar (below lg): the four destinations Chris uses daily, in thumb
- * order, plus "More" for the rest. See /docs/decisions-pending/mobile-app.md. */
-export const TAB_LINKS: { href: string; label: string; icon: TabIcon }[] = [
-  { href: "/", label: "Home", icon: "home" },
-  { href: "/content", label: "Content", icon: "content" },
-  { href: "/upload", label: "Upload", icon: "upload" },
-  { href: "/film", label: "Film", icon: "film" },
-  { href: "/calendar", label: "Calendar", icon: "calendar" },
-];
-
-/** Everything not in the tab bar, shown in the "More" sheet. */
+/** Everything else (desktop "More" menu and the phone "More" sheet). */
 export const MORE_LINKS: { href: string; label: string; hint: string }[] = [
-  { href: "/todo", label: "To-do", hint: "What's missing to stay on your posting plan" },
+  { href: "/film", label: "Film", hint: "What's ready to shoot, with hooks and talking points" },
   { href: "/ideas", label: "Ideas", hint: "Capture and browse ideas" },
+  { href: "/todo", label: "To-do", hint: "What's missing to stay on your posting plan" },
   { href: "/strategy", label: "Strategy", hint: "This week's thesis and portfolio" },
   { href: "/analytics", label: "Analytics", hint: "How published videos are doing" },
   { href: "/learnings", label: "Learnings", hint: "Evidence, beliefs, experiments" },
   { href: "/reference", label: "Reference", hint: "Creators you learn from" },
   { href: "/settings/connections", label: "Connections", hint: "Instagram, TikTok, YouTube" },
+];
+
+/** Every destination, once. */
+export const NAV_LINKS = [...PRIMARY_LINKS, ...MORE_LINKS.map(({ href, label }) => ({ href, label }))];
+
+export type TabIcon = "home" | "content" | "upload" | "film" | "calendar";
+
+/** Phone/tablet bottom tab bar (below lg): Home, Videos, + Upload in the thumb-center,
+ * Calendar — plus "More" for the rest. */
+export const TAB_LINKS: { href: string; label: string; icon: TabIcon }[] = [
+  { href: "/", label: "Home", icon: "home" },
+  { href: "/content", label: "Videos", icon: "content" },
+  { href: "/upload", label: "Upload", icon: "upload" },
+  { href: "/calendar", label: "Calendar", icon: "calendar" },
 ];
 
 export function isActive(href: string, pathname: string | null): boolean {
