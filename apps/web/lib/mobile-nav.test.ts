@@ -10,8 +10,10 @@ describe("mobile navigation", () => {
     expect([...mobile].sort()).toEqual(NAV_LINKS.map((l) => l.href).sort());
   });
 
-  it("keeps the tab bar to four destinations plus More (thumb-sized at 320px)", () => {
-    expect(TAB_LINKS.map((l) => l.label)).toEqual(["Home", "Content", "Film", "Calendar"]);
+  it("keeps the tab bar to five destinations plus More, with Upload in the thumb-center", () => {
+    // Six slots at 320px is ~53px each — still >= the 44px tap-target floor.
+    expect(TAB_LINKS.map((l) => l.label)).toEqual(["Home", "Content", "Upload", "Film", "Calendar"]);
+    expect(Math.floor(320 / (TAB_LINKS.length + 1))).toBeGreaterThanOrEqual(44);
   });
 
   it("highlights Home only on /, and sections on their sub-routes", () => {
