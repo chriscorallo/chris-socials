@@ -2,6 +2,7 @@ import { useId, type CSSProperties } from "react";
 import { EASE_IN_OUT, EASE_OUT, SPRINGS, clamp01, countUp, prog, springAt } from "../motion";
 import { FONT, TEXT_LIFT, formatNumber, glassCard, mix, rgba } from "../theme";
 import type { TemplateComponentProps } from "./types";
+import { hitBuildLength, kineticWordDelays } from "./hit-timing";
 
 const fill: CSSProperties = { position: "absolute", inset: 0 };
 
@@ -33,13 +34,17 @@ function cleanWord(w: string): string {
 }
 
 // ---------------------------------------------------------------- KINETIC_TEXT
-export function KineticText({ props, palette: p, frame, fps, durationInFrames }: TemplateComponentProps<"KINETIC_TEXT">) {
+export function KineticText({ props, palette: p, frame, fps, durationInFrames, exitFrames, hitAtFrame }: TemplateComponentProps<"KINETIC_TEXT">) {
   const words = props.text.split(/\s+/).filter(Boolean);
   const emph = new Set(props.emphasis.map(cleanWord));
   const chars = props.text.length;
   const size = chars <= 18 ? 120 : chars <= 34 ? 96 : chars <= 60 ? 80 : chars <= 90 ? 66 : 56;
   // Build over at most ~45% of the visual (and never slower than a natural read).
   const stagger = Math.max(2, Math.min(5, Math.floor((durationInFrames * 0.45) / Math.max(1, words.length))));
+  // Motion v2 timing hook: the key word (first emphasised, else the last) lands on the speaker's emphasis.
+  const firstEmph = words.findIndex((w) => emph.has(cleanWord(w)));
+  const keyIndex = firstEmph >= 0 ? firstEmph : words.length - 1;
+  const delays = kineticWordDelays(words.length, keyIndex, stagger, hitAtFrame, fps, durationInFrames, exitFrames);
 
   if (props.style === "TYPEWRITER") {
     const perChar = Math.max(0.6, Math.min(2.2, (durationInFrames * 0.5) / Math.max(1, chars)));
@@ -75,7 +80,7 @@ export function KineticText({ props, palette: p, frame, fps, durationInFrames }:
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "baseline", columnGap: size * 0.26, rowGap: size * 0.06, maxWidth: 880, fontFamily: FONT.display, fontSize: size, lineHeight: 1.06, letterSpacing: "-0.025em" }}>
         {words.map((w, i) => {
           const isE = emph.has(cleanWord(w));
-          const d = 2 + i * stagger;
+          const d = delays[i]!;
           if (props.style === "SLIDE_UP") {
             const t = prog(frame, d, Math.round(fps * 0.5), EASE_OUT);
             return (
@@ -109,8 +114,9 @@ export function KineticText({ props, palette: p, frame, fps, durationInFrames }:
 }
 
 // ---------------------------------------------------------------- NUMBER_COUNTER
-export function NumberCounter({ props, palette: p, frame, fps, durationInFrames }: TemplateComponentProps<"NUMBER_COUNTER">) {
-  const countLen = Math.min(Math.round(fps * 1.5), Math.round(durationInFrames * 0.5));
+export function NumberCounter({ props, palette: p, frame, fps, durationInFrames, exitFrames, hitAtFrame }: TemplateComponentProps<"NUMBER_COUNTER">) {
+  // Motion v2 timing hook: the count lands on the speaker's emphasis when there is one.
+  const countLen = hitBuildLength(Math.min(Math.round(fps * 1.5), Math.round(durationInFrames * 0.5)), 3, hitAtFrame, fps, durationInFrames, exitFrames);
   const v = countUp(frame, props.from, props.value, 3, countLen);
   const finalText = `${props.prefix}${formatNumber(props.value, props.decimals)}${props.suffix}`;
   const text = `${props.prefix}${formatNumber(v, props.decimals)}${props.suffix}`;

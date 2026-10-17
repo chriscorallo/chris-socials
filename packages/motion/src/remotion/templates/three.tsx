@@ -7,6 +7,7 @@ import { EASE_IN_OUT, EASE_OUT, SPRINGS, clamp01, countUp, prog, springAt } from
 import { FONT, TEXT_LIFT, compactNumber, formatNumber, mix, rgba, withUnit, type Palette } from "../theme";
 import { gradientText } from "./text";
 import type { TemplateComponentProps } from "./types";
+import { hitBuildLength } from "./hit-timing";
 import { stackCountFor } from "../../timing";
 
 /**
@@ -651,12 +652,13 @@ function MoneyStack({ height, tex, band }: { height: number; tex: ReturnType<typ
   );
 }
 
-export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateComponentProps<"MONEY_STACK_3D">) {
+export function MoneyStack3D({ props, palette: p, frame, fps, box, durationInFrames, exitFrames, hitAtFrame }: TemplateComponentProps<"MONEY_STACK_3D">) {
   const n = stackCountFor(props.amount);
   const tex = useMemo(() => billTextures(), []);
   const band = useMemo(() => new THREE.MeshPhysicalMaterial({ color: mix(p.primary, "#9A6A10", 0.35), roughness: 0.5, metalness: 0.1, clearcoat: 0.4, envMapIntensity: 0.5 }), [p]);
   const t = frame / fps;
-  const growLen = Math.round(fps * 1.4);
+  // Motion v2 timing hook: the stacks finish growing (and the amount lands) on the emphasis.
+  const growLen = hitBuildLength(Math.round(fps * 1.4), 4, hitAtFrame, fps, durationInFrames, exitFrames);
   // Layout: rows of up to 3, back rows first; pyramid-ish heights.
   const slots = useMemo(() => {
     const out: Array<{ x: number; z: number; h: number; delay: number }> = [];

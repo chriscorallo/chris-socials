@@ -3,6 +3,7 @@ import { EASE_IN_OUT, EASE_OUT, SPRINGS, clamp01, countUp, prog, springAt } from
 import { FONT, compactNumber, glassCard, mix, rgba, withUnit } from "../theme";
 import { gradientText } from "./text";
 import type { TemplateComponentProps } from "./types";
+import { hitDelay } from "./hit-timing";
 import { BarChart3D } from "./three";
 
 const fill: CSSProperties = { position: "absolute", inset: 0 };
@@ -12,8 +13,10 @@ function sid(raw: string): string {
 }
 
 // ---------------------------------------------------------------- BAR_CHART
-export function BarChart(tp: TemplateComponentProps<"BAR_CHART">) {
-  const { props, palette: p, frame } = tp;
+export function BarChart(tpIn: TemplateComponentProps<"BAR_CHART">) {
+  const { props, palette: p, frame } = tpIn;
+  // Motion v2 timing hook: the bars build later so the key bar's value lands on the emphasis.
+  const tp = { ...tpIn, frame: Math.max(0, frame - barHitDelay(tpIn)) };
   const titleT = prog(frame, 0, 16, EASE_OUT);
   const hasTitle = !!props.title;
   return (
@@ -73,6 +76,13 @@ function Bars2D({ props, palette: p, frame, fps }: TemplateComponentProps<"BAR_C
       })}
     </div>
   );
+}
+
+function barHitDelay({ props, fps, durationInFrames, exitFrames, hitAtFrame }: TemplateComponentProps<"BAR_CHART">): number {
+  if (hitAtFrame == null) return 0;
+  const vals = props.bars.map((b) => Math.abs(b.value));
+  const key = props.highlightIndex != null && props.highlightIndex < vals.length ? props.highlightIndex : vals.indexOf(Math.max(...vals));
+  return hitDelay(8 + key * 5 + Math.round(fps * 1.0), hitAtFrame, fps, durationInFrames, exitFrames);
 }
 
 // ---------------------------------------------------------------- LINE_CHART
