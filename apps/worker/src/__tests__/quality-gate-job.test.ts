@@ -520,7 +520,7 @@ describe("runQualityGateForContentItem (real ffmpeg render, real state machine, 
         placement: { mode: "MANUAL", x: 0.5, y: 0.3, scale: 1 },
       });
       // A rendered item whose research has one number, and whose finishing edit shows `visuals`.
-      const renderedWithVisuals = async (visuals: unknown[]) => {
+      const renderedWithVisuals = async (visuals: Array<ReturnType<typeof counter>>) => {
         const { item } = await makeRenderedItem();
         await prisma.researchPacket.updateMany({
           where: { contentItemId: item.id },

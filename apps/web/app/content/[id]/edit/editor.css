@@ -409,14 +409,23 @@
 /* ------------------------------------------------------------------ inspector */
 .ed-tabs {
   display: flex;
-  gap: 2px;
-  padding: 8px 10px 0;
+  gap: 0;
+  padding: 8px 6px 0;
   border-bottom: 1px solid var(--ed-line);
+  /* six tabs (Selection, Visuals, Sound, Captions, Look, Cover): share the width, scroll if a
+     narrow window can't fit them */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ed-tabs::-webkit-scrollbar {
+  display: none;
 }
 .ed-tab {
   position: relative;
-  padding: 8px 10px 10px;
-  font-size: 12.5px;
+  flex: 1 0 auto;
+  padding: 8px 6px 10px;
+  white-space: nowrap;
+  font-size: 12px;
   font-weight: 500;
   color: var(--color-text-faint);
   transition: color 0.15s;
@@ -430,8 +439,8 @@
 .ed-tab[aria-selected="true"]::after {
   content: "";
   position: absolute;
-  left: 10px;
-  right: 10px;
+  left: 6px;
+  right: 6px;
   bottom: -1px;
   height: 2px;
   border-radius: 2px;

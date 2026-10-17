@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   MOTION_TEMPLATES,
   SFX_SOUNDS,
@@ -287,6 +287,12 @@ const TRANSITION_LABEL: Record<(typeof VISUAL_TRANSITIONS)[number], string> = {
 
 export function VisualEditor({ v }: { v: TimelineVisual }) {
   const { apply, doc, dispatch, warnings, solvePlacements, audio, placement, touch, setUi } = useEditor();
+  // A newly selected graphic opens at the top of its editor (the sheet/inspector may have been
+  // scrolled down the gallery).
+  const topRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    topRef.current?.closest(".ed-sheet-body, .ed-scroll")?.scrollTo({ top: 0 });
+  }, []);
   const D = timelineDuration(doc);
   const [numbersTouched, setNumbersTouched] = useState(false);
   const problem = visualPropsProblem(v);
@@ -299,7 +305,7 @@ export function VisualEditor({ v }: { v: TimelineVisual }) {
   };
   return (
     <>
-      <div className="ed-section">
+      <div className="ed-section" ref={topRef}>
         <div className="flex items-center gap-3">
           <span className="ed-vis-row-art">
             <TemplateArt template={v.template} size={34} />
@@ -533,10 +539,12 @@ function TextField({ spec, value, onChange }: { spec: Extract<FieldSpec, { kind:
   };
   return (
     <label className="block">
-      <span className="ed-label flex justify-between">
-        <span>{spec.label}</span>
-        <span className="tabular-nums text-[var(--color-text-faint)]">
-          {v.length}/{spec.max}
+      <span className="ed-label">
+        <span className="flex justify-between gap-2">
+          <span>{spec.label}</span>
+          <span className="tabular-nums text-[var(--color-text-faint)]">
+            {v.length}/{spec.max}
+          </span>
         </span>
       </span>
       {spec.multiline ? (
@@ -582,7 +590,7 @@ export function NumberField({ label, value, onChange, min, max, compact }: { lab
 
 function TagsField({ spec, value, text, onChange }: { spec: Extract<FieldSpec, { kind: "tags" }>; value: string[]; text: string; onChange: (v: string[]) => void }) {
   // Tap the words of the text itself to make them hit harder (CapCut-style word emphasis).
-  const words = [...new Set(text.split(/\s+/).map((w) => w.replace(/[^\w$%'’.-]/g, "")).filter((w) => w.length > 0 && w.length <= spec.itemMax))];
+  const words = [...new Set(text.split(/\s+/).map((w) => w.replace(/^[^\p{L}\p{N}$]+|[^\p{L}\p{N}%]+$/gu, "")).filter((w) => w.length > 0 && w.length <= spec.itemMax))];
   const lower = new Set(value.map((x) => x.toLowerCase()));
   return (
     <div>

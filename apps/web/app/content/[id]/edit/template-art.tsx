@@ -22,7 +22,7 @@ const ART: Record<MotionTemplate, ReactNode> = {
   ),
   NUMBER_COUNTER: (
     <>
-      <text x="24" y="31" textAnchor="middle" fontSize="18" fontWeight="900" fill={G} fontFamily="Inter, sans-serif">$1,2</text>
+      <text x="24" y="31" textAnchor="middle" fontSize="18" fontWeight="900" fill={G} fontFamily="Inter, sans-serif">$12</text>
       <path d="M12 38h24" stroke={M} strokeWidth="2" strokeLinecap="round" />
       <path d="M38 14v8M35 17l3-3 3 3" stroke={V} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </>

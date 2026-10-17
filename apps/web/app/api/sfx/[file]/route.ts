@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { SFX_SOUNDS } from "@chris/media/timeline";
 import { auth } from "../../../../auth";
+import { findSfxDir } from "../../../../lib/motion-assets";
 
 /**
  * Serves the procedural SFX kit (packages/motion/assets/sfx — original, license-free WAVs) to
@@ -15,19 +15,6 @@ import { auth } from "../../../../auth";
  */
 const FILES = new Set(SFX_SOUNDS.map((s) => `${s.toLowerCase()}.wav`));
 
-function sfxDir(): string | null {
-  if (process.env.MOTION_SFX_DIR) return process.env.MOTION_SFX_DIR;
-  let dir = process.cwd();
-  for (let i = 0; i < 6; i++) {
-    const c = join(dir, "packages", "motion", "assets", "sfx");
-    if (existsSync(join(c, "whoosh.wav"))) return c;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
 export async function GET(_request: Request, { params }: { params: Promise<{ file: string }> }) {
   const session = await auth();
   if (!session?.user) {
@@ -37,7 +24,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ fil
   if (!FILES.has(file)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const dir = sfxDir();
+  const dir = findSfxDir();
   let bytes: Buffer;
   try {
     if (!dir) throw new Error("missing");

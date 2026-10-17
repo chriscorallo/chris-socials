@@ -131,6 +131,12 @@ export interface MotionOptions {
  * that actually renders visuals loads it.
  */
 async function defaultLoadMotion(): Promise<MotionModule> {
+  // A host process can register its own loader. The web app does (apps/web/instrumentation.ts):
+  // inside the Next.js server, Node's native ESM loader can't run @chris/motion's TypeScript
+  // source (extensionless relative imports), and Remotion must never be bundled into the app,
+  // so the web app renders the motion layer in a child process instead.
+  const injected = (globalThis as { __chrisMotionLoader?: () => Promise<MotionModule> }).__chrisMotionLoader;
+  if (injected) return injected();
   const specifier = ["@chris", "motion"].join("/");
   return (await import(/* webpackIgnore: true */ /* @vite-ignore */ specifier)) as MotionModule;
 }
