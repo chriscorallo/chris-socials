@@ -7,6 +7,7 @@
 export const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/calendar", label: "Calendar" },
+  { href: "/todo", label: "To-do" },
   { href: "/content", label: "Content" },
   { href: "/upload", label: "Upload" },
   { href: "/film", label: "Film" },
@@ -32,6 +33,7 @@ export const TAB_LINKS: { href: string; label: string; icon: TabIcon }[] = [
 
 /** Everything not in the tab bar, shown in the "More" sheet. */
 export const MORE_LINKS: { href: string; label: string; hint: string }[] = [
+  { href: "/todo", label: "To-do", hint: "What's missing to stay on your posting plan" },
   { href: "/ideas", label: "Ideas", hint: "Capture and browse ideas" },
   { href: "/strategy", label: "Strategy", hint: "This week's thesis and portfolio" },
   { href: "/analytics", label: "Analytics", hint: "How published videos are doing" },

@@ -80,7 +80,6 @@ export function TimeGrid({
     const gutter = el.querySelector<HTMLElement>("[data-gutter]")?.offsetWidth ?? 0;
     if (col) el.scrollLeft = Math.max(0, col.offsetLeft - gutter);
     // Only on mount / when the shown days change — not on every refresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days.join(",")]);
 
   const colW = variant === "day" ? "calc(100cqw - var(--gw))" : "var(--dayw)";

@@ -11,6 +11,8 @@ import {
 import { requireSession } from "../lib/session";
 import { NavBar } from "./components/NavBar";
 import { PageShell, Panel, SectionHeading, Badge, EmptyState, QuietLink } from "./components/ui";
+import { loadTodo } from "../lib/todo-data";
+import { CourseStatusPill, NudgeRow } from "./calendar/nudges";
 
 // Home — spec §20: "THIS WEEK / PERFORMANCE / CREATIVE DIRECTOR / NEEDS YOU." Replaces the
 // Phase 0 "Foundation OK" status page now that the data behind all four sections is real:
@@ -54,6 +56,8 @@ export default async function HomePage() {
     include: { contentItem: true },
   });
   const needsYou = await getNeedsYouQueue(prisma, { limit: 8 });
+  // Stay on course (posting plan vs reality) — top 3 next steps; full list at /todo.
+  const { course, todo, now: todoNow, tz } = await loadTodo();
 
   const weekStart = startOfWeek(new Date());
   const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -76,6 +80,26 @@ export default async function HomePage() {
         </header>
 
         <div className="grid gap-4 sm:gap-5 md:grid-cols-2">
+          {/* STAY ON COURSE */}
+          <Panel className="order-first md:col-span-2">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="eyebrow">Stay on course</p>
+              <CourseStatusPill status={course.status} />
+            </div>
+            <p className="text-[15px] leading-snug text-[var(--color-text)] sm:text-sm">{course.headline}</p>
+            {todo.nudges.length > 0 && (
+              <ul className="mt-2 divide-y divide-[var(--color-border)]">
+                {todo.nudges.slice(0, 3).map((n) => (
+                  <NudgeRow key={n.key} nudge={n} now={todoNow} tz={tz} back="/" compact />
+                ))}
+              </ul>
+            )}
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+              <QuietLink href="/todo">See all{todo.nudges.length > 3 ? ` ${todo.nudges.length}` : ""} →</QuietLink>
+              <QuietLink href="/calendar">Calendar →</QuietLink>
+            </div>
+          </Panel>
+
           {/* THIS WEEK */}
           <Panel className="md:col-span-2">
             <SectionHeading
