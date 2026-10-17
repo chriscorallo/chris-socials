@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildSavePayload } from "../../../../lib/editor/reducer";
+import { withResolvedPlacements } from "../../../../lib/editor/visuals";
 import { warningsForPlatform } from "../../../../lib/editor/platform-warnings";
 import { PLATFORM_IDS, PLATFORM_PROFILES, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
 import { saveFinishingEditAction, renderStepAction, qualityGateStepAction, scheduleStepAction } from "./actions";
@@ -54,7 +55,7 @@ export function FinishModal({
   onSaved: (state: string) => void;
   onStateChange: (state: string) => void;
 }) {
-  const { doc, wordsByAsset, assets, setUi, focus, fontsVersion, touch } = useEditor();
+  const { doc, wordsByAsset, assets, setUi, focus, fontsVersion, touch, placement } = useEditor();
   const [date, setDate] = useState(defaultDate);
   const [platforms, setPlatforms] = useState<Set<PlatformId>>(new Set(defaultPlatforms.filter((p): p is PlatformId => p in PLATFORM_PROFILES)));
   const [phase, setPhase] = useState<"form" | "running" | "done" | "stopped">("form");
@@ -99,7 +100,8 @@ export function FinishModal({
     // 1. save
     if (needSave) {
       patch("save", { status: "running", detail: RUNNING_DETAIL.save });
-      const payload = buildSavePayload(doc);
+      // Same as Save: AUTO graphics are saved where the preview shows them.
+      const payload = buildSavePayload(withResolvedPlacements(doc, placement.visuals));
       if (!payload.ok) {
         patch("save", { status: "failed", detail: `Something in the edit isn't valid: ${payload.error}` });
         return setPhase("stopped");
