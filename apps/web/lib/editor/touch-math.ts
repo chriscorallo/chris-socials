@@ -120,6 +120,17 @@ export function reorderTarget(durations: number[], dragIndex: number, t: number)
   return { index: others.length, at: acc };
 }
 
+/**
+ * Where a new text/zoom added "at the playhead" should start so it is visible at the
+ * playhead: floored to the millisecond (rounding UP would start it just after the playhead and
+ * hide it), and pulled back from the very end so it still has room to show.
+ */
+export function spanStartForPlayhead(t: number, duration: number, length = 2.5): number {
+  const floored = Math.floor(Math.max(0, t) * 1000) / 1000;
+  if (floored > duration - 0.2) return Math.max(0, Math.floor((duration - Math.min(length, duration)) * 1000) / 1000);
+  return floored;
+}
+
 /** Nearest target within `threshold` of `value`, or null. */
 export function snapTo(value: number, targets: number[], threshold: number): number | null {
   let best: number | null = null;

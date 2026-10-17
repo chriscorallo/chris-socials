@@ -15,6 +15,7 @@ import {
   newId,
 } from "../../../../lib/editor/timeline-ops";
 import { formatTime } from "../../../../lib/editor/preview-math";
+import { spanStartForPlayhead } from "../../../../lib/editor/touch-math";
 import type { EditorAsset, EditorDoc } from "../../../../lib/editor/types";
 import { useEditor } from "./context";
 import { useFilmstrip, frameAt } from "./filmstrip";
@@ -228,8 +229,9 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
             className="ed-toolbtn"
             onClick={() => {
               const id = newId("text");
-              const at = engine.time;
+              const at = spanStartForPlayhead(engine.time, D);
               apply((d) => addText(d, at, {}, id).doc, { select: { kind: "text", id } });
+              engine.seek(at);
             }}
             title="Add text at the playhead"
           >
@@ -240,8 +242,9 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
             className="ed-toolbtn"
             onClick={() => {
               const id = newId("zoom");
-              const at = engine.time;
+              const at = spanStartForPlayhead(engine.time, D);
               apply((d) => addZoom(d, at, id).doc, { select: { kind: "zoom", id } });
+              engine.seek(at);
             }}
             title="Add a zoom (punch-in) at the playhead"
           >

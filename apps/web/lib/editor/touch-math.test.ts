@@ -12,7 +12,9 @@ import {
   snapTo,
   movedBeyond,
   keyboardInset,
+  spanStartForPlayhead,
 } from "./touch-math";
+import { assignPlayers } from "./player-pool";
 
 describe("centre-playhead timeline mapping", () => {
   it("round-trips time and scroll position", () => {
@@ -109,6 +111,28 @@ describe("snapping and slop", () => {
   it("distinguishes a tap from a drag", () => {
     expect(movedBeyond({ x: 0, y: 0 }, { x: 3, y: 4 }, 8)).toBe(false);
     expect(movedBeyond({ x: 0, y: 0 }, { x: 6, y: 8 }, 8)).toBe(true);
+  });
+});
+
+describe("adding at the playhead", () => {
+  it("never starts a new item after the playhead (it would be hidden)", () => {
+    expect(spanStartForPlayhead(3.99967, 10)).toBe(3.999);
+    expect(spanStartForPlayhead(0, 10)).toBe(0);
+  });
+  it("pulls back from the very end", () => {
+    expect(spanStartForPlayhead(10, 10)).toBe(7.5);
+    expect(spanStartForPlayhead(9.9, 10, 2)).toBe(8);
+    expect(spanStartForPlayhead(1.4, 1.5)).toBe(0);
+    expect(spanStartForPlayhead(1, 1.5)).toBe(1);
+  });
+});
+
+describe("player pool", () => {
+  it("alternates two elements no matter how many clips or takes", () => {
+    expect(assignPlayers(0)).toEqual({ clipPlayer: [], slots: ["p0"] });
+    expect(assignPlayers(1)).toEqual({ clipPlayer: ["p0"], slots: ["p0"] });
+    expect(assignPlayers(5).clipPlayer).toEqual(["p0", "p1", "p0", "p1", "p0"]);
+    expect(assignPlayers(5).slots).toEqual(["p0", "p1"]);
   });
 });
 

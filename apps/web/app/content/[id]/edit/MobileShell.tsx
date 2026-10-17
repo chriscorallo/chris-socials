@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { locateOutputTime, timelineDuration } from "@chris/media/timeline";
 import { addText, addZoom, updateText, newId } from "../../../../lib/editor/timeline-ops";
 import { formatTime } from "../../../../lib/editor/preview-math";
+import { spanStartForPlayhead } from "../../../../lib/editor/touch-math";
 import { PLATFORM_SHORT_LABEL } from "../../../../lib/editor/platform-profiles";
 import { useEditor, type SheetId } from "./context";
 import { useIsPlaying, usePlayheadValue } from "./playback";
@@ -278,9 +279,10 @@ function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void
           label="Text"
           onClick={() => {
             const id = newId("text");
-            const at = engine.time;
+            const at = spanStartForPlayhead(engine.time, timelineDuration(doc));
             engine.pause();
             apply((d) => addText(d, at, { text: "Your text" }, id).doc, { select: { kind: "text", id } });
+            engine.seek(at);
             setUi({ editingTextId: id, sheet: null });
           }}
         />
@@ -294,9 +296,10 @@ function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void
           label="Zoom"
           onClick={() => {
             const id = newId("zoom");
-            const at = engine.time;
+            const at = spanStartForPlayhead(engine.time, timelineDuration(doc));
             engine.pause();
             apply((d) => addZoom(d, at, id).doc, { select: { kind: "zoom", id } });
+            engine.seek(at);
             toast("Zoom added — tap the video where it should push in.");
           }}
         />

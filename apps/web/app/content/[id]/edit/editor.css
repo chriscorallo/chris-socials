@@ -2080,8 +2080,6 @@ html:has(.ed-root) body {
   height: 22px;
 }
 .ed-modal-touch .ed-finish-cta {
-  position: sticky;
-  bottom: 12px;
   height: 52px;
   font-size: 16px !important;
 }
@@ -2106,7 +2104,11 @@ html:has(.ed-root) body {
   border-left: 1px solid var(--ed-line);
 }
 .ed-m-land .ed-m-transport {
-  height: 48px;
+  height: 50px;
+}
+.ed-m-land .ed-m-play {
+  width: 42px;
+  height: 42px;
 }
 .ed-m-land .ed-m-dock {
   flex: 1;
@@ -2151,7 +2153,11 @@ html:has(.ed-root) body {
   color: var(--color-text-faint);
 }
 .ed-modal-touch .ed-finish-steps {
+  gap: 5px;
   font-size: 12.5px;
+}
+.ed-modal-touch .ed-finish-steps i {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
