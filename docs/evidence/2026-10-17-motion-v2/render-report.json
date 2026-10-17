@@ -1,0 +1,97 @@
+{
+  "warnings": [],
+  "interaction": {
+    "mattesComputed": 0,
+    "mattesUsed": 1,
+    "sceneSampled": 4,
+    "emphasisWords": 25,
+    "ms": 2607
+  },
+  "hits": {},
+  "motion": {
+    "overlays": 4,
+    "sfxEvents": [
+      {
+        "at": 0.35,
+        "sound": "RISER",
+        "volume": 0.6,
+        "source": "VISUAL",
+        "id": "num"
+      },
+      {
+        "at": 3.9,
+        "sound": "SOFT_POP",
+        "volume": 0.6,
+        "source": "VISUAL",
+        "id": "card"
+      },
+      {
+        "at": 6.1,
+        "sound": "SWOOSH_UP",
+        "volume": 0.6,
+        "source": "VISUAL",
+        "id": "bars"
+      },
+      {
+        "at": 9.1,
+        "sound": "SHIMMER",
+        "volume": 0.6,
+        "source": "VISUAL",
+        "id": "coin"
+      }
+    ],
+    "music": null,
+    "behindSubject": 1,
+    "mattedClips": 1
+  },
+  "timings": {
+    "matteMs": 0,
+    "prepMs": 2607,
+    "motionLayerMs": 17738,
+    "renderMs": 18821,
+    "renderFlatMs": 12054,
+    "totalMs": 55127
+  },
+  "placed": [
+    {
+      "id": "num",
+      "depth": "BEHIND_SUBJECT",
+      "placement": {
+        "mode": "MANUAL",
+        "x": 0.5,
+        "y": 0.226,
+        "scale": 1
+      }
+    },
+    {
+      "id": "card",
+      "depth": "FRONT",
+      "placement": {
+        "mode": "MANUAL",
+        "x": 0.5,
+        "y": 0.7,
+        "scale": 0.6
+      }
+    },
+    {
+      "id": "bars",
+      "depth": "FRONT",
+      "placement": {
+        "mode": "MANUAL",
+        "x": 0.5,
+        "y": 0.7,
+        "scale": 0.54
+      }
+    },
+    {
+      "id": "coin",
+      "depth": "FRONT",
+      "placement": {
+        "mode": "AUTO",
+        "x": 0.2417,
+        "y": 0.3177,
+        "scale": 0.7
+      }
+    }
+  ]
+}

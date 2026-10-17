@@ -88,7 +88,7 @@ async function main() {
       // A card that follows Chris (offset solved so it starts exactly where it's placed).
       { id: "card", template: "STAT_CARD", props: { value: "$400", label: "Extra per month", trend: "UP" }, start: 3.9, end: 6.0, placement: { mode: "MANUAL", x: 0.5, y: CARD_Y, scale: 0.6 }, anchor: { type: "SUBJECT", offsetX: 0, offsetY: 0 }, enterSfx: "SOFT_POP" },
       // A chart riding the punch-in (parallax), placed by the engine.
-      { id: "bars", template: "BAR_CHART", props: { title: "Years to debt-free", bars: [{ label: "Minimum", value: 14 }, { label: "+$400", value: 5 }], unit: "", highlightIndex: 1, depth3d: false }, start: 6.1, end: 9.0, placement: { mode: "MANUAL", x: 0.5, y: 0.675, scale: 0.6 }, cameraCoupling: 0.45, enterSfx: "SWOOSH_UP" },
+      { id: "bars", template: "BAR_CHART", props: { title: "Years to debt-free", bars: [{ label: "Minimum", value: 14 }, { label: "+$400", value: 5 }], unit: "", highlightIndex: 1, depth3d: false }, start: 6.1, end: 9.0, placement: { mode: "MANUAL", x: 0.5, y: 0.7, scale: 0.54 }, cameraCoupling: 0.45, enterSfx: "SWOOSH_UP" },
       // 3D icon with light wrap, placed by the engine.
       { id: "coin", template: "ICON_3D", props: { icon: "PIGGY_BANK", caption: "Free in 5 years" }, start: 9.1, end: D, placement: { mode: "AUTO", x: 0.5, y: 0.58, scale: 1 }, integration: { shadow: true, lightWrap: true, sceneMatch: true }, enterSfx: "SHIMMER" },
     ],
