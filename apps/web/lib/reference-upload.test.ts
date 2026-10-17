@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { prisma, isReferenceVideoKey } from "@chris/domain";
+import { prisma, isReferenceVideoKey, recordReferenceAnalysis, countOutdatedReferenceVideos } from "@chris/domain";
 import { REFERENCE_VIDEO_KEY_PATTERN } from "@chris/domain/style-metrics";
 import { setSandboxLauncherForTests, type SandboxLauncher } from "./heavy-jobs";
 import { prepareReferenceCreator, referenceStorageKey, registerReferenceUpload, startReferenceMeasuring } from "./reference-upload";
@@ -68,5 +68,23 @@ describe("reference upload + measuring (web)", () => {
     const again = await startReferenceMeasuring("chris");
     expect(again.jobRunId).toBe(first.jobRunId);
     expect(launched).toHaveLength(1);
+  });
+
+  it("“Update measurements”: videos measured with an older version go back in the queue and one job re-measures them", async () => {
+    const c = await prepareReferenceCreator({ name: `Outdated web ${Date.now()}` }, "chris");
+    const row = await registerReferenceUpload({ referenceCreatorId: c.id, storageKey: referenceStorageKey(c.id, "old.mp4"), filename: "old.mp4", mimeType: "video/mp4", sizeBytes: 10, actorId: "chris" });
+    const v1 = { version: 1, video: { durationS: 11, width: 1080, height: 1920, aspect: "9:16", fps: 30 }, cuts: null, speech: null, audio: null, transcript: null, notes: [] };
+    await recordReferenceAnalysis(prisma, row.id, { metrics: v1 as never }, { actorId: "job" });
+    expect(await countOutdatedReferenceVideos(prisma, { referenceCreatorId: c.id })).toBe(1);
+    // A plain "Measure now" doesn't touch measured videos…
+    expect((await startReferenceMeasuring("chris")).jobRunId).toBeNull();
+    // …"Update measurements" re-queues them and starts one job.
+    const r = await startReferenceMeasuring("chris", { updateOutdated: true });
+    expect(r.jobRunId).toBeTruthy();
+    expect(r.message).toMatch(/^Measuring \d+ videos?…$/);
+    expect(launched.map((l) => l.kind)).toEqual(["reference-analyze"]);
+    const after = await prisma.referenceContent.findUniqueOrThrow({ where: { id: row.id } });
+    expect(after.analysisStatus).toBe("PENDING");
+    expect(after.metrics).not.toBeNull(); // old numbers stay readable until the new ones land
   });
 });

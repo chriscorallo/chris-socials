@@ -9,6 +9,7 @@ import {
   getOwnSpeechProfile,
   compareOwnToReference,
   getActiveHeavyJob,
+  countOutdatedReferenceVideos,
 } from "@chris/domain";
 import { REFERENCE_LIBRARY_SUBJECT } from "@chris/worker/heavy-job-kinds";
 import { requireSession } from "../../lib/session";
@@ -34,6 +35,7 @@ export default async function ReferencePage() {
   const hasFaceless = creators.some((c) => creatorStyleGroup(c.formats) === "FACELESS");
   const own = await getOwnSpeechProfile(prisma);
   const active = await getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT);
+  const outdated = await countOutdatedReferenceVideos(prisma);
   const compare = compareOwnToReference(own, profile);
   const pending = [...counts.values()].reduce((s, c) => s + c.pending, 0);
   const failed = [...counts.values()].reduce((s, c) => s + c.failed, 0);
@@ -56,7 +58,7 @@ export default async function ReferencePage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <MeasureControl activeJobRunId={active?.id ?? null} pending={pending} failed={failed} />
+          <MeasureControl activeJobRunId={active?.id ?? null} pending={pending} failed={failed} outdated={outdated} />
 
           {videoTotal > 0 && <StyleCard eyebrow="Target style · talking videos" title={profile.creatorCount > 1 ? `Across ${profile.creatorCount} creators` : "Your references"} profile={profile} />}
           {hasFaceless && <StyleCard eyebrow="No-face motivational style" title={facelessProfile.creatorCount > 1 ? `Across ${facelessProfile.creatorCount} creators` : "Kept separate from your talking style"} profile={facelessProfile} />}

@@ -73,7 +73,7 @@ export async function registerReferenceBlobUpload(input: {
 }
 
 /** Starts (or follows) measuring every waiting video. Returns the job to follow. */
-export async function measureReferenceVideos(options: { retryFailed?: boolean; ids?: string[] } = {}): Promise<{ jobRunId: string | null; message: string } | { error: string }> {
+export async function measureReferenceVideos(options: { retryFailed?: boolean; ids?: string[]; updateOutdated?: boolean } = {}): Promise<{ jobRunId: string | null; message: string } | { error: string }> {
   const session = await requireSession();
   try {
     return await startReferenceMeasuring(session.user!.id!, options);

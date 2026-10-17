@@ -8,6 +8,7 @@ import {
   getActiveHeavyJob,
   creatorStyleGroup,
   listReferenceCreators,
+  REFERENCE_METRICS_VERSION,
 } from "@chris/domain";
 import { REFERENCE_LIBRARY_SUBJECT } from "@chris/worker/heavy-job-kinds";
 import { requireSession } from "../../../lib/session";
@@ -46,6 +47,7 @@ export default async function ReferenceCreatorPage({
   for (const c of creator.content) if (!videoIds.has(c.id)) notes.push(await getReferenceContent(prisma, c.id));
   const pending = videos.filter((v) => v.analysisStatus === "PENDING" && v.mediaStorageKey).length;
   const failed = videos.filter((v) => v.analysisStatus === "FAILED" && v.mediaStorageKey).length;
+  const outdated = videos.filter((v) => v.analysisStatus === "DONE" && v.mediaStorageKey && (v.metricsVersion ?? 0) < REFERENCE_METRICS_VERSION).length;
   const back = `/reference/${id}`;
 
   return (
@@ -83,7 +85,7 @@ export default async function ReferenceCreatorPage({
 
           {linkError && <p className="text-[14px] text-[var(--color-rose-400)]">{linkError}</p>}
 
-          <MeasureControl activeJobRunId={active?.id ?? null} pending={pending} failed={failed} />
+          <MeasureControl activeJobRunId={active?.id ?? null} pending={pending} failed={failed} outdated={outdated} />
 
           {videos.length > 0 && <StyleCard eyebrow="Style" title={`How ${creator.name} edits`} profile={profile} />}
 
