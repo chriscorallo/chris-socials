@@ -82,10 +82,22 @@ async function main() {
   const resume = flag("--resume");
   const from = (flag("--from") ?? "system") as (typeof steps)[number];
   if (!steps.includes(from)) throw new Error(`--from must be one of ${steps.join(", ")}`);
+  // --base <snapshotId>: incremental rebuild on top of a previous snapshot (system packages,
+  // node_modules and model caches are already there; only changed runner files are uploaded).
+  const base = flag("--base");
   const t0 = Date.now();
   const sandbox = resume
     ? await Sandbox.get({ ...creds, name: resume })
-    : await Sandbox.create({
+    : base
+      ? await Sandbox.create({
+          ...creds,
+          source: { type: "snapshot", snapshotId: base },
+          resources: { vcpus: 8 },
+          timeout: 40 * 60_000,
+          persistent: false,
+          tags: { purpose: "cloud-worker-snapshot", runner: built.version },
+        })
+      : await Sandbox.create({
         ...creds,
         image: SANDBOX_IMAGE,
         resources: { vcpus: 8 },
@@ -97,7 +109,7 @@ async function main() {
   let snapshotted = false;
   let failed = false;
   try {
-    const run = steps.slice(steps.indexOf(resume ? from : "system"));
+    const run = steps.slice(steps.indexOf(resume ? from : base ? "upload" : "system"));
     if (run.includes("system")) await installSystemPackages(sandbox);
     if (run.includes("upload")) await uploadRunner(sandbox);
     if (run.includes("restore")) await restoreRunner(sandbox);

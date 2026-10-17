@@ -6,7 +6,7 @@
  * motion layer with WebGL → depth compositing), downloads the MP4, extracts frames to look at,
  * and reports boot / render times and the sandbox's active CPU (→ cost).
  *
- *   SANDBOX_ENV_FILE=… pnpm exec tsx scripts/sandbox/verify-offline.ts [--snapshot snap_…] [--local] [--vcpus 8]
+ *   SANDBOX_ENV_FILE=… pnpm exec tsx scripts/sandbox/verify-offline.ts [--snapshot snap_…] [--local] [--vcpus 8] [--env K=V …]
  *
  * --local runs the same offline render on this machine (sanity check of the job, no sandbox).
  * Outputs: .sandbox-build/verify/{clip.mp4,job.json,out.mp4,result.json,frames/*.png,report.json}
@@ -111,7 +111,8 @@ async function main() {
       report.uploadMs = Date.now() - t1;
       const exec = async (kind: string, file: string) => {
         const s = Date.now();
-        const r = await sandbox.runCommand({ cmd: "bash", args: [`${SANDBOX_ROOT}/bin/run-job.sh`, kind, "--offline", `${dir}/${file}`] });
+        const env = Object.fromEntries(args.filter((a, i) => args[i - 1] === "--env").map((kv) => kv.split("=") as [string, string]));
+        const r = await sandbox.runCommand({ cmd: "bash", args: [`${SANDBOX_ROOT}/bin/run-job.sh`, kind, "--offline", `${dir}/${file}`], env });
         const out = await r.stdout();
         if (r.exitCode !== 0) throw new Error(`${kind} failed (${r.exitCode}): ${(await r.stderr()).slice(-3000)}\n${out.slice(-2000)}`);
         const last = JSON.parse(out.trim().split("\n").pop()!);

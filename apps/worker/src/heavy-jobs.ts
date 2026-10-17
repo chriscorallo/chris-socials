@@ -341,23 +341,24 @@ async function runIngest(
       return needs && !attempted.has(t.id);
     });
     if (todo.length === 0) break;
-    for (const [i, t] of todo.entries()) {
-      attempted.add(t.id);
-      const base = 5 + (90 * i) / todo.length;
-      const span = 90 / todo.length;
-      const label = todo.length > 1 ? ` (take ${i + 1} of ${todo.length})` : "";
-      if (a.transcribe && t.hasAudio !== false && t.transcriptWords == null && t.transcriptSource !== "MANUAL") {
-        progress(base, `Transcribing what you said${label}…`, "transcribe");
-        transcribe.push(slimTranscribe(await transcribeMediaAsset(db, storage, t.id, { provider: ctx.transcriptionProvider }, actor)));
-      }
-      if (a.track && t.width != null && t.subjectTrack == null) {
-        progress(base + span * 0.3, `Finding you in the frame${label}…`, "track");
-        track.push(...(await ensureSubjectTracks(db, storage, [t.id], actor, { analyze: ctx.analyze })));
-      }
-      if (a.matte && t.width != null && !t.matteStorageKey) {
-        progress(base + span * 0.45, `Cutting you out of the background${label} — the slowest step…`, "matte");
-        matte.push(...(await ensurePersonMattes(db, storage, { mediaAssetIds: [t.id] }, actor, { compute: ctx.computeMatte })));
-      }
+    for (const t of todo) attempted.add(t.id);
+    const label = (i: number, n: number) => (n > 1 ? ` (take ${i + 1} of ${n})` : "");
+    // Step-major, not take-major: every take's captions first (the upload screen waits for
+    // them before opening the editor), then face tracking, then the slow person matte.
+    const needT = todo.filter((t) => a.transcribe && t.hasAudio !== false && t.transcriptWords == null && t.transcriptSource !== "MANUAL");
+    for (const [i, t] of needT.entries()) {
+      progress(5 + (30 * i) / needT.length, `Transcribing what you said${label(i, needT.length)}…`, "transcribe");
+      transcribe.push(slimTranscribe(await transcribeMediaAsset(db, storage, t.id, { provider: ctx.transcriptionProvider }, actor)));
+    }
+    const needK = todo.filter((t) => a.track && t.width != null && t.subjectTrack == null);
+    for (const [i, t] of needK.entries()) {
+      progress(35 + (10 * i) / needK.length, `Finding you in the frame${label(i, needK.length)}…`, "track");
+      track.push(...(await ensureSubjectTracks(db, storage, [t.id], actor, { analyze: ctx.analyze })));
+    }
+    const needM = todo.filter((t) => a.matte && t.width != null && !t.matteStorageKey);
+    for (const [i, t] of needM.entries()) {
+      progress(45 + (50 * i) / needM.length, `Cutting you out of the background${label(i, needM.length)} — the slowest step…`, "matte");
+      matte.push(...(await ensurePersonMattes(db, storage, { mediaAssetIds: [t.id] }, actor, { compute: ctx.computeMatte })));
     }
   }
   const failures = [

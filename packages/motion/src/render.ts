@@ -150,7 +150,8 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
     // Tag + convert as BT.709 so the overlay's YUV matrix matches the H.264 master's.
     colorSpace: "bt709" as const,
     muted: true,
-    concurrency: input.concurrency ?? null,
+    // REMOTION_CONCURRENCY: tabs rendering in parallel (default: Remotion picks half the cores).
+    concurrency: input.concurrency ?? (Number(process.env.REMOTION_CONCURRENCY) > 0 ? Number(process.env.REMOTION_CONCURRENCY) : null),
     puppeteerInstance: browser,
     chromiumOptions: { gl: rendererGl() },
     logLevel: "error" as const,
