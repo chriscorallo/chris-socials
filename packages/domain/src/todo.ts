@@ -6,6 +6,7 @@ import { getNeedsYouQueue, type NeedsYouEntry } from "./needs-you";
 import { listPlatformConnectionSummaries, type PlatformConnectionSummary } from "./platform-credential";
 import { isEnabled } from "./feature-flags";
 import { ymdInTz } from "./tz";
+import { ANTHROPIC_CREDIT_ERROR_RE } from "./model-call-log";
 
 /**
  * The unified to-do list ("anything else that needs to be done"): Stay-on-course nudges
@@ -202,7 +203,7 @@ export function buildTodoList(input: {
       bucket: "setup",
       priority: 50,
       title: "Anthropic credit looks exhausted",
-      detail: `The last AI call failed: “${setup.anthropicCreditError.message.slice(0, 140)}”. Top up at console.anthropic.com — scripts, edits and Auto-Fill stop until then.`,
+      detail: `The last AI call failed: “${setup.anthropicCreditError.message.slice(0, 140)}”. Tap More → AI credit to top up — scripts, edits and Auto-Fill stop until then.`,
       due: null,
     });
   } else if (!setup.anthropicKeyConfigured) {
@@ -235,7 +236,6 @@ export function buildTodoList(input: {
 
 // ---- DB gather for the whole list -------------------------------------------------------
 
-const CREDIT_ERROR_RE = /credit balance|billing|insufficient[_ ]?(funds|credit|quota)|payment required|quota/i;
 
 export async function getTodoData(
   prisma: PrismaClient,
@@ -256,7 +256,7 @@ export async function getTodoData(
     select: { createdAt: true, errorMessage: true },
   });
   let anthropicCreditError: SetupSignals["anthropicCreditError"] = null;
-  if (recentFail?.errorMessage && CREDIT_ERROR_RE.test(recentFail.errorMessage)) {
+  if (recentFail?.errorMessage && ANTHROPIC_CREDIT_ERROR_RE.test(recentFail.errorMessage)) {
     const recovered = await prisma.modelCallLog.findFirst({ where: { success: true, createdAt: { gt: recentFail.createdAt } }, select: { id: true } });
     if (!recovered) anthropicCreditError = { at: recentFail.createdAt, message: recentFail.errorMessage };
   }
