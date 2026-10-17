@@ -507,4 +507,58 @@ describe("runQualityGateForContentItem (real ffmpeg render, real state machine, 
     },
     30000,
   );
+
+  it(
+    "FACTUAL covers on-screen numbers in motion graphics: an ungrounded number BLOCKs, a researched one passes",
+    async () => {
+      const counter = (id: string, value: number, start: number) => ({
+        id,
+        template: "NUMBER_COUNTER",
+        props: { value, from: 0, prefix: "$", suffix: "", decimals: 0, label: null },
+        start,
+        end: start + 1.5,
+        placement: { mode: "MANUAL", x: 0.5, y: 0.3, scale: 1 },
+      });
+      // A rendered item whose research has one number, and whose finishing edit shows `visuals`.
+      const renderedWithVisuals = async (visuals: unknown[]) => {
+        const { item } = await makeRenderedItem();
+        await prisma.researchPacket.updateMany({
+          where: { contentItemId: item.id },
+          data: { numericInputs: [{ label: "Emergency fund target", value: "$24,500" }] },
+        });
+        const asset = await prisma.mediaAsset.findFirstOrThrow({ where: { contentItemId: item.id } });
+        const planRow = await prisma.editPlan.findFirstOrThrow({ where: { contentItemId: item.id }, orderBy: { createdAt: "desc" } });
+        await prisma.editPlan.update({
+          where: { id: planRow.id },
+          data: {
+            plan: {
+              ...(planRow.plan as Record<string, unknown>),
+              timeline: {
+                version: 2,
+                clips: [{ id: "c", mediaAssetId: asset.id, sourceStart: 1, sourceEnd: 5 }],
+                captions: { enabled: false, fontId: "inter-display-bold", fontSize: 64, color: "#FFFFFF", highlightColor: "#FFD84D" },
+                visuals,
+              },
+            },
+          },
+        });
+        return item;
+      };
+      const cleanVisualQA = new MockModelProvider(() => ({ issues: [], overallImpression: "Clean." }));
+
+      const bad = await renderedWithVisuals([counter("ok", 24500, 0.2), counter("bad", 30000, 2.2)]);
+      const blocked = await runQualityGateForContentItem(prisma, storage, cleanVisualQA, bad.id, { actorId: "chris" }, { maxFrames: 2 });
+      expect(blocked.gates.factual).toBe("BLOCK");
+      expect(blocked.overallStatus).toBe("BLOCK");
+      const reason = blocked.reasons.join(" ");
+      expect(reason).toMatch(/number counter at 2\.2s shows 30,000/);
+      expect(reason).not.toMatch(/24,500/);
+
+      const good = await renderedWithVisuals([counter("ok", 24500, 0.2)]);
+      const passed = await runQualityGateForContentItem(prisma, storage, cleanVisualQA, good.id, { actorId: "chris" }, { maxFrames: 2 });
+      expect(passed.gates.factual).toBe("PASS");
+      expect(passed.overallStatus).toBe("PASS");
+    },
+    60000,
+  );
 });

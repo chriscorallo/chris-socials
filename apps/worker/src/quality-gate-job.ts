@@ -8,6 +8,7 @@ import {
   recordQualityGateResult,
   parseTranscriptWords,
   aggregateHardGates,
+  isScriptVersionFilmable,
   brandGateFromScores,
   creativeGateFromScore,
   technicalGateFromIssues,
@@ -15,7 +16,15 @@ import {
   type QCIssueInput,
   type GateStatus,
 } from "@chris/domain";
-import { EditPlanOutputSchema, runVisualQAAgent, type ModelProvider } from "@chris/agents";
+import {
+  EditPlanOutputSchema,
+  runVisualQAAgent,
+  groundedNumbers,
+  numberIsGrounded,
+  numbersShownBy,
+  type ModelProvider,
+  type MotionResearchInput,
+} from "@chris/agents";
 import {
   probeMedia,
   extractFrames,
@@ -28,6 +37,7 @@ import {
   findTimelineCollisions,
   nodeMeasureText,
   type CaptionCollision,
+  type TimelineVisual,
 } from "@chris/media";
 import type { StorageAdapter } from "@chris/media";
 
@@ -49,6 +59,63 @@ function captionCollisionToIssue(c: CaptionCollision): QCIssueInput {
     recommendedRepair: "Shorten or move the overlay, shift its timing off this phrase, or move captions to CENTER for this stretch.",
     source: "OVERLAY_COLLISION",
   };
+}
+
+export interface UngroundedVisualNumbers {
+  visualId: string;
+  template: string;
+  start: number;
+  end: number;
+  numbers: Array<{ value: number; field: string }>;
+}
+
+/**
+ * On-screen numbers in motion graphics vs the fact-checked sources — PURE and deterministic.
+ * Every number a visual would show (numbersShownBy: numeric props and digits/spelled-out
+ * numbers inside its strings) must match a number from the research packet (numeric inputs,
+ * FACT statements, calculation notes, primary claim) or the Claims-Gate-passed script, with
+ * the same formatting/rounding tolerance the Motion Designer applies (numberIsGrounded). This
+ * is the Quality Gate's second line behind the Motion Designer's own check: Chris can type
+ * any number into a graphic in the editor, and nothing on screen ships unchecked.
+ */
+export function findUngroundedVisualNumbers(
+  visuals: Pick<TimelineVisual, "id" | "template" | "props" | "start" | "end">[],
+  research: MotionResearchInput | null,
+  script: { spokenScript: string } | null,
+): UngroundedVisualNumbers[] {
+  const allowed = groundedNumbers(research, script);
+  const out: UngroundedVisualNumbers[] = [];
+  for (const v of visuals) {
+    const bad = numbersShownBy(v.template, v.props as Record<string, unknown>).filter((n) => !numberIsGrounded(n.value, allowed));
+    if (bad.length) out.push({ visualId: v.id, template: v.template, start: v.start, end: v.end, numbers: bad });
+  }
+  return out;
+}
+
+const TEMPLATE_NAMES: Record<string, string> = {
+  KINETIC_TEXT: "kinetic text",
+  NUMBER_COUNTER: "number counter",
+  STAT_CARD: "stat card",
+  BAR_CHART: "bar chart",
+  LINE_CHART: "line chart",
+  COMPARISON: "comparison",
+  PERCENT_RING: "percent ring",
+  LIST_STEPS: "list",
+  ICON_3D: "3D icon",
+  MONEY_STACK_3D: "money stack",
+  CALLOUT: "callout",
+  TIMELINE: "timeline",
+  DEFINITION: "definition",
+  TITLE_CARD: "title card",
+};
+
+/** One sentence naming every offending number, for the FACTUAL block reason. */
+export function describeUngroundedVisualNumbers(found: UngroundedVisualNumbers[]): string {
+  const parts = found.map((f) => {
+    const nums = [...new Set(f.numbers.map((n) => n.value.toLocaleString("en-US")))].join(", ");
+    return `the ${TEMPLATE_NAMES[f.template] ?? f.template} at ${f.start.toFixed(1)}s shows ${nums}`;
+  });
+  return `On-screen numbers aren't in the fact-checked research or script: ${parts.join("; ")}. Fix the graphic to use a researched number, or remove it.`;
 }
 
 /**
@@ -140,6 +207,27 @@ export async function runQualityGateForContentItem(
   const rawTimeline = (editPlanRow.plan as Record<string, unknown> | null)?.timeline;
   const parsedTimeline = rawTimeline != null ? EditTimelineSchema.safeParse(rawTimeline) : null;
   const timeline = parsedTimeline?.success ? parsedTimeline.data : null;
+
+  // FACTUAL also covers numbers drawn by motion graphics (deterministic, no model call).
+  if (timeline && timeline.visuals.length > 0) {
+    const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+    const research: MotionResearchInput | null = researchPacket
+      ? {
+          primaryClaim: researchPacket.primaryClaim,
+          numericInputs: asArray<{ label: string; value: string }>(researchPacket.numericInputs),
+          facts: asArray<{ statement: string; type: string }>(researchPacket.facts),
+          calculationNotes: researchPacket.calculationNotes,
+        }
+      : null;
+    const scripts = await db.scriptVersion.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" } });
+    const gated = scripts.find((s) => isScriptVersionFilmable(s).ok) ?? null;
+    const ungrounded = findUngroundedVisualNumbers(timeline.visuals, research, gated ? { spokenScript: gated.spokenScript } : null);
+    if (ungrounded.length > 0) {
+      const reason = describeUngroundedVisualNumbers(ungrounded);
+      factualStatus = "BLOCK";
+      factualBlockReason = factualBlockReason ? `${factualBlockReason} Also: ${reason}` : reason;
+    }
+  }
 
   const collisionIssues: QCIssueInput[] = [];
   if (timeline) {
