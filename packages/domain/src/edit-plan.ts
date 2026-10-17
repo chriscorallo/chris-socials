@@ -165,6 +165,7 @@ export async function getRepairChainEditPlanIds(
 /** States from which Chris can save a finishing edit (the in-app editor). */
 export const FINISHING_EDIT_STATES = new Set<ContentState>([
   "EDIT_PLANNED",
+  "EDITING", // a render failed (e.g. an edit the renderer rejected) — fix it and re-render
   "RENDERED",
   "QC_REPAIR",
   "QC_BLOCKED",

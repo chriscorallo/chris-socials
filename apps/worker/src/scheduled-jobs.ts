@@ -50,6 +50,8 @@ export async function publishDueScheduledItems(input: {
   adapters: Partial<Record<ContentPlatform, PlatformAdapter>>;
   now?: Date;
   getPublicVideoUrl?: (storageKey: string) => Promise<string | null>;
+  /** Upload per-platform optimized encodes (see publish-job.ts PublishJobOptions). */
+  platformVariants?: boolean;
   actorId?: string;
   staleAfterMs?: number;
   verifyDelaysMs?: number[];
@@ -70,7 +72,12 @@ export async function publishDueScheduledItems(input: {
     };
     if (!summary.flagEnabled) return summary;
 
-    const publishOptions = { now, getPublicVideoUrl: input.getPublicVideoUrl, verifyDelaysMs: input.verifyDelaysMs };
+    const publishOptions = {
+      now,
+      getPublicVideoUrl: input.getPublicVideoUrl,
+      verifyDelaysMs: input.verifyDelaysMs,
+      platformVariants: input.platformVariants,
+    };
 
     // 1. SCHEDULED items whose time has come. Sequential queries (PGlite — /docs/DECISIONS.md).
     const scheduledItems = await prisma.contentItem.findMany({ where: { currentState: "SCHEDULED" }, select: { id: true } });
