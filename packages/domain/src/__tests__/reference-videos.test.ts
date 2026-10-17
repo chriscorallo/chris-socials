@@ -17,9 +17,11 @@ import {
   normalizeSourceUrl,
   platformFromUrl,
   setReferenceVideoSourceUrl,
+  countOutdatedReferenceVideos,
 } from "../reference-videos";
+import { REFERENCE_METRICS_VERSION } from "../style-metrics";
 import { createReferenceContent } from "../reference-creator";
-import { fakeMetrics } from "./style-fixtures";
+import { fakeMetrics, fakeMusicLedMetrics } from "./style-fixtures";
 
 const actor = { actorId: "chris" };
 let n = 0;
@@ -135,6 +137,31 @@ describe("reference videos (domain)", () => {
     const list = await listReferenceVideos(prisma, a.id);
     expect(list).toHaveLength(4); // the notes-only row isn't a video
     expect(list.filter((v) => v.parsedMetrics).length).toBe(3);
+  });
+
+  it("older measurements: counted, re-queued in one go (file still present), old numbers kept until replaced", async () => {
+    const c = await findOrCreateReferenceCreator(prisma, { name: uniq("Outdated") }, actor);
+    const old1 = await video(c.id);
+    const old2 = await video(c.id);
+    const gone = await video(c.id);
+    const fresh = await video(c.id);
+    for (const v of [old1, old2, gone]) await recordReferenceAnalysis(prisma, v.id, { metrics: fakeMetrics({ shot: 2 }) }, actor); // v1
+    await recordReferenceAnalysis(prisma, fresh.id, { metrics: fakeMusicLedMetrics() }, actor); // v2
+    await deleteReferenceVideoMedia(prisma, gone.id, async () => undefined, actor); // can't be re-measured
+    expect((await prisma.referenceContent.findUniqueOrThrow({ where: { id: fresh.id } })).metricsVersion).toBe(REFERENCE_METRICS_VERSION);
+    expect(await countOutdatedReferenceVideos(prisma, { referenceCreatorId: c.id })).toBe(2);
+    expect(await requeueReferenceVideos(prisma, { outdated: true, ids: [old1.id, old2.id, gone.id, fresh.id] }, actor)).toBe(2);
+    expect(await countOutdatedReferenceVideos(prisma, { referenceCreatorId: c.id })).toBe(0);
+    const rows = await prisma.referenceContent.findMany({ where: { id: { in: [old1.id, old2.id, gone.id, fresh.id] } } });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(old1.id)!.analysisStatus).toBe("PENDING");
+    expect(byId.get(old1.id)!.metrics).not.toBeNull(); // still readable while waiting
+    expect(byId.get(fresh.id)!.analysisStatus).toBe("DONE");
+    expect(byId.get(gone.id)!.analysisStatus).toBe("DONE");
+    // The style keeps counting videos that are waiting to be re-measured.
+    expect((await getReferenceStyleProfile(prisma, { referenceCreatorId: c.id })).sampleSize).toBe(4);
+    const audit = await prisma.auditLog.findFirst({ where: { action: "REFERENCE_VIDEOS_REQUEUED" }, orderBy: { createdAt: "desc" } });
+    expect(audit!.after).toMatchObject({ outdated: true, count: 2, toVersion: REFERENCE_METRICS_VERSION });
   });
 
   it("getOwnSpeechProfile reads Chris's raw takes' word timings (no new transcription)", async () => {

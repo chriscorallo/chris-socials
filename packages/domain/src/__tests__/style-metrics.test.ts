@@ -15,9 +15,14 @@ import {
   splitSentences,
   videoSummary,
   ReferenceVideoMetricsSchema,
+  REFERENCE_METRICS_VERSION,
+  audioMix,
+  classifySpeech,
+  isLexicalWord,
+  sanitizeReferenceMetrics,
   type TimedWord,
 } from "../style-metrics";
-import { fakeMetrics } from "./style-fixtures";
+import { fakeMetrics, fakeMusicLedMetrics } from "./style-fixtures";
 
 const w = (word: string, start: number, end: number): TimedWord => ({ word, start, end });
 
@@ -107,7 +112,7 @@ describe("speech metrics", () => {
 describe("schema", () => {
   it("accepts a well-formed result and rejects malformed ones", () => {
     expect(ReferenceVideoMetricsSchema.safeParse(fakeMetrics()).success).toBe(true);
-    expect(parseReferenceVideoMetrics({ ...fakeMetrics(), version: 2 })).toBeNull();
+    expect(parseReferenceVideoMetrics({ ...fakeMetrics(), version: 3 })).toBeNull();
     expect(parseReferenceVideoMetrics({ ...fakeMetrics(), video: { durationS: -1 } })).toBeNull();
     const bad = fakeMetrics();
     (bad.audio as unknown as { background: string }).background = "loud";
@@ -176,5 +181,128 @@ describe("you vs them", () => {
     expect(byKey.hook).toBe("Your opening line is about as long as theirs");
     expect(byKey.start).toMatch(/You start talking 1\.1 s in/);
     expect(compareOwnToReference(aggregateOwnSpeech([]), ref)).toEqual([]);
+  });
+});
+
+describe("is anyone talking? (v2)", () => {
+  // ~2.5 words a second over 8 s, like a real talking clip.
+  const talking = Array.from({ length: 20 }, (_, i) => w(i % 6 === 5 ? `word${i}.` : `word${i}`, 0.3 + i * 0.4, 0.3 + i * 0.4 + 0.3));
+
+  it("real talking → present, with the real words", () => {
+    const c = classifySpeech(talking, 9, 12);
+    expect(c.present).toBe(true);
+    expect(c.wordCount).toBe(20);
+    expect(c.coverage).toBeGreaterThan(0.6);
+    // No acoustic check available → words alone decide.
+    expect(classifySpeech(talking, 9, null).present).toBe(true);
+  });
+
+  it("Whisper's invented words on an 11 s music video (timings past the end, zero length) → not talking", () => {
+    // What production showed: "Starts talking at 19 s" / "Hook lasts 0.0 s" on ~11 s videos.
+    const invented = [w("You", 19.2, 19.2), w("know", 19.2, 19.2), w("what", 19.4, 19.4), w("I", 21, 21), w("mean.", 21, 21), w("Thank", 10.6, 10.6), w("you.", 10.6, 10.6)];
+    const c = classifySpeech(invented, 11, null);
+    expect(c.present).toBe(false);
+    expect(c.words.every((x) => x.start < 11)).toBe(true);
+    // And even the old speech math, given those words, no longer reports talking past the end.
+    const s = speechMetrics(invented, 11, null);
+    expect(s == null || (s.speechStartS < 11 && (s.hookDurationS == null || s.hookDurationS > 0))).toBe(true);
+  });
+
+  it("sparse words over music → not talking (no fake WPM)", () => {
+    const sparse = [w("Remember", 1.0, 1.4), w("this", 1.4, 1.6), w("always.", 1.6, 2.0), w("Never", 7.0, 7.3), w("quit.", 7.3, 7.7)];
+    const c = classifySpeech(sparse, 15, 6);
+    expect(c.present).toBe(false);
+    expect(c.reason).toMatch(/cover only/);
+  });
+
+  it("words that aren't louder than the music between them → not talking", () => {
+    const c = classifySpeech(talking, 9, 0.8);
+    expect(c.present).toBe(false);
+    expect(c.reason).toMatch(/aren't louder/);
+  });
+
+  it("music tags, loops and sung (drawn-out) words aren't talking", () => {
+    expect(isLexicalWord("[Music]")).toBe(false);
+    expect(isLexicalWord("(upbeat")).toBe(false);
+    expect(isLexicalWord("music)")).toBe(false);
+    expect(isLexicalWord("♪")).toBe(false);
+    expect(isLexicalWord("...")).toBe(false);
+    expect(isLexicalWord("don't")).toBe(true);
+    expect(isLexicalWord("401k")).toBe(true);
+    expect(classifySpeech([w("[Music]", 0, 10)], 10, null).reason).toMatch(/only music/);
+    const loop = Array.from({ length: 12 }, (_, i) => w(i % 2 ? "you." : "Thank", i * 0.5, i * 0.5 + 0.3));
+    expect(classifySpeech(loop, 7, null).present).toBe(false);
+    const sung = Array.from({ length: 10 }, (_, i) => w(`la${i}`, i * 1.0, i * 1.0 + 0.9));
+    expect(classifySpeech(sung, 10, null).reason).toMatch(/drawn out/);
+  });
+
+  it("soundtrack label", () => {
+    expect(audioMix(true, "none", { activeShare: 0.8, integratedLufs: -14 })).toBe("voice");
+    expect(audioMix(true, "present", { activeShare: 1, integratedLufs: -14 })).toBe("voice-over-music");
+    expect(audioMix(false, "unknown", { activeShare: 0.97, integratedLufs: -15 })).toBe("music-led");
+    expect(audioMix(false, "unknown", { activeShare: 0.1, integratedLufs: -50 })).toBe("quiet");
+    expect(audioMix(false, "unknown", { activeShare: null, integratedLufs: null })).toBe("unknown");
+  });
+});
+
+describe("versions + impossible values", () => {
+  it("v2 is current; v1 rows still parse", () => {
+    expect(REFERENCE_METRICS_VERSION).toBe(2);
+    expect(parseReferenceVideoMetrics(fakeMetrics())!.version).toBe(1);
+    expect(parseReferenceVideoMetrics(fakeMusicLedMetrics())!.version).toBe(2);
+    expect(parseReferenceVideoMetrics({ ...fakeMetrics(), version: 2, video: { ...fakeMetrics().video, endCardS: 3.1, sourceDurationS: 33.1 } })!.video.endCardS).toBe(3.1);
+  });
+
+  it("drops speech that starts after the video ends and zero-length hooks (old v1 music rows)", () => {
+    const m = fakeMetrics();
+    const bad = { ...m, video: { ...m.video, durationS: 11 }, speech: { ...m.speech!, speechStartS: 19, speechEndS: 21, hookDurationS: 0 } };
+    expect(parseReferenceVideoMetrics(bad)!.speech).toBeNull();
+    const zeroHook = { ...m, speech: { ...m.speech!, hookDurationS: 0 } };
+    expect(sanitizeReferenceMetrics(zeroHook).speech!.hookDurationS).toBeNull();
+    expect(sanitizeReferenceMetrics(m)).toBe(m); // sane rows pass through untouched
+  });
+});
+
+describe("aggregation skips what doesn't apply (v2)", () => {
+  it("a no-face music-led group: no speech lines, no 'just the voice', says music-led", () => {
+    const p = aggregateStyle([{ metrics: fakeMusicLedMetrics({ endCard: 3 }) }, { metrics: fakeMusicLedMetrics({ shot: 1.6, durationS: 10 }) }, { metrics: fakeMusicLedMetrics({ durationS: 12 }) }]);
+    expect(p.wpm).toBeNull();
+    expect(p.speechStartS).toBeNull();
+    expect(p.hookDurationS).toBeNull();
+    expect(p.tailAfterLastWordS).toBeNull();
+    expect(p.musicLed).toEqual({ yes: 3, measured: 3 });
+    expect(p.talking).toEqual({ yes: 0, measured: 3 });
+    expect(p.endCardsRemoved).toBe(1);
+    expect(p.durationS!.value).toBe(11);
+    const text = describeStyle(p).map((l) => l.text);
+    expect(text).toContain("Music-led — no talking");
+    expect(text.join(" ")).not.toMatch(/Talks|Hook|Starts talking|last word|just the voice|under the voice/);
+    expect(text).toContain("Cuts every 1.2 s");
+    expect(text).toContain("Loudness -15 LUFS");
+    expect(describeStyle(p).find((l) => l.key === "length")!.detail).toMatch(/end card.*1 of 3/);
+    expect(videoSummary(fakeMusicLedMetrics())).toBe("Cuts every 1.2 s · music-led, no talking");
+  });
+
+  it("a mixed group: speech medians come from talking videos only — never averaged with zeros", () => {
+    const p = aggregateStyle([
+      { metrics: fakeMetrics({ wpm: 170, bg: null }) },
+      { metrics: fakeMetrics({ wpm: 190, bg: null }) },
+      { metrics: fakeMusicLedMetrics() },
+    ]);
+    expect(p.wpm).toMatchObject({ value: 180, n: 2 });
+    expect(p.hookDurationS!.n).toBe(2);
+    // Background-under-voice is about talking videos; the music video doesn't turn it into "music".
+    expect(p.backgroundPresent).toEqual({ withBackground: 0, measured: 2 });
+    const text = describeStyle(p).map((l) => l.text);
+    expect(text).toContain("No background music — just the voice");
+    expect(text).not.toContain("Music-led — no talking");
+  });
+
+  it("old v1 rows with impossible speech are skipped, not averaged", () => {
+    const m = fakeMetrics({ wpm: 400 });
+    const v1Music = { ...m, video: { ...m.video, durationS: 11 }, speech: { ...m.speech!, speechStartS: 19, speechEndS: 21, hookDurationS: 0 } };
+    const p = aggregateStyle([{ metrics: v1Music }, { metrics: fakeMetrics({ wpm: 180 }) }]);
+    expect(p.wpm).toMatchObject({ value: 180, n: 1 });
+    expect(p.speechStartS).toMatchObject({ value: 0.1, n: 1 });
   });
 });

@@ -26,6 +26,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function Details({ m }: { m: ReferenceVideoMetrics }) {
   const rows: Array<[string, string]> = [];
   rows.push(["Length", `${fmtSeconds(m.video.durationS)}${m.video.aspect ? ` · ${m.video.aspect}` : ""}${m.video.fps ? ` · ${Math.round(m.video.fps)} fps` : ""}`]);
+  if (m.video.endCardS) rows.push(["App end card", `${fmtSeconds(m.video.endCardS)} (logo + @name) — left out of the numbers`]);
   if (m.cuts) {
     rows.push(["Cuts", m.cuts.count === 0 ? "None found" : `${m.cuts.count} · one every ${fmtSeconds(m.cuts.shotMedianS ?? 0)} (most ${fmtSeconds(m.cuts.shotP25S ?? 0)}–${fmtSeconds(m.cuts.shotP75S ?? 0)})`]);
     if (m.cuts.firstCutS != null) rows.push(["First cut", fmtSeconds(m.cuts.firstCutS)]);
@@ -40,10 +41,14 @@ function Details({ m }: { m: ReferenceVideoMetrics }) {
     if (s.hookDurationS != null) rows.push(["Hook", `“${s.hookText}” (${fmtSeconds(s.hookDurationS)})`]);
     rows.push(["Ending", `“${s.lastSentence}” · ${fmtSeconds(s.tailAfterLastWordS)} after the last word${s.closingShotAfterSpeech ? " · cuts to a closing shot" : ""}`]);
   }
+  if (!m.speech && m.voice && !m.voice.present) rows.push(["Talking", `None — ${m.voice.reason.charAt(0).toLowerCase()}${m.voice.reason.slice(1)}`]);
   if (m.audio) {
     const a = m.audio;
     if (a.integratedLufs != null) rows.push(["Loudness", `${a.integratedLufs.toFixed(1)} LUFS${a.truePeakDbtp != null ? ` · peak ${a.truePeakDbtp.toFixed(1)} dBTP` : ""}`]);
-    rows.push(["Background", a.background === "present" && a.backgroundUnderVoiceDb != null ? `${Math.round(a.backgroundUnderVoiceDb)} dB under the voice` : a.background === "none" ? "None (just the voice)" : "Couldn't tell"]);
+    if (a.mix === "music-led") rows.push(["Sound", "Music-led — no voice"]);
+    else if (a.mix === "quiet") rows.push(["Sound", "Quiet — no voice"]);
+    // "Under the voice" only means something when there's a voice (older measurements may have dropped it).
+    else if (m.speech) rows.push(["Background", a.background === "present" && a.backgroundUnderVoiceDb != null ? `${Math.round(a.backgroundUnderVoiceDb)} dB under the voice` : a.background === "none" ? "None (just the voice)" : "Couldn't tell"]);
     if (a.clipping) rows.push(["Distortion", "Peaks clip"]);
   }
   return (
@@ -64,7 +69,10 @@ const STATUS: Record<string, { text: string; cls: string }> = {
 
 export function VideoCard({ v, back, creators, creatorId }: { v: VideoRow; back: string; creators: Array<{ id: string; name: string }>; creatorId: string }) {
   const m = v.parsedMetrics;
-  const status = STATUS[v.analysisStatus ?? ""] ?? { text: "Notes only", cls: "text-[var(--color-text-faint)]" };
+  const status =
+    v.analysisStatus === "PENDING" && m
+      ? { text: "Waiting to be re-measured (current numbers shown)", cls: "text-[var(--color-gold-400)]" }
+      : (STATUS[v.analysisStatus ?? ""] ?? { text: "Notes only", cls: "text-[var(--color-text-faint)]" });
   return (
     <li className="panel flex flex-col gap-1.5 p-4" data-testid="ref-video">
       {v.mediaStorageKey && (

@@ -15,7 +15,7 @@ import {
 } from "@chris/domain";
 import { MockTranscriptionProvider } from "@chris/agents";
 import { FFMPEG_PATH, LocalFsStorageAdapter } from "@chris/media";
-import { analyzeReferenceVideoFile, analyzePendingReferenceVideos } from "../reference-analysis-job";
+import { analyzeReferenceVideoFile, analyzePendingReferenceVideos, lastSpokenWordEnd } from "../reference-analysis-job";
 import { runHeavyJobRecorded } from "../heavy-jobs";
 import { heavyJobNeedsModel, heavyJobSubject, parseHeavyJobArgs, REFERENCE_LIBRARY_SUBJECT } from "../heavy-job-kinds";
 
@@ -23,7 +23,7 @@ const run = promisify(execFile);
 
 /**
  * Reference-video measurement end to end with real ffmpeg (a synthetic 6 s clip: a hard cut at
- * 3.0 s, a 440 Hz "voice" with a quiet noise bed) and a deterministic transcription provider
+ * 3.0 s, a 440 Hz "voice" — on only while the words are spoken — over a quiet noise bed) and a deterministic transcription provider
  * (real Whisper is exercised by packages/media's RUN_WHISPER_TESTS suite and was verified on
  * `say` speech — see docs/decisions-pending/reference-videos.md). No model calls anywhere.
  */
@@ -54,7 +54,7 @@ describe("reference analysis job", () => {
       "-f", "lavfi", "-i", "smptebars=s=180x320:r=30:d=3",
       "-f", "lavfi", "-i", "sine=f=440:d=6:sample_rate=48000",
       "-f", "lavfi", "-i", "anoisesrc=c=pink:d=6:a=0.01:r=48000",
-      "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v];[2:a]volume=0.5[s];[s][3:a]amix=inputs=2:normalize=0[a]",
+      "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v];[2:a]volume=volume=0.5*(between(t\\,0.3\\,1.3)+between(t\\,1.6\\,2.4)+between(t\\,4.8\\,5.6)):eval=frame[s];[s][3:a]amix=inputs=2:normalize=0[a]",
       "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-shortest", clip,
     ]);
   }, 60_000);
@@ -70,12 +70,14 @@ describe("reference analysis job", () => {
     expect(m.cuts!.count).toBe(1);
     expect(m.cuts!.times[0]).toBeCloseTo(3, 1);
     expect(m.cuts!.firstCutS).toBeCloseTo(3, 1);
+    expect(m.voice!.present).toBe(true);
+    expect(m.video.endCardS).toBeNull(); // a hard cut to bars isn't an app end card
     expect(m.speech!.hookText).toBe("Stop doing this.");
     expect(m.speech!.lastSentence).toBe("Follow for more.");
     expect(m.speech!.closingShotAfterSpeech).toBe(false);
     expect(m.audio!.integratedLufs).not.toBeNull();
-    // The tone plays throughout, so the "background" floor is the tone itself → reads as no gap
-    // between voice and floor. What matters here: the numbers exist and are typed.
+    // The noise bed sits ~30 dB under the "voice": present or none depending on the floor rule.
+    // What matters here: the numbers exist, are typed, and the voice reads as talking.
     expect(["present", "none", "unknown"]).toContain(m.audio!.background);
     expect(m.transcript).toContain("Stop doing this.");
   }, 60_000);
@@ -105,6 +107,74 @@ describe("reference analysis job", () => {
     expect(profile.confidence).toBe("early");
     expect(await prisma.auditLog.count({ where: { entityId: good.id, action: "REFERENCE_VIDEO_MEASURED", actorType: "JOB" } })).toBe(1);
   }, 90_000);
+
+  it("leaves out an Instagram-style end card: length, ending, pacing and loudness stop where it starts", async () => {
+    // 4 s of moving footage with a "voice" (tone bursts) → the last frame frozen, dimmed, with a
+    // centred logo + handle and silence for 3 s (what a download from Instagram appends).
+    const content = join(dir, "ig-content.mp4");
+    await run(FFMPEG_PATH, [
+      "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=180x320:r=30:d=4",
+      "-f", "lavfi", "-i", "sine=f=300:d=4:sample_rate=48000",
+      "-filter_complex", "[1:a]volume=0.4,tremolo=f=3:d=0.8[a]",
+      "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", content,
+    ]);
+    const last = join(dir, "ig-last.png");
+    await run(FFMPEG_PATH, ["-y", "-v", "error", "-sseof", "-0.2", "-i", content, "-update", "1", "-frames:v", "100", last]);
+    const igClip = join(dir, "ig.mp4");
+    await run(FFMPEG_PATH, [
+      "-y", "-v", "error", "-i", content, "-loop", "1", "-framerate", "30", "-t", "3", "-i", last, "-f", "lavfi", "-t", "3", "-i", "anullsrc=r=48000:cl=mono",
+      "-filter_complex",
+      "[1:v]format=rgb24,colorchannelmixer=rr=0.4:gg=0.4:bb=0.4,drawbox=x=(iw-30)/2:y=(ih-30)/2-10:w=30:h=30:color=white:t=3,drawbox=x=(iw-50)/2:y=ih/2+20:w=50:h=5:color=white:t=fill,format=yuv420p,setsar=1[card];[0:v]setsar=1[c];[0:a]aformat=channel_layouts=mono:sample_rates=48000[ca];[2:a]aformat=channel_layouts=mono:sample_rates=48000[sa];[c][ca][card][sa]concat=n=2:v=1:a=1[v][a]",
+      "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", igClip,
+    ]);
+    const talk = Array.from({ length: 12 }, (_, i) => ({ word: i === 11 ? "more." : `w${i}`, start: 0.2 + i * 0.3, end: 0.2 + i * 0.3 + 0.25 }));
+    const p = Object.assign(new MockTranscriptionProvider(() => ({ text: talk.map((w) => w.word).join(" "), words: talk })), { model: "mock" });
+    const m = await analyzeReferenceVideoFile(igClip, { transcriptionProvider: p });
+    expect(parseReferenceVideoMetrics(m)).not.toBeNull();
+    expect(m.version).toBe(2);
+    expect(m.video.sourceDurationS!).toBeGreaterThan(6.9);
+    expect(m.video.durationS).toBeCloseTo(4, 0);
+    expect(Math.abs(m.video.durationS - 4)).toBeLessThanOrEqual(0.1);
+    expect(m.video.endCardS!).toBeGreaterThan(2.8);
+    expect(m.speech!.tailAfterLastWordS).toBeLessThan(0.5); // was ~3.4 s with the card counted
+    expect(m.speech!.closingShotAfterSpeech).toBe(false); // the card isn't a closing shot
+    expect(m.cuts!.times.every((t) => t < m.video.durationS)).toBe(true);
+    expect(m.notes.join(" ")).toMatch(/end card/);
+  }, 90_000);
+
+  it("a music-only video with words Whisper invented: speech is n/a, the soundtrack reads as music-led", async () => {
+    const music = join(dir, "music.mp4");
+    await run(FFMPEG_PATH, [
+      "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=180x320:r=30:d=8",
+      "-f", "lavfi", "-i", "sine=f=220:d=8:sample_rate=48000", "-f", "lavfi", "-i", "anoisesrc=c=pink:d=8:a=0.2:r=48000",
+      "-filter_complex", "[1:a][2:a]amix=inputs=2:normalize=0,tremolo=f=4:d=0.5[a]",
+      "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", music,
+    ]);
+    // What production showed on ~11 s music videos: words past the end, zero length, a stray "you".
+    const invented = [
+      { word: "You", start: 19.2, end: 19.2 }, { word: "know", start: 19.4, end: 19.4 }, { word: "what", start: 21, end: 21 },
+      { word: "you.", start: 3.1, end: 3.4 }, { word: "Thank", start: 7.0, end: 7.3 },
+    ];
+    const p = Object.assign(new MockTranscriptionProvider(() => ({ text: "You know what you. Thank", words: invented })), { model: "mock" });
+    const m = await analyzeReferenceVideoFile(music, { transcriptionProvider: p });
+    expect(parseReferenceVideoMetrics(m)).not.toBeNull();
+    expect(m.speech).toBeNull();
+    expect(m.voice).toMatchObject({ present: false });
+    expect(m.audio!.mix).toBe("music-led");
+    expect(m.audio!.background).toBe("present");
+    expect(m.audio!.backgroundUnderVoiceDb).toBeNull();
+    expect(m.transcript).toBeNull();
+    expect(m.notes.join(" ")).toMatch(/No talking/);
+    expect(m.video.endCardS).toBeNull();
+  }, 60_000);
+
+  it("the last spoken word ignores one or two stray words long after the rest", () => {
+    const ws = [{ word: "a", start: 0, end: 0.3 }, { word: "b", start: 0.3, end: 0.6 }, { word: "c", start: 0.6, end: 1.0 }];
+    expect(lastSpokenWordEnd(ws)).toBe(1.0);
+    expect(lastSpokenWordEnd([...ws, { word: "you", start: 3, end: 3.2 }])).toBe(1.0);
+    expect(lastSpokenWordEnd([...ws, { word: "d", start: 1.2, end: 1.5 }])).toBe(1.5);
+    expect(lastSpokenWordEnd([])).toBeNull();
+  });
 
   it("stops at the time budget and leaves the rest waiting", async () => {
     const c = await findOrCreateReferenceCreator(prisma, { name: `Budget ${Date.now()}` }, { actorId: "chris" });

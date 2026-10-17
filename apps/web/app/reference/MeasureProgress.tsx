@@ -33,14 +33,25 @@ export function MeasureProgress({ jobRunId }: { jobRunId: string }) {
  * The measuring control on /reference and a creator page: follows a running job, or offers to
  * measure what's waiting / retry what failed. Renders nothing when there's nothing to do.
  */
-export function MeasureControl({ activeJobRunId, pending, failed }: { activeJobRunId: string | null; pending: number; failed: number }) {
+export function MeasureControl({
+  activeJobRunId,
+  pending,
+  failed,
+  outdated = 0,
+}: {
+  activeJobRunId: string | null;
+  pending: number;
+  failed: number;
+  /** Measured videos from an older, less accurate measuring version. */
+  outdated?: number;
+}) {
   const [jobRunId, setJobRunId] = useState<string | null>(activeJobRunId);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  async function start(retryFailed: boolean) {
+  async function start(retryFailed: boolean, updateOutdated = false) {
     setBusy(true);
     setNote(null);
-    const r = await measureReferenceVideos({ retryFailed });
+    const r = await measureReferenceVideos({ retryFailed, updateOutdated });
     if ("error" in r) setNote(r.error);
     else if (r.jobRunId) setJobRunId(r.jobRunId);
     else setNote(r.message);
@@ -53,15 +64,20 @@ export function MeasureControl({ activeJobRunId, pending, failed }: { activeJobR
       </section>
     );
   }
-  if (pending === 0 && failed === 0 && !note) return null;
+  if (pending === 0 && failed === 0 && outdated === 0 && !note) return null;
   return (
-    <section className="panel flex flex-col gap-2.5 p-4">
+    <section className="panel flex flex-col gap-2.5 p-4" data-testid="measure-control">
       {pending > 0 && <p className="text-[14.5px]">{pending} video{pending === 1 ? " is" : "s are"} waiting to be measured.</p>}
+      {outdated > 0 && (
+        <p className="text-[14.5px]" data-testid="measure-outdated">
+          {outdated === 1 ? "1 video was" : `${outdated} videos were`} measured before the latest improvements (app end cards left out, music-only videos read correctly).
+        </p>
+      )}
       {failed > 0 && <p className="text-[14px] text-[var(--color-text-muted)]">{failed} couldn&apos;t be measured.</p>}
       <div className="flex flex-wrap gap-2">
-        {pending > 0 && (
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void start(false)} data-testid="measure-start">
-            {busy ? "Starting…" : "Measure now"}
+        {(pending > 0 || outdated > 0) && (
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void start(false, outdated > 0)} data-testid="measure-start">
+            {busy ? "Starting…" : outdated > 0 ? "Update measurements (improved accuracy)" : "Measure now"}
           </button>
         )}
         {failed > 0 && (

@@ -45,8 +45,13 @@ export async function registerReferenceUpload(input: {
  * process in the background; on Vercel in the cloud worker. Returns the JobRun to poll, or
  * null when nothing is waiting.
  */
-export async function startReferenceMeasuring(actorId: string, options: { retryFailed?: boolean; ids?: string[] } = {}): Promise<{ jobRunId: string | null; message: string }> {
+export async function startReferenceMeasuring(
+  actorId: string,
+  options: { retryFailed?: boolean; ids?: string[]; updateOutdated?: boolean } = {},
+): Promise<{ jobRunId: string | null; message: string }> {
   if (options.retryFailed || options.ids) await requeueReferenceVideos(prisma, { ids: options.ids }, { actorId });
+  // Re-measure videos measured with an older (less accurate) version; old numbers stay until replaced.
+  if (options.updateOutdated) await requeueReferenceVideos(prisma, { outdated: true }, { actorId });
   const active = await getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT);
   if (active) return { jobRunId: active.id, message: "Already measuring — following along." };
   const waiting = await countPendingReferenceVideos(prisma);

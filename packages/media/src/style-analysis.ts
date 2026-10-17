@@ -249,12 +249,15 @@ export function isClipping(samplePeakDb: number | null, peakCount: number | null
   return samplePeakDb > 0.1 || (peakCount ?? 0) >= 20 || (flatFactor ?? 0) >= 1;
 }
 
-export async function measureStyleLoudness(filePath: string): Promise<StyleLoudness> {
+/** `endS`: measure only up to here (an end card after it is left out). */
+export async function measureStyleLoudness(filePath: string, options: { endS?: number | null } = {}): Promise<StyleLoudness> {
+  const limit = options.endS != null && options.endS > 0 ? ["-t", String(Math.round(options.endS * 1000) / 1000)] : [];
   const { stderr } = await execFileAsync(
     FFMPEG_PATH,
     [
       "-hide_banner", "-nostats", "-i", filePath, "-vn", "-sn", "-map", "0:a:0",
       "-af", "ebur128=peak=true,astats=measure_overall=Peak_level+Peak_count+Flat_factor:measure_perchannel=none",
+      ...limit,
       "-f", "null", "-",
     ],
     { maxBuffer: 64 * 1024 * 1024 },
@@ -349,4 +352,320 @@ export function measureVoiceBackground(pcm: Float32Array, sampleRate: number, wo
     background: none ? "none" : "present",
     method: "floor",
   };
+}
+
+/** A 20 ms frame at or above this (dBFS RMS) has sound in it — music, voice or noise. */
+export const ACTIVE_FRAME_DB = -45;
+
+export interface AudioActivity {
+  /** Share of 20 ms frames with sound in them (≥ ACTIVE_FRAME_DB). */
+  activeShare: number;
+  /** Energy mean inside Whisper's words / at least 0.15 s away from any word (dBFS). */
+  inWordDb: number | null;
+  outWordDb: number | null;
+  /**
+   * In-word minus out-of-word energy (dB). A real voice stands well above what's between its
+   * words (silence, or a music bed under it); words Whisper invents over music sit on the same
+   * sound as the gaps around them (≈ 0 dB). null when either side has under 0.3 s of audio.
+   */
+  contrastDb: number | null;
+}
+
+/** Pure: how much of the audio has sound, and whether the "words" stand out from their gaps. */
+export function measureAudioActivity(pcm: Float32Array, sampleRate: number, words: Array<{ start: number; end: number }>, durationS: number): AudioActivity {
+  const levels = frameLevels(pcm, sampleRate);
+  const end = Math.min(durationS > 0 ? durationS : Infinity, levels.length * FRAME_S);
+  const ws = [...words].filter((w) => Number.isFinite(w.start) && Number.isFinite(w.end)).sort((a, b) => a.start - b.start);
+  const inside: number[] = [];
+  const outside: number[] = [];
+  let active = 0;
+  let total = 0;
+  let k = 0;
+  levels.forEach((l, i) => {
+    const t = (i + 0.5) * FRAME_S;
+    if (t > end) return;
+    total++;
+    if (l >= ACTIVE_FRAME_DB) active++;
+    while (k < ws.length && ws[k]!.end + 0.15 < t) k++;
+    let inWord = false;
+    let near = false;
+    for (let j = Math.max(0, k - 1); j < ws.length && ws[j]!.start - 0.15 <= t; j++) {
+      const w = ws[j]!;
+      if (t >= w.start && t <= w.end) inWord = true;
+      if (t >= w.start - 0.15 && t <= w.end + 0.15) near = true;
+    }
+    if (inWord) inside.push(l);
+    else if (!near) outside.push(l);
+  });
+  const r1 = (x: number | null) => (x == null ? null : Math.round(x * 10) / 10);
+  const inDb = inside.length >= 15 ? energyMeanDb(inside) : null;
+  const outDb = outside.length >= 15 ? energyMeanDb(outside) : null;
+  return {
+    activeShare: total ? Math.round((active / total) * 1000) / 1000 : 0,
+    inWordDb: r1(inDb),
+    outWordDb: r1(outDb),
+    contrastDb: inDb != null && outDb != null ? r1(inDb - outDb) : null,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Platform end card (Instagram / TikTok download outro)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Videos saved from Instagram / TikTok carry an appended outro: the last frame frozen and
+ * dimmed (often with a short fade) — or a cut to black — with a centred logo + "@username" on
+ * top, roughly 1.5–5 s at the very end. It isn't the creator's edit, and it inflates the
+ * length, "ends N s after the last word", the last-3-s pacing and the audio floor, so it is
+ * detected and left out of every number.
+ *
+ * Deterministic, on the last few seconds decoded to 180×320 grey:
+ *  1. Still run: walking back from the last frame, consecutive frames whose background (the
+ *     frame minus the centre box, where the logo animates) is the previous frame up to a
+ *     brightness change — a least-squares fit b ≈ α + β·a with a tiny residual. A frozen frame
+ *     fading darker passes; real footage (motion, grain) doesn't.
+ *  2. Position + length: that still run ends the video, lasts 1–6 s, and doesn't start before
+ *     the last spoken word (+0.5 s for Whisper's loose word ends).
+ *  3. Darker than what came before: the background's light (above video black) is ≤ 75 % of
+ *     the second before (a dimmed freeze or a cut to black). When the still run fades, the
+ *     card starts where the light starts dropping.
+ *  4. A logo / handle: bright pixels well above the dimmed background in the centre box,
+ *     horizontally centred, and almost none outside it.
+ * All four must hold. A creator's own closing shot at normal brightness (fails 3), a fade to
+ * black with nothing on it (fails 4), or a still longer than 6 s (fails 2) stays in.
+ * Accuracy: docs/decisions-pending/reference-measuring-v2.md.
+ */
+
+export const TAIL_W = 180;
+export const TAIL_H = 320;
+/** Seconds of the tail decoded for end-card detection (cards are ≤ ~5 s). */
+export const TAIL_WINDOW_S = 7;
+
+export interface TailFrame {
+  t: number;
+  /** TAIL_W × TAIL_H grey, row-major. */
+  px: Uint8Array;
+}
+
+export interface EndCardOptions {
+  minS: number;
+  maxS: number;
+  /** Mean |residual| (0–255) of the brightness fit for two frames to count as the same still. */
+  frozenResidual: number;
+  /** Background light ratio (card ÷ the second before, above black) at or under which it's "darker". */
+  darkerRatio: number;
+  /** Seconds a word may run past the card start (Whisper's word ends are loose). */
+  wordSlackS: number;
+}
+
+export const DEFAULT_END_CARD: EndCardOptions = { minS: 1, maxS: 6, frozenResidual: 1.5, darkerRatio: 0.75, wordSlackS: 0.5 };
+
+export interface EndCardEvidence {
+  stillS: number;
+  darkRatio: number | null;
+  overlayShare: number | null;
+  overlayOutsideShare: number | null;
+}
+
+export interface EndCardResult {
+  /** Where the card starts (the analyzed video ends here); null = no end card. */
+  startS: number | null;
+  durationS: number | null;
+  /** Why it was / wasn't treated as an end card (logs and tests). */
+  reason: string;
+  evidence: EndCardEvidence;
+}
+
+/** Video black in 8-bit limited range. */
+const VIDEO_BLACK = 16;
+
+let maskCache: { bg: Int32Array; center: Int32Array } | null = null;
+function masks(): { bg: Int32Array; center: Int32Array } {
+  if (!maskCache) {
+    const bg: number[] = [];
+    const center: number[] = [];
+    for (let y = 0; y < TAIL_H; y++) {
+      for (let x = 0; x < TAIL_W; x++) {
+        const c = x >= TAIL_W * 0.2 && x < TAIL_W * 0.8 && y >= TAIL_H * 0.3 && y < TAIL_H * 0.7;
+        (c ? center : bg).push(y * TAIL_W + x);
+      }
+    }
+    maskCache = { bg: Int32Array.from(bg), center: Int32Array.from(center) };
+  }
+  return maskCache;
+}
+
+/** Least-squares b ≈ α + β·a over the background: β and the mean |residual|. */
+export function brightnessFit(a: Uint8Array, b: Uint8Array): { beta: number; residual: number } {
+  const { bg } = masks();
+  const n = bg.length;
+  let sa = 0, sb = 0, saa = 0, sab = 0;
+  for (let k = 0; k < n; k++) {
+    const i = bg[k]!;
+    const x = a[i]!;
+    const y = b[i]!;
+    sa += x;
+    sb += y;
+    saa += x * x;
+    sab += x * y;
+  }
+  const ma = sa / n;
+  const mb = sb / n;
+  const va = saa / n - ma * ma;
+  // A flat frame (black / one colour) has no shape to fit: "the same" only if the level held.
+  const flat = va < 4;
+  const beta = flat ? 1 : (sab / n - ma * mb) / va;
+  const alpha = flat ? mb - ma : mb - beta * ma;
+  let res = 0;
+  for (let k = 0; k < n; k++) {
+    const i = bg[k]!;
+    res += Math.abs(b[i]! - (flat ? a[i]! : alpha + beta * a[i]!));
+  }
+  return { beta, residual: res / n };
+}
+
+function histogram(px: Uint8Array, idx: Int32Array): Uint32Array {
+  const hist = new Uint32Array(256);
+  for (let k = 0; k < idx.length; k++) hist[px[idx[k]!]!]!++;
+  return hist;
+}
+
+/** Mean light above video black over the background (0 = black). */
+function lightAboveBlack(px: Uint8Array): number {
+  const { bg } = masks();
+  let sum = 0;
+  for (let k = 0; k < bg.length; k++) {
+    const v = px[bg[k]!]! - VIDEO_BLACK;
+    if (v > 0) sum += v;
+  }
+  return sum / bg.length;
+}
+
+function percentileOf(px: Uint8Array, idx: Int32Array, p: number): number {
+  const hist = histogram(px, idx);
+  let left = idx.length * p;
+  for (let v = 0; v < 256; v++) {
+    left -= hist[v]!;
+    if (left <= 0) return v;
+  }
+  return 255;
+}
+
+/** A centred bright overlay (logo + handle): shares of bright pixels inside / outside the centre box. */
+export function overlayShares(px: Uint8Array): { inside: number; outside: number; centred: boolean } {
+  const { bg, center } = masks();
+  // "Bright" = clearly above everything in the (dimmed) background: a white logo / handle.
+  const thr = Math.min(235, Math.max(150, percentileOf(px, bg, 0.9) + 60, percentileOf(px, bg, 0.998) + 15));
+  let inside = 0;
+  let sx = 0;
+  for (let k = 0; k < center.length; k++) {
+    const i = center[k]!;
+    if (px[i]! >= thr) {
+      inside++;
+      sx += i % TAIL_W;
+    }
+  }
+  let outside = 0;
+  for (let k = 0; k < bg.length; k++) if (px[bg[k]!]! >= thr) outside++;
+  const cx = inside ? sx / inside / TAIL_W : 0;
+  return { inside: inside / center.length, outside: outside / bg.length, centred: inside > 0 && cx > 0.38 && cx < 0.62 };
+}
+
+/**
+ * Pure: is there a platform end card at the end of these tail frames? `durationS` is the full
+ * video's length; `lastWordEndS` the end of the last real spoken word (null = no speech).
+ */
+export function detectEndCard(
+  frames: TailFrame[],
+  ctx: { durationS: number; lastWordEndS: number | null },
+  options: EndCardOptions = DEFAULT_END_CARD,
+): EndCardResult {
+  const evidence: EndCardEvidence = { stillS: 0, darkRatio: null, overlayShare: null, overlayOutsideShare: null };
+  const none = (reason: string): EndCardResult => ({ startS: null, durationS: null, reason, evidence });
+  if (frames.length < 10) return none("too few frames");
+  const n = frames.length;
+  const step = (frames[n - 1]!.t - frames[0]!.t) / Math.max(1, n - 1);
+  const end = Math.max(ctx.durationS, frames[n - 1]!.t + step);
+  // 1. The still run back from the last frame…
+  const fits = new Map<number, { beta: number; residual: number }>();
+  const fitAt = (k: number) => {
+    let f = fits.get(k);
+    if (!f) fits.set(k, (f = brightnessFit(frames[k - 1]!.px, frames[k]!.px)));
+    return f;
+  };
+  const still = (k: number, maxResidual = options.frozenResidual) => {
+    const f = fitAt(k);
+    return f.residual <= maxResidual && f.beta >= 0.6 && f.beta <= 1.15;
+  };
+  let i = n - 1;
+  let glitches = 0;
+  while (i > 0) {
+    if (!still(i)) {
+      // A low-bitrate encode "refreshes" a still image now and then (one frame, a bit off).
+      // Tolerate up to two such isolated glitches when the still clearly continues before it.
+      const isolated = glitches < 2 && i - 4 >= 1 && still(i, 4) && [1, 2, 3, 4].every((d) => still(i - d));
+      if (!isolated) break;
+      glitches++;
+    }
+    i--;
+  }
+  // …and when it fades inside that run, the card starts where the light starts its final drop
+  // (slow, dark motion graphics can read as "still" for a while before the card).
+  const light = frames.map((f, k) => (k >= i ? lightAboveBlack(f.px) : 0));
+  let peak = i;
+  for (let k = i; k < n; k++) if (light[k]! >= light[peak]!) peak = k;
+  let s = i;
+  if (light[n - 1]! < light[peak]! * 0.9 - 0.2) {
+    s = peak;
+    while (s + 1 < n && light[s + 1]! >= light[peak]! * 0.97) s++;
+  }
+  const startS = frames[s]!.t;
+  const cardS = end - startS;
+  evidence.stillS = Math.round(cardS * 1000) / 1000;
+  if (s === 0) return none("the whole tail is one still image");
+  if (cardS < options.minS) return none("no still ending long enough");
+  if (cardS > options.maxS) return none("still ending too long for an end card");
+  // 2. Not before the last word.
+  if (ctx.lastWordEndS != null && ctx.lastWordEndS > startS + options.wordSlackS) return none("talking continues into the still ending");
+  // 3. Darker than the second before it.
+  const before = frames.filter((f) => f.t < startS && f.t >= startS - 1);
+  if (before.length === 0) return none("nothing before the still ending");
+  const beforeLight = before.reduce((sum, f) => sum + lightAboveBlack(f.px), 0) / before.length;
+  const last = frames[n - 1]!.px;
+  // Content that is itself (almost) black can't be seen to darken.
+  const ratio = beforeLight >= 1 ? lightAboveBlack(last) / beforeLight : 1;
+  evidence.darkRatio = Math.round(ratio * 1000) / 1000;
+  if (ratio > options.darkerRatio) return none("the still ending isn't darker than the video");
+  // 4. A centred logo / handle on it.
+  const o = overlayShares(last);
+  evidence.overlayShare = Math.round(o.inside * 10000) / 10000;
+  evidence.overlayOutsideShare = Math.round(o.outside * 10000) / 10000;
+  if (o.inside < 0.002 || o.inside > 0.25 || !o.centred || o.outside > Math.max(0.002, o.inside * 0.1)) return none("no centred logo on the still ending");
+  return { startS: Math.round(startS * 1000) / 1000, durationS: Math.round(cardS * 1000) / 1000, reason: "darkened still ending with a centred logo", evidence };
+}
+
+/** The last `seconds` of the video as 180×320 grey frames, each with its own timestamp. */
+export async function measureTailFrames(filePath: string, seconds = TAIL_WINDOW_S): Promise<TailFrame[]> {
+  const { raw, stderr } = await new Promise<{ raw: Buffer; stderr: string }>((resolve, reject) => {
+    const proc = spawn(FFMPEG_PATH, [
+      "-hide_banner", "-loglevel", "info", "-sseof", `-${seconds}`, "-copyts", "-i", filePath, "-an", "-sn",
+      "-vf", `scale=${TAIL_W}:${TAIL_H}:flags=area,format=gray,showinfo`,
+      "-fps_mode", "passthrough", "-f", "rawvideo", "-",
+    ]);
+    const chunks: Buffer[] = [];
+    let err = "";
+    proc.stdout.on("data", (c: Buffer) => chunks.push(c));
+    proc.stderr.on("data", (c) => (err += c.toString()));
+    proc.on("error", reject);
+    proc.on("close", (code) => (code === 0 ? resolve({ raw: Buffer.concat(chunks), stderr: err }) : reject(new Error(`ffmpeg tail decode failed (${code}): ${err.slice(-600)}`))));
+  });
+  const times: number[] = [];
+  for (const m of stderr.matchAll(/\bn:\s*\d+\s+pts:\s*-?\d+\s+pts_time:(-?[\d.]+)/g)) times.push(Number(m[1]));
+  const size = TAIL_W * TAIL_H;
+  const count = Math.floor(raw.length / size);
+  const frames: TailFrame[] = [];
+  for (let f = 0; f < count; f++) {
+    frames.push({ t: times[f] ?? (frames[f - 1]?.t ?? 0) + 1 / 30, px: new Uint8Array(raw.buffer, raw.byteOffset + f * size, size) });
+  }
+  return frames;
 }

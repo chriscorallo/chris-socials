@@ -50,3 +50,22 @@ export function fakeMetrics(over: Partial<{ shot: number; wpm: number; gapP90: n
     notes: [],
   };
 }
+
+/**
+ * A v2 measurement of a no-face, music-led video (no talking): speech not applicable, the
+ * soundtrack characterised as music-led. `endCard` = seconds of app end card left out.
+ */
+export function fakeMusicLedMetrics(over: Partial<{ shot: number; durationS: number; lufs: number; endCard: number | null }> = {}): ReferenceVideoMetrics {
+  const base = fakeMetrics({ shot: over.shot ?? 1.2, lufs: over.lufs ?? -15 });
+  const d = over.durationS ?? 11;
+  return {
+    ...base,
+    version: 2,
+    video: { ...base.video, durationS: d, sourceDurationS: d + (over.endCard ?? 0), endCardS: over.endCard ?? null },
+    speech: null,
+    voice: { present: false, wordCount: 2, coverage: 0.05, contrastDb: 0.4, reason: "Only 2 words — not a talking video" },
+    audio: { ...base.audio!, voiceLevelDb: null, backgroundLevelDb: null, backgroundUnderVoiceDb: null, background: "present", backgroundMethod: "none", mix: "music-led", activeShare: 0.97 },
+    transcript: null,
+    notes: ["No talking — only 2 words — not a talking video. Speech numbers don't apply."],
+  };
+}
