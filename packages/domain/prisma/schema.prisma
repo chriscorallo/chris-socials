@@ -97,6 +97,8 @@ enum FilmingSetup {
 // phases that produce them arrive.
 enum MediaAssetKind {
   RAW_TAKE
+  /// Licensed music bed Chris uploaded (finishing editor's music picker).
+  MUSIC
 }
 
 // /prompts/agents/RESEARCH.md — Research status.
@@ -415,6 +417,10 @@ model MediaAsset {
   // "LOCAL_WHISPER" | "MANUAL" — provenance of `transcript`.
   transcriptSource String?
   transcribedAt    DateTime?
+  // Where the speaker is over time — [{ t, box: {x,y,w,h} | null }] canvas-independent source
+  // fractions, sampled ~2-4 fps by the face/subject tracker. Drives AUTO placement of motion
+  // graphics so they never cover Chris. Null until analyzed.
+  subjectTrack     Json?
 
   contentItem    ContentItem     @relation(fields: [contentItemId], references: [id])
   takeSelections TakeSelection[] @relation("SelectedTake")

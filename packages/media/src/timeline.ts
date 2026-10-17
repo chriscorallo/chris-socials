@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TimelineVisualSchema, TimelineSfxSchema, TimelineMusicSchema } from "./motion-contract";
 
 /**
  * EditTimeline v2 — the finishing editor's document, and the renderer's input.
@@ -140,7 +141,19 @@ export const EditTimelineSchema = z.object({
   captions: TimelineCaptionsSchema,
   zooms: z.array(TimelineZoomSchema).default([]),
   grade: TimelineGradeSchema.default({ preset: "NONE", brightness: 0, contrast: 1, saturation: 1, temperature: 0, vignette: 0 }),
-  audio: z.object({ normalize: z.boolean().default(true) }).default({ normalize: true }),
+  audio: z
+    .object({
+      normalize: z.boolean().default(true),
+      /** Background music bed (null = none). See motion-contract.ts. */
+      music: TimelineMusicSchema.nullable().default(null),
+      /** Master switch for sound design (visual entrance SFX + free SFX). */
+      sfxEnabled: z.boolean().default(true),
+    })
+    .default({ normalize: true, music: null, sfxEnabled: true }),
+  /** Animated explainer graphics (motion-contract.ts) — rendered by packages/motion. */
+  visuals: z.array(TimelineVisualSchema).default([]),
+  /** Free-standing sound effects (visual entrances carry their own enterSfx). */
+  sfx: z.array(TimelineSfxSchema).default([]),
   /** Thumbnail frame (OUTPUT timeline seconds) — sent to each platform the way its API takes
    * a cover (Instagram thumb_offset, TikTok video_cover_timestamp_ms). Null = platform default. */
   coverFrameSeconds: z.number().nonnegative().nullable().default(null),

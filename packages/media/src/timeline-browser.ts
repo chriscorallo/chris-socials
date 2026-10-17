@@ -10,3 +10,4 @@ export * from "./timeline-captions";
 export * from "./font-metrics";
 export * from "./timeline-layout";
 export * from "./platform-profiles";
+export * from "./motion-contract";
