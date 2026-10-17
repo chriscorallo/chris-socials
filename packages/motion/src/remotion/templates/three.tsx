@@ -36,7 +36,7 @@ function StudioEnvironment({ style = "GOLD_METAL" }: { style?: IconStyle }) {
 /** Three-point studio light. Clay gets a big soft wrap (more ambient, gentler key/rim) so it
  * reads matte; glass gets a stronger rim so its edges catch light. */
 function StudioLights({ p, style = "GOLD_METAL" }: { p: Palette; style?: IconStyle }) {
-  const k = style === "SOFT_CLAY" ? { amb: 0.75, key: 1.7, rim: 1.4, fill: 0.9, pt: 2.5 } : style === "GLASS" ? { amb: 0.35, key: 2.2, rim: 4.2, fill: 0.7, pt: 5 } : { amb: 0.22, key: 2.4, rim: 3.2, fill: 0.55, pt: 6 };
+  const k = style === "SOFT_CLAY" ? { amb: 0.4, key: 1.9, rim: 1.6, fill: 0.8, pt: 2 } : style === "GLASS" ? { amb: 0.35, key: 2.2, rim: 4.2, fill: 0.7, pt: 5 } : { amb: 0.22, key: 2.4, rim: 3.2, fill: 0.55, pt: 6 };
   return (
     <>
       <ambientLight intensity={k.amb} />
@@ -142,58 +142,79 @@ type Mats = MatSlots;
 type MatSlots = Record<"gold" | "goldBright" | "silver" | "accent" | "accentDeep" | "ceramic" | "dark" | "ink" | "pink" | "leather" | "leatherDark" | "glass" | "positive", THREE.Material>;
 
 function clayMaterials(p: Palette): MatSlots {
-  const clay = (color: string, rough = 0.82) =>
-    new THREE.MeshPhysicalMaterial({ color, metalness: 0, roughness: rough, sheen: 0.7, sheenRoughness: 0.75, sheenColor: new THREE.Color("#FFFFFF"), clearcoat: 0.06, clearcoatRoughness: 0.8, envMapIntensity: 0.55 });
+  // Pastel, but saturated enough to survive ACES tone mapping (pale clay washes to white).
+  const clay = (color: string, rough = 0.8) =>
+    new THREE.MeshPhysicalMaterial({ color, metalness: 0, roughness: rough, sheen: 0.45, sheenRoughness: 0.8, sheenColor: new THREE.Color("#FFF6EE"), clearcoat: 0.05, clearcoatRoughness: 0.8, envMapIntensity: 0.4 });
   return {
-    gold: clay(mix(p.primary, "#FFF3DE", 0.32)),
-    goldBright: clay(mix(p.primary, "#FFFFFF", 0.5), 0.7),
-    silver: clay("#E4E6EE"),
-    accent: clay(mix(p.secondary, "#FFFFFF", 0.42)),
-    accentDeep: clay(mix(p.secondary, "#FFFFFF", 0.2)),
-    ceramic: clay("#F6F1EA", 0.75),
-    dark: clay("#6B7086"),
-    ink: clay("#33364A", 0.9),
-    pink: clay("#F6B3C6", 0.78),
-    leather: clay("#CF9E7C"),
-    leatherDark: clay("#A9785A"),
-    glass: clay("#CFE6FA", 0.6),
-    positive: clay(mix(p.positive, "#FFFFFF", 0.35)),
+    gold: clay(mix(p.primary, "#E8A33A", 0.25)),
+    goldBright: clay(mix(p.primary, "#FFFFFF", 0.18), 0.72),
+    silver: clay("#C9CEDB"),
+    accent: clay(mix(p.secondary, "#FFFFFF", 0.12)),
+    accentDeep: clay(mix(p.secondary, "#3A2F5A", 0.12)),
+    ceramic: clay("#EEE6DA", 0.78),
+    dark: clay("#555B73"),
+    ink: clay("#2A2D3D", 0.9),
+    pink: clay("#F09AB4", 0.78),
+    leather: clay("#C98E64"),
+    leatherDark: clay("#9A6644"),
+    glass: clay("#A9D3F5", 0.6),
+    positive: clay(mix(p.positive, "#FFFFFF", 0.1)),
   };
 }
 
 function glassMaterials(p: Palette): MatSlots {
-  const glass = (tint: string, opacity = 0.5) =>
-    new THREE.MeshPhysicalMaterial({
+  // Tinted acrylic: saturated body color glowing from within (emissive), crisp specular
+  // edges from the environment + clearcoat, and a light iridescent film.
+  // A fresnel rim (shader patch) makes edges bright and opaque while the faces stay clear — the
+  // cue the eye reads as glass, which plain transparency alone does not give on a dark layer.
+  const glass = (tint: string, opacity = 0.62) => {
+    const m = new THREE.MeshPhysicalMaterial({
       color: tint,
       metalness: 0,
-      roughness: 0.14,
+      roughness: 0.08,
       transparent: true,
-      opacity,
+      opacity: opacity * 0.55,
       clearcoat: 1,
-      clearcoatRoughness: 0.04,
-      iridescence: 0.55,
-      iridescenceIOR: 1.35,
+      clearcoatRoughness: 0.02,
+      iridescence: 0.3,
+      iridescenceIOR: 1.3,
       specularIntensity: 1,
-      envMapIntensity: 1.7,
+      envMapIntensity: 2.2,
       emissive: new THREE.Color(tint),
-      emissiveIntensity: 0.1,
+      emissiveIntensity: 0.22,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
+    const rim = new THREE.Color(mix(tint, "#FFFFFF", 0.55));
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.rimColor = { value: rim };
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform vec3 rimColor;")
+        .replace(
+          "#include <dithering_fragment>",
+          `#include <dithering_fragment>
+          float rimF = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.4);
+          gl_FragColor.rgb += rimColor * rimF * 0.85;
+          gl_FragColor.a = clamp(gl_FragColor.a + rimF * 0.7, 0.0, 1.0);`,
+        );
+    };
+    m.customProgramCacheKey = () => "chris-glass-rim";
+    return m;
+  };
   return {
-    gold: glass(mix(p.primary, "#FFFFFF", 0.25), 0.55),
-    goldBright: glass(mix(p.primary, "#FFFFFF", 0.45), 0.7),
-    silver: glass("#E8F1FF", 0.6),
-    accent: glass(mix(p.secondary, "#FFFFFF", 0.2), 0.5),
-    accentDeep: glass(mix(p.secondary, "#FFFFFF", 0.1), 0.5),
-    ceramic: glass("#F4F8FF", 0.4),
-    dark: glass("#9AA6C4", 0.45),
-    ink: glass("#3A4258", 0.75),
-    pink: glass("#FFC2D4", 0.5),
-    leather: glass("#E2B48F", 0.5),
-    leatherDark: glass("#B9855E", 0.6),
-    glass: glass("#CFEAFF", 0.35),
-    positive: glass(mix(p.positive, "#FFFFFF", 0.2), 0.55),
+    gold: glass(p.primary, 0.62),
+    goldBright: glass(mix(p.primary, "#FFFFFF", 0.2), 0.78),
+    silver: glass("#CFE2FF", 0.6),
+    accent: glass(p.secondary, 0.6),
+    accentDeep: glass(mix(p.secondary, "#1A1240", 0.15), 0.62),
+    ceramic: glass("#DCEBFF", 0.45),
+    dark: glass("#7083B0", 0.55),
+    ink: glass("#283048", 0.8),
+    pink: glass("#FF8FB3", 0.6),
+    leather: glass("#E09A62", 0.6),
+    leatherDark: glass("#A8693E", 0.68),
+    glass: glass("#9FD8FF", 0.4),
+    positive: glass(p.positive, 0.62),
   };
 }
 

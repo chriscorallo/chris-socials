@@ -143,9 +143,9 @@ export function LineMoneyStack(tp: TemplateComponentProps<"MONEY_STACK_3D">) {
   const growLen = Math.round(fps * 1.4);
   const cols = Math.min(n, 3);
   const rows = Math.ceil(n / cols);
-  const billW = 170;
-  const billH = 26;
-  const gap = 34;
+  const billW = 150;
+  const gap = 52;
+  const depth = 30;
   const v = countUp(frame, 0, props.amount, 4, growLen);
   const labelT = prog(frame, 6, 16, EO);
   const amountText = `$${formatNumber(Math.round(v))}`;
@@ -153,15 +153,18 @@ export function LineMoneyStack(tp: TemplateComponentProps<"MONEY_STACK_3D">) {
   const size = finalText.length <= 7 ? 112 : finalText.length <= 10 ? 96 : 80;
   const green = p.positive === "#FFFFFF" ? p.primary : p.positive;
   const totalW = cols * billW + (cols - 1) * gap;
-  const stacks: Array<{ x: number; y: number; bills: number; delay: number }> = [];
+  // Back rows first (drawn behind), each row raised and shifted like an isometric line drawing.
+  const stacks: Array<{ x: number; y: number; h: number; delay: number }> = [];
   for (let i = 0; i < n; i++) {
     const r = Math.floor(i / cols);
     const c = i % cols;
     const inRow = Math.min(cols, n - r * cols);
     const rowW = inRow * billW + (inRow - 1) * gap;
-    const center = Math.abs(c - (inRow - 1) / 2) < 0.6;
-    stacks.push({ x: (720 - rowW) / 2 + c * (billW + gap) + (r % 2 ? 18 : 0), y: 420 - (rows - 1 - r) * 34, bills: center ? 9 : 7, delay: i * 3 });
+    const center = 1 - Math.abs(c - (inRow - 1) / 2) / 2;
+    const back = rows - 1 - r;
+    stacks.push({ x: (720 - rowW) / 2 + c * (billW + gap) + back * 26, y: 430 - back * 46, h: 120 + 70 * center - back * 10, delay: i * 3 });
   }
+  stacks.sort((a, b) => a.y - b.y);
   return (
     <div style={{ ...fill }}>
       <div style={{ position: "absolute", left: 60, right: 60, top: 80, height: 340, background: `radial-gradient(ellipse at center, ${rgba(green, 0.14)} 0%, transparent 70%)`, filter: "blur(16px)" }} />
@@ -169,19 +172,27 @@ export function LineMoneyStack(tp: TemplateComponentProps<"MONEY_STACK_3D">) {
         <line x1={(720 - totalW) / 2 - 30} x2={(720 + totalW) / 2 + 30} y1={448} y2={448} stroke={rgba("#FFFFFF", 0.18)} strokeWidth={3} strokeLinecap="round" />
         {stacks.map((st, i) => {
           const g = springAt(frame, fps, 4 + st.delay, f.springs.grow, growLen);
-          const shown = Math.max(0, Math.min(st.bills, Math.round(st.bills * Math.min(g, 1.1))));
+          const h = Math.max(0, st.h * Math.min(g, 1.08));
+          if (h < 2) return null;
+          const x0 = st.x;
+          const x1 = st.x + billW;
+          const yb = st.y;
+          const yt = st.y - h;
+          const dx = depth;
+          const dy = depth * 0.6;
+          const edges = Math.max(0, Math.floor((h - 18) / 16));
+          const sw = 3;
           return (
-            <g key={i}>
-              {Array.from({ length: shown }, (_, k) => {
-                const y = st.y - k * (billH + 4);
-                const top = k === shown - 1;
-                return (
-                  <g key={k}>
-                    <rect x={st.x} y={y} width={billW} height={billH} rx={6} fill={rgba(green, top ? 0.16 : 0.07)} stroke={green} strokeWidth={top ? 3.5 : 2.5} opacity={top ? 1 : 0.75} />
-                    {top ? <ellipse cx={st.x + billW / 2} cy={y + billH / 2} rx={14} ry={8} fill="none" stroke={green} strokeWidth={2.5} /> : null}
-                  </g>
-                );
-              })}
+            <g key={i} strokeLinejoin="round" strokeLinecap="round">
+              {/* side + top faces (line drawing, faint fill), then the front face */}
+              <path d={`M${x1} ${yb} L${x1 + dx} ${yb - dy} L${x1 + dx} ${yt - dy} L${x1} ${yt} Z`} fill={rgba(green, 0.06)} stroke={green} strokeWidth={sw} opacity={0.85} />
+              <path d={`M${x0} ${yt} L${x0 + dx} ${yt - dy} L${x1 + dx} ${yt - dy} L${x1} ${yt} Z`} fill={rgba(green, 0.18)} stroke={green} strokeWidth={sw} />
+              <ellipse cx={(x0 + x1 + dx) / 2} cy={yt - dy / 2} rx={18} ry={6} fill="none" stroke={green} strokeWidth={2} opacity={0.8} />
+              <rect x={x0} y={yt} width={billW} height={h} fill={rgba(green, 0.1)} stroke={green} strokeWidth={sw} />
+              {Array.from({ length: edges }, (_, k) => (
+                <line key={k} x1={x0 + 6} x2={x1 - 6} y1={yt + 16 + k * 16} y2={yt + 16 + k * 16} stroke={green} strokeWidth={1.4} opacity={0.32} />
+              ))}
+              <rect x={(x0 + x1) / 2 - 16} y={yt} width={32} height={h} fill={rgba(p.primary, 0.22)} stroke={p.primary} strokeWidth={2.5} />
             </g>
           );
         })}
