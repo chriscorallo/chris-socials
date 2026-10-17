@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { MotionTemplate, SceneLook, TimelineVisual, VisualInteraction } from "@chris/media/timeline";
-import type { PlacementBox } from "../timing";
+import { trackAt, type PlacementBox } from "../timing";
 
 /**
  * Motion v2 — how a graphic sits IN the shot rather than on it (composition level; templates
@@ -20,12 +20,7 @@ import type { PlacementBox } from "../timing";
 
 const BARE_TYPE: ReadonlySet<MotionTemplate> = new Set(["KINETIC_TEXT", "NUMBER_COUNTER", "CALLOUT"]);
 
-export function trackAt(ix: VisualInteraction | null | undefined, frame: number): { x: number; y: number; s: number } | null {
-  const tr = ix?.track;
-  if (!tr || tr.x.length === 0) return null;
-  const i = Math.max(0, Math.min(tr.x.length - 1, Math.round(frame)));
-  return { x: tr.x[i]!, y: tr.y[i]!, s: tr.s[i] ?? 1 };
-}
+export { trackAt };
 
 /** Moves/scales the whole graphic (incl. a callout's leader) to the tracked centre. */
 export function TrackedMotion({ ix, frame, box, children }: { ix: VisualInteraction | null | undefined; frame: number; box: PlacementBox; children: ReactNode }) {

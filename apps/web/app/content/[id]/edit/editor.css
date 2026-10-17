@@ -2647,3 +2647,24 @@ html:has(.ed-root) body {
 .ed-m .ed-ai-card p {
   font-size: 13.5px;
 }
+
+/* Motion v2: hints under the "In the shot" controls, and the preview note when depth can only be judged in the export. */
+.ed-hint {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-text-faint);
+}
+.ed-depth-note {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  z-index: 6;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 4px 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.88);
+}

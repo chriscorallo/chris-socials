@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { PlacementResult, TimelineCaptionChunk, TimelineVisual, TranscriptWord } from "@chris/media/timeline";
+import type { InteractionContext, PlacementResult, TimelineCaptionChunk, TimelineVisual, TranscriptWord, VisualInteraction } from "@chris/media/timeline";
 import type { EditorAction, EditorState } from "../../../../lib/editor/reducer";
 import type { EditorAsset, EditorDoc, EditorMusicAsset, Selection } from "../../../../lib/editor/types";
 import type { PlatformId } from "../../../../lib/editor/platform-profiles";
@@ -56,6 +56,10 @@ export interface EditorContextValue {
   placement: PlacementResult;
   /** resolveVisualPlacements bound to this editor's subject tracks / words / glyph measure. */
   solvePlacements: (d: EditorDoc) => TimelineVisual[];
+  /** Motion v2 per-visual interaction data at PREVIEW_FPS (buildVisualInteractions). */
+  interactions: Record<string, VisualInteraction>;
+  /** Subject tracks + source sizes, for anchorOffsetFor etc. */
+  interactionCtx: InteractionContext;
   music: EditorMusicAsset[];
   setMusic: (m: EditorMusicAsset[]) => void;
   audio: PreviewAudio;

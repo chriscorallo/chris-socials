@@ -19,6 +19,8 @@ export interface EditorAsset {
   color: string;
   /** Where Chris is in this take over time (motion-graphics placement); null = not analysed. */
   subjectTrack: SubjectTrack | null;
+  /** `/api/media/<matteStorageKey>` — the take's person matte (Motion v2 depth), or null. */
+  matteUrl?: string | null;
 }
 
 /** A music bed uploaded for this video (MediaAsset kind MUSIC). */

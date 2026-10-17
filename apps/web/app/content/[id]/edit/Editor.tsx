@@ -28,6 +28,7 @@ import type { EditorAsset, EditorDoc, EditorMusicAsset, Selection } from "../../
 import { EditorContext, type EditorContextValue, type EditorUi } from "./context";
 import { usePlaybackEngine } from "./playback";
 import { usePreviewAudio } from "./preview-audio";
+import { useFootageInteractions } from "./interaction";
 import { FONT_FACE_CSS, browserMeasureText, useFontsVersion } from "./measure";
 import { saveFinishingEditAction } from "./actions";
 import { MediaBin } from "./MediaBin";
@@ -108,14 +109,18 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
       subjectTracks[a.id] = a.subjectTrack;
       sourceDimensions[a.id] = a.width && a.height ? { width: a.width, height: a.height } : null;
     }
+    // Which takes have a person matte: the auto-depth rule may put big type behind Chris.
+    const mattes = Object.fromEntries(assets.map((a) => [a.id, !!a.matteUrl]));
     // Glyph measurement only once webfonts are in (same reason as the platform warnings).
-    return { subjectTracks, sourceDimensions, wordsByAsset, measure: fontsVersion > 0 ? browserMeasureText : undefined };
+    return { subjectTracks, sourceDimensions, wordsByAsset, mattes, measure: fontsVersion > 0 ? browserMeasureText : undefined };
   }, [assets, wordsByAsset, fontsVersion]);
   const placement = useMemo(
     () => (doc.visuals.length ? solveVisualPlacements(doc, placementOptions) : { visuals: [], warnings: [], details: {} }),
     [doc, placementOptions],
   );
   const solvePlacements = useCallback((d: EditorDoc) => solveVisualPlacements(d, placementOptions).visuals, [placementOptions]);
+  // Motion v2: anchor/camera tracks, emphasis hits and scene looks — same pure engine as the render.
+  const { interactions, interactionCtx } = useFootageInteractions(item.id, doc, placement.visuals, assets);
 
   const warnings = useMemo(
     // Only after fonts load on the client (fontsVersion > 0): layouts need real glyph widths,
@@ -416,6 +421,8 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
     itemId: item.id,
     placement,
     solvePlacements,
+    interactions,
+    interactionCtx,
     music,
     setMusic,
     audio,

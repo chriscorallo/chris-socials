@@ -249,6 +249,20 @@ export class PlaybackEngine {
     }
   }
 
+  /**
+   * The element showing the picture right now, its clip and the zoom — for layers that redraw
+   * the footage themselves (the person cutout of behind-subject graphics, PersonCutout.tsx).
+   */
+  activeFrame(): { el: HTMLVideoElement; clipIndex: number; zoom: { zoom: number; x: number; y: number } } | null {
+    const clipIndex = this.previewOverride ? this.previewOverride.clipIndex : this.activeIndex >= 0 ? this.activeIndex : this.clipAt(this.time).clipIndex;
+    const key = this.clipPlayer[clipIndex];
+    const el = key ? this.players.get(key) : undefined;
+    const clip = this.doc.clips[clipIndex];
+    if (!el || !clip || el.dataset.assetId !== clip.mediaAssetId) return null;
+    const zoom = this.previewOverride ? { zoom: 1, x: 0.5, y: 0.5 } : zoomStateAt(this.zooms, this.time);
+    return { el, clipIndex, zoom };
+  }
+
   dispose() {
     cancelAnimationFrame(this.raf);
     for (const p of this.players.values()) p.pause();

@@ -107,7 +107,7 @@ describe("Motion v2 editor ops", () => {
   });
 
   it("each control is one undo step through the reducer", () => {
-    let s = initEditorState(doc({ visuals: [card()] }));
+    let s = initEditorState(doc({ visuals: [card()] }), { A: 20 });
     s = editorReducer(s, { type: "apply", recipe: (d) => setVisualDepth(d, "v", true) });
     s = editorReducer(s, { type: "apply", recipe: (d) => setCameraCoupling(d, "v", 0.5) });
     expect(s.doc.visuals[0]!.depth).toBe("BEHIND_SUBJECT");
