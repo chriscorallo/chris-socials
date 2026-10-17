@@ -59,7 +59,7 @@ describe("style cut job", () => {
       "-filter_complex", `[1:a]volume='0.5*(${loud})':eval=frame[s];[s][2:a]amix=inputs=2:normalize=0[a]`,
       "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-shortest", clip,
     ]);
-    await storage.put("raw/stylecut/take.mp4", await readFile(clip), "video/mp4");
+    await storage.put("raw/stylecut/take.mp4", await readFile(clip));
   }, 60_000);
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });

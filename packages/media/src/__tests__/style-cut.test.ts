@@ -431,6 +431,26 @@ describe("styleCutTargetFromProfile", () => {
     expect(t.lufs).toBe(-14);
   });
 
+  it("falls back per number when speech metrics are missing (music-led / no-talking references)", () => {
+    const t = styleCutTargetFromProfile({
+      sampleSize: 12,
+      creatorCount: 3,
+      shotMedianS: { value: 2.0, n: 12, p25: 1.6, p75: 3.0 },
+      firstCutS: stat(2.5),
+      hookDurationS: null,
+      gapP90S: null,
+      longestGapS: stat(0.6, 2), // too few videos measured it
+      integratedLufs: undefined,
+    });
+    expect(t.source.kind).toBe("REFERENCES");
+    expect(t.shotMedianS).toBe(2.0);
+    expect(t.firstCutS).toBe(2.5);
+    expect(t.hookDurationS).toBe(DEFAULT_STYLE_CUT_TARGET.hookDurationS);
+    expect(t.pauseKeepS).toBe(DEFAULT_STYLE_CUT_TARGET.pauseKeepS);
+    expect(t.sentencePauseKeepS).toBe(DEFAULT_STYLE_CUT_TARGET.sentencePauseKeepS);
+    expect(t.lufs).toBe(-14);
+  });
+
   it("clamps broken measurements", () => {
     const t = styleCutTargetFromProfile({ sampleSize: 9, creatorCount: 2, shotMedianS: stat(0.1), firstCutS: stat(60), gapP90S: stat(5), longestGapS: stat(9) });
     expect(t.shotMedianS).toBeGreaterThanOrEqual(1.2);
