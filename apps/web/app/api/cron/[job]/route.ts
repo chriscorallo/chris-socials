@@ -34,7 +34,7 @@ async function run(job: Job) {
   const adapters = getPlatformAdapters();
   const results: Record<string, unknown> = {};
   if (job === "publish-scheduled" || job === "tick") {
-    results.publish = await publishDueScheduledItems({ prisma, storage, adapters, getPublicVideoUrl });
+    results.publish = await publishDueScheduledItems({ prisma, storage, adapters, getPublicVideoUrl, platformVariants: true });
   }
   if (job === "snapshots" || job === "tick") {
     results.snapshots = await captureDueSnapshotsForAll({ prisma, adapters });

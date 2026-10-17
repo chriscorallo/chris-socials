@@ -386,7 +386,7 @@ export async function runPublish(formData: FormData) {
       getPlatformAdapters(),
       contentItemId,
       { actorId: session.user!.id! },
-      { getPublicVideoUrl },
+      { getPublicVideoUrl, platformVariants: true },
     );
     const problems = [
       ...result.failedPlatforms.map((p) => `${p} failed (see Publications below)`),
@@ -594,7 +594,7 @@ export async function tryAutonomousPublishAction(formData: FormData) {
       getPlatformAdapters(),
       contentItemId,
       { actorId: session.user!.id! },
-      { publish: { getPublicVideoUrl } },
+      { publish: { getPublicVideoUrl, platformVariants: true } },
     );
     if (!result.attempted) {
       notAttemptedReason = result.reason;

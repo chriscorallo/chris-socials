@@ -37,7 +37,7 @@ CANCELLED`
 | `QC_REPAIR` | `RENDERED` | Repair applied, re-rendered (loop) |
 | `QC_REPAIR` | `QC_BLOCKED` | Repair-iteration limit reached |
 | `QC_BLOCKED` | `EDIT_PLANNED` | Human-directed rework (rollback) |
-| `RENDERED` / `QC_REPAIR` / `READY` / `SCHEDULED` | `EDIT_PLANNED` | Chris saves a finishing edit in the in-app editor (rollback) |
+| `EDITING` / `RENDERED` / `QC_REPAIR` / `READY` / `SCHEDULED` | `EDIT_PLANNED` | Chris saves a finishing edit in the in-app editor (rollback; from `EDITING` = fixing an edit whose render failed) |
 | `QC_BLOCKED` | `CANCELLED` | Human/system decision |
 | `READY` | `SCHEDULED` | Auto-Fill Week places it on the calendar |
 | `SCHEDULED` | `PUBLISHING` | Preflight passes, publish job starts |
@@ -55,7 +55,7 @@ else, going backward means cancel-and-recreate a new `ContentItem`, not mutating
 
 - `QC_BLOCKED → EDIT_PLANNED`
 - `RESEARCH_BLOCKED → RESEARCHING`
-- `RENDERED | QC_REPAIR | READY | SCHEDULED → EDIT_PLANNED` — added 2026-10-16 for the in-app
+- `EDITING | RENDERED | QC_REPAIR | READY | SCHEDULED → EDIT_PLANNED` — added 2026-10-16 for the in-app
   finishing editor: saving a human edit to a finished/scheduled video sends it back through
   render + all four hard gates before it can be scheduled again (an edit can change what's on
   screen, so a previous PASS no longer applies). A SCHEDULED item leaving SCHEDULED is never

@@ -28,7 +28,7 @@ const TRANSITIONS: Record<ContentState, ContentState[]> = {
   MEDIA_INGESTED: ["TAKE_SELECTED"],
   TAKE_SELECTED: ["EDIT_PLANNED"],
   EDIT_PLANNED: ["EDITING"],
-  EDITING: ["RENDERED"],
+  EDITING: ["RENDERED", "EDIT_PLANNED"], // EDIT_PLANNED = fix the edit after a failed render (rollback)
   RENDERED: ["READY", "QC_REPAIR", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
   QC_REPAIR: ["RENDERED", "QC_BLOCKED", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
   QC_BLOCKED: ["EDIT_PLANNED"], // rollback
@@ -47,6 +47,7 @@ export const ROLLBACK_TRANSITIONS = new Set<string>([
   "QC_BLOCKED->EDIT_PLANNED",
   "RESEARCH_BLOCKED->RESEARCHING",
   // In-app finishing editor (2026-10-16): a saved human edit re-enters render + hard gates.
+  "EDITING->EDIT_PLANNED",
   "RENDERED->EDIT_PLANNED",
   "QC_REPAIR->EDIT_PLANNED",
   "READY->EDIT_PLANNED",

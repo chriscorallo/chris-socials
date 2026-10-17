@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ensurePlatformVariant } from "./platform-variant-job";
 import {
   startPublishing,
   recordPublicationAttempt,
@@ -52,6 +53,10 @@ export interface PublishJobOptions {
   /** Restrict this run to a subset of the scheduled target platforms (e.g. the scheduled
    * sweep resuming only a platform with a pending-processing container). */
   onlyPlatforms?: ContentPlatform[];
+  /** Upload each platform's own optimized encode of the master render (RenderVariant —
+   * platform-variant-job.ts) instead of the master itself. Wired ON by apps/web; off by
+   * default so unit tests can use placeholder render bytes. */
+  platformVariants?: boolean;
 }
 
 /** A resumable platform state older than this is considered dead (Instagram containers expire
@@ -110,20 +115,25 @@ export async function publishContentItem(
     mediaHash = createHash("sha256").update(videoBytes).digest("hex");
   }
 
-  let publicUrlCache: { url: string | null; error: string | null } | null = null;
-  async function publicVideoUrl(): Promise<{ url: string | null; error: string | null }> {
-    if (publicUrlCache) return publicUrlCache;
-    if (!render?.storageKey || !options.getPublicVideoUrl) {
-      publicUrlCache = { url: null, error: null };
-    } else {
-      try {
-        publicUrlCache = { url: await options.getPublicVideoUrl(render.storageKey), error: null };
-      } catch (err) {
-        publicUrlCache = { url: null, error: err instanceof Error ? err.message : String(err) };
-      }
+  const publicUrlCache = new Map<string, { url: string | null; error: string | null }>();
+  async function publicVideoUrl(storageKey: string | null | undefined): Promise<{ url: string | null; error: string | null }> {
+    if (!storageKey || !options.getPublicVideoUrl) return { url: null, error: null };
+    const cached = publicUrlCache.get(storageKey);
+    if (cached) return cached;
+    let resolved: { url: string | null; error: string | null };
+    try {
+      resolved = { url: await options.getPublicVideoUrl(storageKey), error: null };
+    } catch (err) {
+      resolved = { url: null, error: err instanceof Error ? err.message : String(err) };
     }
-    return publicUrlCache;
+    publicUrlCache.set(storageKey, resolved);
+    return resolved;
   }
+
+  // The thumbnail Chris picked in the finishing editor wins over the packaging agent's pick.
+  const latestPlan = await db.editPlan.findFirst({ where: { contentItemId }, orderBy: { createdAt: "desc" } });
+  const timelineCover = ((latestPlan?.plan as { timeline?: { coverFrameSeconds?: number | null } } | null)?.timeline
+    ?.coverFrameSeconds ?? null) as number | null;
 
   const succeededPlatforms: ContentPlatform[] = [];
   const failedPlatforms: ContentPlatform[] = [];
@@ -227,6 +237,28 @@ export async function publishContentItem(
       }
 
       const hashtags = pkg.hashtags as unknown as string[];
+      const coverFrameSeconds = timelineCover ?? pkg.coverFrameSeconds;
+
+      // What actually uploads: this platform's optimized encode of the master (when enabled),
+      // else the master itself.
+      let uploadBytes: Buffer = videoBytes;
+      let uploadHash: string | null = mediaHash;
+      let uploadKey: string = render.storageKey;
+      let uploadDuration: number | null = render.durationSeconds;
+      if (options.platformVariants) {
+        try {
+          const variant = await ensurePlatformVariant(db, storage, { renderId: render.id, platform, coverFrameSeconds }, actor);
+          uploadBytes = variant.bytes;
+          uploadHash = variant.sha256;
+          uploadKey = variant.storageKey;
+          uploadDuration = variant.durationSeconds;
+        } catch (err) {
+          await recordFailure(`Couldn't prepare the ${platform} version: ${err instanceof Error ? err.message : String(err)}`);
+          failedPlatforms.push(platform);
+          outcomeError = "variant failed";
+          continue;
+        }
+      }
 
       // The previous attempt may have posted without us hearing back — look before re-posting.
       if (latest && isAmbiguousPublication(latest)) {
@@ -249,7 +281,7 @@ export async function publishContentItem(
 
       let publicUrl: string | null = null;
       if (platform === "INSTAGRAM" && !resumeToken) {
-        const resolved = await publicVideoUrl();
+        const resolved = await publicVideoUrl(uploadKey);
         if (!resolved.url) {
           await recordFailure(
             resolved.error
@@ -266,14 +298,14 @@ export async function publishContentItem(
       try {
         publishResult = await adapter.publish({
           contentItemId,
-          videoBytes,
+          videoBytes: uploadBytes,
           publicVideoUrl: publicUrl,
           caption: pkg.caption,
           title: pkg.title,
           hashtags,
-          coverFrameSeconds: pkg.coverFrameSeconds,
+          coverFrameSeconds,
           idempotencyKey,
-          durationSeconds: render.durationSeconds,
+          durationSeconds: uploadDuration,
           resumeToken,
         });
       } catch (err) {
@@ -299,7 +331,7 @@ export async function publishContentItem(
           status: publishResult.status,
           platformPostId: publishResult.platformPostId,
           url: publishResult.url,
-          mediaHash,
+          mediaHash: uploadHash,
           rawResponse:
             publishResult.resumeToken !== undefined
               ? { ...(asObject(publishResult.rawResponse)), resumeToken: publishResult.resumeToken }
