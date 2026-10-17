@@ -24,6 +24,7 @@
     "@chris/domain": "workspace:*",
     "@chris/agents": "workspace:*",
     "@chris/media": "workspace:*",
+    "@chris/motion": "workspace:*",
     "@chris/platforms": "workspace:*"
   },
   "devDependencies": {
