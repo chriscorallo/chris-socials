@@ -46,15 +46,21 @@ async function main() {
   });
   console.log(`[seed] User: ${user.email}`);
 
-  await setFlag(prisma, {
-    key: "autonomy.shadow_only",
-    enabled: true,
-    description:
-      "Level 0 (Shadow) — AI recommends only, Chris runs the normal workflow. See /docs/PRODUCT_SPEC.md Autonomy levels.",
-    actor: "seed-script",
-    actorType: "SYSTEM",
-  });
-  console.log("[seed] FeatureFlag: autonomy.shadow_only = true");
+  // Create the kill switch ON only if it doesn't exist yet. Seeding now runs on every
+  // production deploy (scripts/vercel-build.mjs), so re-asserting it would silently undo
+  // Chris's own choice on /learnings each time.
+  const existingFlag = await prisma.featureFlag.findUnique({ where: { key: "autonomy.shadow_only" } });
+  if (!existingFlag) {
+    await setFlag(prisma, {
+      key: "autonomy.shadow_only",
+      enabled: true,
+      description:
+        "Level 0 (Shadow) — AI recommends only, Chris runs the normal workflow. See /docs/PRODUCT_SPEC.md Autonomy levels.",
+      actor: "seed-script",
+      actorType: "SYSTEM",
+    });
+  }
+  console.log(`[seed] FeatureFlag: autonomy.shadow_only ${existingFlag ? "left as set" : "created = true"}`);
 }
 
 main()

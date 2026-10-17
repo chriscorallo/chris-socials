@@ -3091,3 +3091,28 @@ State after merging `fix/usable-v1` (timeline render engine, EDITING rollback, r
 
 Verification evidence: docs/evidence/2026-10-16-finishing-editor/ (01–07; headless Chrome against
 the real dev server).
+
+---
+
+## 2026-10-16 — Migrations run on deploy (production builds only)
+
+**Problem:** nothing applied Prisma migrations to the production database — someone had to copy
+production credentials to a laptop and run `migrate deploy` by hand (the audit flagged this),
+and the schema could silently lag the deployed code.
+
+**Decision:** `apps/web`'s build runs `scripts/vercel-build.mjs` before `next build`. When
+`VERCEL_ENV === "production"` it runs `prisma migrate deploy` (against
+`POSTGRES_URL_NON_POOLING` — a session-capable connection, since migrations take advisory
+locks — falling back to `DATABASE_URL`) and then the idempotent seed (brand docs, owner login
+from `SEED_USER_EMAIL`/`SEED_USER_PASSWORD`, default flags). A failed migration fails the build,
+so the previous deployment stays live. Preview builds share this project's database and so do
+**not** migrate — an unmerged branch must never change the production schema. Locally the
+script is a no-op. The seed no longer re-asserts `autonomy.shadow_only = true` on every run
+(it only creates the flag when absent) so a deploy never overrides Chris's own setting.
+
+**Production setup done 2026-10-16:** private Vercel Blob store `chris-content-media`
+connected to the project (`BLOB_READ_WRITE_TOKEN`); env vars `CRON_SECRET`, `APP_TIMEZONE`,
+`APP_BASE_URL`, `SEED_USER_EMAIL`, `SEED_USER_PASSWORD` set. The existing Supabase Postgres
+integration provides `DATABASE_URL` / `POSTGRES_URL_NON_POOLING`.
+
+**Reversibility:** revert the build script line; migrations can still be run manually.
