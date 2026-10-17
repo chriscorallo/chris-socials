@@ -211,6 +211,11 @@ describe("designVisualsForTimeline", () => {
         exit: "AUTO",
         enterSfx: null,
         anchorText: null,
+        depth: "FRONT",
+        anchor: { type: "SCREEN", offsetX: 0, offsetY: -0.25 },
+        cameraCoupling: 0,
+        integration: { shadow: true, lightWrap: false, sceneMatch: true },
+        emphasisAt: null,
       },
     ];
     const res = await designVisualsForTimeline(provider([counter(5, 9)]), base({ timeline: tl }));

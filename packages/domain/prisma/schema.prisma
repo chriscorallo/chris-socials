@@ -421,6 +421,9 @@ model MediaAsset {
   // fractions, sampled ~2-4 fps by the face/subject tracker. Drives AUTO placement of motion
   // graphics so they never cover Chris. Null until analyzed.
   subjectTrack     Json?
+  // Per-frame person matte for this take (grayscale video, same timing as the source) — lets
+  // motion graphics sit BEHIND Chris. Storage key; null until computed.
+  matteStorageKey  String?
 
   contentItem    ContentItem     @relation(fields: [contentItemId], references: [id])
   takeSelections TakeSelection[] @relation("SelectedTake")

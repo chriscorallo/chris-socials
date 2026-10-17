@@ -96,6 +96,11 @@ export function sampleVisual(template: MotionTemplate, start = 0, end = 4, overr
     exit: "AUTO",
     enterSfx: "WHOOSH",
     anchorText: null,
+    depth: "FRONT",
+    anchor: { type: "SCREEN", offsetX: 0, offsetY: -0.25 },
+    cameraCoupling: 0,
+    integration: { shadow: true, lightWrap: false, sceneMatch: true },
+    emphasisAt: null,
     ...overrides,
   };
 }

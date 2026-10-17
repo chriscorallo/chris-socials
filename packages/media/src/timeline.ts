@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TimelineVisualSchema, TimelineSfxSchema, TimelineMusicSchema } from "./motion-contract";
+import { TimelineVisualSchema, TimelineSfxSchema, TimelineMusicSchema, MotionThemeSchema } from "./motion-contract";
 
 /**
  * EditTimeline v2 — the finishing editor's document, and the renderer's input.
@@ -152,6 +152,8 @@ export const EditTimelineSchema = z.object({
     .default({ normalize: true, music: null, sfxEnabled: true }),
   /** Animated explainer graphics (motion-contract.ts) — rendered by packages/motion. */
   visuals: z.array(TimelineVisualSchema).default([]),
+  /** Per-video motion theme (null = brand default). */
+  motionTheme: MotionThemeSchema.nullable().default(null),
   /** Free-standing sound effects (visual entrances carry their own enterSfx). */
   sfx: z.array(TimelineSfxSchema).default([]),
   /** Thumbnail frame (OUTPUT timeline seconds) — sent to each platform the way its API takes

@@ -137,8 +137,50 @@ export const TimelineVisualSchema = z.object({
   enterSfx: z.enum(SFX_SOUNDS).nullable().default("WHOOSH"),
   /** Why this visual is here — shown to Chris; the transcript phrase it illustrates. */
   anchorText: z.string().max(200).nullable().default(null),
+
+  // --- Interaction with the footage (v2, 2026-10-17) — all optional with neutral defaults so
+  // v1 visuals render exactly as before. Engines: person matte (depth), subject track (anchor),
+  // the timeline's zooms (camera), scene sampling (integration). See motion-contract notes.
+  /** "BEHIND_SUBJECT" composites the graphic between the background and Chris (using a
+   * per-frame person matte) — the "text behind the head" depth look. */
+  depth: z.enum(["FRONT", "BEHIND_SUBJECT"]).default("FRONT"),
+  /** "SUBJECT" makes the graphic follow Chris's head over time (offset in canvas fractions
+   * from the head center); "SCREEN" keeps placement fixed. */
+  anchor: z
+    .object({ type: z.enum(["SCREEN", "SUBJECT"]).default("SCREEN"), offsetX: z.number().min(-1).max(1).default(0), offsetY: z.number().min(-1).max(1).default(-0.25) })
+    .default({ type: "SCREEN", offsetX: 0, offsetY: -0.25 }),
+  /** How much the graphic rides the edit's camera moves (zooms/punch-ins): 0 = fixed to screen,
+   * 1 = locked to the footage; in between = parallax depth. */
+  cameraCoupling: z.number().min(0).max(1).default(0),
+  /** Scene integration: soft contact/drop shadow onto the footage, edge light-wrap from the
+   * footage's colors, and auto-matching of card tint/contrast to what's behind it. */
+  integration: z
+    .object({ shadow: z.boolean().default(true), lightWrap: z.boolean().default(false), sceneMatch: z.boolean().default(true) })
+    .default({ shadow: true, lightWrap: false, sceneMatch: true }),
+  /** Hit timing: land the key moment (counter finish, bar peak, word punch) on the speaker's
+   * vocal emphasis nearest to this many seconds after `start` (null = template default). */
+  emphasisAt: z.number().nonnegative().nullable().default(null),
 });
 export type TimelineVisual = z.infer<typeof TimelineVisualSchema>;
+
+/**
+ * Per-video motion theme — chosen by the Motion Designer from the topic (debt ≠ investing ≠
+ * lifestyle) so each video has a coherent look and feel instead of one house style for all.
+ */
+export const MOTION_LANGUAGES = ["CALM", "CRISP", "PUNCHY", "CINEMATIC", "PLAYFUL"] as const;
+export const MotionThemeSchema = z.object({
+  /** Short human name, e.g. "Debt pressure", "Compounding growth". */
+  name: z.string().min(1).max(40),
+  motionLanguage: z.enum(MOTION_LANGUAGES).default("CRISP"),
+  /** Overrides on top of the chosen palette (#RRGGBB). */
+  primary: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
+  secondary: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
+  /** Iconography/illustration family for 3D + icons. */
+  iconStyle: z.enum(["GOLD_METAL", "SOFT_CLAY", "GLASS", "LINE"]).default("GOLD_METAL"),
+  /** Why this theme fits the topic (shown to Chris). */
+  rationale: z.string().max(200).nullable().default(null),
+});
+export type MotionTheme = z.infer<typeof MotionThemeSchema>;
 
 /** Free-standing sound effects on the OUTPUT timeline (visual entrance SFX are implicit). */
 export const TimelineSfxSchema = z.object({
