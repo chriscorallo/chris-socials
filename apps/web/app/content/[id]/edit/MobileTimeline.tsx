@@ -327,6 +327,8 @@ const MClip = memo(function MClip({
   const width = Math.max(6, dur * pps - 2);
   const [lift, setLift] = useState<{ dx: number; at: number } | null>(null);
   const [trimShift, setTrimShift] = useState(0);
+  // a long-press ends with a click event — don't let it toggle the selection
+  const justLifted = useRef(false);
   const press = useRef<{ timer: number; x0: number; y0: number; id: number; active: boolean; unlock?: () => void; target: number; raf: number; lastX: number } | null>(null);
 
   const endPress = () => {
@@ -340,6 +342,7 @@ const MClip = memo(function MClip({
 
   const onDown = (e: RPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    justLifted.current = false;
     const x0 = e.clientX;
     const y0 = e.clientY;
     const id = e.pointerId;
@@ -392,6 +395,7 @@ const MClip = memo(function MClip({
     const p = press.current;
     if (!p || p.id !== e.pointerId) return;
     const wasActive = p.active;
+    justLifted.current = wasActive;
     const target = p.target;
     endPress();
     setLift(null);
@@ -468,7 +472,10 @@ const MClip = memo(function MClip({
         onPointerCancel={onUp}
         onContextMenu={(e) => e.preventDefault()}
         onClick={() => {
-          if (lift) return;
+          if (justLifted.current) {
+            justLifted.current = false;
+            return;
+          }
           dispatch({ type: "select", selection: selected ? null : { kind: "clip", id: clip.id } });
         }}
         role="button"

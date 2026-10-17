@@ -96,6 +96,20 @@ export function resolveSheetSnap(opts: { height: number; velocity: number; half:
   return Math.abs(height - full) < Math.abs(height - half) ? "full" : "half";
 }
 
+export type SheetKind = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms";
+
+/**
+ * The open sheet after the selection changes: sheets about ONE item (clip / volume / text /
+ * zoom) follow the selection to the matching sheet — or close when nothing is selected — while
+ * whole-video sheets (captions, look, add clip, cover, platforms) stay put.
+ */
+export function sheetForSelection(sheet: SheetKind | null, sel: "clip" | "text" | "zoom" | "captions" | null): SheetKind | null {
+  if (sheet !== "clip" && sheet !== "volume" && sheet !== "text" && sheet !== "zoom") return sheet;
+  if (sel === null) return null;
+  if (sel === "clip") return sheet === "volume" ? "volume" : "clip";
+  return sel;
+}
+
 /** Rubber-band: past the limit the sheet still follows the finger, but only by a fraction. */
 export function rubberBand(over: number, k = 0.25): number {
   return over <= 0 ? over : over * k;

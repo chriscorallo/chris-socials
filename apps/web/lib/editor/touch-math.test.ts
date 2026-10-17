@@ -8,6 +8,7 @@ import {
   pinchGeometry,
   resolveSheetSnap,
   rubberBand,
+  sheetForSelection,
   reorderTarget,
   snapTo,
   movedBeyond,
@@ -86,6 +87,21 @@ describe("bottom sheet snapping", () => {
   it("rubber-bands past the top", () => {
     expect(rubberBand(-20)).toBe(-20);
     expect(rubberBand(40)).toBe(10);
+  });
+});
+
+describe("sheets follow the selection", () => {
+  it("moves item sheets to the newly selected item, closes them on deselect", () => {
+    expect(sheetForSelection("clip", "text")).toBe("text");
+    expect(sheetForSelection("text", "clip")).toBe("clip");
+    expect(sheetForSelection("volume", "clip")).toBe("volume");
+    expect(sheetForSelection("zoom", "captions")).toBe("captions");
+    expect(sheetForSelection("clip", null)).toBeNull();
+  });
+  it("leaves whole-video sheets alone", () => {
+    expect(sheetForSelection("look", "clip")).toBe("look");
+    expect(sheetForSelection("media", null)).toBe("media");
+    expect(sheetForSelection(null, "text")).toBeNull();
   });
 });
 

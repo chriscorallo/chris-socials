@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { locateOutputTime, timelineDuration } from "@chris/media/timeline";
 import { addText, addZoom, updateText, newId } from "../../../../lib/editor/timeline-ops";
 import { formatTime } from "../../../../lib/editor/preview-math";
-import { spanStartForPlayhead } from "../../../../lib/editor/touch-math";
+import { sheetForSelection, spanStartForPlayhead } from "../../../../lib/editor/touch-math";
 import { PLATFORM_SHORT_LABEL } from "../../../../lib/editor/platform-profiles";
 import { useEditor, type SheetId } from "./context";
 import { useIsPlaying, usePlayheadValue } from "./playback";
@@ -57,17 +57,8 @@ export function MobileShell({
   // Keep the open sheet in step with the selection (a clip sheet follows to the next clip, etc.).
   const sel = state.selection;
   useEffect(() => {
-    const s = ui.sheet;
-    if (s === "clip" || s === "volume") {
-      if (!sel) setUi({ sheet: null });
-      else if (sel.kind === "text") setUi({ sheet: "text" });
-      else if (sel.kind === "zoom") setUi({ sheet: "zoom" });
-    } else if (s === "text" || s === "zoom") {
-      if (!sel) setUi({ sheet: null });
-      else if (sel.kind === "clip") setUi({ sheet: "clip" });
-      else if (sel.kind === "text" && s !== "text") setUi({ sheet: "text" });
-      else if (sel.kind === "zoom" && s !== "zoom") setUi({ sheet: "zoom" });
-    }
+    const next = sheetForSelection(ui.sheet, sel?.kind ?? null);
+    if (next !== ui.sheet) setUi({ sheet: next });
   }, [sel, ui.sheet, setUi]);
 
   // Stop the page itself from pinch-zooming / rubber-banding behind the editor (iOS gestures).
