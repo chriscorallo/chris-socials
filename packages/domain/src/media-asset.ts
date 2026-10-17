@@ -208,3 +208,78 @@ export function parseTranscriptWords(value: unknown): TranscriptWordRecord[] | n
   const result = z.array(TranscriptWordSchema).safeParse(value);
   return result.success ? result.data : null;
 }
+
+// ---------------------------------------------------------------------------------------
+// Subject track (where Chris is on screen over time)
+// ---------------------------------------------------------------------------------------
+
+/** One subject-track sample: SOURCE-timeline seconds + the protected head region as source
+ * frame fractions (null = no face found). Mirrors packages/media's SubjectTrackSchema — the
+ * domain validates the persisted shape itself (package-boundary rule). */
+export const SubjectTrackSampleRecordSchema = z.object({
+  t: z.number().nonnegative(),
+  box: z
+    .object({
+      x: z.number().min(-0.01).max(1.01),
+      y: z.number().min(-0.01).max(1.01),
+      w: z.number().min(0).max(1.01),
+      h: z.number().min(0).max(1.01),
+    })
+    .nullable(),
+});
+export const SubjectTrackRecordSchema = z.array(SubjectTrackSampleRecordSchema).max(20000);
+export type SubjectTrackRecord = z.infer<typeof SubjectTrackRecordSchema>;
+
+/**
+ * Stores a take's subject track (from the deterministic face tracker) and audit-logs it with
+ * provenance. Re-recording replaces the row's current track — the previous one's summary is
+ * kept in the AuditLog `before` (same pattern as recordTranscript). No state transition: this
+ * is analysis metadata, it never moves the content item.
+ */
+export async function recordSubjectTrack(
+  prisma: PrismaClient,
+  mediaAssetId: string,
+  track: unknown,
+  actor: { actorId: string; actorType?: "HUMAN" | "SYSTEM" | "JOB" },
+  provenance: { model?: string; fps?: number; framesAnalyzed?: number; framesWithFace?: number } = {},
+) {
+  const parsed = SubjectTrackRecordSchema.parse(track);
+  const sorted = [...parsed].sort((a, b) => a.t - b.t);
+  const before = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: mediaAssetId } });
+  const previous = parseSubjectTrackRecord(before.subjectTrack);
+
+  const asset = await prisma.mediaAsset.update({
+    where: { id: mediaAssetId },
+    data: { subjectTrack: sorted as never },
+  });
+
+  const withFace = sorted.filter((s) => s.box !== null).length;
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: actor.actorType ?? "JOB",
+    action: "MEDIA_ASSET_SUBJECT_TRACKED",
+    entityType: "ContentItem",
+    entityId: asset.contentItemId,
+    before: {
+      mediaAssetId,
+      hadTrack: previous !== null,
+      samples: previous?.length ?? 0,
+    },
+    after: {
+      mediaAssetId,
+      samples: sorted.length,
+      samplesWithFace: withFace,
+      coverage: sorted.length ? Math.round((withFace / sorted.length) * 1000) / 1000 : 0,
+    },
+    metadata: provenance,
+  });
+
+  return asset;
+}
+
+/** Parses MediaAsset.subjectTrack (Json) defensively; null when absent or malformed. */
+export function parseSubjectTrackRecord(value: unknown): SubjectTrackRecord | null {
+  if (value == null) return null;
+  const r = SubjectTrackRecordSchema.safeParse(value);
+  return r.success ? r.data : null;
+}

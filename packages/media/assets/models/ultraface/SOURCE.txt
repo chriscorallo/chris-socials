@@ -1,0 +1,8 @@
+UltraFace face detector — version-RFB-640.onnx
+
+Source: https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/raw/master/models/onnx/version-RFB-640.onnx
+Project: https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB
+License: MIT (see LICENSE in this directory)
+Downloaded: 2026-10-16
+SHA-256: 8f4c659275977e7a3bfbfa339a9c769ad793df50f9c0baa8c14b11baa1646430
+Used by: packages/media/src/subject-track.ts (input 1x3x480x640 RGB, (v-127)/128; outputs scores [1,N,2], boxes [1,N,4] corner form)
