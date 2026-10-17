@@ -116,3 +116,11 @@ export * from "./platform-limits";
 export * from "./platform-credential";
 export * from "./job-run";
 export type { JobRun } from "@prisma/client";
+
+// Calendar views + posting plan + Stay-on-course (2026-10-17) — see docs/decisions-pending/calendar.md.
+export * from "./tz";
+export * from "./posting-plan-core";
+export * from "./posting-plan";
+export * from "./course";
+export * from "./todo";
+export type { PostingPlan, NudgeDismissal } from "@prisma/client";
