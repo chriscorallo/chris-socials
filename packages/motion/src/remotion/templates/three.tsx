@@ -739,7 +739,8 @@ function barLayout(n: number, W: number, H: number) {
     const v = new THREE.Vector3(x, y, z).project(camera);
     return { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H };
   };
-  return { camera, xs, project, plotH: 2.6 };
+  // 2.3 (not 2.6) leaves headroom so the tallest bar's value label clears the card title.
+  return { camera, xs, project, plotH: 2.3 };
 }
 
 function Bar3D({ x, h, mat, w }: { x: number; h: number; mat: THREE.Material; w: number }) {
@@ -801,7 +802,7 @@ export function BarChart3D({ props, palette: p, frame, fps, box }: TemplateCompo
         const v = countUp(frame, 0, b.value, 8 + i * 5, Math.round(fps * 1.0));
         return (
           <div key={i}>
-            <div style={{ position: "absolute", left: top.x - 110, width: 220, top: top.y - 58, textAlign: "center", fontFamily: FONT.display, fontSize: n >= 6 ? 36 : 42, letterSpacing: "-0.02em", color: focus ? p.primary : p.ink, opacity: prog(frame, 12 + i * 5, 12, EASE_OUT), textShadow: focus ? `0 0 24px ${rgba(p.primary, 0.5)}` : TEXT_LIFT, whiteSpace: "nowrap" }}>{withUnit(compactNumber(Number.isInteger(b.value) ? Math.round(v) : Math.round(v * 10) / 10), props.unit)}</div>
+            <div style={{ position: "absolute", left: top.x - 110, width: 220, top: Math.max(6, top.y - 58), textAlign: "center", fontFamily: FONT.display, fontSize: n >= 6 ? 36 : 42, letterSpacing: "-0.02em", color: focus ? p.primary : p.ink, opacity: prog(frame, 12 + i * 5, 12, EASE_OUT), textShadow: focus ? `0 0 24px ${rgba(p.primary, 0.5)}` : TEXT_LIFT, whiteSpace: "nowrap" }}>{withUnit(compactNumber(Number.isInteger(b.value) ? Math.round(v) : Math.round(v * 10) / 10), props.unit)}</div>
             <div style={{ position: "absolute", left: base.x - 110, width: 220, top: base.y + 10, textAlign: "center", fontFamily: FONT.text, fontSize: n >= 6 ? 34 : 38, color: focus ? p.ink : p.muted, opacity: prog(frame, 6 + i * 4, 14, EASE_OUT), whiteSpace: "nowrap" }}>{b.label}</div>
           </div>
         );
