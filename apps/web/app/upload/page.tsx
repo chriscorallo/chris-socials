@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSession } from "../../lib/session";
 import { storageMode } from "../../lib/storage";
 import { NavBar } from "../components/NavBar";
@@ -21,8 +22,11 @@ export default async function UploadPage() {
         <Panel>
           <FootageUpload mode={storageMode} />
         </Panel>
-        <p className="mt-4 text-[13px] text-[var(--color-text-faint)]">
-          Filmed something for a video you already planned? Open it from Videos and tap “Upload footage” there instead.
+        <Link href="/plan/upload" className="btn btn-ghost mt-4 w-full !min-h-[52px] !text-[16px]">
+          Upload many clips — matched to your plan
+        </Link>
+        <p className="mt-3 text-[13px] text-[var(--color-text-faint)]">
+          Filmed videos you already planned? Use “Upload many clips” and each one lands on its planned video.
         </p>
       </PageShell>
     </>

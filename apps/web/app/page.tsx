@@ -124,8 +124,8 @@ export default async function HomePage() {
               <Link href="/upload" className="btn btn-primary !min-h-[52px] flex-1 !text-[16px]">
                 Upload a video
               </Link>
-              <Link href="/ideas" className="btn btn-ghost !min-h-[52px] flex-1 !text-[16px]">
-                {ideaCount > 0 ? `Ideas (${ideaCount})` : "Plan a new video"}
+              <Link href="/plan" className="btn btn-ghost !min-h-[52px] flex-1 !text-[16px]">
+                My plan
               </Link>
             </div>
           </>
@@ -212,8 +212,8 @@ function FirstRun({ ideaCount }: { ideaCount: number }) {
         <Link href="/upload" className="btn btn-primary w-full !min-h-[56px] !text-[17px]">
           Upload a video I filmed
         </Link>
-        <Link href="/ideas" className="btn btn-ghost w-full !min-h-[56px] !text-[17px]">
-          Plan a new video
+        <Link href="/plan/import" className="btn btn-ghost w-full !min-h-[56px] !text-[17px]">
+          Import my video plan
         </Link>
       </div>
       {ideaCount > 0 && (
