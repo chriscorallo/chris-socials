@@ -34,6 +34,14 @@ function Icon({ name, active }: { name: TabIcon | "more"; active: boolean }) {
           <rect x="13.5" y="13.5" width="7" height="7" rx="1.8" />
         </svg>
       );
+    case "upload":
+      // The primary action: a gold filled circle with a plus, so it reads as "add" at a glance.
+      return (
+        <svg width={30} height={30} viewBox="0 0 30 30" aria-hidden>
+          <circle cx="15" cy="15" r="14" fill="var(--color-gold-400)" />
+          <path d="M15 9v12M9 15h12" stroke="#111" strokeWidth={2.4} strokeLinecap="round" />
+        </svg>
+      );
     case "film":
       return (
         <svg {...common}>

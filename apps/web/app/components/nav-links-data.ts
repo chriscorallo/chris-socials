@@ -8,6 +8,7 @@ export const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/calendar", label: "Calendar" },
   { href: "/content", label: "Content" },
+  { href: "/upload", label: "Upload" },
   { href: "/film", label: "Film" },
   { href: "/ideas", label: "Ideas" },
   { href: "/strategy", label: "Strategy" },
@@ -17,13 +18,14 @@ export const NAV_LINKS = [
   { href: "/settings/connections", label: "Connections" },
 ];
 
-export type TabIcon = "home" | "content" | "film" | "calendar";
+export type TabIcon = "home" | "content" | "upload" | "film" | "calendar";
 
 /** Phone/tablet bottom tab bar (below lg): the four destinations Chris uses daily, in thumb
  * order, plus "More" for the rest. See /docs/decisions-pending/mobile-app.md. */
 export const TAB_LINKS: { href: string; label: string; icon: TabIcon }[] = [
   { href: "/", label: "Home", icon: "home" },
   { href: "/content", label: "Content", icon: "content" },
+  { href: "/upload", label: "Upload", icon: "upload" },
   { href: "/film", label: "Film", icon: "film" },
   { href: "/calendar", label: "Calendar", icon: "calendar" },
 ];

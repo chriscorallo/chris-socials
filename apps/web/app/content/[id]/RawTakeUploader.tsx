@@ -2,40 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { upload } from "@vercel/blob/client";
-import { registerBlobUpload } from "./actions";
+import { uploadRawTake } from "../../../lib/upload-client";
 
 type UploadState = { name: string; percent: number; status: "uploading" | "processing" | "done" | "error"; error?: string };
-
-function safeName(name: string): string {
-  const base = name.replace(/^.*[\\/]/, "").replace(/[^\w.-]+/g, "_").replace(/^\.+/, "");
-  return (base || "upload").slice(-120);
-}
-
-/** Local mode: stream the raw file body to PUT /api/upload (XHR for upload progress). */
-function uploadLocal(contentItemId: string, file: File, onProgress: (pct: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const params = new URLSearchParams({ contentItemId, filename: file.name });
-    xhr.open("PUT", `/api/upload?${params}`);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return resolve();
-      let message = `Upload failed (${xhr.status})`;
-      try {
-        message = JSON.parse(xhr.responseText).error ?? message;
-      } catch {
-        // non-JSON error body — keep the status-code message
-      }
-      reject(new Error(message));
-    };
-    xhr.onerror = () => reject(new Error("Network error during upload"));
-    xhr.send(file);
-  });
-}
 
 /**
  * Raw-take uploader. Picks the transport by deployment storage mode: local disk via a
@@ -62,29 +31,7 @@ export function RawTakeUploader({ contentItemId, mode }: { contentItemId: string
     for (const [i, file] of list.entries()) {
       const index = offset + i;
       try {
-        if (mode === "local") {
-          await uploadLocal(contentItemId, file, (percent) =>
-            patch(index, { percent, status: percent >= 100 ? "processing" : "uploading" }),
-          );
-        } else {
-          const storageKey = `raw/${contentItemId}/${Date.now()}-${safeName(file.name)}`;
-          await upload(storageKey, file, {
-            access: "private",
-            handleUploadUrl: "/api/blob-upload",
-            contentType: file.type || undefined,
-            multipart: file.size > 50 * 1024 * 1024,
-            onUploadProgress: ({ percentage }) => patch(index, { percent: Math.round(percentage) }),
-          });
-          patch(index, { percent: 100, status: "processing" });
-          const result = await registerBlobUpload({
-            contentItemId,
-            storageKey,
-            originalFilename: file.name,
-            mimeType: file.type,
-            sizeBytes: file.size,
-          });
-          if ("error" in result) throw new Error(result.error);
-        }
+        await uploadRawTake(contentItemId, file, mode, (percent, phase) => patch(index, { percent, status: phase }));
         patch(index, { percent: 100, status: "done" });
       } catch (err) {
         patch(index, { status: "error", error: err instanceof Error ? err.message : "Upload failed" });

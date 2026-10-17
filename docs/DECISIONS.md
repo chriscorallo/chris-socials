@@ -3997,3 +3997,22 @@ Design-with-AI happy path is untested end to end here (no Anthropic credit) — 
 save-first and reload-as-saved-version logic are exercised; (4) real-iPhone audio checks
 (WebAudio unlock, ducking audibility) still need a device pass; (5) Next's dev-tools badge
 covers the first toolbar tool in dev only.
+
+## 2026-10-16 — Footage-first upload ("where do I upload?")
+
+**Problem (reported by Chris):** the only uploader lived inside each video's page, at the
+bottom of a long page — and only once a video entry existed. On a fresh production database
+there was literally nowhere to upload.
+
+**Decision:** an **Upload** tab (center of the phone tab bar, gold "+"; also in the desktop
+nav) opens `/upload`: optional title + "Choose videos" (Photos/Files/camera, several takes).
+`createContentItemFromFootage` creates the item and walks it to FILMED with SYSTEM
+transitions whose reason says "Footage-first", then the normal uploader ingests the takes
+(FILMED → MEDIA_INGESTED, transcription in the background) and the page opens the new video.
+The auto-contract is deliberately NOT fact-check-exempt (STANDARD research / MEDIUM risk), so
+the FACTUAL hard gate still blocks publishing until the footage's claims are checked —
+footage-first shortcuts to editing, never to publishing unchecked claims. On a video's page,
+the upload panel now moves to the top whenever the video is waiting for footage
+(READY_TO_FILM / FILMED / MEDIA_INGESTED). Upload logic was extracted to
+`apps/web/lib/upload-client.ts` so both entry points share it. Verified in a real browser at
+iPhone size: login → Upload → pick file → item created, take uploaded and analyzed → opened.

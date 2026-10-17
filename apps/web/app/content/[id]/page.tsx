@@ -59,6 +59,9 @@ export default async function ContentDetailPage({
   const rawTakes = item.mediaAssets.filter((a) => a.kind === "RAW_TAKE");
   const musicAssets = item.mediaAssets.filter((a) => a.kind === "MUSIC");
   const manualTransitions = listManualTransitions(item.currentState);
+  // Waiting on footage → the upload box goes to the very top (it used to sit at the bottom of a
+  // long page, which read as "there is nowhere to upload").
+  const needsFootage = item.currentState === "READY_TO_FILM" || item.currentState === "FILMED" || item.currentState === "MEDIA_INGESTED";
   const latestResearch = item.researchPackets[0];
   const latestScript = item.scriptVersions[0];
   const latestTakeSelection = item.takeSelections[0];
@@ -114,6 +117,66 @@ export default async function ContentDetailPage({
       ),
     };
   }
+
+  const mediaPanel = (
+          <Panel id="media" className={item.currentState === "FILMED" ? "panel-action" : ""}>
+      <SectionHeading eyebrow="Assets" title="Media" />
+      <RawTakeUploader contentItemId={item.id} mode={storageMode} />
+      {rawTakes.length > 0 && !rawTakes.some((a) => a.transcript) && (
+        <form action={runTranscribe} className="mt-3">
+          <input type="hidden" name="contentItemId" value={item.id} />
+          <Button>Transcribe all takes</Button>
+        </form>
+      )}
+      <ul className="mt-3 flex flex-col gap-3 text-[13px]">
+        {rawTakes.map((asset) => (
+          <li key={asset.id} className="flex flex-col gap-1.5">
+            <div>
+              <a href={`/api/media/${asset.storageKey}`} className="link-quiet break-all underline">
+                {asset.originalFilename}
+              </a>{" "}
+              <span className="text-[var(--color-text-faint)]">
+                ({asset.sizeBytes >= 1024 * 1024 ? `${(asset.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : `${(asset.sizeBytes / 1024).toFixed(1)} KB`}
+                {asset.durationSeconds ? ` · ${asset.durationSeconds.toFixed(1)}s` : ""})
+              </span>{" "}
+              {asset.transcript ? (
+                <Badge tone="emerald">{asset.transcriptSource === "MANUAL" ? "transcript (typed)" : "transcript + word timings"}</Badge>
+              ) : (
+                <Badge tone="neutral">no transcript yet</Badge>
+              )}
+            </div>
+            {asset.transcript && (
+              <p className="line-clamp-3 text-[var(--color-text-muted)]">{asset.transcript}</p>
+            )}
+            <details className="text-[var(--color-text-muted)]">
+              <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] text-[var(--color-text-muted)] sm:text-[12px]">
+                {asset.transcript ? "Fix transcript / re-transcribe" : "Transcribe or paste transcript"}
+              </summary>
+              <div className="mt-2 flex flex-col gap-2">
+                <form action={runTranscribe}>
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <input type="hidden" name="mediaAssetId" value={asset.id} />
+                  <Button>Transcribe this take (local Whisper)</Button>
+                </form>
+                <form action={submitManualTranscript} className="flex flex-col gap-2">
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <input type="hidden" name="mediaAssetId" value={asset.id} />
+                  <textarea name="transcript" rows={3} defaultValue={asset.transcript ?? ""} className="field-input" placeholder="Paste or type what's said in this take" />
+                  <div><Button>Save typed transcript</Button></div>
+                </form>
+              </div>
+            </details>
+          </li>
+        ))}
+        {rawTakes.length === 0 && <li className="text-[var(--color-text-faint)]">No media uploaded yet.</li>}
+      </ul>
+      {musicAssets.length > 0 && (
+        <p className="mt-3 text-[13px] text-[var(--color-text-muted)]">
+          Music: {musicAssets.map((a) => a.originalFilename).join(", ")} — pick it in the editor&apos;s Sound tool.
+        </p>
+      )}
+    </Panel>
+  );
 
   return (
     <>
@@ -172,6 +235,7 @@ export default async function ContentDetailPage({
         )}
 
         <div className="flex flex-col gap-5">
+          {needsFootage && mediaPanel}
           {/* Finishing editor entry point (app/content/[id]/edit) — once there's an edit plan and
               until it publishes, Chris can open the in-house editor to finish the video. */}
           {latestEditPlan && FINISHING_EDIT_STATES.has(item.currentState) && (
@@ -1034,63 +1098,7 @@ export default async function ContentDetailPage({
             </CollapsiblePanel>
           )}
 
-          <Panel id="media" className={item.currentState === "FILMED" ? "panel-action" : ""}>
-            <SectionHeading eyebrow="Assets" title="Media" />
-            <RawTakeUploader contentItemId={item.id} mode={storageMode} />
-            {rawTakes.length > 0 && !rawTakes.some((a) => a.transcript) && (
-              <form action={runTranscribe} className="mt-3">
-                <input type="hidden" name="contentItemId" value={item.id} />
-                <Button>Transcribe all takes</Button>
-              </form>
-            )}
-            <ul className="mt-3 flex flex-col gap-3 text-[13px]">
-              {rawTakes.map((asset) => (
-                <li key={asset.id} className="flex flex-col gap-1.5">
-                  <div>
-                    <a href={`/api/media/${asset.storageKey}`} className="link-quiet break-all underline">
-                      {asset.originalFilename}
-                    </a>{" "}
-                    <span className="text-[var(--color-text-faint)]">
-                      ({asset.sizeBytes >= 1024 * 1024 ? `${(asset.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : `${(asset.sizeBytes / 1024).toFixed(1)} KB`}
-                      {asset.durationSeconds ? ` · ${asset.durationSeconds.toFixed(1)}s` : ""})
-                    </span>{" "}
-                    {asset.transcript ? (
-                      <Badge tone="emerald">{asset.transcriptSource === "MANUAL" ? "transcript (typed)" : "transcript + word timings"}</Badge>
-                    ) : (
-                      <Badge tone="neutral">no transcript yet</Badge>
-                    )}
-                  </div>
-                  {asset.transcript && (
-                    <p className="line-clamp-3 text-[var(--color-text-muted)]">{asset.transcript}</p>
-                  )}
-                  <details className="text-[var(--color-text-muted)]">
-                    <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] text-[var(--color-text-muted)] sm:text-[12px]">
-                      {asset.transcript ? "Fix transcript / re-transcribe" : "Transcribe or paste transcript"}
-                    </summary>
-                    <div className="mt-2 flex flex-col gap-2">
-                      <form action={runTranscribe}>
-                        <input type="hidden" name="contentItemId" value={item.id} />
-                        <input type="hidden" name="mediaAssetId" value={asset.id} />
-                        <Button>Transcribe this take (local Whisper)</Button>
-                      </form>
-                      <form action={submitManualTranscript} className="flex flex-col gap-2">
-                        <input type="hidden" name="contentItemId" value={item.id} />
-                        <input type="hidden" name="mediaAssetId" value={asset.id} />
-                        <textarea name="transcript" rows={3} defaultValue={asset.transcript ?? ""} className="field-input" placeholder="Paste or type what's said in this take" />
-                        <div><Button>Save typed transcript</Button></div>
-                      </form>
-                    </div>
-                  </details>
-                </li>
-              ))}
-              {rawTakes.length === 0 && <li className="text-[var(--color-text-faint)]">No media uploaded yet.</li>}
-            </ul>
-            {musicAssets.length > 0 && (
-              <p className="mt-3 text-[13px] text-[var(--color-text-muted)]">
-                Music: {musicAssets.map((a) => a.originalFilename).join(", ")} — pick it in the editor&apos;s Sound tool.
-              </p>
-            )}
-          </Panel>
+          {!needsFootage && mediaPanel}
 
           <Panel>
             <SectionHeading eyebrow="Distribution" title="Schedule" />
