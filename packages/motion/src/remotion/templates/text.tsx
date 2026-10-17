@@ -46,7 +46,8 @@ export function KineticText(tp: TemplateComponentProps<"KINETIC_TEXT">) {
   const stagger = Math.max(2, Math.min(Math.round(5 * f.tempo), Math.floor((durationInFrames * 0.45) / Math.max(1, words.length))));
   const H = f.hitScale;
   // Cinematic: the line settles from wide tracking (a title-sequence feel).
-  const track = f.tracking > 0.15 ? (f.tracking - 0.1) * (1 - prog(frame, 0, Math.round(fps * 1.4), EO)) : 0;
+  // Only for a single-line phrase (the flex row would re-wrap words otherwise).
+  const track = f.tracking > 0.15 && chars * size * 0.62 <= 880 ? (f.tracking - 0.1) * (1 - Math.min(1, prog(frame, 0, Math.round(fps * 1.4), EO))) : 0;
 
   if (props.style === "TYPEWRITER") {
     const perChar = Math.max(0.6, Math.min(2.2, (durationInFrames * 0.5) / Math.max(1, chars)));
@@ -95,7 +96,7 @@ export function KineticText(tp: TemplateComponentProps<"KINETIC_TEXT">) {
           const s = springAt(frame, fps, d, SP.punch);
           const o = prog(frame, d, 5, EO);
           // The hit: emphasis words land harder in PUNCHY/PLAYFUL, softer in CALM/CINEMATIC.
-          const scale = 1 + (isE ? 0.5 : 0.28) * H * (1 - s);
+          const scale = Math.max(0.95, 1 + (isE ? 0.5 : 0.28) * H * (1 - s)); // no squash-to-tiny on overshoot
           const blur = Math.max(0, 1 - s) * 12 * f.blur;
           const underline = isE ? prog(frame, d + 6, 12, EO) : 0;
           // Playful: alternating tilt that springs out, emphasis words keep a slight lean.
@@ -250,6 +251,11 @@ export function TitleCard(tp: TemplateComponentProps<"TITLE_CARD">) {
   const size = (L <= 14 ? 132 : L <= 24 ? 108 : L <= 40 ? 88 : 72) * u;
   // Letterbox depth follows the language: deepest for CINEMATIC, lighter for PLAYFUL.
   const barH = canvas.height * 0.085 * f.letterbox * bars;
+  // Tracking settle without reflow: only when the title is one line, capped so the widest
+  // (start) state still fits — otherwise lines would re-wrap mid-animation.
+  const maxW = canvas.width * 0.86;
+  const oneLine = L * size * 0.5 <= maxW;
+  const trackFrom = oneLine ? Math.max(0, Math.min(f.tracking, (canvas.width * 0.94) / (L * size) - 0.5)) : 0;
   return (
     <div style={{ ...fill, width: canvas.width, height: canvas.height }}>
       <div style={{ ...fill, opacity: dim, background: `radial-gradient(ellipse 80% 55% at 50% 50%, ${rgba("#05050A", 0.5)} 0%, ${rgba("#05050A", 0.8)} 70%, ${rgba("#05050A", 0.9)} 100%)` }} />
@@ -264,7 +270,7 @@ export function TitleCard(tp: TemplateComponentProps<"TITLE_CARD">) {
             <div style={{ width: 90 * u * lines, height: 2 * u, background: `linear-gradient(90deg, ${p.primary}, transparent)` }} />
           </div>
         ) : null}
-        <div style={{ position: "relative", maxWidth: canvas.width * 0.86, textAlign: "center", fontFamily: FONT.serif, fontSize: size, lineHeight: 1.06, color: p.ink, letterSpacing: `${Math.round(f.tracking * (1 - Math.min(1, titleT)) * 1000) / 1000}em`, opacity: titleT, filter: titleT < 0.99 ? `blur(${Math.max(0, (1 - titleT) * 14 * f.blur)}px)` : undefined, textShadow: `0 10px 40px ${rgba("#000000", 0.6)}` }}>
+        <div style={{ position: "relative", maxWidth: canvas.width * 0.86, textAlign: "center", fontFamily: FONT.serif, fontSize: size, lineHeight: 1.06, color: p.ink, letterSpacing: `${Math.round(trackFrom * (1 - Math.min(1, titleT)) * 1000) / 1000}em`, whiteSpace: oneLine ? "nowrap" : undefined, opacity: titleT, filter: titleT < 0.99 ? `blur(${Math.max(0, (1 - titleT) * 14 * f.blur)}px)` : undefined, textShadow: `0 10px 40px ${rgba("#000000", 0.6)}` }}>
           {props.title}
           <span aria-hidden style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(105deg, transparent ${sweep * 140 - 30}%, ${rgba("#FFFFFF", 0.95)} ${sweep * 140 - 15}%, transparent ${sweep * 140}%)`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", opacity: 0.55 * (1 - Math.abs(sweep - 0.5) * 2) }}>{props.title}</span>
         </div>

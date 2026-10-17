@@ -147,16 +147,16 @@ export function enterExitStyle(
       case "SCALE":
         opacity *= 1 - x;
         scale *= 1 - 0.08 * x;
-        blur += x * 6 * B;
+        blur += x * 6 * Math.min(B, 1.15);
         break;
       case "SLIDE":
         opacity *= 1 - x;
         ty -= x * 70 * D;
-        blur += x * 6 * B;
+        blur += x * 6 * Math.min(B, 1.15);
         break;
       case "BLUR":
         opacity *= 1 - x;
-        blur += x * 24 * B;
+        blur += x * 24 * Math.min(B, 1.15); // exits stay brisk even in defocus-heavy languages
         scale *= 1 + 0.04 * x;
         break;
       case "SPRING":
