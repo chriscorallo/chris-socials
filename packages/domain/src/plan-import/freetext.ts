@@ -48,7 +48,7 @@ const SEP_CHARS = /^[\s,:;|()[\]*–—-]+/;
 function stripDecor(s: string): string {
   return s
     .replace(/^#{1,6}\s*/, "")
-    .replace(/^[^\p{L}\p{N}"“'(\[*]+/u, (m) => (/[-*•·]/.test(m) ? m : "")) // leading emoji/symbols
+    .replace(/^[^\p{L}\p{N}"“'([*]+/u, (m) => (/[-*•·]/.test(m) ? m : "")) // leading emoji/symbols
     .trim();
 }
 

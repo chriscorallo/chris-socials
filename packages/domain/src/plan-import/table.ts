@@ -79,7 +79,7 @@ export function autoMapColumns(headers: string[]): ColumnField[] {
 
 /** RFC-4180-ish CSV/TSV parse (quoted fields, doubled quotes, CR/LF), auto-detecting the delimiter. */
 export function parseDelimited(text: string, delimiter?: string): string[][] {
-  const src = text.replace(/^﻿/, "");
+  const src = text.replace(/^\uFEFF/, "");
   const delim = delimiter ?? detectDelimiter(src);
   const rows: string[][] = [];
   let row: string[] = [];
