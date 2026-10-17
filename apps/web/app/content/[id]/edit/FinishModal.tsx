@@ -6,7 +6,8 @@ import { buildSavePayload } from "../../../../lib/editor/reducer";
 import { withResolvedPlacements } from "../../../../lib/editor/visuals";
 import { warningsForPlatform } from "../../../../lib/editor/platform-warnings";
 import { PLATFORM_IDS, PLATFORM_PROFILES, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
-import { saveFinishingEditAction, renderStepAction, qualityGateStepAction, scheduleStepAction } from "./actions";
+import { saveFinishingEditAction, renderStepAction, qualityGateStepAction, scheduleStepAction, finishJobResultAction } from "./actions";
+import { waitForJob } from "../../../../lib/use-job-progress";
 import { useEditor } from "./context";
 import { browserMeasureText } from "./measure";
 import { Icon } from "./icons";
@@ -61,6 +62,7 @@ export function FinishModal({
   const [phase, setPhase] = useState<"form" | "running" | "done" | "stopped">("form");
   const [steps, setSteps] = useState<Step[]>([]);
   const [elapsed, setElapsed] = useState(0);
+  const [renderPct, setRenderPct] = useState<number | null>(null);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
   const startedAt = useRef(0);
 
@@ -119,23 +121,68 @@ export function FinishModal({
     }
 
     // 2. render
+    // On the live site the render (+ the quality check right after it) runs in the cloud worker
+    // and we follow its progress; locally it runs during the request, as before.
+    let cloudCheck: { passed: boolean; reasons: string[] } | null = null;
     if (state === "EDIT_PLANNED") {
       patch("render", { status: "running", detail: RUNNING_DETAIL.render });
-      const res = await renderStepAction(itemId).catch(() => null);
+      const res = await renderStepAction(itemId, { thenQualityGate: true }).catch(() => null);
       if (!res || !res.ok) {
         if (res?.state) onStateChange(res.state);
         patch("render", { status: "failed", detail: res ? res.error : "Lost connection while rendering. Your edit is saved — try again." });
         return setPhase("stopped");
       }
-      state = res.state;
-      onStateChange(state);
-      patch("render", { status: "done", detail: "Rendered." });
+      if ("pending" in res) {
+        const jobRunId = res.jobRunId;
+        const view = await waitForJob(jobRunId, (v) => {
+          if (v.status !== "RUNNING") return;
+          if (v.stage === "check") {
+            patch("render", { status: "done", detail: "Rendered." });
+            patch("check", { status: "running", detail: RUNNING_DETAIL.check });
+          } else {
+            setRenderPct(v.pct);
+            patch("render", { status: "running", detail: v.message ?? RUNNING_DETAIL.render });
+          }
+        }).catch(() => null);
+        const out = view ? await finishJobResultAction(itemId, jobRunId).catch(() => null) : null;
+        if (!out || !out.ok) {
+          if (out && !out.ok && out.state) onStateChange(out.state);
+          patch("render", { status: "failed", detail: out ? out.error : "Lost track of the render (connection). It may still finish — reopen the video in a minute." });
+          return setPhase("stopped");
+        }
+        state = out.state;
+        onStateChange(state);
+        if (!out.render.ok) {
+          patch("render", { status: "failed", detail: out.render.error ?? "The render failed. Your edit is saved." });
+          return setPhase("stopped");
+        }
+        patch("render", { status: "done", detail: "Rendered." });
+        if (out.check && !out.check.ok) {
+          patch("check", { status: "failed", detail: out.check.error });
+          return setPhase("stopped");
+        }
+        if (out.check?.ok) cloudCheck = { passed: out.check.passed, reasons: out.check.reasons };
+      } else {
+        state = res.state;
+        onStateChange(state);
+        patch("render", { status: "done", detail: "Rendered." });
+      }
     } else {
       patch("render", { status: "skipped", detail: "Already rendered from this edit." });
     }
 
     // 3. quality gate
-    if (state === "RENDERED") {
+    if (cloudCheck) {
+      if (!cloudCheck.passed) {
+        patch("check", {
+          status: "failed",
+          detail: "The quality check found something to fix before this can be scheduled. Your edit is saved.",
+          reasons: cloudCheck.reasons,
+        });
+        return setPhase("stopped");
+      }
+      patch("check", { status: "done", detail: "Passed every check." });
+    } else if (state === "RENDERED") {
       patch("check", { status: "running", detail: RUNNING_DETAIL.check });
       const res = await qualityGateStepAction(itemId).catch(() => null);
       if (!res || !res.ok) {
@@ -273,7 +320,7 @@ export function FinishModal({
                   <div className="min-w-0 flex-1 pt-0.5">
                     <p className={`text-[13.5px] font-medium ${s.status === "waiting" ? "text-[var(--color-text-faint)]" : ""}`}>
                       {s.label}
-                      {s.status === "running" && s.id === "render" && <span className="ml-2 text-[12px] font-normal tabular-nums text-[var(--color-text-faint)]">{elapsed}s</span>}
+                      {s.status === "running" && s.id === "render" && <span className="ml-2 text-[12px] font-normal tabular-nums text-[var(--color-text-faint)]">{renderPct != null && renderPct > 0 ? `${Math.round(renderPct)}% · ` : ""}{elapsed}s</span>}
                     </p>
                     {s.detail && <p className={`mt-0.5 text-[12.5px] leading-relaxed ${s.status === "failed" ? "text-[var(--color-rose-400)]" : "text-[var(--color-text-muted)]"}`}>{s.detail}</p>}
                     {s.reasons && s.reasons.length > 0 && (

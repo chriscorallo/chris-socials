@@ -33,7 +33,8 @@ import {
 import { newId } from "../../../../lib/editor/timeline-ops";
 import { formatTime } from "../../../../lib/editor/preview-math";
 import { useEditor } from "./context";
-import { designVisualsAction, type DesignVisualsStepResult } from "./actions";
+import { designVisualsAction, designVisualsResultAction, type DesignVisualsStepResult } from "./actions";
+import { waitForJob } from "../../../../lib/use-job-progress";
 import { NumField, Section, Seg, Slider, Toggle } from "./Inspector";
 import { TemplateArt } from "./template-art";
 import { InShotSection, ThemePicker } from "./InteractionControls";
@@ -129,7 +130,13 @@ function AiDesignCard() {
     }
     setSt({ phase: "running", step: "Reading the script and research, finding Chris in the frame, designing…", startedAt });
     try {
-      const res = await designVisualsAction({ contentItemId: itemId, replaceExisting: replace });
+      let res = await designVisualsAction({ contentItemId: itemId, replaceExisting: replace });
+      if (res.ok && "pending" in res) {
+        // Live site: it runs in the cloud worker — follow its progress, then load the result.
+        const jobRunId = res.jobRunId;
+        const done = await waitForJob(jobRunId, (v) => v.status === "RUNNING" && setSt({ phase: "running", step: v.line ?? "Designing…", startedAt }));
+        res = done.status === "SUCCEEDED" || done.status === "FAILED" ? await designVisualsResultAction(itemId, jobRunId) : { ok: false, error: "Designing didn't finish — try again." };
+      }
       if (!res.ok) {
         setSt({ phase: "error", message: res.error });
         return;

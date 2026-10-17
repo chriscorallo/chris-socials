@@ -8,7 +8,8 @@ import { transcribeMediaAsset } from "@chris/worker/transcribe-job";
 import { trackSubjectForMediaAsset } from "@chris/worker/subject-track-job";
 import { computePersonMatteForMediaAsset } from "@chris/worker/person-matte-job";
 import { storage } from "./storage";
-import { isAutoPersonMatteEnabled, isAutoSubjectTrackingEnabled, isAutoTranscriptionEnabled } from "./render-config";
+import { heavyJobMode, isAutoPersonMatteEnabled, isAutoSubjectTrackingEnabled, isAutoTranscriptionEnabled } from "./render-config";
+import { runHeavyJob } from "./heavy-jobs";
 
 /** What an upload is: a filmed take (default) or a music bed for the finishing editor. */
 export type UploadKind = "RAW_TAKE" | "MUSIC";
@@ -82,6 +83,22 @@ export async function registerUploadedRawTake(input: {
   const transcribe = isAutoTranscriptionEnabled() && probed.hasAudio;
   const track = isAutoSubjectTrackingEnabled() && probed.width != null && probed.height != null;
   const matte = isAutoPersonMatteEnabled() && probed.width != null && probed.height != null;
+  if ((transcribe || track || matte) && heavyJobMode() === "sandbox") {
+    // Vercel: ONE cloud-worker job does all three (it also picks up any other take of this item
+    // still missing them). Busy (another heavy job for this video) → that job's owner or the
+    // video page's buttons cover it; logged, never fatal to the upload.
+    after(async () => {
+      const r = await runHeavyJob("ingest", { contentItemId: input.contentItemId, transcribe, track, matte }, { actorId: input.actorId }).catch((err) => ({
+        status: "refused" as const,
+        jobRunId: null,
+        message: err instanceof Error ? err.message : String(err),
+      }));
+      if (r.status !== "started") {
+        console.error(JSON.stringify({ level: "warn", event: "ingest_job_not_started", mediaAssetId: asset.id, status: r.status, message: "message" in r ? r.message : null }));
+      }
+    });
+    return asset;
+  }
   if (transcribe || track || matte) {
     after(async () => {
       if (transcribe) {

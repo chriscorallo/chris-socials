@@ -25,12 +25,9 @@ import {
   toPipelineResultInput,
   type PackagingPlatform,
 } from "@chris/agents";
-import { renderContentItem } from "@chris/worker";
-import { autoRepairContentItem } from "@chris/worker/auto-repair-job";
-import { transcribeMediaAsset } from "@chris/worker/transcribe-job";
-import { storage } from "./storage";
 import { getModelProvider } from "./model-provider";
-import { getRenderFontPath, isAutoTranscriptionEnabled } from "./render-config";
+import { isAutoTranscriptionEnabled } from "./render-config";
+import { runHeavyJob, type RunHeavyJobResult } from "./heavy-jobs";
 
 /**
  * The per-state production steps, shared by the individual buttons on the content page and by
@@ -141,6 +138,19 @@ export interface AutopilotResult {
   finalState: ContentState;
   /** Why Autopilot stopped — always set: either "needs you" or an error. */
   stoppedBecause: string;
+  /** A heavy step handed to the cloud worker (Vercel): the page follows this job's progress. */
+  jobRunId?: string;
+}
+
+/**
+ * A heavy step that didn't finish in-process: it either started in the cloud (Autopilot stops
+ * and says so — press it again when the job is done) or couldn't start. null = it ran here.
+ */
+function cloudStop(r: RunHeavyJobResult, what: string): { reason: string; jobRunId?: string } | null {
+  if (r.status === "done") return null;
+  if (r.status === "started") return { reason: `${what} in the cloud — this page shows its progress. Press Autopilot again when it's done to continue.`, jobRunId: r.jobRunId };
+  if (r.status === "busy") return { reason: r.message, jobRunId: r.jobRunId };
+  return { reason: r.message };
 }
 
 /**
@@ -153,7 +163,7 @@ export interface AutopilotResult {
 export async function runAutopilot(contentItemId: string, actor: Actor): Promise<AutopilotResult> {
   const steps: string[] = [];
   const stateOf = async () => (await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId } })).currentState;
-  const stop = async (stoppedBecause: string): Promise<AutopilotResult> => ({ steps, finalState: await stateOf(), stoppedBecause });
+  const stop = async (stoppedBecause: string, jobRunId?: string): Promise<AutopilotResult> => ({ steps, finalState: await stateOf(), stoppedBecause, ...(jobRunId ? { jobRunId } : {}) });
 
   for (let i = 0; i < MAX_AUTOPILOT_STEPS; i++) {
     const state = await stateOf();
@@ -192,8 +202,14 @@ export async function runAutopilot(contentItemId: string, actor: Actor): Promise
           const assets = await listMediaAssetsForContentItem(prisma, contentItemId);
           if (isAutoTranscriptionEnabled()) {
             for (const a of assets.filter((x) => !x.transcript && x.hasAudio !== false)) {
-              const r = await transcribeMediaAsset(prisma, storage, a.id, {}, actor);
-              steps.push(`Transcribed ${a.originalFilename}: ${r.status}${r.errorMessage ? ` (${r.errorMessage})` : ""}`);
+              const job = await runHeavyJob("transcribe", { contentItemId, mediaAssetId: a.id }, actor);
+              const cloud = cloudStop(job, "Transcribing your takes");
+              if (cloud) return stop(cloud.reason, cloud.jobRunId);
+              if (job.status !== "done") break;
+              const r = ((job.outcome.result as { transcribe?: Array<{ status: string; errorMessage?: string | null }> } | null)?.transcribe ?? [])[0];
+              const status = r?.status ?? (job.outcome.ok ? "SUCCESS" : "FAILED");
+              const err = r?.errorMessage ?? (job.outcome.ok ? null : job.outcome.error);
+              steps.push(`Transcribed ${a.originalFilename}: ${status}${err ? ` (${err})` : ""}`);
             }
           }
           await runTakeSelectionStep(contentItemId, actor);
@@ -206,15 +222,25 @@ export async function runAutopilot(contentItemId: string, actor: Actor): Promise
           break;
         case "EDIT_PLANNED":
         case "EDITING": {
-          const r = await renderContentItem(prisma, storage, contentItemId, { fontPath: getRenderFontPath() }, actor);
+          const job = await runHeavyJob("render", { contentItemId }, actor);
+          const cloud = cloudStop(job, "Rendering your video");
+          if (cloud) return stop(cloud.reason, cloud.jobRunId);
+          if (job.status !== "done") break;
+          const r = (job.outcome.result as { render?: { status: string; errorMessage: string | null } } | null)?.render;
+          if (!r) throw new Error(job.outcome.error ?? "render failed");
           steps.push(`Rendered: ${r.status}${r.status === "FAILED" ? ` (${r.errorMessage})` : ""}`);
           if (r.status === "FAILED") return stop(`Render failed: ${r.errorMessage}`);
           break;
         }
         case "RENDERED":
         case "QC_REPAIR": {
-          const r = await autoRepairContentItem(prisma, storage, getModelProvider(), contentItemId, { fontPath: getRenderFontPath() }, actor);
-          steps.push(...r.steps.map((s) => `${s.action}: ${s.outcome}`));
+          const job = await runHeavyJob("auto-repair", { contentItemId }, actor);
+          const cloud = cloudStop(job, "Running the quality check and fixing what it finds");
+          if (cloud) return stop(cloud.reason, cloud.jobRunId);
+          if (job.status !== "done") break;
+          const r = job.outcome.result as { finalState?: string; stoppedBecause?: string | null; steps?: Array<{ action: string; outcome: string }> } | null;
+          if (!r?.finalState) throw new Error(job.outcome.error ?? "auto-repair failed");
+          steps.push(...(r.steps ?? []).map((s) => `${s.action}: ${s.outcome}`));
           if (r.finalState !== "READY") return stop(r.stoppedBecause ?? `Quality loop ended at ${r.finalState}`);
           break;
         }

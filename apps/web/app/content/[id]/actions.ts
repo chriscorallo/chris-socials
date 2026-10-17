@@ -32,10 +32,6 @@ import {
   getBrandContextText,
   type PackagingPlatform,
 } from "@chris/agents";
-import { renderContentItem } from "@chris/worker";
-import { autoRepairContentItem } from "@chris/worker/auto-repair-job";
-import { transcribeMediaAsset, transcribeContentItemTakes } from "@chris/worker/transcribe-job";
-import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
 import { publishContentItem } from "@chris/worker/publish-job";
 import { captureDueSnapshots } from "@chris/worker/snapshot-job";
 import { ingestCommentsForContentItem } from "@chris/worker/comment-ingestion-job";
@@ -59,7 +55,24 @@ import {
   runAutopilot,
 } from "../../../lib/content-steps";
 import { getPlatformAdapters } from "../../../lib/platform-adapters";
-import { getRenderFontPath, isAutoTranscriptionEnabled } from "../../../lib/render-config";
+import { isAutoTranscriptionEnabled } from "../../../lib/render-config";
+import { runHeavyJob, jobParam, type RunHeavyJobResult } from "../../../lib/heavy-jobs";
+import { plainJobError } from "../../../lib/heavy-job-text";
+
+/**
+ * Where a heavy action lands: in the cloud (Vercel) it has only STARTED — the page opens with
+ * `?job=<id>` and its progress card follows it; in-process it's finished and a failure becomes
+ * the page's error line.
+ */
+function heavyJobRedirect(contentItemId: string, r: RunHeavyJobResult, failedPrefix?: (outcome: Extract<RunHeavyJobResult, { status: "done" }>["outcome"]) => string | null): never {
+  const base = `/content/${contentItemId}`;
+  if (r.status === "started") redirect(`${base}?${jobParam(r)}`);
+  if (r.status === "busy") redirect(`${base}?${jobParam(r)}&pipelineError=${encodeURIComponent(r.message)}`);
+  if (r.status === "refused") redirect(`${base}?pipelineError=${encodeURIComponent(r.message)}`);
+  const notice = failedPrefix ? failedPrefix(r.outcome) : r.outcome.ok ? null : plainJobError(r.outcome.error, (r.outcome.result as { errorName?: string } | null)?.errorName);
+  if (notice) redirect(`${base}?pipelineError=${encodeURIComponent(notice)}`);
+  redirect(base);
+}
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -287,20 +300,14 @@ export async function runRender(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
 
-  try {
-    await renderContentItem(
-      prisma,
-      storage,
-      contentItemId,
-      { fontPath: getRenderFontPath() },
-      { actorId: session.user!.id! },
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown render error";
-    redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
-  }
-
-  redirect(`/content/${contentItemId}`);
+  // Heavy (motion layer needs headless Chrome; mattes need ONNX): in-process locally, a cloud
+  // worker on Vercel (lib/heavy-jobs.ts). A render that fails its technical QC is recorded on the
+  // Render row and shown on the page, as before — only a thrown error becomes the error line.
+  const r = await runHeavyJob("render", { contentItemId }, { actorId: session.user!.id! });
+  heavyJobRedirect(contentItemId, r, (o) => {
+    const render = (o.result as { render?: unknown } | null)?.render;
+    return o.ok || render ? null : plainJobError(o.error);
+  });
 }
 
 /**
@@ -315,20 +322,9 @@ export async function runQualityGate(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
 
-  try {
-    await runQualityGateForContentItem(
-      prisma,
-      storage,
-      getModelProvider(),
-      contentItemId,
-      { actorId: session.user!.id! },
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown quality-gate error";
-    redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
-  }
-
-  redirect(`/content/${contentItemId}`);
+  // Samples frames of the render (ffmpeg) + the Visual QA model call: a heavy job (cloud on Vercel).
+  const r = await runHeavyJob("quality-gate", { contentItemId }, { actorId: session.user!.id! });
+  heavyJobRedirect(contentItemId, r, (o) => (o.ok ? null : o.error ?? "Unknown quality-gate error"));
 }
 
 /**
@@ -628,26 +624,19 @@ export async function runTranscribe(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
   const mediaAssetId = str(formData, "mediaAssetId");
-  let notice: string | null = null;
-  try {
-    if (!isAutoTranscriptionEnabled()) {
-      throw new Error(
-        "Automatic transcription is off in this deployment (local Whisper is too heavy for a " +
-          "serverless function) — paste the transcript instead, or run the app locally.",
-      );
-    }
-    const results = mediaAssetId
-      ? [await transcribeMediaAsset(prisma, storage, mediaAssetId, {}, { actorId: session.user!.id! })]
-      : await transcribeContentItemTakes(prisma, storage, contentItemId, { force: formData.get("force") === "1" }, {
-          actorId: session.user!.id!,
-        });
-    const failed = results.filter((r) => r.status === "FAILED");
-    if (failed.length > 0) notice = `Transcription failed: ${failed.map((r) => r.errorMessage).join("; ")}`;
-  } catch (err) {
-    notice = err instanceof Error ? err.message : "Unknown transcription error";
+  if (!isAutoTranscriptionEnabled()) {
+    const notice =
+      "Automatic transcription is off in this deployment (local Whisper is too heavy for a " +
+      "serverless function and no cloud worker is set up) — paste the transcript instead, or run the app locally.";
+    redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
   }
-  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
-  redirect(`/content/${contentItemId}`);
+  // Whisper runs in-process locally, in the cloud worker on Vercel (lib/heavy-jobs.ts).
+  const r = await runHeavyJob(
+    "transcribe",
+    { contentItemId, mediaAssetId: mediaAssetId || undefined, force: formData.get("force") === "1" },
+    { actorId: session.user!.id! },
+  );
+  heavyJobRedirect(contentItemId, r, (o) => (o.ok ? null : o.error ?? "Unknown transcription error"));
 }
 
 /** Manual transcript (no word timings) — for when Whisper isn't available or got it wrong. */
@@ -675,22 +664,13 @@ export async function submitManualTranscript(formData: FormData) {
 export async function runAutoRepair(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
-  let notice: string | null = null;
-  try {
-    const result = await autoRepairContentItem(
-      prisma,
-      storage,
-      getModelProvider(),
-      contentItemId,
-      { fontPath: getRenderFontPath() },
-      { actorId: session.user!.id! },
-    );
-    if (result.stoppedBecause) notice = `Auto-repair stopped at ${result.finalState}: ${result.stoppedBecause}`;
-  } catch (err) {
-    notice = err instanceof Error ? err.message : "Unknown auto-repair error";
-  }
-  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
-  redirect(`/content/${contentItemId}`);
+  // Re-renders: a heavy job (cloud on Vercel).
+  const r = await runHeavyJob("auto-repair", { contentItemId }, { actorId: session.user!.id! });
+  heavyJobRedirect(contentItemId, r, (o) => {
+    const result = o.result as { stoppedBecause?: string | null; finalState?: string } | null;
+    if (result?.stoppedBecause) return `Auto-repair stopped at ${result.finalState}: ${result.stoppedBecause}`;
+    return o.ok || result?.finalState ? null : o.error ?? "Unknown auto-repair error";
+  });
 }
 
 /** One click: the Production Director drafts the full Production Contract from the idea, the
@@ -783,5 +763,5 @@ export async function runAutopilotAction(formData: FormData) {
   const contentItemId = str(formData, "contentItemId");
   const result = await runAutopilot(contentItemId, { actorId: session.user!.id! });
   const summary = `${result.steps.length ? `Autopilot did: ${result.steps.join(" → ")}. ` : ""}${result.stoppedBecause}`;
-  redirect(`/content/${contentItemId}?autopilot=${encodeURIComponent(summary)}`);
+  redirect(`/content/${contentItemId}?autopilot=${encodeURIComponent(summary)}${result.jobRunId ? `&job=${encodeURIComponent(result.jobRunId)}` : ""}`);
 }

@@ -26,7 +26,7 @@ export function FootageUpload({ mode, contentItemId }: { mode: "blob" | "local";
   const [title, setTitle] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [finishing, setFinishing] = useState<null | { phase: "captions" | "opening"; ready: number; total: number }>(null);
+  const [finishing, setFinishing] = useState<null | { phase: "captions" | "opening"; ready: number; total: number; progress?: string | null }>(null);
   const skipRef = useRef(false);
   const busy = finishing != null || rows.some((r) => r.status === "uploading" || r.status === "processing" || r.status === "waiting");
 
@@ -42,7 +42,7 @@ export function FootageUpload({ mode, contentItemId }: { mode: "blob" | "local";
       } catch {
         break;
       }
-      setFinishing({ phase: "captions", ready: st.ready, total: st.total });
+      setFinishing({ phase: "captions", ready: st.ready, total: st.total, progress: st.progress });
       if (!st.waiting) break;
       await new Promise((r) => setTimeout(r, 2000));
     }
@@ -122,7 +122,7 @@ export function FootageUpload({ mode, contentItemId }: { mode: "blob" | "local";
               <p className="text-[16px] font-semibold">{finishing.phase === "captions" ? "Getting your captions ready…" : "Opening the editor…"}</p>
               <p className="text-[13px] text-[var(--color-text-muted)]">
                 {finishing.phase === "captions"
-                  ? "Listening to your video so captions are on when the editor opens. Usually under a minute."
+                  ? (finishing.progress ?? "Listening to your video so captions are on when the editor opens. Usually under a minute.")
                   : "Your video goes straight into the editor."}
               </p>
             </div>

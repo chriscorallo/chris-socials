@@ -1,0 +1,124 @@
+{
+  "bootMs": 1384,
+  "uploadMs": 1850,
+  "render": {
+    "wallMs": 82763,
+    "t": "2026-10-17T18:00:59.843Z",
+    "event": "offline_done",
+    "kind": "render",
+    "ms": 82014,
+    "result": {
+      "kind": "render",
+      "ms": 82013,
+      "result": {
+        "output": "out.mp4",
+        "durationSeconds": 5.9,
+        "expectedDurationSeconds": 5.9,
+        "width": 1080,
+        "height": 1920,
+        "warnings": [],
+        "motion": {
+          "overlays": 2,
+          "sfxEvents": [
+            {
+              "at": 0.3,
+              "sound": "RISER",
+              "volume": 0.6,
+              "source": "VISUAL",
+              "id": "num"
+            },
+            {
+              "at": 3.6,
+              "sound": "SHIMMER",
+              "volume": 0.6,
+              "source": "VISUAL",
+              "id": "coin"
+            }
+          ],
+          "music": null,
+          "behindSubject": 1,
+          "mattedClips": 1,
+          "framesRendered": 159,
+          "motionRenderMs": 57089,
+          "interaction": {
+            "mattesComputed": 0,
+            "mattesUsed": 1,
+            "sceneSampled": 2,
+            "emphasisWords": 0,
+            "ms": 639
+          }
+        },
+        "placements": [
+          {
+            "id": "num",
+            "template": "NUMBER_COUNTER",
+            "depth": "BEHIND_SUBJECT",
+            "placement": {
+              "mode": "MANUAL",
+              "x": 0.5,
+              "y": 0.35609911111111114,
+              "scale": 1
+            }
+          },
+          {
+            "id": "coin",
+            "template": "ICON_3D",
+            "depth": "FRONT",
+            "placement": {
+              "mode": "MANUAL",
+              "x": 0.5,
+              "y": 0.78,
+              "scale": 0.8
+            }
+          }
+        ],
+        "timings": {
+          "matte:take": 14970,
+          "interaction": 639,
+          "motion": 57111,
+          "compose": 9199
+        }
+      }
+    }
+  },
+  "transcribe": {
+    "wallMs": 3524,
+    "t": "2026-10-17T18:01:03.230Z",
+    "event": "offline_done",
+    "kind": "transcribe",
+    "ms": 2714,
+    "result": {
+      "kind": "transcribe",
+      "ms": 2713,
+      "result": {
+        "durationSeconds": 5.9946875,
+        "model": "onnx-community/whisper-base.en_timestamped"
+      }
+    }
+  },
+  "subjectTrack": {
+    "wallMs": 1054,
+    "t": "2026-10-17T18:01:04.505Z",
+    "event": "offline_done",
+    "kind": "subject-track",
+    "ms": 609,
+    "result": {
+      "kind": "subject-track",
+      "ms": 598,
+      "result": {
+        "framesAnalyzed": 18,
+        "framesWithFace": 18,
+        "fps": 3,
+        "model": "ultraface-rfb-640",
+        "source": {
+          "width": 1080,
+          "height": 1920
+        }
+      }
+    }
+  },
+  "downloadMs": 17562,
+  "activeCpuMs": 515852,
+  "sessionMs": 109399,
+  "snapshotId": "snap_w3kag80j7aDxYTFz8kXk7FzO3e2b"
+}

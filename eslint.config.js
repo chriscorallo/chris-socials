@@ -15,6 +15,8 @@ export default tseslint.config(
       "**/.pglite-*/**",
       ".claude/worktrees/**",
       "**/.cache/**",
+      // cloud-worker build output (scripts/sandbox/build-runner.ts)
+      ".sandbox-build/**",
     ],
   },
   {
