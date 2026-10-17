@@ -28,3 +28,4 @@ export * from "./overlay-layout";
 export * from "./captions";
 export * from "./timeline";
 export * from "./font-registry";
+export * from "./timeline-captions";
