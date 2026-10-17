@@ -102,9 +102,23 @@ async function uploadChunked(sandbox: Sandbox, content: Buffer, dest: string) {
 export async function uploadRunner(sandbox: Sandbox) {
   const tarPath = join(BUILD_DIR, "runner-lite.tgz");
   await rm(tarPath, { force: true });
-  await execFileAsync("tar", ["-czf", tarPath, ...LITE_EXCLUDES.map((e) => `--exclude=${e}`), "-C", OUT, "."], {
-    env: { ...process.env, COPYFILE_DISABLE: "1" },
-  });
+  // Resuming a sandbox that already has a runner: send only the files whose hash changed.
+  const remote = await sandbox.readFileToBuffer({ path: `${SANDBOX_ROOT}/MANIFEST.sha256` }).catch(() => null);
+  if (remote) {
+    const parse = (s: string) => new Map(s.trim().split("\n").map((l) => [l.slice(66), l.slice(0, 64)] as const));
+    const before = parse(remote.toString("utf8"));
+    const after = parse(await readFile(join(OUT, "MANIFEST.sha256"), "utf8"));
+    const excluded = (p: string) => LITE_EXCLUDES.some((e) => (e.endsWith("*.wav") ? p.startsWith(e.slice(0, -5)) && p.endsWith(".wav") : p === e || p.startsWith(`${e}/`)));
+    const changed = [...after].filter(([p, h]) => before.get(p) !== h && !excluded(p)).map(([p]) => p);
+    const removed = [...before.keys()].filter((p) => !after.has(p) && !excluded(p));
+    console.log(`  delta upload: ${changed.length} changed, ${removed.length} removed`);
+    if (removed.length) await sh(sandbox, `cd ${SANDBOX_ROOT} && rm -f ${removed.map((p) => JSON.stringify(p)).join(" ")}`);
+    await execFileAsync("tar", ["-czf", tarPath, "-C", OUT, "MANIFEST.sha256", "VERSION", ...changed], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+  } else {
+    await execFileAsync("tar", ["-czf", tarPath, ...LITE_EXCLUDES.map((e) => `--exclude=${e}`), "-C", OUT, "."], {
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+    });
+  }
   const tar = await readFile(tarPath);
   console.log(`  uploading runner (${(tar.byteLength / 1e6).toFixed(1)} MB, lite)…`);
   await sh(sandbox, `mkdir -p ${SANDBOX_ROOT} ${SANDBOX_CACHE}`);
@@ -123,6 +137,9 @@ export async function restoreRunner(sandbox: Sandbox) {
       "cp packages/media/assets/models/ultraface/version-RFB-640.onnx motion-bundle/public/models/ultraface/",
       "node packages/motion/scripts/generate-sfx.mjs >/dev/null",
       "sha256sum --quiet -c MANIFEST.sha256",
+      // Source maps aren't shipped (size); Remotion opens them when it symbolicates an error —
+      // empty ones keep the real error message visible.
+      "for f in motion-bundle/*.js; do [ -f \"$f.map\" ] || echo '{\"version\":3,\"sources\":[],\"names\":[],\"mappings\":\"\"}' > \"$f.map\"; done",
     ].join(" && "),
   );
   await sh(sandbox, `cd ${SANDBOX_ROOT} && npm install --omit=dev --no-audit --no-fund --loglevel=error 2>&1 | tail -5`);

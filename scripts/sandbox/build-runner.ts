@@ -141,7 +141,7 @@ export async function buildRunner(options: { skipMotionBundle?: boolean } = {}):
   });
 
   // Runtime-read files, laid out like the repo so path resolution is unchanged.
-  for (const rel of ["prompts", "brand", "packages/media/assets/fonts", "packages/media/assets/models", "packages/motion/assets/sfx", "packages/motion/scripts/generate-sfx.mjs"]) {
+  for (const rel of ["prompts", "brand", "packages/media/assets", "packages/motion/assets/sfx", "packages/motion/scripts/generate-sfx.mjs"]) {
     await cp(join(REPO, rel), join(OUT, rel), { recursive: true });
   }
 
