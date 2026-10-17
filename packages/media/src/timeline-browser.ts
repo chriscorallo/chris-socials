@@ -11,3 +11,6 @@ export * from "./font-metrics";
 export * from "./timeline-layout";
 export * from "./platform-profiles";
 export * from "./motion-contract";
+export * from "./subject-track-core";
+export * from "./visual-footprints";
+export * from "./visual-placement";
