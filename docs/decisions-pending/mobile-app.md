@@ -116,7 +116,9 @@ win); `body` has `overflow-x: clip` as a last-resort guard. Editor files were no
 ## 2026-10-16 — Verification environment notes (no product impact)
 
 Turbopack's Google Fonts fetch timed out in the agent sandbox, so the throwaway screenshot
-environment mirrors Inter locally via `NEXT_FONT_GOOGLE_MOCKED_RESPONSES`; WebKit could not be
-downloaded in the sandbox (CDN connection resets), so device emulation used Chromium with
-Playwright's iPhone/iPad descriptors (`isMobile`, `hasTouch`, DPR 2–3). Real-device Safari check
-remains a follow-up (see "known gaps" in the hand-off report).
+environment mirrors Inter locally via `NEXT_FONT_GOOGLE_MOCKED_RESPONSES`. Pages were checked in
+Chromium (Playwright iPhone/iPad descriptors: `isMobile`, `hasTouch`, DPR 2–3) at 320/375/393/
+430/820/1440px and in WebKit (Safari's engine) at 320/375/393/430px — no horizontal overflow, no
+form control under 16px, no app console errors (WebKit headless logs its own `<video>` control
+icon "placard" warnings, not ours). Desktop WebKit is not iOS Safari: a check on a real iPhone
+(safe-area insets, home-screen launch, Photos picker) remains a follow-up.
