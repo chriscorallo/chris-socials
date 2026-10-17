@@ -107,7 +107,7 @@ async function main() {
       ["investing", theme("Compounding growth", "CINEMATIC", "GLASS", "#F2C14E", "#2FBF8F")],
       ["lifestyle", theme("Golden hour", "PLAYFUL", "SOFT_CLAY", "#FFA567", "#F27BB0")],
     ];
-    for (const [k, th] of themes) await renderSet(outDir, "themes", k, th, specs, 2.4, [2.0], manifest);
+    for (const [k, th] of themes) await renderSet(outDir, "themes", k, th, specs, 2.4, [1.5], manifest);
   }
 
   await writeFile(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 1));
