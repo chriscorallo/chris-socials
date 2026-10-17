@@ -15,6 +15,7 @@ import {
   isEnabled,
   AUTONOMY_LEVEL_THRESHOLDS,
   AUTONOMY_SHADOW_ONLY_FLAG,
+  getMotionTasteProfile,
 } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
@@ -33,6 +34,7 @@ import {
   refreshTasteModelAction,
   submitAutonomyCeiling,
   toggleShadowOnly,
+  forgetMotionPreferenceAction,
 } from "./actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
@@ -66,6 +68,7 @@ export default async function LearningsPage({
   const briefs = await listWeeklyBriefs(prisma);
   const tasteFeedback = await listTasteFeedback(prisma, { limit: 15 });
   const tasteFeedbackTotal = await countTasteFeedback(prisma);
+  const motionTaste = await getMotionTasteProfile(prisma).catch(() => null);
   const autonomyLevels = await listAutonomyLevels(prisma);
   const shadowOnly = await isEnabled(prisma, AUTONOMY_SHADOW_ONLY_FLAG);
   const SUBSYSTEMS = ["TAKE_SELECTION", "EDIT_PLANNING", "QUALITY_GATE", "SCHEDULING", "PUBLISHING"] as const;
@@ -371,6 +374,44 @@ export default async function LearningsPage({
               <Button className="w-full sm:w-auto" pendingLabel="Refreshing…">Refresh taste model</Button>
               {tasteRefreshed && <span className="text-[13px] text-[var(--color-text-muted)]">{tasteRefreshed}</span>}
             </form>
+          </CollapsiblePanel>
+
+          {/* Your motion style — learned from editor saves (packages/domain motion-taste.ts). */}
+          <CollapsiblePanel
+            id="motion-style"
+            eyebrow="Motion graphics"
+            title="Your motion style"
+            meta={motionTaste && motionTaste.preferences.length ? <Badge tone="violet">{motionTaste.preferences.length} learned</Badge> : undefined}
+            className="order-6"
+          >
+            <p className="mb-3 text-[13px] text-[var(--color-text-muted)]">
+              Learned from what you keep, edit and delete in the finishing editor. A preference is{" "}
+              <strong>strong</strong> only after 3+ consistent edits across 2+ videos; anything less is a{" "}
+              <strong>hint</strong> the Motion Designer won&apos;t treat as a rule. Recent edits count more.
+            </p>
+            {!motionTaste || motionTaste.preferences.length === 0 ? (
+              <p className="text-[13px] text-[var(--color-text-faint)]">Nothing learned yet — edit a few AI-designed videos and it will show up here.</p>
+            ) : (
+              <ul className="text-[14px] sm:text-[13px]">
+                {motionTaste.preferences.slice(0, 12).map((p) => (
+                  <li key={p.key} className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] py-2 last:border-0">
+                    <Badge tone={p.strength === "STRONG" ? "gold" : "neutral"}>{p.strength === "STRONG" ? "Strong" : "Hint"}</Badge>
+                    <span className="min-w-0 flex-1">
+                      {p.label}
+                      {p.scope !== "ALL" ? <span className="text-[var(--color-text-faint)]"> · {p.scope.toLowerCase()} videos</span> : null}
+                      <span className="block text-xs text-[var(--color-text-faint)]">
+                        {p.evidenceCount} edit{p.evidenceCount === 1 ? "" : "s"} · {p.videoCount} video{p.videoCount === 1 ? "" : "s"} · confidence {Math.round(p.confidence * 100)}%
+                      </span>
+                    </span>
+                    <form action={forgetMotionPreferenceAction}>
+                      <input type="hidden" name="key" value={p.key} />
+                      <input type="hidden" name="label" value={p.label} />
+                      <Button className="min-h-[44px]" pendingLabel="Forgetting…">Forget this</Button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CollapsiblePanel>
 
           {/* Autonomy */}

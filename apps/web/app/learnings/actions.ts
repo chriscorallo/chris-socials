@@ -20,6 +20,7 @@ import {
   setAutonomyCeiling,
   setFlag,
   AUTONOMY_SHADOW_ONLY_FLAG,
+  forgetMotionPreference,
 } from "@chris/domain";
 import {
   runLearningAgent,
@@ -345,4 +346,15 @@ export async function refreshTasteModelAction() {
     redirect(`/learnings?learningError=${encodeURIComponent(err instanceof Error ? err.message : "Taste refresh failed")}`);
   }
   redirect(`/learnings?tasteRefreshed=${encodeURIComponent(summary)}`);
+}
+
+/** "Forget this" on a learned motion preference: records a counter-signal (FORGET) so the
+ * profile stops using that preference's evidence so far — the evidence itself is kept
+ * (audit trails are permanent). New edits can re-teach it. */
+export async function forgetMotionPreferenceAction(formData: FormData) {
+  const session = await requireSession();
+  const key = str(formData, "key");
+  if (!key) redirect("/learnings");
+  await forgetMotionPreference(prisma, { key, label: str(formData, "label") || null, actorId: session.user!.id! });
+  redirect("/learnings#motion-style");
 }
