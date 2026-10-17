@@ -131,6 +131,17 @@ export default async function CalendarPage({
           </div>
         </details>
 
+        {/* Plan import entry point (docs/decisions-pending/plan-import.md): only when nothing is on this view yet. */}
+        {!events.some((e) => e.kind === "post") && (
+          <Link href="/plan/import" className="panel mb-5 flex min-h-[60px] items-center justify-between gap-3 px-4 py-3 active:bg-white/[0.03]" data-testid="calendar-import-plan">
+            <span className="min-w-0">
+              <span className="block text-[15px] font-semibold">Have a video plan?</span>
+              <span className="block text-[13px] text-[var(--color-text-muted)]">Import it — every video lands on its day.</span>
+            </span>
+            <span className="btn btn-primary !min-h-[38px] shrink-0 !text-[13.5px]">Import plan</span>
+          </Link>
+        )}
+
         <CalendarClient
           view={view}
           anchor={anchor}

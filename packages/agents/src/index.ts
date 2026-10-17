@@ -37,3 +37,4 @@ export * from "./production-director-agent";
 export * from "./taste-refresh";
 export * from "./motion-designer-agent";
 export * from "./motion-theme";
+export * from "./plan-importer-agent";

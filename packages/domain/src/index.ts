@@ -127,3 +127,8 @@ export * from "./posting-plan";
 export * from "./course";
 export * from "./todo";
 export type { PostingPlan, NudgeDismissal } from "@prisma/client";
+
+// Plan import (2026-10-17) — see docs/decisions-pending/plan-import.md. The browser-safe
+// parsers/matcher are at `@chris/domain/plan-import`.
+export * from "./plan-import-db";
+export type { PlanImport } from "@prisma/client";

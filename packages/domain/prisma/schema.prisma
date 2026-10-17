@@ -166,6 +166,38 @@ model ContentItem {
   tasteFeedback        TasteFeedback[]
   experimentVariants   ExperimentVariant[]
   adversarialCritiques AdversarialCritique[]
+
+  // Plan import provenance (2026-10-17): which imported plan created this item, if any.
+  planImportId String?
+  planImport   PlanImport? @relation(fields: [planImportId], references: [id])
+
+  @@index([planImportId])
+}
+
+// Plan import (2026-10-17) — Chris's own video plan (CSV / Excel / Google Sheet / pasted
+// text) turned into planned ContentItems + ScheduleEntries. One row per import, for
+// provenance and "Undo this import" (which cancels the untouched items with a reason — it
+// never deletes them or their history). The raw input is kept only as a hash + a short
+// excerpt. See docs/decisions-pending/plan-import.md.
+model PlanImport {
+  id              String    @id @default(cuid())
+  sourceKind      String // CSV | XLSX | GOOGLE_SHEETS | TEXT | AI_CLEANUP
+  sourceRef       String? // file name or sheet link
+  rawInputHash    String
+  rawInputExcerpt String
+  /// sha256 of the canonical rows — the same plan imported twice is a no-op.
+  idempotencyKey  String
+  rowCount        Int
+  createdCount    Int       @default(0)
+  skippedCount    Int       @default(0)
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  undoneAt        DateTime?
+  undoneBy        String?
+
+  items ContentItem[]
+
+  @@index([idempotencyKey])
 }
 
 // --- Reference Creator Intelligence (spec §8) ---
