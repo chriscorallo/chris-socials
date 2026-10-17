@@ -67,7 +67,7 @@ const counter = (start: number, end: number, value = 24500, importance = 3) =>
   v({ template: "NUMBER_COUNTER", props: { value, from: 0, prefix: "$", suffix: "", decimals: 0, label: "in three years" }, start, end, importance });
 
 function provider(visuals: MotionDesignerVisual[]) {
-  return new MockModelProvider(() => ({ rationale: "Numbers where he says numbers.", visuals }));
+  return new MockModelProvider(() => ({ rationale: "Numbers where he says numbers.", theme: null, visuals }));
 }
 
 describe("Motion Designer output schema", () => {
@@ -85,7 +85,7 @@ describe("Motion Designer output schema", () => {
   });
 
   it("rejects free-form props (no z.record escape hatch)", () => {
-    const bad = { rationale: "", visuals: [{ ...counter(1, 3), props: { value: 1, from: 0, prefix: "", suffix: "", decimals: 0, label: null, extra: 1 } }] };
+    const bad = { rationale: "", theme: null, visuals: [{ ...counter(1, 3), props: { value: 1, from: 0, prefix: "", suffix: "", decimals: 0, label: null, extra: 1 } }] };
     expect(MotionDesignerOutputSchema.safeParse(bad).success).toBe(false);
   });
 });

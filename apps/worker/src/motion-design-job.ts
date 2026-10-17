@@ -1,5 +1,7 @@
 import {
   getLatestEditPlan,
+  getMotionTasteForDesign,
+  classifyMotionTopic,
   isEnabled,
   isScriptVersionFilmable,
   parseTranscriptWords,
@@ -47,6 +49,9 @@ export interface MotionDesignJobResult {
   warnings?: string[];
   placementWarnings?: PlacementWarning[];
   rationale?: string;
+  /** The video's motion theme saved on the timeline, and where it came from. */
+  motionTheme?: DesignVisualsResult["motionTheme"];
+  themeSource?: DesignVisualsResult["themeSource"];
   subjectTracking?: SubjectTrackJobResult[];
   errorMessage?: string;
 }
@@ -147,6 +152,10 @@ export async function designMotionForContentItem(
     const gated = scripts.find((s) => isScriptVersionFilmable(s).ok) ?? null;
 
     const brandContext = await getBrandContextText(db);
+    // Topic + learned taste (best effort: learning must never block designing).
+    const topicInput = { title: item.title, description: item.description, pillar: item.pillar };
+    const { topic } = classifyMotionTopic({ ...topicInput, script: gated?.spokenScript ?? null });
+    const motionTaste = await getMotionTasteForDesign(db, topic).catch(() => null);
     const designed: DesignVisualsResult = await designVisualsForTimeline(scopeProvider(provider, { contentItemId }), {
       timeline,
       wordsByAsset,
@@ -158,9 +167,11 @@ export async function designMotionForContentItem(
       brandContext,
       replaceExisting: options.replaceExisting,
       measure: nodeMeasureText,
+      topic: topicInput,
+      motionTaste: motionTaste ? { context: motionTaste.context, capDelta: motionTaste.capDelta, avoidTemplates: motionTaste.avoidTemplates } : null,
     });
 
-    const nextTimeline = EditTimelineSchema.parse({ ...timeline, visuals: designed.visuals });
+    const nextTimeline = EditTimelineSchema.parse({ ...timeline, visuals: designed.visuals, motionTheme: designed.motionTheme });
     const note = `Motion Designer: ${designed.added.length} visual(s) added${designed.rejectedVisuals.length ? `, ${designed.rejectedVisuals.length} rejected` : ""}`;
 
     let editPlanId: string;
@@ -203,6 +214,8 @@ export async function designMotionForContentItem(
         added: designed.added.map((v) => ({ id: v.id, template: v.template, start: v.start, end: v.end, anchorText: v.anchorText })),
         rejectedVisuals: designed.rejectedVisuals,
         placementWarnings: designed.placementWarnings.map((w) => `${w.code}: ${w.message}`),
+        motionTheme: designed.motionTheme,
+        themeSource: designed.themeSource,
       },
       metadata: {
         model: designed.model,
@@ -210,6 +223,8 @@ export async function designMotionForContentItem(
         researchPacketId: packet?.id ?? null,
         scriptVersionId: gated?.id ?? null,
         subjectTracking: subjectTracking.map((r) => ({ mediaAssetId: r.mediaAssetId, status: r.status })),
+        topic,
+        motionTasteApplied: motionTaste ? { capDelta: motionTaste.capDelta, avoidTemplates: motionTaste.avoidTemplates, hasContext: !!motionTaste.context } : null,
       },
     });
 
@@ -225,6 +240,8 @@ export async function designMotionForContentItem(
       ],
       placementWarnings: designed.placementWarnings,
       rationale: designed.rationale,
+      motionTheme: designed.motionTheme,
+      themeSource: designed.themeSource,
       subjectTracking,
     };
   } catch (err) {

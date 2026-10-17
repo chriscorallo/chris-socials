@@ -36,3 +36,4 @@ export * from "./script-regate";
 export * from "./production-director-agent";
 export * from "./taste-refresh";
 export * from "./motion-designer-agent";
+export * from "./motion-theme";
