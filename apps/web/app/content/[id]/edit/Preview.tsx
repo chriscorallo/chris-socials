@@ -297,6 +297,9 @@ export function Canvas({ w, h }: { w: number; h: number }) {
 
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    // Touch/pen: suppress the compatibility mousedown, which would steal focus from the
+    // keyboard bar opened by a tap (and close the iOS keyboard right after it opens).
+    if (e.pointerType !== "mouse") e.preventDefault();
     const el = e.currentTarget;
     try {
       el.setPointerCapture(e.pointerId);
@@ -304,6 +307,14 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       /* synthetic events */
     }
     const p = canvasPt(e, el);
+    // A primary pointer always starts a fresh gesture (a lost pointerup must never leave a
+    // stale gesture that swallows the next touch).
+    if (e.isPrimary && gesture.current) {
+      gesture.current = null;
+      setGuides({ v: false, h: false });
+      setDragging(false);
+      commit();
+    }
     const gs = gesture.current;
     if (gs) {
       if (gs.pointers.size >= 2) return;
