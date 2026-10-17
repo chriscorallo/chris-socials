@@ -39,7 +39,7 @@ export const LAYOUT = {
     lineHeight: 1.15,
     /** Max line width as a fraction of canvas width (before plate padding / stroke). */
     maxWidth: 0.78,
-    plate: { padX: 0.32, padY: 0.16, radius: 0.22 },
+    plate: { padX: 0.36, padY: 0.2, radius: 0.24 },
     strokeWidth: 0.055,
     /** CLEAN only: soft drop shadow offset (x = y) and its colour. */
     cleanShadow: { offset: 0.035, color: "#00000080" },
