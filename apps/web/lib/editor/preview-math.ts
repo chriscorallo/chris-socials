@@ -1,161 +1,65 @@
-import type { TimelineCrop, TimelineGrade, TimelineZoom, TimelineText, TimelineCaptions } from "@chris/media/timeline";
+import {
+  cropGeometry,
+  temperatureGains,
+  vignetteFactor,
+  type ResolvedGrade,
+  type TimelineCrop,
+} from "@chris/media/timeline";
 
 /**
- * Pure geometry/color math shared by the preview canvas, so the preview follows the contract
- * conventions in packages/media/src/timeline.ts exactly (crop = scale-to-cover then zoom, pan
- * across the overflow; positions are element CENTERS as canvas fractions; px at 1080 width).
+ * Small preview helpers on top of the renderer's own layout math (`@chris/media/timeline`'s
+ * cropGeometry / zoomStateAt / resolveGrade / layoutTimelineText / layoutCaptionChunk). Only
+ * things the shared module doesn't provide live here: the inverse of the pan mapping (for
+ * drag-to-reframe), the grade as SVG filter parameters, vignette gradient stops, and
+ * formatting helpers.
  */
 
-/**
- * Layout of a source frame inside the canvas for a clip's crop. The video element is sized
- * `baseW x baseH` (cover at zoom 1) and transformed with
- * `translate(tx px, ty px) scale(crop.zoom)` from origin 0 0.
- */
-export function coverLayout(
-  srcW: number,
-  srcH: number,
-  canvasW: number,
-  canvasH: number,
+/** The pan that results from dragging the picture by (dx, dy) canvas px. */
+export function panAfterDrag(
   crop: TimelineCrop,
-): { baseW: number; baseH: number; tx: number; ty: number; scale: number } {
-  const w = srcW > 0 ? srcW : canvasW;
-  const h = srcH > 0 ? srcH : canvasH;
-  const cover = Math.max(canvasW / w, canvasH / h);
-  const baseW = w * cover;
-  const baseH = h * cover;
-  const zoom = Math.max(1, crop.zoom);
-  const overflowX = baseW * zoom - canvasW;
-  const overflowY = baseH * zoom - canvasH;
-  const tx = -(overflowX / 2) * (1 + clampPan(crop.panX));
-  const ty = -(overflowY / 2) * (1 + clampPan(crop.panY));
-  return { baseW, baseH, tx, ty, scale: zoom };
+  source: { width: number; height: number },
+  canvas: { width: number; height: number },
+  dx: number,
+  dy: number,
+): { panX: number; panY: number } {
+  const g = cropGeometry(source, canvas, crop);
+  const ox = g.scaledWidth - canvas.width;
+  const oy = g.scaledHeight - canvas.height;
+  // offsetX = ox·(panX+1)/2 and the picture moves by -offset → dragging right lowers panX.
+  const panX = ox > 0.5 ? clampPan(crop.panX - (2 * dx) / ox) : 0;
+  const panY = oy > 0.5 ? clampPan(crop.panY - (2 * dy) / oy) : 0;
+  return { panX: round(panX), panY: round(panY) };
 }
 
 function clampPan(p: number) {
   return Math.max(-1, Math.min(1, p || 0));
 }
 
-/** Inverse of the pan mapping: the pan that results from dragging the picture by (dx, dy) px. */
-export function panAfterDrag(
-  crop: TimelineCrop,
-  srcW: number,
-  srcH: number,
-  canvasW: number,
-  canvasH: number,
-  dx: number,
-  dy: number,
-): { panX: number; panY: number } {
-  const { baseW, baseH } = coverLayout(srcW, srcH, canvasW, canvasH, crop);
-  const ox = baseW * crop.zoom - canvasW;
-  const oy = baseH * crop.zoom - canvasH;
-  // tx = -(ox/2)(1+panX) -> dragging right (dx>0) increases tx -> decreases panX.
-  const panX = ox > 0.5 ? clampPan(crop.panX - (2 * dx) / ox) : 0;
-  const panY = oy > 0.5 ? clampPan(crop.panY - (2 * dy) / oy) : 0;
-  return { panX: round(panX), panY: round(panY) };
-}
-
 /**
- * Punch-in at output time `t` (on top of the clip crop). The last-defined active zoom wins.
- * CUT = full zoom for the whole span. EASE = smooth (smoothstep) push from 1x to `zoom` over
- * the first `easeSeconds`, then hold; it cuts back at the end of the span.
+ * The grade as SVG filter parameters (PREVIEW PARITY NOTES, timeline-engine.md):
+ * contrast/brightness = feComponentTransfer linear (slope c, intercept 0.5·(1−c)+b), then
+ * feColorMatrix saturate, then a diagonal temperature matrix from temperatureGains.
  */
-export function zoomAt(zooms: TimelineZoom[], t: number): { scale: number; x: number; y: number; id: string | null } {
-  let active: TimelineZoom | null = null;
-  for (const z of zooms) if (t >= z.start && t < z.end) active = z;
-  if (!active) return { scale: 1, x: 0.5, y: 0.5, id: null };
-  let scale = active.zoom;
-  if (active.mode === "EASE" && active.easeSeconds > 0) {
-    const p = Math.min(1, Math.max(0, (t - active.start) / active.easeSeconds));
-    const s = p * p * (3 - 2 * p);
-    scale = 1 + (active.zoom - 1) * s;
+export function gradeSvgParams(g: ResolvedGrade): { slope: number; intercept: number; saturation: number; matrix: string } {
+  const tg = temperatureGains(g.temperature);
+  return {
+    slope: round(g.contrast),
+    intercept: round(0.5 * (1 - g.contrast) + g.brightness),
+    saturation: round(g.saturation),
+    matrix: `${tg.r} 0 0 0 0  0 ${tg.g} 0 0 0  0 0 ${tg.b} 0 0  0 0 0 1 0`,
+  };
+}
+
+/** CSS radial-gradient reproducing the renderer's vignette (cos⁴ falloff to the farthest corner). */
+export function vignetteGradient(v: number): string | null {
+  if (v <= 0) return null;
+  const stops: string[] = [];
+  for (let i = 0; i <= 10; i++) {
+    const d = i / 10;
+    const a = 1 - vignetteFactor(v, d);
+    stops.push(`rgba(0,0,0,${round(a)}) ${i * 10}%`);
   }
-  return { scale, x: active.x, y: active.y, id: active.id };
-}
-
-/**
- * CSS approximation of the renderer's grade: filter for brightness/contrast/saturation, a
- * soft-light color wash for temperature, and a radial vignette. (The renderer uses ffmpeg
- * eq/colorbalance/vignette — close, not pixel-identical; see INTEGRATION NOTES.)
- */
-export function gradeCss(grade: Omit<TimelineGrade, "preset">): {
-  filter: string;
-  wash: { color: string; opacity: number } | null;
-  vignette: number;
-} {
-  const parts: string[] = [];
-  if (grade.brightness !== 0) parts.push(`brightness(${round(1 + grade.brightness)})`);
-  if (grade.contrast !== 1) parts.push(`contrast(${round(grade.contrast)})`);
-  if (grade.saturation !== 1) parts.push(`saturate(${round(grade.saturation)})`);
-  const t = grade.temperature;
-  const wash = t === 0 ? null : { color: t > 0 ? "#ff9a3c" : "#3c8cff", opacity: round(Math.min(0.6, Math.abs(t) * 0.45)) };
-  return { filter: parts.join(" ") || "none", wash, vignette: grade.vignette };
-}
-
-/** Outline thickness (px at canvas width 1080) the preview uses for a stroked text. */
-export function strokePx(fontSize: number): number {
-  return Math.max(2, Math.round(fontSize * 0.07));
-}
-
-// ---------------------------------------------------------------------------------------
-// Box estimates (for safe-zone checks) — deterministic, font-metric-free approximations.
-// ---------------------------------------------------------------------------------------
-
-export interface Box {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
-
-const AVG_CHAR_EM = 0.5;
-const AVG_CHAR_EM_UPPER = 0.62;
-const LINE_HEIGHT_EM = 1.15;
-
-/** Greedy word-wrap of `text` into lines no wider than `maxPx`, using an average glyph width. */
-export function estimateLines(text: string, fontSize: number, maxPx: number, uppercase: boolean): string[] {
-  const em = (uppercase ? AVG_CHAR_EM_UPPER : AVG_CHAR_EM) * fontSize;
-  const lines: string[] = [];
-  for (const para of text.split(/\n/)) {
-    let line = "";
-    for (const word of para.split(/\s+/).filter(Boolean)) {
-      const cand = line ? `${line} ${word}` : word;
-      if (cand.length * em > maxPx && line) {
-        lines.push(line);
-        line = word;
-      } else line = cand;
-    }
-    lines.push(line);
-  }
-  return lines;
-}
-
-/** Estimated box of a text element in canvas px (at canvas width W / height H). */
-export function estimateTextBox(t: TimelineText, W = 1080, H = 1920): Box {
-  const k = W / 1080;
-  const fs = t.fontSize * k;
-  const maxPx = t.maxWidth * W;
-  const lines = estimateLines(t.text, fs, maxPx, t.uppercase);
-  const em = (t.uppercase ? AVG_CHAR_EM_UPPER : AVG_CHAR_EM) * fs;
-  const pad = t.backgroundColor ? fs * 0.3 : 0;
-  const width = Math.min(maxPx, Math.max(...lines.map((l) => l.length * em))) + pad * 2;
-  const height = lines.length * fs * LINE_HEIGHT_EM + pad * 2;
-  const cx = t.x * W;
-  const cy = t.y * H;
-  return { x0: cx - width / 2, x1: cx + width / 2, y0: cy - height / 2, y1: cy + height / 2 };
-}
-
-/** Estimated box of the caption block for its longest chunk text. */
-export function estimateCaptionBox(c: TimelineCaptions, longestChunkText: string, W = 1080, H = 1920): Box {
-  const k = W / 1080;
-  const fs = c.fontSize * k;
-  const maxPx = 0.84 * W;
-  const lines = estimateLines(longestChunkText || "Caption text", fs, maxPx, c.uppercase);
-  const em = (c.uppercase ? AVG_CHAR_EM_UPPER : AVG_CHAR_EM) * fs;
-  const pad = c.backgroundColor || c.preset === "BOXED" ? fs * 0.3 : 0;
-  const width = Math.min(maxPx, Math.max(...lines.map((l) => l.length * em))) + pad * 2;
-  const height = lines.length * fs * LINE_HEIGHT_EM + pad * 2;
-  const cy = c.y * H;
-  return { x0: W / 2 - width / 2, x1: W / 2 + width / 2, y0: cy - height / 2, y1: cy + height / 2 };
+  return `radial-gradient(circle farthest-corner at 50% 50%, ${stops.join(", ")})`;
 }
 
 /** Hex #RRGGBB(AA) -> CSS rgba(). */
