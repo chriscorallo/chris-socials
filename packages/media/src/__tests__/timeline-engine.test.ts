@@ -61,7 +61,7 @@ describe("font registry + metrics", () => {
     for (const f of FONT_REGISTRY) {
       const bytes = readFileSync(join(dir, f.file));
       const font = opentype.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-      const os2 = font.tables.os2 as { usWinAscent: number; usWinDescent: number; sCapHeight: number };
+      const os2 = font.tables.os2 as unknown as { usWinAscent: number; usWinDescent: number; sCapHeight: number };
       const m = FONT_METRICS[f.id]!;
       expect(m, f.id).toBeTruthy();
       expect(m.unitsPerEm).toBe(font.unitsPerEm);
