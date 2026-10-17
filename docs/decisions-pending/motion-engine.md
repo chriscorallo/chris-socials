@@ -179,6 +179,12 @@ else an existing Puppeteer/Playwright `chrome-headless-shell`, else Remotion dow
 3. **Remotion Lambda** (AWS) — fastest for long videos (parallel chunks), but adds AWS and the
    alpha clips must be fetched back for compositing.
 The browser Player has none of these constraints (runs client-side).
+Vercel function size (250 MB trace cap): apps/web only reaches @chris/motion through the
+worker's non-literal `import()`, which Next's file tracing does not follow, so Remotion's
+compositor/rspack binaries and three.js should not land in function traces. If a future
+static import changes that, add `../../node_modules/.pnpm/@remotion+compositor-*/**`,
+`../../node_modules/.pnpm/@rspack+binding-*/**` and `../../packages/motion/assets/**` to
+`outputFileTracingExcludes` in apps/web/next.config.ts.
 
 **Tests.** `packages/motion/src/__tests__/timing.test.ts` (props/defaults/timing/placement),
 `render.integration.test.ts` (real Remotion + ffmpeg; `MOTION_SKIP_REAL_RENDER=1` skips it on
