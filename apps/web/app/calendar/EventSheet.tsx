@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { CalEvent, PoolItem } from "../../lib/calendar-data";
 import { formatMinutes, monthDayLabel, weekdayName } from "../../lib/calendar-views";
-import { formatHhmm, parseHhmm } from "@chris/domain/planning";
+import { formatHhmm, parseHhmm, friendlyStateLabel, type ContentState } from "@chris/domain/planning";
 import { ALL_PLATFORMS, PLATFORM_COLOR, PLATFORM_NAME, PlatformDots, StatusPill } from "./calendar-ui";
 import { moveEvent, scheduleAt, unscheduleEvent } from "./actions";
 import { runAutopilotAction } from "../content/[id]/actions";
@@ -334,7 +334,7 @@ function PickVideo({
                     <input type="hidden" name="contentItemId" value={item.id} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[14px] font-medium">{item.title}</span>
-                      <span className="text-[12px] text-[var(--color-text-faint)]">{item.state.toLowerCase().replace(/_/g, " ")}</span>
+                      <span className="text-[12px] text-[var(--color-text-faint)]">{friendlyStateLabel(item.state as ContentState)}</span>
                     </span>
                     <button type="submit" className="btn btn-ghost !min-h-[38px] shrink-0 !px-3 !text-[13px]">
                       Autopilot
