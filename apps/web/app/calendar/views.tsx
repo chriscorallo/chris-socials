@@ -230,7 +230,7 @@ function DayColumn({
               zIndex: 2,
             }}
           >
-            <span className={`block font-semibold leading-tight ${variant === "day" ? "text-[14px]" : "text-[11.5px] lg:text-[12px]"} line-clamp-2`}>
+            <span className={`block break-normal font-semibold leading-tight [overflow-wrap:normal] ${variant === "day" ? "text-[14px]" : "text-[11.5px] lg:text-[12px]"} line-clamp-2`}>
               {eventTitle(e)}
             </span>
             <span className="mt-0.5 flex items-center gap-1 text-[10.5px] text-[var(--color-text-muted)]">
