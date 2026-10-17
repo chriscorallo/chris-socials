@@ -31,5 +31,8 @@ packages/domain/.pglite-*/
 # Claude Code agent worktrees
 .claude/worktrees/
 
+# cloud-worker build output (scripts/sandbox/build-runner.ts)
+.sandbox-build/
+
 # local ML model cache (transformers.js Whisper — see packages/media/src/transcription)
 .cache/

@@ -1,0 +1,374 @@
+import { updateHeavyJobProgress, finishHeavyJob, type PrismaClient } from "@chris/domain";
+import type { ModelProvider, TranscriptionProvider } from "@chris/agents";
+import type { StorageAdapter } from "@chris/media";
+import { renderContentItem, type MotionOptions, type RenderJobResult } from "./render-job";
+import { runQualityGateForContentItem } from "./quality-gate-job";
+import { autoRepairContentItem } from "./auto-repair-job";
+import { transcribeMediaAsset, transcribeContentItemTakes, type TranscribeJobResult } from "./transcribe-job";
+import { ensureSubjectTracks, type SubjectAnalyzer, type SubjectTrackJobResult } from "./subject-track-job";
+import { ensurePersonMattes, type MatteComputer, type PersonMatteJobResult } from "./person-matte-job";
+import { designMotionForContentItem } from "./motion-design-job";
+import { HEAVY_JOB_LABEL, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "./heavy-job-kinds";
+
+/**
+ * Runs one heavy job against a real database + storage. The SAME function runs in-process
+ * (local `next dev`, tests) and inside the Vercel Sandbox (job-runner.ts) — so the cloud path
+ * is the local path, not a re-implementation. Every job delegates to the existing worker job
+ * (renderContentItem, runQualityGateForContentItem, …), which persists through the domain
+ * layer exactly as before; this only sequences, reports progress and shapes a small result.
+ * Never throws for an expected failure: `{ ok: false, error }` with a sentence for Chris.
+ */
+
+export interface HeavyJobProgressUpdate {
+  pct: number;
+  message: string;
+  stage: string;
+}
+
+export interface HeavyJobContext {
+  db: PrismaClient;
+  storage: StorageAdapter;
+  actor: { actorId: string };
+  /** Lazily built (only jobs that call a model need it). */
+  modelProvider?: () => ModelProvider;
+  progress?: (p: HeavyJobProgressUpdate) => void;
+  /** Test/host injection points. */
+  motion?: MotionOptions;
+  transcriptionProvider?: TranscriptionProvider & { model?: string };
+  analyze?: SubjectAnalyzer;
+  computeMatte?: MatteComputer;
+  encode?: { preset?: string; crf?: number };
+  fontPath?: string;
+}
+
+export interface HeavyJobOutcome {
+  ok: boolean;
+  /** Small JSON result (stored on the JobRun). */
+  result: unknown;
+  /** Plain-English failure reason (when !ok). */
+  error?: string;
+  /** Plain-English final line ("Rendered.", "Transcribed 2 takes."). */
+  message: string;
+}
+
+function needModel(ctx: HeavyJobContext): ModelProvider {
+  if (!ctx.modelProvider) throw new Error("This job needs the AI service, but no model provider is configured (ANTHROPIC_API_KEY).");
+  return ctx.modelProvider();
+}
+
+function slimRender(r: RenderJobResult) {
+  return {
+    status: r.status,
+    outputStorageKey: r.outputStorageKey ?? null,
+    errorMessage: r.errorMessage ?? null,
+    unexecutedInstructions: r.unexecutedInstructions ?? [],
+  };
+}
+
+async function stateOf(db: PrismaClient, contentItemId: string) {
+  return (await db.contentItem.findUniqueOrThrow({ where: { id: contentItemId }, select: { currentState: true } })).currentState;
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: unknown, ctx: HeavyJobContext): Promise<HeavyJobOutcome> {
+  const args = parseHeavyJobArgs(kind, rawArgs) as HeavyJobArgsByKind[HeavyJobKind];
+  const progress = (pct: number, message: string, stage: string) => {
+    try {
+      ctx.progress?.({ pct, message, stage });
+    } catch {
+      // best effort
+    }
+  };
+  progress(1, `${HEAVY_JOB_LABEL[kind]}…`, "start");
+  const { db, storage, actor } = ctx;
+
+  switch (kind) {
+    case "render": {
+      const a = args as HeavyJobArgsByKind["render"];
+      const check = a.thenQualityGate === true;
+      // With a quality check after it, the render is the first ~85% of the job.
+      const scale = check ? 0.85 : 1;
+      const r = await renderContentItem(
+        db,
+        storage,
+        a.contentItemId,
+        {
+          fontPath: ctx.fontPath,
+          encode: ctx.encode,
+          motion: ctx.motion,
+          onProgress: (p) => progress(p.pct * scale, p.message, "render"),
+        },
+        actor,
+      );
+      const render = slimRender(r);
+      if (r.status !== "SUCCESS") {
+        return {
+          ok: false,
+          result: { render, state: await stateOf(db, a.contentItemId) },
+          error: `The render didn't pass its technical check: ${(r.errorMessage ?? "see the video page for details").replace(/\.+$/, "")}.`,
+          message: "Render failed.",
+        };
+      }
+      if (!check) return { ok: true, result: { render, state: await stateOf(db, a.contentItemId) }, message: "Rendered." };
+      progress(87, "Checking facts, brand, picture and sound…", "check");
+      try {
+        const gate = await runQualityGateForContentItem(db, storage, needModel(ctx), a.contentItemId, actor);
+        const state = await stateOf(db, a.contentItemId);
+        return {
+          ok: true,
+          result: { render, state, gate: { overallStatus: gate.overallStatus, gates: gate.gates, reasons: gate.reasons, passed: state === "READY" || gate.overallStatus === "PASS" } },
+          message: gate.overallStatus === "PASS" ? "Rendered and passed every check." : "Rendered — the quality check found something to fix.",
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          result: { render, state: await stateOf(db, a.contentItemId), gateError: { name: err instanceof Error ? err.name : "Error", message: errMsg(err) } },
+          error: errMsg(err),
+          message: "Rendered, but the quality check couldn't run.",
+        };
+      }
+    }
+
+    case "quality-gate": {
+      const a = args as HeavyJobArgsByKind["quality-gate"];
+      progress(10, "Checking facts, brand, picture and sound…", "check");
+      const gate = await runQualityGateForContentItem(db, storage, needModel(ctx), a.contentItemId, actor);
+      const state = await stateOf(db, a.contentItemId);
+      return {
+        ok: true,
+        result: { overallStatus: gate.overallStatus, gates: gate.gates, reasons: gate.reasons, state, passed: state === "READY" || gate.overallStatus === "PASS" },
+        message: gate.overallStatus === "PASS" ? "Passed every check." : "The quality check found something to fix.",
+      };
+    }
+
+    case "auto-repair": {
+      const a = args as HeavyJobArgsByKind["auto-repair"];
+      progress(5, "Fixing what the quality check found, then re-rendering…", "repair");
+      const r = await autoRepairContentItem(db, storage, needModel(ctx), a.contentItemId, { fontPath: ctx.fontPath }, actor);
+      return {
+        ok: r.finalState === "READY",
+        result: r,
+        error: r.finalState === "READY" ? undefined : `Auto-repair stopped at ${r.finalState}: ${r.stoppedBecause ?? "see the video page"}`,
+        message: r.finalState === "READY" ? "Fixed — it passed every check." : "Auto-repair stopped.",
+      };
+    }
+
+    case "transcribe": {
+      const a = args as HeavyJobArgsByKind["transcribe"];
+      progress(5, "Transcribing what you said…", "transcribe");
+      const results = a.mediaAssetId
+        ? [await transcribeMediaAsset(db, storage, a.mediaAssetId, { provider: ctx.transcriptionProvider }, actor)]
+        : await transcribeContentItemTakes(db, storage, a.contentItemId, { provider: ctx.transcriptionProvider, force: a.force }, actor);
+      return outcomeOf("transcribe", results.map(slimTranscribe), "Transcription failed", (n) => `Transcribed ${plural(n, "take")}.`);
+    }
+
+    case "subject-track": {
+      const a = args as HeavyJobArgsByKind["subject-track"];
+      const ids = a.mediaAssetIds ?? (await rawTakeIds(db, a.contentItemId));
+      progress(5, "Finding you in the frame…", "track");
+      const results = await ensureSubjectTracks(db, storage, ids, actor, { analyze: ctx.analyze, force: a.force });
+      return outcomeOf("track", results, "Face tracking failed", (n) => `Tracked ${plural(n, "take")}.`);
+    }
+
+    case "person-matte": {
+      const a = args as HeavyJobArgsByKind["person-matte"];
+      progress(5, "Cutting you out of the background…", "matte");
+      const target = a.mediaAssetIds ? { mediaAssetIds: a.mediaAssetIds } : { contentItemId: a.contentItemId };
+      const results = await ensurePersonMattes(db, storage, target, actor, { compute: ctx.computeMatte, force: a.force });
+      return outcomeOf("matte", results, "Person cut-out failed", (n) => `Cut out ${plural(n, "take")}.`);
+    }
+
+    case "ingest":
+      return runIngest(args as HeavyJobArgsByKind["ingest"], ctx, progress);
+
+    case "motion-design": {
+      const a = args as HeavyJobArgsByKind["motion-design"];
+      progress(5, "Finding you in the frame, reading the script and research…", "design");
+      const r = await designMotionForContentItem(db, storage, needModel(ctx), a.contentItemId, actor, {
+        trigger: "HUMAN",
+        replaceExisting: a.replaceExisting ?? false,
+        analyze: ctx.analyze,
+      });
+      const result = {
+        status: r.status,
+        editPlanId: r.editPlanId ?? null,
+        added: (r.added ?? []).map((v) => ({ id: v.id, template: v.template, start: v.start, end: v.end, anchorText: v.anchorText ?? null })),
+        rejected: r.rejectedVisuals ?? [],
+        placementWarnings: r.placementWarnings ?? [],
+        notes: r.warnings ?? [],
+        rationale: r.rationale ?? "",
+        errorMessage: r.errorMessage ?? null,
+      };
+      const ok = r.status === "SUCCESS" && !!r.editPlanId;
+      return { ok, result, error: ok ? undefined : r.errorMessage ?? "unknown error", message: ok ? `Added ${plural(result.added.length, "graphic")}.` : "Couldn't design visuals." };
+    }
+  }
+  throw new Error(`unknown heavy job kind: ${String(kind)}`);
+}
+
+/**
+ * Progress writer for a JobRun: throttled (a write at most every `minIntervalMs` unless the
+ * stage changes), serialized (writes never race each other), and never throws.
+ */
+export function createProgressWriter(db: PrismaClient, jobRunId: string, options: { minIntervalMs?: number } = {}) {
+  const minInterval = options.minIntervalMs ?? 2_000;
+  let lastAt = 0;
+  let lastStage = "";
+  let lastPct = -1;
+  let pending: HeavyJobProgressUpdate | null = null;
+  let chain: Promise<void> = Promise.resolve();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const write = (p: HeavyJobProgressUpdate) => {
+    lastAt = Date.now();
+    lastStage = p.stage;
+    lastPct = Math.round(p.pct);
+    chain = chain.then(() => updateHeavyJobProgress(db, jobRunId, p).catch(() => undefined));
+  };
+  const update = (p: HeavyJobProgressUpdate) => {
+    const now = Date.now();
+    if (p.stage !== lastStage || now - lastAt >= minInterval) {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      pending = null;
+      if (Math.round(p.pct) !== lastPct || p.stage !== lastStage) write(p);
+      else lastAt = now;
+      return;
+    }
+    pending = p;
+    timer ??= setTimeout(() => {
+      timer = null;
+      if (pending) write(pending);
+      pending = null;
+    }, minInterval - (now - lastAt));
+  };
+  const flush = async () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    pending = null;
+    await chain;
+  };
+  return { update, flush };
+}
+
+/**
+ * Runs a heavy job and records it on its (already-claimed, RUNNING) JobRun: live progress,
+ * then SUCCEEDED/FAILED with the result. Used by the sandbox CLI and by the web app's local
+ * in-process path. Never throws; returns the outcome.
+ */
+export async function runHeavyJobRecorded(
+  jobRunId: string,
+  kind: HeavyJobKind,
+  args: unknown,
+  ctx: HeavyJobContext,
+): Promise<HeavyJobOutcome> {
+  const writer = createProgressWriter(ctx.db, jobRunId);
+  let outcome: HeavyJobOutcome;
+  try {
+    outcome = await executeHeavyJob(kind, args, {
+      ...ctx,
+      progress: (p) => {
+        writer.update(p);
+        ctx.progress?.(p);
+      },
+    });
+  } catch (err) {
+    outcome = { ok: false, result: { errorName: err instanceof Error ? err.name : "Error" }, error: errMsg(err), message: "Something went wrong." };
+  }
+  await writer.flush();
+  await finishHeavyJob(ctx.db, jobRunId, {
+    status: outcome.ok ? "SUCCEEDED" : "FAILED",
+    result: outcome.result,
+    error: outcome.ok ? null : (outcome.error ?? "unknown error"),
+    message: outcome.message,
+  }).catch((err) => console.error(`[heavy-job] could not record the outcome of ${jobRunId}: ${errMsg(err)}`));
+  return outcome;
+}
+
+function slimTranscribe(r: TranscribeJobResult) {
+  // The transcript text is already on the MediaAsset — keep the JobRun row small.
+  return { mediaAssetId: r.mediaAssetId, status: r.status, wordCount: r.wordCount ?? null, errorMessage: r.errorMessage ?? null, model: r.model ?? null };
+}
+
+async function rawTakeIds(db: PrismaClient, contentItemId: string): Promise<string[]> {
+  const rows = await db.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  return rows.map((r) => r.id);
+}
+
+function outcomeOf(
+  key: string,
+  results: Array<{ status: string; errorMessage?: string | null }>,
+  failLabel: string,
+  done: (n: number) => string,
+): HeavyJobOutcome {
+  const failed = results.filter((r) => r.status === "FAILED");
+  const succeeded = results.filter((r) => r.status === "SUCCESS").length;
+  return {
+    ok: failed.length === 0,
+    result: { [key]: results },
+    error: failed.length ? `${failLabel}: ${failed.map((r) => r.errorMessage).join("; ")}` : undefined,
+    message: failed.length ? `${failLabel}.` : done(succeeded),
+  };
+}
+
+/**
+ * The upload's background analysis, for every take of the item that still lacks it (so takes
+ * uploaded while this runs are picked up too — the loop re-reads the item until a pass finds
+ * nothing to do): transcribe (word timings) → face track → person matte. Each step fails per
+ * take without stopping the others (a missing matte only means graphics render in front).
+ */
+async function runIngest(
+  a: HeavyJobArgsByKind["ingest"],
+  ctx: HeavyJobContext,
+  progress: (pct: number, message: string, stage: string) => void,
+): Promise<HeavyJobOutcome> {
+  const { db, storage, actor } = ctx;
+  const transcribe: Array<ReturnType<typeof slimTranscribe>> = [];
+  const track: SubjectTrackJobResult[] = [];
+  const matte: PersonMatteJobResult[] = [];
+  const attempted = new Set<string>();
+  for (let pass = 0; pass < 5; pass++) {
+    const takes = await db.mediaAsset.findMany({ where: { contentItemId: a.contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } });
+    const todo = takes.filter((t) => {
+      const needs =
+        (a.transcribe && t.hasAudio !== false && t.transcriptWords == null && t.transcriptSource !== "MANUAL") ||
+        (a.track && t.width != null && t.subjectTrack == null) ||
+        (a.matte && t.width != null && !t.matteStorageKey);
+      return needs && !attempted.has(t.id);
+    });
+    if (todo.length === 0) break;
+    for (const [i, t] of todo.entries()) {
+      attempted.add(t.id);
+      const base = 5 + (90 * i) / todo.length;
+      const span = 90 / todo.length;
+      const label = todo.length > 1 ? ` (take ${i + 1} of ${todo.length})` : "";
+      if (a.transcribe && t.hasAudio !== false && t.transcriptWords == null && t.transcriptSource !== "MANUAL") {
+        progress(base, `Transcribing what you said${label}…`, "transcribe");
+        transcribe.push(slimTranscribe(await transcribeMediaAsset(db, storage, t.id, { provider: ctx.transcriptionProvider }, actor)));
+      }
+      if (a.track && t.width != null && t.subjectTrack == null) {
+        progress(base + span * 0.3, `Finding you in the frame${label}…`, "track");
+        track.push(...(await ensureSubjectTracks(db, storage, [t.id], actor, { analyze: ctx.analyze })));
+      }
+      if (a.matte && t.width != null && !t.matteStorageKey) {
+        progress(base + span * 0.45, `Cutting you out of the background${label} — the slowest step…`, "matte");
+        matte.push(...(await ensurePersonMattes(db, storage, { mediaAssetIds: [t.id] }, actor, { compute: ctx.computeMatte })));
+      }
+    }
+  }
+  const failures = [
+    ...transcribe.filter((r) => r.status === "FAILED").map((r) => `transcription: ${r.errorMessage}`),
+    ...track.filter((r) => r.status === "FAILED").map((r) => `face tracking: ${r.errorMessage}`),
+    ...matte.filter((r) => r.status === "FAILED").map((r) => `cut-out: ${r.errorMessage}`),
+  ];
+  return {
+    ok: failures.length === 0,
+    result: { transcribe, track, matte },
+    error: failures.length ? `Some footage analysis failed — ${failures.join("; ")}` : undefined,
+    message: failures.length ? "Footage analyzed, with some problems." : "Footage analyzed.",
+  };
+}

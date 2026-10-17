@@ -124,6 +124,8 @@ export interface MotionModule {
     durationSeconds: number;
     outputPath: string;
     concurrency?: number | null;
+    /** 0..1 over all motion frames (optional — a subprocess host may not forward it). */
+    onProgress?: (p: number) => void;
   }): Promise<{ framesRendered: number; segments: VisualOverlaySegment[]; skipped: Array<{ id: string; error: string }>; renderMs: number }>;
   sfxFiles(): Partial<Record<SfxSound, string>>;
 }
@@ -138,7 +140,12 @@ export interface MotionOptions {
   interactionEnabled?: boolean;
   /** Computes a missing person matte at render time (tests inject a fake). Default: the real job. */
   computeMatte?: import("./person-matte-job").MatteComputer;
+  /** 0..1 progress of the motion-layer render (the heavy-job runner maps it to a stage). */
+  onMotionProgress?: (p: number) => void;
 }
+
+/** Plain-English progress of one render ("Rendering your graphics…", 0..100). */
+export type RenderProgress = (p: { pct: number; message: string; stage: string }) => void;
 
 /**
  * Loaded lazily and through a non-literal specifier so bundlers (apps/web imports this module)
@@ -225,6 +232,7 @@ export async function prepareMotion(
         durationSeconds: timelineDuration(timeline),
         outputPath: join(workDir, "motion"),
         concurrency: options.concurrency ?? null,
+        ...(options.onMotionProgress ? { onProgress: options.onMotionProgress } : {}),
       });
       for (const s of res.skipped) warnings.push(`Motion visual ${s.id} not rendered (invalid): ${s.error}`);
       out.visualsLayer = { segments: res.segments };
@@ -432,9 +440,18 @@ export async function renderContentItem(
     targetAudioCodec?: string;
     encode?: { preset?: string; crf?: number };
     motion?: MotionOptions;
+    /** Stage progress for a UI (heavy-job runner). Never affects the render. */
+    onProgress?: RenderProgress;
   } = {},
   actor: { actorId: string },
 ): Promise<RenderJobResult> {
+  const report: RenderProgress = (p) => {
+    try {
+      options.onProgress?.(p);
+    } catch {
+      // progress is best effort
+    }
+  };
   const editPlanRow = await getLatestEditPlan(db, contentItemId);
   if (!editPlanRow) {
     throw new Error(`No EditPlan found for content item ${contentItemId}.`);
@@ -499,6 +516,7 @@ export async function renderContentItem(
   const outputPath = join(workDir, "output.mp4");
 
   try {
+    report({ pct: 3, message: "Getting your footage ready…", stage: "download" });
     const sources: Record<string, string> = {};
     const sourceWords: Record<string, TranscriptWord[] | null> = {};
     for (const [i, asset] of assets.entries()) {
@@ -515,12 +533,33 @@ export async function renderContentItem(
     // uses), so the rendered graphics land where the editor showed them. MANUAL ones never move.
     const placedTimeline = withResolvedPlacements(timeline, assets, sourceWords);
     // Motion v2: how graphics interact with the footage (depth, follow, camera, scene, emphasis).
+    if (placedTimeline.visuals.length > 0) report({ pct: 8, message: "Measuring the footage for your graphics…", stage: "measure" });
     const interaction =
       placedTimeline.visuals.length > 0 && options.motion?.interactionEnabled !== false && options.motion?.visualsEnabled !== false
         ? await prepareInteraction(db, storage, placedTimeline, assets, sources, sourceWords, workDir, motionWarnings, options.motion)
         : null;
-    const motionInputs = await prepareMotion(db, storage, placedTimeline, sources, workDir, motionWarnings, options.motion, interaction?.input ?? null);
+    if (placedTimeline.visuals.length > 0) report({ pct: 15, message: "Rendering your graphics…", stage: "graphics" });
+    const motionOptions: MotionOptions = {
+      ...options.motion,
+      onMotionProgress: (p) => {
+        options.motion?.onMotionProgress?.(p);
+        report({ pct: 15 + 45 * Math.max(0, Math.min(1, p)), message: "Rendering your graphics…", stage: "graphics" });
+      },
+    };
+    const motionInputs = await prepareMotion(db, storage, placedTimeline, sources, workDir, motionWarnings, motionOptions, interaction?.input ?? null);
 
+    // The compositor reports no progress of its own: ease towards 92% on a clock scaled to the
+    // video's length (measured ≈ 1–1.7 s of encode per second of 1080x1920 output).
+    const composeFrom = placedTimeline.visuals.length > 0 ? 60 : 10;
+    const expectedMs = Math.max(8_000, timelineDuration(timeline) * 1_700);
+    const composeStarted = Date.now();
+    report({ pct: composeFrom, message: "Putting your video together…", stage: "compose" });
+    const ticker = options.onProgress
+      ? setInterval(() => {
+          const f = 1 - Math.exp(-(Date.now() - composeStarted) / expectedMs);
+          report({ pct: composeFrom + (92 - composeFrom) * f, message: "Putting your video together…", stage: "compose" });
+        }, 2_000)
+      : null;
     let renderResult: Awaited<ReturnType<typeof renderTimeline>>;
     try {
       renderResult = await renderTimeline({
@@ -536,7 +575,10 @@ export async function renderContentItem(
       });
     } catch (err) {
       return fail(err);
+    } finally {
+      if (ticker) clearInterval(ticker);
     }
+    report({ pct: 94, message: "Checking and saving your video…", stage: "save" });
 
     const unexecutedInstructions = [...listUnexecutedPlanInstructions(plan), ...motionWarnings, ...renderResult.warnings];
 

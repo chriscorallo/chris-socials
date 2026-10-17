@@ -46,8 +46,27 @@ export interface RenderVisualsLayerResult {
 
 let bundleCache: { promise: Promise<string>; ms: number } | null = null;
 
-/** Bundle the Remotion project once per process (webpack is the slow part: ~5-15 s). */
+type GlRenderer = "angle" | "swangle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
+const GL_RENDERERS = new Set<GlRenderer>(["angle", "swangle", "egl", "swiftshader", "vulkan", "angle-egl"]);
+
+/** Chrome's GL backend. Default "angle"; GPU-less Linux hosts (the cloud renderer's Vercel
+ * Sandbox) set REMOTION_GL=swangle (ANGLE on SwiftShader, CPU WebGL) so the 3D templates work. */
+export function rendererGl(): GlRenderer {
+  const v = process.env.REMOTION_GL as GlRenderer | undefined;
+  return v && GL_RENDERERS.has(v) ? v : "angle";
+}
+
+/**
+ * Bundle the Remotion project once per process (webpack is the slow part: ~5-15 s). A host that
+ * shipped a pre-built bundle (the cloud renderer: scripts/sandbox/build-runner.ts runs
+ * @remotion/bundler at build time) sets MOTION_BUNDLE_DIR to it and no bundler is loaded.
+ */
 export async function getMotionBundle(): Promise<{ serveUrl: string; ms: number; cached: boolean }> {
+  const prebuilt = process.env.MOTION_BUNDLE_DIR;
+  if (prebuilt) {
+    if (!existsSync(join(prebuilt, "index.html"))) throw new Error(`MOTION_BUNDLE_DIR has no index.html: ${prebuilt}`);
+    return { serveUrl: prebuilt, ms: 0, cached: true };
+  }
   if (bundleCache) return { serveUrl: await bundleCache.promise, ms: 0, cached: true };
   const started = Date.now();
   const { bundle } = await import("@remotion/bundler");
@@ -120,7 +139,7 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
   const { serveUrl, ms: bundleMs } = await getMotionBundle();
   const browserExecutable = findLocalHeadlessShell();
   if (!browserExecutable) await ensureBrowser();
-  const browser = await openBrowser("chrome", { browserExecutable, chromiumOptions: { gl: "angle" } });
+  const browser = await openBrowser("chrome", { browserExecutable, chromiumOptions: { gl: rendererGl() } });
   const canvas = input.timeline.canvas ?? { width: 1080, height: 1920 };
   const common = {
     serveUrl,
@@ -133,7 +152,7 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
     muted: true,
     concurrency: input.concurrency ?? null,
     puppeteerInstance: browser,
-    chromiumOptions: { gl: "angle" as const },
+    chromiumOptions: { gl: rendererGl() },
     logLevel: "error" as const,
   };
 
@@ -143,7 +162,7 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
     if (strategy === "FULL_LAYER") {
       await mkdir(dirname(input.outputPath), { recursive: true });
       const inputProps = { visuals: active.map((pv) => pv.visual), canvas, fontBaseUrl: null, clipMode: false, fps: input.fps, durationInFrames: totalFrames, interactions: input.interactions ?? null, motionTheme: input.timeline.motionTheme ?? null };
-      const composition = await selectComposition({ serveUrl, id: "VisualsLayer", inputProps, puppeteerInstance: browser, chromiumOptions: { gl: "angle" }, logLevel: "error" });
+      const composition = await selectComposition({ serveUrl, id: "VisualsLayer", inputProps, puppeteerInstance: browser, chromiumOptions: { gl: rendererGl() }, logLevel: "error" });
       await renderMedia({ ...common, composition, inputProps, outputLocation: input.outputPath, onProgress: ({ progress }) => input.onProgress?.(progress) });
       framesRendered = totalFrames;
       segments.push({ path: input.outputPath, start: 0, end: totalFrames / input.fps, id: "layer" });
@@ -156,7 +175,7 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
         const frames = Math.min(win.durationInFrames, totalFrames - win.from);
         const ix = input.interactions?.[pv.visual.id];
         const inputProps = { visuals: [pv.visual], canvas, fontBaseUrl: null, clipMode: true, fps: input.fps, durationInFrames: frames, interactions: ix ? { [pv.visual.id]: ix } : null, motionTheme: input.timeline.motionTheme ?? null };
-        const composition = await selectComposition({ serveUrl, id: "VisualClip", inputProps, puppeteerInstance: browser, chromiumOptions: { gl: "angle" }, logLevel: "error" });
+        const composition = await selectComposition({ serveUrl, id: "VisualClip", inputProps, puppeteerInstance: browser, chromiumOptions: { gl: rendererGl() }, logLevel: "error" });
         const out = clipFile(input.outputPath, pv.visual, i);
         await renderMedia({
           ...common,

@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, type ContentState } from "@chris/domain";
+import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, getHeavyJob, type ContentState } from "@chris/domain";
 import { EditTimelineSchema, type EditTimeline, type PlacementWarning } from "@chris/media/timeline";
 import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
@@ -8,7 +8,9 @@ import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
 import { requireSession } from "../../../../lib/session";
 import { storage } from "../../../../lib/storage";
 import { getModelProvider } from "../../../../lib/model-provider";
-import { getRenderFontPath, isAutoSubjectTrackingEnabled } from "../../../../lib/render-config";
+import { getRenderFontPath, heavyJobMode, isAutoSubjectTrackingEnabled } from "../../../../lib/render-config";
+import { runHeavyJob, type RunHeavyJobResult } from "../../../../lib/heavy-jobs";
+import { plainJobError } from "../../../../lib/heavy-job-text";
 import type { EditorMusicAsset } from "../../../../lib/editor/types";
 
 /**
@@ -20,6 +22,16 @@ import type { EditorMusicAsset } from "../../../../lib/editor/types";
  */
 
 export type StepResult<T = object> = ({ ok: true } & T) | { ok: false; error: string; state?: ContentState };
+
+/** A step handed to the cloud worker (Vercel): the client polls /api/jobs/<jobRunId>. */
+export interface PendingJob {
+  pending: true;
+  jobRunId: string;
+}
+
+function notStarted(r: Exclude<RunHeavyJobResult, { status: "done" | "started" }>): { ok: false; error: string } {
+  return { ok: false, error: r.message };
+}
 
 async function stateOf(contentItemId: string): Promise<ContentState> {
   const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId }, select: { currentState: true } });
@@ -83,8 +95,16 @@ export interface DesignVisualsStepResult {
 export async function designVisualsAction(input: {
   contentItemId: string;
   replaceExisting?: boolean;
-}): Promise<StepResult<DesignVisualsStepResult>> {
+}): Promise<StepResult<DesignVisualsStepResult> | ({ ok: true } & PendingJob)> {
   const session = await requireSession();
+  if (heavyJobMode() === "sandbox") {
+    // Vercel: face tracking (ONNX) + the Motion Designer run in the cloud worker; the client
+    // polls the job, then calls designVisualsResultAction for the saved version.
+    const r = await runHeavyJob("motion-design", { contentItemId: input.contentItemId, replaceExisting: input.replaceExisting ?? false }, { actorId: session.user!.id! });
+    if (r.status === "started") return { ok: true, pending: true, jobRunId: r.jobRunId };
+    if (r.status === "done") return designResultFromJob(input.contentItemId, r.outcome.ok, r.outcome.result, r.outcome.error ?? null);
+    return notStarted(r);
+  }
   try {
     const result = await designMotionForContentItem(
       prisma,
@@ -116,6 +136,45 @@ export async function designVisualsAction(input: {
   } catch (err) {
     return { ok: false, error: plainDesignError(err instanceof Error ? err.message : String(err)) };
   }
+}
+
+/** The finished cloud "Design visuals with AI" job → the same result the in-process path returns. */
+export async function designVisualsResultAction(contentItemId: string, jobRunId: string): Promise<StepResult<DesignVisualsStepResult>> {
+  await requireSession();
+  const job = await getHeavyJob(prisma, jobRunId);
+  if (!job || job.summary?.contentItemId !== contentItemId || job.summary.jobKind !== "motion-design") return { ok: false, error: "That design job wasn't found — try again." };
+  if (job.status === "RUNNING") return { ok: false, error: "Still designing — give it a moment." };
+  return designResultFromJob(contentItemId, job.status === "SUCCEEDED", job.summary.result, job.error);
+}
+
+async function designResultFromJob(contentItemId: string, ok: boolean, raw: unknown, error: string | null): Promise<StepResult<DesignVisualsStepResult>> {
+  const r = (raw ?? {}) as {
+    status?: string;
+    editPlanId?: string | null;
+    added?: DesignVisualsStepResult["added"];
+    rejected?: DesignVisualsStepResult["rejected"];
+    placementWarnings?: PlacementWarning[];
+    notes?: string[];
+    rationale?: string;
+    errorMessage?: string | null;
+  };
+  if (!ok || r.status !== "SUCCESS" || !r.editPlanId) {
+    return { ok: false, error: plainDesignError(r.errorMessage ?? error ?? "unknown error"), state: await stateOf(contentItemId).catch(() => undefined) };
+  }
+  const row = await getLatestEditPlan(prisma, contentItemId);
+  const parsed = EditTimelineSchema.safeParse((row?.plan as Record<string, unknown> | null)?.timeline);
+  if (!row || !parsed.success) return { ok: false, error: "The visuals were saved, but the editor couldn't read them back — reload the page." };
+  return {
+    ok: true,
+    editPlanId: row.id,
+    state: await stateOf(contentItemId),
+    timeline: parsed.data,
+    added: r.added ?? [],
+    rejected: r.rejected ?? [],
+    placementWarnings: r.placementWarnings ?? [],
+    notes: r.notes ?? [],
+    rationale: r.rationale ?? "",
+  };
 }
 
 /** The item's music beds (after an upload from the Sound sheet). */
@@ -185,8 +244,20 @@ async function learnMotionTaste(
   }
 }
 
-export async function renderStepAction(contentItemId: string): Promise<StepResult<{ state: ContentState; renderKey: string | null }>> {
+export async function renderStepAction(
+  contentItemId: string,
+  options: { thenQualityGate?: boolean } = {},
+): Promise<StepResult<{ state: ContentState; renderKey: string | null }> | ({ ok: true } & PendingJob)> {
   const session = await requireSession();
+  if (heavyJobMode() === "sandbox") {
+    // Vercel: render (+ the quality check right after it, same worker — one boot) in the cloud.
+    const r = await runHeavyJob("render", { contentItemId, thenQualityGate: options.thenQualityGate ?? false }, { actorId: session.user!.id! });
+    if (r.status === "started") return { ok: true, pending: true, jobRunId: r.jobRunId };
+    // A render already running for this video (a second tap, another tab): follow it.
+    if (r.status === "busy" && r.jobKind === "render") return { ok: true, pending: true, jobRunId: r.jobRunId };
+    if (r.status === "busy" || r.status === "refused") return notStarted(r);
+    return { ok: false, error: plainJobError(r.outcome.error), state: await stateOf(contentItemId).catch(() => undefined) };
+  }
   try {
     const result = await renderContentItem(prisma, storage, contentItemId, { fontPath: getRenderFontPath() }, { actorId: session.user!.id! });
     const state = await stateOf(contentItemId);
@@ -197,6 +268,44 @@ export async function renderStepAction(contentItemId: string): Promise<StepResul
   } catch (err) {
     return { ok: false, error: plainError(err, "Rendering"), state: await stateOf(contentItemId).catch(() => undefined) };
   }
+}
+
+/**
+ * The cloud render(+check) job's outcome in the Finish modal's terms (render, then check).
+ * `gateErrorText` uses the same wording as the in-process check.
+ */
+export async function finishJobResultAction(contentItemId: string, jobRunId: string): Promise<
+  StepResult<{
+    state: ContentState;
+    render: { ok: boolean; error: string | null };
+    check: null | { ok: true; passed: boolean; reasons: string[] } | { ok: false; error: string };
+  }>
+> {
+  await requireSession();
+  const job = await getHeavyJob(prisma, jobRunId);
+  if (!job || job.summary?.contentItemId !== contentItemId) return { ok: false, error: "That render wasn't found — try again." };
+  const state = await stateOf(contentItemId);
+  const r = (job.summary.result ?? {}) as {
+    render?: { status: string; errorMessage: string | null };
+    gate?: { passed: boolean; reasons: string[] };
+    gateError?: { name: string; message: string };
+    errorName?: string;
+  };
+  if (!r.render) {
+    return { ok: false, error: job.status === "FAILED" ? plainJobError(job.error, r.errorName) : "The render didn't report a result.", state };
+  }
+  const renderOk = r.render.status === "SUCCESS";
+  const renderError = renderOk
+    ? null
+    : `The render didn't pass its technical check: ${(r.render.errorMessage ?? "see the item page for details").replace(/\.+$/, "")}. Your edit is saved.`;
+  let check: { ok: true; passed: boolean; reasons: string[] } | { ok: false; error: string } | null = null;
+  if (r.gate) check = { ok: true, passed: r.gate.passed, reasons: r.gate.reasons };
+  else if (r.gateError) {
+    const e = new Error(r.gateError.message);
+    e.name = r.gateError.name;
+    check = { ok: false, error: plainError(e, "The quality check") };
+  }
+  return { ok: true, state, render: { ok: renderOk, error: renderError }, check };
 }
 
 export async function qualityGateStepAction(
