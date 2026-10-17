@@ -5045,3 +5045,24 @@ inbound data free. Pro's $20/month credit applies first.
 - `HEAVY_JOB_MAX_SANDBOXES` counts RUNNING JobRuns, not live VMs; a VM orphaned by a crashed
   dispatcher is bounded by its timeout.
 - Motion-layer rendering on CPU WebGL is the slow part (≈ 0.4–0.6 s per graphic frame).
+
+
+## AI credit screen instead of in-app Apple Pay (2026-10-17)
+
+**Request:** Chris asked for Apple Pay in the app to fund the AI (Anthropic credits).
+
+**Conflict:** Anthropic has no API for buying credit on an account's behalf. A payment taken
+inside this app (Apple Pay via Stripe or similar) would land in a merchant account, never in
+the Anthropic balance — it would cost fees and still leave the credit empty.
+
+**Decision:** `/settings/ai` ("AI credit", in More) shows whether the AI is working, out of
+credit (the same `ANTHROPIC_CREDIT_ERROR_RE` detection the to-do nudge uses, now shared from
+`model-call-log.ts`), or unconfigured; spend today / last 30 days / per video from
+`ModelCallLog`; the daily safety cap; and an "Add credit" button that opens Anthropic's own
+billing page. The to-do nudge points at this screen.
+
+**Alternatives:** Stripe + Apple Pay into a merchant account (rejected — money never reaches
+Anthropic); storing a card for automatic top-ups (impossible without an Anthropic API).
+
+**Reversibility:** high — one page, one domain function, one nav link. If Anthropic ever ships
+a billing API, the button becomes an in-app flow.

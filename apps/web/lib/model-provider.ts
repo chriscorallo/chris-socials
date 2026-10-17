@@ -29,7 +29,7 @@ import { prisma } from "@chris/domain";
  */
 let instance: ModelProvider | undefined;
 
-function resolveDailyCapUsd(): number {
+export function resolveDailyCapUsd(): number {
   const raw = process.env.MODEL_SPEND_DAILY_CAP_USD;
   if (raw === undefined || raw === "") return DEFAULT_DAILY_SPEND_CAP_USD;
   const parsed = Number(raw);

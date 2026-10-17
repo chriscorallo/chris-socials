@@ -120,3 +120,70 @@ export async function listRecentModelCalls(prisma: PrismaClient, limit = 20) {
     take: limit,
   });
 }
+
+/** An Anthropic error that means "out of credit" rather than a transient failure. */
+export const ANTHROPIC_CREDIT_ERROR_RE = /credit balance|billing|insufficient[_ ]?(funds|credit|quota)|payment required|quota/i;
+
+export interface AiSpendOverview {
+  /** Since 00:00 UTC — the same window the daily spend cap uses. */
+  todayUsd: number;
+  last30Usd: number;
+  last30Calls: number;
+  /** Distinct videos that had at least one AI call in the last 30 days. */
+  last30Videos: number;
+  /** last30Usd spent on video work ÷ last30Videos; null with no videos yet. */
+  perVideoUsd: number | null;
+  /** Latest out-of-credit failure in the last 3 days with no successful call since. */
+  creditError: { at: Date; message: string } | null;
+  lastSuccessAt: Date | null;
+}
+
+/** What the AI has cost — for the "AI credit" screen. Sequential reads (PGlite). */
+export async function getAiSpendOverview(prisma: PrismaClient, now: Date): Promise<AiSpendOverview> {
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const since30 = new Date(now.getTime() - 30 * 86_400_000);
+  const calls = await prisma.modelCallLog.findMany({
+    where: { createdAt: { gte: since30 } },
+    select: { costUsd: true, contentItemId: true, createdAt: true },
+  });
+  let todayUsd = 0;
+  let last30Usd = 0;
+  let videoUsd = 0;
+  const videos = new Set<string>();
+  for (const c of calls) {
+    const cost = c.costUsd ?? 0;
+    last30Usd += cost;
+    if (c.createdAt >= dayStart) todayUsd += cost;
+    if (c.contentItemId) {
+      videos.add(c.contentItemId);
+      videoUsd += cost;
+    }
+  }
+  const lastSuccess = await prisma.modelCallLog.findFirst({
+    where: { success: true },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  const recentFail = await prisma.modelCallLog.findFirst({
+    where: { success: false, createdAt: { gte: new Date(now.getTime() - 3 * 86_400_000) } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true, errorMessage: true },
+  });
+  let creditError: AiSpendOverview["creditError"] = null;
+  if (
+    recentFail?.errorMessage &&
+    ANTHROPIC_CREDIT_ERROR_RE.test(recentFail.errorMessage) &&
+    !(lastSuccess && lastSuccess.createdAt > recentFail.createdAt)
+  ) {
+    creditError = { at: recentFail.createdAt, message: recentFail.errorMessage };
+  }
+  return {
+    todayUsd,
+    last30Usd,
+    last30Calls: calls.length,
+    last30Videos: videos.size,
+    perVideoUsd: videos.size ? videoUsd / videos.size : null,
+    creditError,
+    lastSuccessAt: lastSuccess?.createdAt ?? null,
+  };
+}

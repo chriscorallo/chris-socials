@@ -24,6 +24,7 @@ export const MORE_LINKS: { href: string; label: string; hint: string }[] = [
   { href: "/analytics", label: "Analytics", hint: "How published videos are doing" },
   { href: "/learnings", label: "Learnings", hint: "Evidence, beliefs, experiments" },
   { href: "/reference", label: "Reference", hint: "Creators you learn from" },
+  { href: "/settings/ai", label: "AI credit", hint: "What the AI has cost, and top up" },
   { href: "/settings/connections", label: "Connections", hint: "Instagram, TikTok, YouTube" },
 ];
 
