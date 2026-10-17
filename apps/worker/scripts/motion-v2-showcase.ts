@@ -140,7 +140,6 @@ async function main() {
   const report = {
     warnings: [...warnings, ...res.warnings],
     interaction: interaction.report,
-    hits: Object.fromEntries(Object.entries(interaction.input.emphasisWords ? motion.visualsLayer ? {} : {} : {})),
     motion: res.motion,
     timings: { matteMs, prepMs, motionLayerMs: motionMs, renderMs, renderFlatMs: flatMs, totalMs: Date.now() - t0 },
     placed: placed.visuals.map((v) => ({ id: v.id, depth: v.depth, placement: v.placement })),
