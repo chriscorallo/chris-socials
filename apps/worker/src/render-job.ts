@@ -10,9 +10,13 @@ import {
 } from "@chris/domain";
 import { EditPlanOutputSchema, type EditPlanOutput } from "@chris/agents";
 import {
-  renderVideo,
   runTechnicalQC,
+  renderTimeline,
+  planToTimeline,
+  timelineDuration,
+  EditTimelineSchema,
   DEFAULT_CAPTIONS_CONFIG,
+  type EditTimeline,
   type RenderInstructions,
   type TranscriptWord,
 } from "@chris/media";
@@ -35,10 +39,11 @@ export function listUnexecutedPlanInstructions(plan: EditPlanOutput): string[] {
 }
 
 /**
- * The one place that maps packages/agents' rich EditPlanOutput onto packages/media's
- * RenderInstructions. Captions: the plan's explicit `captions` config wins; a plan without
- * one (incl. EditPlans persisted before captions existed) gets the default — on, CLEAN,
- * LOWER — whenever the take has word timings.
+ * Legacy mapping of an EditPlan onto packages/media's EditPlan renderer (`renderVideo`).
+ * The worker now renders through the timeline engine (`timelineForPlan` + `renderTimeline`);
+ * this stays for callers/tests of the legacy renderer. Captions: the plan's explicit
+ * `captions` config wins; a plan without one gets the default — on, CLEAN, LOWER — whenever
+ * the take has word timings.
  */
 export function mapEditPlanToRenderInstructions(
   editPlan: EditPlanOutput,
@@ -81,21 +86,78 @@ export interface RenderJobResult {
   unexecutedInstructions?: string[];
 }
 
+export class InvalidFinishingEditError extends Error {
+  constructor(detail: string) {
+    super(
+      `This edit plan carries a finishing-edit timeline that doesn't validate (${detail}). ` +
+        `Refusing to render the AI plan in its place — that would silently discard Chris's edit.`,
+    );
+    this.name = "InvalidFinishingEditError";
+  }
+}
+
+/**
+ * The Timeline a plan row renders: its `plan.timeline` (a finishing edit from the in-app
+ * editor) when present, else the deterministic conversion of the AI's EditPlan. A present
+ * but invalid timeline is an error, never a silent fallback to the AI plan.
+ */
+export function timelineForPlan(
+  rawPlan: unknown,
+  plan: EditPlanOutput,
+  ctx: {
+    selectedMediaAssetId: string;
+    sourceWordsAvailable: boolean;
+    sourceDimensions?: { width: number; height: number } | null;
+  },
+): { timeline: EditTimeline; source: "FINISHING_EDIT" | "EDIT_PLAN" } {
+  const raw = (rawPlan ?? {}) as Record<string, unknown>;
+  if (raw.timeline != null) {
+    const parsed = EditTimelineSchema.safeParse(raw.timeline);
+    if (!parsed.success) {
+      throw new InvalidFinishingEditError(
+        parsed.error.issues
+          .slice(0, 5)
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; "),
+      );
+    }
+    return { timeline: parsed.data, source: "FINISHING_EDIT" };
+  }
+  const dims = ctx.sourceDimensions;
+  // targetDimensions null = keep the source's native framing (even dims for H.264).
+  const canvas =
+    plan.targetDimensions ??
+    (dims ? { width: dims.width - (dims.width % 2), height: dims.height - (dims.height % 2) } : undefined);
+  return {
+    timeline: planToTimeline(plan, {
+      mediaAssetId: ctx.selectedMediaAssetId,
+      sourceWordsAvailable: ctx.sourceWordsAvailable,
+      canvas,
+    }),
+    source: "EDIT_PLAN",
+  };
+}
+
 /**
  * Orchestrates one render attempt end to end for a ContentItem currently in EDIT_PLANNED:
- * fetch the latest EditPlan + its selected take, download the source, render, QC, upload,
- * persist. This is the process apps/worker exists for — see /docs/DECISIONS.md ("Phase 3
- * renderer: ffmpeg-static + ffprobe-static, hosted in apps/worker").
+ * fetch the latest EditPlan, build its Timeline (finishing edit, or the converted AI plan),
+ * download EVERY take the timeline's clips use, render with the timeline engine, QC, upload,
+ * persist. See docs/decisions-pending/timeline-engine.md.
  *
- * `fontPath` is optional: omitted, the renderer uses the bundled Inter weights per overlay
- * style (packages/media/assets/fonts). If given it must exist — the render fails loudly
- * otherwise rather than letting ffmpeg substitute a random system font.
+ * `options.fontPath` is accepted for backward compatibility but unused: every font comes from
+ * FONT_REGISTRY (packages/media/assets/fonts). `options.encode` overrides the master encoder
+ * settings (tests use a fast preset).
  */
 export async function renderContentItem(
   db: PrismaClient,
   storage: StorageAdapter,
   contentItemId: string,
-  options: { fontPath?: string; targetVideoCodec?: string; targetAudioCodec?: string } = {},
+  options: {
+    fontPath?: string;
+    targetVideoCodec?: string;
+    targetAudioCodec?: string;
+    encode?: { preset?: string; crf?: number };
+  } = {},
   actor: { actorId: string },
 ): Promise<RenderJobResult> {
   const editPlanRow = await getLatestEditPlan(db, contentItemId);
@@ -106,12 +168,12 @@ export async function renderContentItem(
   const takeSelection = await db.takeSelection.findUniqueOrThrow({
     where: { id: editPlanRow.takeSelectionId },
   });
-  const sourceAsset = await db.mediaAsset.findUniqueOrThrow({
+  const selectedAsset = await db.mediaAsset.findUniqueOrThrow({
     where: { id: takeSelection.selectedMediaAssetId },
   });
 
   const plan = EditPlanOutputSchema.parse(editPlanRow.plan);
-  const sourceWords = parseTranscriptWords(sourceAsset.transcriptWords);
+  const selectedWords = parseTranscriptWords(selectedAsset.transcriptWords);
 
   // startRendering only accepts EDIT_PLANNED (the state table has no QC_REPAIR -> EDITING
   // or EDITING -> EDITING transition — see /docs/STATE_MACHINE.md). A repair re-render from
@@ -122,59 +184,89 @@ export async function renderContentItem(
     await startRendering(db, contentItemId, actor);
   }
 
+  const fail = async (err: unknown): Promise<RenderJobResult> => {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    await recordRenderAttempt(
+      db,
+      { contentItemId, editPlanId: editPlanRow.id, status: "FAILED", errorMessage },
+      actor,
+    );
+    return { status: "FAILED", errorMessage };
+  };
+
+  let built: ReturnType<typeof timelineForPlan>;
+  try {
+    built = timelineForPlan(editPlanRow.plan, plan, {
+      selectedMediaAssetId: selectedAsset.id,
+      sourceWordsAvailable: (selectedWords?.length ?? 0) > 0,
+      sourceDimensions:
+        selectedAsset.width && selectedAsset.height
+          ? { width: selectedAsset.width, height: selectedAsset.height }
+          : null,
+    });
+  } catch (err) {
+    return fail(err);
+  }
+  const { timeline, source: timelineSource } = built;
+
+  // Every take the clips reference (a finishing edit may mix takes) — all must belong to
+  // this content item.
+  const assetIds = [...new Set(timeline.clips.map((c) => c.mediaAssetId))];
+  const assets = await db.mediaAsset.findMany({ where: { id: { in: assetIds } } });
+  const foreign = assetIds.filter(
+    (id) => !assets.some((a) => a.id === id && a.contentItemId === contentItemId),
+  );
+  if (foreign.length > 0) {
+    return fail(new Error(`Timeline references media assets that don't belong to this item: ${foreign.join(", ")}.`));
+  }
+
   const workDir = await mkdtemp(join(tmpdir(), "chris-render-"));
-  const sourcePath = join(workDir, `source${extname(sourceAsset.originalFilename) || ".mp4"}`);
   const outputPath = join(workDir, "output.mp4");
 
   try {
-    const sourceBytes = await storage.get(sourceAsset.storageKey);
-    await writeFile(sourcePath, sourceBytes);
-
-    const instructions = mapEditPlanToRenderInstructions(
-      plan,
-      sourcePath,
-      outputPath,
-      options.fontPath,
-      sourceWords,
-    );
-
-    let renderResult: Awaited<ReturnType<typeof renderVideo>>;
-    try {
-      renderResult = await renderVideo(instructions);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      await recordRenderAttempt(
-        db,
-        { contentItemId, editPlanId: editPlanRow.id, status: "FAILED", errorMessage },
-        actor,
-      );
-      return { status: "FAILED", errorMessage };
+    const sources: Record<string, string> = {};
+    const sourceWords: Record<string, TranscriptWord[] | null> = {};
+    for (const [i, asset] of assets.entries()) {
+      const path = join(workDir, `source-${i}${extname(asset.originalFilename) || ".mp4"}`);
+      await writeFile(path, await storage.get(asset.storageKey));
+      sources[asset.id] = path;
+      sourceWords[asset.id] = parseTranscriptWords(asset.transcriptWords);
     }
 
-    const unexecutedInstructions = [
-      ...listUnexecutedPlanInstructions(plan),
-      ...renderResult.unexecutedInstructions,
-    ];
+    let renderResult: Awaited<ReturnType<typeof renderTimeline>>;
+    try {
+      renderResult = await renderTimeline({ timeline, sources, sourceWords, outputPath, encode: options.encode });
+    } catch (err) {
+      return fail(err);
+    }
 
+    const unexecutedInstructions = [...listUnexecutedPlanInstructions(plan), ...renderResult.warnings];
+
+    const duration = timelineDuration(timeline);
     const qc = await runTechnicalQC(outputPath, {
-      targetWidth: plan.targetDimensions?.width,
-      targetHeight: plan.targetDimensions?.height,
-      minDurationSeconds: Math.max(0, plan.targetDurationSeconds - 2),
-      maxDurationSeconds: plan.targetDurationSeconds + 2,
+      targetWidth: timeline.canvas.width,
+      targetHeight: timeline.canvas.height,
+      minDurationSeconds: Math.max(0, duration - 2),
+      maxDurationSeconds: duration + 2,
       requiredVideoCodec: options.targetVideoCodec ?? "h264",
       requiredAudioCodec: options.targetAudioCodec ?? "aac",
     });
     // Stored alongside the QC report (Render.technicalQCReport is Json) so what the renderer
     // did NOT do is visible on the Render row without a schema change. `overall`/`checks`
-    // keep their shape; these are additive keys.
+    // keep their shape; everything else is an additive key.
     const storedReport = {
       ...qc,
       unexecutedInstructions,
       captions: {
-        rendered: renderResult.captionLayout?.layouts.length ?? 0,
-        relocatedAroundOverlays:
-          renderResult.captionLayout?.layouts.filter((l) => l.relocated).length ?? 0,
+        rendered: renderResult.captionCount,
+        // Timeline captions sit at their explicit y (planToTimeline picks a free band); the
+        // renderer no longer moves phrases on its own.
+        relocatedAroundOverlays: 0,
       },
+      renderEngine: "timeline-v2",
+      timelineSource,
+      renderMs: renderResult.renderMs,
+      ffmpegWarnings: renderResult.ffmpegWarnings,
     };
 
     const outputBytes = await readFile(outputPath);
