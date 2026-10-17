@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { prisma, createStarterEdit } from "@chris/domain";
+import { prisma, createStarterEdit, applyManualTransition } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { isAutoTranscriptionEnabled } from "../../../lib/render-config";
 
@@ -32,6 +32,27 @@ export async function startEditingNow(contentItemId: string): Promise<{ ok: true
     return { ok: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't open the editor" };
+  }
+}
+
+/** Uploading footage to a video that's still "Ready to film" IS Chris saying he filmed it —
+ * apply that allowlisted manual transition (READY_TO_FILM -> FILMED) first so the upload
+ * ingests normally. A no-op in any other state. */
+export async function markFilmedForUpload(contentItemId: string): Promise<{ ok: true } | { error: string }> {
+  const session = await requireSession();
+  try {
+    const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId }, select: { currentState: true } });
+    if (item.currentState === "READY_TO_FILM") {
+      await applyManualTransition(prisma, {
+        contentItemId,
+        to: "FILMED",
+        actorId: session.user!.id!,
+        reason: "Manual: I've filmed this (uploading the footage)",
+      });
+    }
+    return { ok: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't prepare the upload" };
   }
 }
 

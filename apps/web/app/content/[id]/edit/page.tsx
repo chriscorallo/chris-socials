@@ -1,7 +1,8 @@
 import type { Viewport } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getLatestEditPlan, parseTranscriptWords, parseSubjectTrackRecord, FINISHING_EDIT_STATES } from "@chris/domain";
+import { prisma, getLatestEditPlan, parseTranscriptWords, parseSubjectTrackRecord, FINISHING_EDIT_STATES, canStartEdit, friendlyStateLabel } from "@chris/domain";
+import { startEditing } from "../flow-actions";
 import { requireSession } from "../../../../lib/session";
 import { toDatetimeLocal } from "../../../../lib/calendar-week";
 import { storageMode } from "../../../../lib/storage";
@@ -45,9 +46,19 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
           <h1 className="mb-2 text-xl font-semibold">{item.title}</h1>
           <p className="mb-5 text-sm text-[var(--color-text-muted)]">
             {!plan
-              ? "This video doesn't have an edit yet. Once the AI has planned the edit, you can open it here and finish it off."
-              : `This video can't be edited right now — it's ${item.currentState.toLowerCase().replace(/_/g, " ")}. Editing is available after the edit is planned and before it publishes.`}
+              ? canStartEdit(item.currentState)
+                ? "Your footage is in — tap below to open it in the editor."
+                : "Upload the footage first — then the editor opens."
+              : `This video can't be edited right now — it's ${friendlyStateLabel(item.currentState).toLowerCase()}. Editing is available once the footage is in and until it's posted.`}
           </p>
+          {/* Links into the editor always work: a video with footage but no edit yet gets the
+              no-AI starter edit first (docs/decisions-pending/flow.md). */}
+          {!plan && canStartEdit(item.currentState) && (
+            <form action={startEditing} className="mb-3">
+              <input type="hidden" name="contentItemId" value={id} />
+              <button type="submit" className="btn btn-primary w-full">Edit video</button>
+            </form>
+          )}
           <Link href={`/content/${id}`} className="btn btn-ghost">
             ← Back to the video
           </Link>

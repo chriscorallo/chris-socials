@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadRawTake } from "../../lib/upload-client";
 import { createFootageItem } from "./actions";
-import { captionStatus, startEditingNow } from "../content/[id]/flow-actions";
+import { captionStatus, startEditingNow, markFilmedForUpload } from "../content/[id]/flow-actions";
 
 type Row = { name: string; percent: number; status: "waiting" | "uploading" | "processing" | "done" | "error"; error?: string };
 
@@ -16,8 +16,11 @@ const CAPTION_WAIT_MS = 90_000;
  * entry (footage-first), uploads every take into it, waits briefly for the captions
  * (transcription runs in the background), makes the no-AI starter edit and opens the EDITOR.
  * Optional title; a filename-based one is used otherwise. See docs/decisions-pending/flow.md.
+ *
+ * With `contentItemId` it uploads into that existing video instead (the video page's
+ * "Upload footage") — same ending: straight into the editor.
  */
-export function FootageUpload({ mode }: { mode: "blob" | "local" }) {
+export function FootageUpload({ mode, contentItemId }: { mode: "blob" | "local"; contentItemId?: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -58,7 +61,9 @@ export function FootageUpload({ mode }: { mode: "blob" | "local" }) {
     const list = Array.from(files);
     setRows(list.map((f) => ({ name: f.name, percent: 0, status: "waiting" })));
     const fallback = list[0]!.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
-    const created = await createFootageItem(title.trim() || fallback || "New video");
+    const created: { id: string } | { error: string } = contentItemId
+      ? await markFilmedForUpload(contentItemId).then((r) => ("error" in r ? r : { id: contentItemId }))
+      : await createFootageItem(title.trim() || fallback || "New video");
     if ("error" in created) {
       setError(created.error);
       setRows([]);
@@ -82,16 +87,18 @@ export function FootageUpload({ mode }: { mode: "blob" | "local" }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="block">
-        <span className="field-label">What's this video about? (optional)</span>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={busy}
-          placeholder="e.g. Why your 401(k) match is free money"
-          className="field-input"
-        />
-      </label>
+      {!contentItemId && (
+        <label className="block">
+          <span className="field-label">What&apos;s this video about? (optional)</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={busy}
+            placeholder="e.g. Why your 401(k) match is free money"
+            className="field-input"
+          />
+        </label>
+      )}
       <label
         className={`flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed px-4 py-6 text-center ${
           busy ? "cursor-not-allowed border-[var(--color-border)] opacity-60" : "border-[var(--color-gold-500)]/60 bg-[var(--color-gold-500)]/[0.08] active:bg-[var(--color-gold-500)]/15"
