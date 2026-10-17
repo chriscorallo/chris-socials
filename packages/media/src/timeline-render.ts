@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sanitizeAssText, type TranscriptWord } from "./captions";
+import type { SfxSound } from "./motion-contract";
 import { FFMPEG_PATH } from "./ffmpeg-paths";
 import { findFont } from "./font-registry";
 import { resolveBundledFontsDir } from "./fonts";
@@ -58,6 +59,224 @@ export interface RenderTimelineInput {
   fontsDir?: string;
   /** Encoder overrides (tests use a fast preset). Default = master quality. */
   encode?: { preset?: string; crf?: number; audioBitrateKbps?: number };
+  /**
+   * Motion graphics layer (packages/motion `renderVisualsLayer`): alpha clips (ProRes 4444)
+   * overlaid over the graded picture — under texts/captions — each only inside its window.
+   */
+  visualsLayer?: { segments: VisualOverlaySegment[] } | null;
+  /** Local file of the MUSIC MediaAsset `timeline.audio.music.musicAssetId` (else looked up in `sources`). */
+  musicPath?: string | null;
+  /** SFX id -> WAV path (packages/motion `sfxFiles()`). Sounds without a file are skipped with a warning. */
+  sfxFiles?: Partial<Record<SfxSound, string>> | null;
+}
+
+/** One alpha clip of the motion layer, placed on the OUTPUT timeline [start, end). */
+export interface VisualOverlaySegment {
+  path: string;
+  start: number;
+  end: number;
+  id?: string;
+}
+
+/** House mix level for sound design: SFX sit ~6 dB under their nominal volume. */
+export const SFX_HOUSE_GAIN = 0.5;
+/** Volume of a visual's implicit entrance SFX (TimelineSfx default). */
+export const VISUAL_SFX_VOLUME = 0.6;
+
+export interface SfxEvent {
+  at: number;
+  sound: SfxSound;
+  /** 0..1 before SFX_HOUSE_GAIN. */
+  volume: number;
+  source: "VISUAL" | "TIMELINE";
+  id: string;
+}
+
+/**
+ * Every SFX hit on the output timeline: each visual's `enterSfx` at its start plus the free
+ * `timeline.sfx` events. Empty when `audio.sfxEnabled` is false. Events at/after the end are
+ * dropped. Pure.
+ */
+export function timelineSfxEvents(timeline: Pick<EditTimeline, "visuals" | "sfx" | "audio">, duration: number): SfxEvent[] {
+  if (!timeline.audio.sfxEnabled) return [];
+  const out: SfxEvent[] = [];
+  for (const v of timeline.visuals) {
+    if (v.enterSfx && v.start < duration) out.push({ at: v.start, sound: v.enterSfx, volume: VISUAL_SFX_VOLUME, source: "VISUAL", id: v.id });
+  }
+  for (const s of timeline.sfx) {
+    if (s.at < duration) out.push({ at: s.at, sound: s.sound, volume: s.volume, source: "TIMELINE", id: s.id });
+  }
+  return out.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+}
+
+/**
+ * Where speech is on the OUTPUT timeline, from each clip's take word timings: words mapped
+ * through the clip's source window, then merged when the gap between them is < `mergeGap`.
+ * Pure.
+ */
+export function speechRegions(
+  timeline: Pick<EditTimeline, "clips">,
+  sourceWords: Record<string, TranscriptWord[] | null | undefined>,
+  mergeGap = 0.45,
+): Array<{ start: number; end: number }> {
+  const raw: Array<{ start: number; end: number }> = [];
+  let t = 0;
+  for (const c of timeline.clips) {
+    const words = sourceWords[c.mediaAssetId] ?? [];
+    for (const w of words) {
+      if (w.end <= c.sourceStart || w.start >= c.sourceEnd) continue;
+      raw.push({ start: t + Math.max(0, w.start - c.sourceStart), end: t + Math.min(c.sourceEnd, w.end) - c.sourceStart });
+    }
+    t += clipDuration(c);
+  }
+  raw.sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [];
+  for (const r of raw) {
+    const last = merged[merged.length - 1];
+    if (last && r.start - last.end < mergeGap) last.end = Math.max(last.end, r.end);
+    else merged.push({ ...r });
+  }
+  return merged;
+}
+
+/**
+ * ffmpeg `volume` expression (eval=frame) for a music bed: `levelDb` in gaps, `levelDb -
+ * duckDb` under speech, with a `attack` s ramp down BEFORE each region (the duck is in place
+ * when the first syllable lands) and a `release` s ramp back up after it. Overlapping ramps
+ * are capped at a full duck. Deterministic, from the real word timings. Pure.
+ */
+export function musicDuckVolumeExpr(
+  regions: Array<{ start: number; end: number }>,
+  levelDb: number,
+  duckDb: number,
+  attack = 0.15,
+  release = 0.4,
+): string {
+  if (regions.length === 0 || duckDb <= 0) return n(Math.pow(10, levelDb / 20));
+  const terms = regions.map(
+    (r) => `clip((t-${n(r.start - attack)})/${n(attack)},0,1)*clip((${n(r.end + release)}-t)/${n(release)},0,1)`,
+  );
+  return `pow(10,(${n(levelDb)}-${n(duckDb)}*min(1,${terms.join("+")}))/20)`;
+}
+
+/**
+ * Sidechain fallback when there are no word timings: ratio chosen so a voice ~18 dB over the
+ * threshold yields ~`duckDb` of gain reduction (reduction = over * (1 - 1/ratio)).
+ */
+export function sidechainRatioFor(duckDb: number, overDb = 18): number {
+  const d = Math.min(Math.max(duckDb, 0.5), overDb - 0.5);
+  return Math.round((1 / (1 - d / overDb)) * 100) / 100;
+}
+
+export interface AudioMixPlan {
+  /** filter_complex parts consuming [acat] (and the extra inputs), producing [aout]. */
+  parts: string[];
+  /** Extra ffmpeg input args, in order, starting at input index `firstInput`. */
+  inputArgs: string[];
+  warnings: string[];
+  sfxEvents: SfxEvent[];
+  music: null | { path: string; mode: "WORD_TIMINGS" | "SIDECHAIN"; regions: number };
+}
+
+/**
+ * The audio graph: voice (existing loudnorm path) + SFX hits + ducked music bed, then the
+ * final loudness pass. With no SFX and no music it is exactly the legacy single chain. Pure
+ * (paths in, filter strings out) — unit-tested without ffmpeg.
+ */
+export function buildAudioMix(opts: {
+  timeline: Pick<EditTimeline, "visuals" | "sfx" | "audio" | "clips">;
+  duration: number;
+  anyAudio: boolean;
+  firstInput: number;
+  sourceWords: Record<string, TranscriptWord[] | null | undefined>;
+  sfxFiles?: Partial<Record<SfxSound, string>> | null;
+  musicPath?: string | null;
+  fileExists?: (p: string) => boolean;
+}): AudioMixPlan {
+  const exists = opts.fileExists ?? existsSync;
+  const { timeline, duration } = opts;
+  const warnings: string[] = [];
+  const normalize = timeline.audio.normalize && opts.anyAudio;
+  const loud = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000";
+
+  const events: SfxEvent[] = [];
+  for (const e of timelineSfxEvents(timeline, duration)) {
+    const f = opts.sfxFiles?.[e.sound];
+    if (!f || !exists(f)) {
+      warnings.push(`sfx: no file for ${e.sound} (${e.source.toLowerCase()} ${e.id} at ${n(e.at)}s) — skipped.`);
+      continue;
+    }
+    events.push(e);
+  }
+  const music = timeline.audio.music;
+  let musicPath: string | null = null;
+  if (music) {
+    if (opts.musicPath && exists(opts.musicPath)) musicPath = opts.musicPath;
+    else warnings.push(`music: bed ${music.musicAssetId} has no local file — rendered without music.`);
+  }
+
+  if (events.length === 0 && !musicPath) {
+    return { parts: [`[acat]${normalize ? loud : "anull"}[aout]`], inputArgs: [], warnings, sfxEvents: [], music: null };
+  }
+
+  const parts: string[] = [];
+  const inputArgs: string[] = [];
+  const mixLabels: string[] = ["[voice]"];
+  let idx = opts.firstInput;
+  parts.push(`[acat]${normalize ? loud : "anull"}[voice]`);
+
+  // SFX: one input per distinct sound, split per hit, each delayed to its time.
+  const bySound = new Map<SfxSound, SfxEvent[]>();
+  for (const e of events) bySound.set(e.sound, [...(bySound.get(e.sound) ?? []), e]);
+  let hit = 0;
+  for (const [sound, list] of bySound) {
+    inputArgs.push("-i", opts.sfxFiles![sound]!);
+    const k = idx++;
+    const fmt = `[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo`;
+    const labels = list.map((_, j) => `[sfx${k}_${j}]`);
+    parts.push(list.length > 1 ? `${fmt},asplit=${list.length}${labels.join("")}` : `${fmt}${labels[0]}`);
+    list.forEach((e, j) => {
+      const ms = Math.max(0, Math.round(e.at * 1000));
+      const label = `[hit${hit++}]`;
+      parts.push(`${labels[j]}adelay=${ms}:all=1,volume=${n(e.volume * SFX_HOUSE_GAIN)}${label}`);
+      mixLabels.push(label);
+    });
+  }
+
+  let musicInfo: AudioMixPlan["music"] = null;
+  if (music && musicPath) {
+    inputArgs.push("-ss", n(music.trackStart), "-i", musicPath);
+    const k = idx++;
+    const fadeOutStart = Math.max(0, duration - music.fadeOutSeconds);
+    const pre =
+      `[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,` +
+      // Reference the bed to the voice target so levelDb means "dB under the voice".
+      `loudnorm=I=-14:TP=-2:LRA=11,aresample=48000,apad,atrim=end=${n(duration)},asetpts=PTS-STARTPTS`;
+    const fades =
+      (music.fadeInSeconds > 0 ? `,afade=t=in:st=0:d=${n(music.fadeInSeconds)}` : "") +
+      (music.fadeOutSeconds > 0 ? `,afade=t=out:st=${n(fadeOutStart)}:d=${n(music.fadeOutSeconds)}` : "");
+    const regions = speechRegions(timeline, opts.sourceWords).filter((r) => r.start < duration);
+    const hasWords = timeline.clips.some((c) => (opts.sourceWords[c.mediaAssetId]?.length ?? 0) > 0);
+    if (hasWords || !opts.anyAudio) {
+      parts.push(`${pre},volume='${musicDuckVolumeExpr(regions, music.levelDb, music.duckDb)}':eval=frame${fades}[music]`);
+      musicInfo = { path: musicPath, mode: "WORD_TIMINGS", regions: regions.length };
+    } else {
+      // No word timings: duck with a sidechain compressor keyed by the voice itself.
+      parts.push(`[voice]asplit=2[voicemix][vkey]`);
+      mixLabels[0] = "[voicemix]";
+      parts.push(`${pre},volume=${n(Math.pow(10, music.levelDb / 20))}${fades}[mpre]`);
+      parts.push(`[mpre][vkey]sidechaincompress=threshold=0.0199:ratio=${sidechainRatioFor(music.duckDb)}:attack=15:release=350:makeup=1[music]`);
+      musicInfo = { path: musicPath, mode: "SIDECHAIN", regions: 0 };
+      warnings.push("music: no word timings — ducking with a sidechain compressor keyed by the voice (approximate duckDb).");
+    }
+    mixLabels.push("[music]");
+  }
+  parts.push(
+    `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=0:normalize=0,` +
+      (normalize ? loud : "alimiter=limit=0.89:level=0") +
+      "[aout]",
+  );
+  return { parts, inputArgs, warnings, sfxEvents: events, music: musicInfo };
 }
 
 export interface RenderTimelineResult {
@@ -75,6 +294,8 @@ export interface RenderTimelineResult {
   captionLayouts: Array<{ chunk: TimelineCaptionChunk; layout: TimelineCaptionLayout }>;
   ffmpegArgs: string[];
   renderMs: number;
+  /** What the motion/sound-design pass did (overlay clips, SFX hits, music bed). */
+  motion: { overlays: number; sfxEvents: SfxEvent[]; music: AudioMixPlan["music"] };
 }
 
 /** Master encode: mezzanine-grade so per-platform variants re-encode from a clean source. */
@@ -454,6 +675,8 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
     const zf = zoomFilter(zooms, canvas, fps);
     if (zf) vChain.push(zf);
     vChain.push(...gradeFilters(timeline.grade));
+    // Motion layer goes over the graded picture and UNDER texts/captions (speech stays on top).
+    const preOverlayCount = vChain.length;
 
     const platesAss = buildTextPlatesAss(
       texts.map((t, i) => ({ start: t.start, end: t.end, layout: textLayouts[i]! })),
@@ -496,15 +719,45 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
       vChain.push(`ass=filename='${escapeFilterPathValue(p)}':fontsdir='${escapeFilterPathValue(fontsDir)}'`);
     }
     vChain.push("format=yuv420p");
-    parts.push(`[vcat]${vChain.join(",")}[vout]`);
+    let nextInput = timeline.clips.length;
+    const overlays = (input.visualsLayer?.segments ?? []).filter((sg) => sg.end > sg.start && sg.start < duration);
+    for (const sg of overlays) {
+      if (!existsSync(sg.path)) throw new Error(`Motion layer clip ${sg.id ?? sg.path} not found at ${sg.path}.`);
+    }
+    if (overlays.length === 0) {
+      parts.push(`[vcat]${vChain.join(",")}[vout]`);
+    } else {
+      const pre = vChain.slice(0, preOverlayCount);
+      const post = vChain.slice(preOverlayCount);
+      parts.push(`[vcat]${pre.length ? pre.join(",") : "null"}[vov0]`);
+      overlays.forEach((sg, i) => {
+        args.push("-i", sg.path);
+        const k = nextInput++;
+        const s0 = n(sg.start);
+        parts.push(`[${k}:v]setpts=PTS-STARTPTS+${s0}/TB[ovl${i}]`);
+        parts.push(
+          `[vov${i}][ovl${i}]overlay=x=0:y=0:eof_action=pass:format=auto:enable='gte(t,${s0})*lt(t,${n(sg.end)})'[vov${i + 1}]`,
+        );
+      });
+      parts.push(`[vov${overlays.length}]${post.join(",")}[vout]`);
+    }
 
     // loudnorm can't normalise pure digital silence (every clip from audio-less takes).
+    // -14 LUFS integrated / -1.5 dBTP: the short-form master target (variants re-normalise per platform).
     const anyAudio = timeline.clips.some((c) => probes.get(c.mediaAssetId)!.hasAudio);
-    const aChain = timeline.audio.normalize && anyAudio
-      ? // -14 LUFS integrated / -1.5 dBTP: the short-form master target (variants re-normalise per platform).
-        "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"
-      : "anull";
-    parts.push(`[acat]${aChain}[aout]`);
+    const music = timeline.audio.music;
+    const mix = buildAudioMix({
+      timeline,
+      duration,
+      anyAudio,
+      firstInput: nextInput,
+      sourceWords: input.sourceWords,
+      sfxFiles: input.sfxFiles,
+      musicPath: music ? (input.musicPath ?? input.sources[music.musicAssetId] ?? null) : null,
+    });
+    warnings.push(...mix.warnings);
+    args.push(...mix.inputArgs);
+    parts.push(...mix.parts);
 
     const enc = { ...MASTER_ENCODE, ...input.encode };
     args.push(
@@ -540,6 +793,7 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
       captionLayouts,
       ffmpegArgs: args,
       renderMs: Date.now() - started,
+      motion: { overlays: overlays.length, sfxEvents: mix.sfxEvents, music: mix.music },
     };
   } finally {
     await rm(workDir, { recursive: true, force: true });
