@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, NEXT_STEP } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, NEXT_STEP, FINISHING_EDIT_STATES } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
 import { RawTakeUploader } from "./RawTakeUploader";
 import { NavBar } from "../../components/NavBar";
-import { PageShell, Panel, SectionHeading, Badge, Button, contentStateTone } from "../../components/ui";
+import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, contentStateTone } from "../../components/ui";
 import {
   selectForWeek,
   advanceManual,
@@ -119,6 +119,24 @@ export default async function ContentDetailPage({
         )}
 
         <div className="flex flex-col gap-5">
+          {/* Finishing editor entry point (app/content/[id]/edit) — once there's an edit plan and
+              until it publishes, Chris can open the in-house editor to finish the video. */}
+          {latestEditPlan && FINISHING_EDIT_STATES.has(item.currentState) && (
+            <Panel className="panel-action">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="eyebrow">Editor</p>
+                  <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
+                    Trim clips, fix captions, change text, color and framing — then finish and put it on the calendar.
+                  </p>
+                </div>
+                <ButtonLink href={`/content/${item.id}/edit`} tone="primary">
+                  Open editor
+                </ButtonLink>
+              </div>
+            </Panel>
+          )}
+
           {item.currentState === "RESEARCHING" && (
             <Panel className="panel-action">
               <SectionHeading eyebrow="Next Step" title="AI Pipeline" />
@@ -689,6 +707,11 @@ export default async function ContentDetailPage({
                   preload="metadata"
                   className="mb-3 max-h-[480px] w-auto self-start rounded-lg border border-[var(--color-border)]"
                 />
+              )}
+              {FINISHING_EDIT_STATES.has(item.currentState) && (
+                <div className="mb-3">
+                  <ButtonLink href={`/content/${item.id}/edit`}>Edit this video</ButtonLink>
+                </div>
               )}
               {latestRender.technicalQCReport != null && (() => {
                 const qc = latestRender.technicalQCReport as {

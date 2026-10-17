@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma, listScheduleEntries, listUnscheduledReadyItems } from "@chris/domain";
+import { prisma, listScheduleEntries, listUnscheduledReadyItems, FINISHING_EDIT_STATES } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, Badge, EmptyState, contentStateTone } from "../components/ui";
@@ -22,6 +22,8 @@ const ALL_PLATFORMS = ["INSTAGRAM", "TIKTOK", "YOUTUBE"] as const;
 const MAX_PER_DAY = 8;
 const MAX_POOL_SHOWN = 30;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// Scheduled items link straight into the finishing editor (app/content/[id]/edit).
+const EDITABLE_STATES: ReadonlySet<string> = FINISHING_EDIT_STATES;
 
 export default async function CalendarPage({
   searchParams,
@@ -136,9 +138,16 @@ export default async function CalendarPage({
                           </div>
                         </summary>
                         <div className="border-t border-[var(--color-border)] p-2.5">
-                          <Link href={`/content/${entry.contentItemId}`} className="link-quiet text-xs underline">
-                            Open item →
-                          </Link>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1">
+                            <Link href={`/content/${entry.contentItemId}`} className="link-quiet text-xs underline">
+                              Open item →
+                            </Link>
+                            {EDITABLE_STATES.has(entry.contentItem.currentState) && (
+                              <Link href={`/content/${entry.contentItemId}/edit`} className="text-xs font-medium text-[var(--color-gold-400)] underline">
+                                Edit video →
+                              </Link>
+                            )}
+                          </div>
                           <form action={placeOnCalendar} className="mt-2 flex flex-col gap-2">
                             <input type="hidden" name="contentItemId" value={entry.contentItemId} />
                             <input type="hidden" name="week" value={weekParam} />
