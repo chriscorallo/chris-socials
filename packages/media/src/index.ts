@@ -40,3 +40,5 @@ export * from "./subject-track-core";
 export * from "./subject-track";
 export * from "./visual-footprints";
 export * from "./visual-placement";
+export * from "./visual-interaction";
+export * from "./person-matte";
