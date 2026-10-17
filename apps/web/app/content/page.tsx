@@ -11,6 +11,7 @@ import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, Badge, Button, EmptyState, StickyActionBar, contentStateTone, stateLabel } from "../components/ui";
 import { runAutopilotBatch } from "./actions";
+import { RevealActiveChip } from "../components/RevealActiveChip";
 import { AUTOPILOT_JOB_KIND } from "../../lib/content-steps";
 
 const LIMIT = 100;
@@ -51,7 +52,8 @@ export default async function ContentListPage({
 
         {/* Stage tabs: one swipeable row on phones (no wrapping into a wall of chips). */}
         <nav
-          className="scroll-row mb-4 flex gap-2 py-0.5 sm:flex-wrap"
+          id="stage-tabs"
+          className="scroll-row relative mb-4 flex gap-2 py-0.5 sm:flex-wrap"
           aria-label="Stages"
           style={{ marginLeft: "calc(-1 * var(--gutter))", marginRight: "calc(-1 * var(--gutter))", paddingLeft: "var(--gutter)", paddingRight: "var(--gutter)" }}
         >
@@ -74,6 +76,8 @@ export default async function ContentListPage({
             );
           })}
         </nav>
+
+        <RevealActiveChip containerId="stage-tabs" />
 
         {(batch || lastBatch) && (
           <Panel className="mb-4">
