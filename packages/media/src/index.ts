@@ -33,3 +33,5 @@ export * from "./font-metrics";
 export * from "./timeline-layout";
 export * from "./timeline-render";
 export * from "./plan-to-timeline";
+export * from "./platform-profiles";
+export * from "./platform-variant";
