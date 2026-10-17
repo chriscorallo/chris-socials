@@ -28,9 +28,6 @@ async function stateOf(contentItemId: string): Promise<ContentState> {
 function plainError(err: unknown, step: string): string {
   const name = err instanceof Error ? err.name : "";
   const msg = err instanceof Error ? err.message : String(err);
-  if (name === "FinishingEditNotAllowedError" && /EDITING/.test(msg)) {
-    return "The last render stopped partway, so this video is locked until it renders cleanly. Open the video page and press “Render again”, then come back to edit.";
-  }
   if (name === "SpendCapExceededError") {
     return "Today's AI spending limit has been reached, so the AI quality check couldn't run. Your edit is saved — try again tomorrow, or raise MODEL_SPEND_DAILY_CAP_USD.";
   }
@@ -46,7 +43,6 @@ function plainError(err: unknown, step: string): string {
 export async function saveFinishingEditAction(input: {
   contentItemId: string;
   timeline: unknown;
-  coverFrameSeconds?: number | null;
   note?: string;
 }): Promise<StepResult<{ editPlanId: string; state: ContentState; savedAt: string }>> {
   const session = await requireSession();
@@ -55,14 +51,9 @@ export async function saveFinishingEditAction(input: {
     const first = parsed.error.issues[0];
     return { ok: false, error: `The edit couldn't be saved — ${first ? `${first.path.join(".")}: ${first.message}` : "invalid timeline"}.` };
   }
-  // coverFrameSeconds isn't in EditTimelineSchema yet (the parse strips it) — merged back here
-  // into the stored timeline object. See docs/decisions-pending/editor-ui.md.
   const duration = parsed.data.clips.reduce((s, c) => s + Math.max(0, c.sourceEnd - c.sourceStart), 0);
-  const cover =
-    typeof input.coverFrameSeconds === "number" && Number.isFinite(input.coverFrameSeconds)
-      ? Math.min(Math.max(0, input.coverFrameSeconds), duration)
-      : null;
-  const timeline = cover == null ? parsed.data : { ...parsed.data, coverFrameSeconds: cover };
+  const cover = parsed.data.coverFrameSeconds;
+  const timeline = { ...parsed.data, coverFrameSeconds: cover == null ? null : Math.min(Math.max(0, cover), duration) };
   try {
     const plan = await saveFinishingEdit(prisma, {
       contentItemId: input.contentItemId,

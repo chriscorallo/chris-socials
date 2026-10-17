@@ -34,6 +34,8 @@ export interface EditorContextValue {
   ui: EditorUi;
   setUi: (patch: Partial<EditorUi>) => void;
   warnings: PlatformWarning[];
+  /** Changes whenever a webfont finishes loading — layout memos depend on it. */
+  fontsVersion: number;
   /** Selects an item and moves the playhead into it if it's off-screen in time. */
   focus: (sel: Selection) => void;
   toast: (message: string, tone?: "ok" | "warn" | "error") => void;

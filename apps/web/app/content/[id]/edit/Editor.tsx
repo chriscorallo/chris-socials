@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   EditTimelineSchema,
-  FONT_REGISTRY,
   timelineCaptionChunks,
   timelineDuration,
   type TranscriptWord,
@@ -25,6 +24,7 @@ import { formatTime } from "../../../../lib/editor/preview-math";
 import type { EditorAsset, EditorDoc, Selection } from "../../../../lib/editor/types";
 import { EditorContext, type EditorContextValue, type EditorUi } from "./context";
 import { usePlaybackEngine } from "./playback";
+import { FONT_FACE_CSS, browserMeasureText, useFontsVersion } from "./measure";
 import { saveFinishingEditAction } from "./actions";
 import { MediaBin } from "./MediaBin";
 import { Preview } from "./Preview";
@@ -47,13 +47,6 @@ interface Toast {
   message: string;
   tone: "ok" | "warn" | "error";
 }
-
-const FONT_FACES = FONT_REGISTRY.map(
-  (f) =>
-    `@font-face{font-family:"${f.family}";src:url("/api/fonts/${encodeURIComponent(f.file)}") format("${
-      f.file.endsWith(".woff2") ? "woff2" : f.file.endsWith(".otf") ? "opentype" : "truetype"
-    }");font-weight:1 1000;font-style:normal;font-display:block;}`,
-).join("\n");
 
 function isTypingTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -89,10 +82,13 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     return out;
   }, [assets]);
   const chunks = useMemo(() => timelineCaptionChunks(doc, wordsByAsset), [doc, wordsByAsset]);
+  const fontsVersion = useFontsVersion([doc.captions.fontId, ...doc.texts.map((t) => t.fontId)]);
   const sourceSizes = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, { width: a.width, height: a.height }])), [assets]);
   const warnings = useMemo(
-    () => platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, sourceSizes),
-    [doc, ui.platformView, wordsByAsset, sourceSizes],
+    // Only after fonts load on the client (fontsVersion > 0): layouts need real glyph widths,
+    // and the server render must match the first client render (no warnings yet).
+    () => (fontsVersion > 0 ? platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, browserMeasureText, sourceSizes) : []),
+    [doc, ui.platformView, wordsByAsset, sourceSizes, fontsVersion],
   );
 
   const toast = useCallback((message: string, tone: Toast["tone"] = "ok") => {
@@ -133,7 +129,7 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
       const draft = JSON.parse(raw) as EditorDoc;
       const parsed = EditTimelineSchema.safeParse(draft);
       if (!parsed.success) return;
-      const restoredDoc: EditorDoc = { ...parsed.data, coverFrameSeconds: draft.coverFrameSeconds ?? null };
+      const restoredDoc: EditorDoc = parsed.data;
       if (JSON.stringify(restoredDoc) === JSON.stringify(initialDoc)) return;
       dispatch({ type: "replace", doc: restoredDoc });
       setRestored(true);
@@ -186,7 +182,6 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
       const res = await saveFinishingEditAction({
         contentItemId: item.id,
         timeline: payload.timeline,
-        coverFrameSeconds: docAtSave.coverFrameSeconds ?? null,
       });
       if (!res.ok) {
         toast(res.error, "error");
@@ -346,6 +341,7 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     ui,
     setUi,
     warnings,
+    fontsVersion,
     focus,
     toast,
   };
@@ -354,7 +350,7 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
 
   return (
     <EditorContext.Provider value={ctx}>
-      <style dangerouslySetInnerHTML={{ __html: FONT_FACES }} />
+      <style dangerouslySetInnerHTML={{ __html: FONT_FACE_CSS }} />
       <div className="ed-root">
         {/* ------------------------------------------------------------ top bar */}
         <header className="ed-topbar">

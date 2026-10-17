@@ -1,37 +1,17 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from "react";
-import { findFont, locateOutputTime, timelineDuration, type TimelineText } from "@chris/media/timeline";
-import { updateText, updateCaptions, updateClip, updateZoom, setCover } from "../../../../lib/editor/timeline-ops";
-import { gradeCss, hexToRgba, panAfterDrag, strokePx, formatTime } from "../../../../lib/editor/preview-math";
-import { PLATFORM_PROFILES, PLATFORM_IDS, type PlatformId } from "../../../../lib/editor/platform-profiles";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { locateOutputTime, resolveGrade, timelineDuration } from "@chris/media/timeline";
+import { updateClip, updateZoom, setCover } from "../../../../lib/editor/timeline-ops";
+import { panAfterDrag, formatTime, vignetteGradient } from "../../../../lib/editor/preview-math";
+import { PLATFORM_PROFILES, PLATFORM_IDS, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
 import { safeRect } from "../../../../lib/editor/platform-warnings";
 import { useEditor, type PlatformView } from "./context";
 import { assignPlayers, useIsPlaying, usePlayheadValue } from "./playback";
+import { GradeDefs, OverlaySvg } from "./Overlays";
 import { Icon } from "./icons";
 
-const SNAP_PX = 6;
-
-export function fontFamilyCss(fontId: string): string {
-  const f = findFont(fontId);
-  return f ? `"${f.family}", "Inter", sans-serif` : `"Inter", sans-serif`;
-}
-
-/** CSS for a text element at preview scale k (= preview px per canvas px). */
-export function textCss(t: Pick<TimelineText, "fontId" | "fontSize" | "color" | "backgroundColor" | "strokeColor" | "align" | "uppercase">, k: number): CSSProperties {
-  const fs = t.fontSize * k;
-  return {
-    fontFamily: fontFamilyCss(t.fontId),
-    fontSize: `${fs}px`,
-    color: t.color,
-    textAlign: t.align,
-    textTransform: t.uppercase ? "uppercase" : "none",
-    WebkitTextStroke: t.strokeColor ? `${strokePx(t.fontSize) * k * 2}px ${t.strokeColor}` : undefined,
-    background: t.backgroundColor ? hexToRgba(t.backgroundColor) : undefined,
-    padding: t.backgroundColor ? "0.3em 0.45em" : undefined,
-    borderRadius: t.backgroundColor ? "0.22em" : undefined,
-  };
-}
+export { fontFamilyCss } from "./Overlays";
 
 export function Preview() {
   const { doc, ui, setUi, engine, state, apply, toast } = useEditor();
@@ -105,7 +85,7 @@ export function Preview() {
 }
 
 function PlatformSwitch({ value, onChange }: { value: PlatformView; onChange: (v: PlatformView) => void }) {
-  const opts: Array<[PlatformView, string]> = [["ALL", "All"], ...PLATFORM_IDS.map((p) => [p, PLATFORM_PROFILES[p].label] as [PlatformView, string])];
+  const opts: Array<[PlatformView, string]> = [["ALL", "All"], ...PLATFORM_IDS.map((p) => [p, PLATFORM_SHORT_LABEL[p]] as [PlatformView, string])];
   return (
     <div className="ed-seg" role="group" aria-label="Preview as platform">
       {opts.map(([v, label]) => (
@@ -129,7 +109,7 @@ function WarningsPill() {
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
   }, [open]);
-  const scope = ui.platformView === "ALL" ? "all platforms" : PLATFORM_PROFILES[ui.platformView].label;
+  const scope = ui.platformView === "ALL" ? "all platforms" : PLATFORM_SHORT_LABEL[ui.platformView];
   if (!warnings.length) {
     return (
       <span className="ed-chip" title={`Nothing is covered by ${scope}'s buttons, and the length fits.`} style={{ color: "var(--color-emerald-400)" }}>
@@ -163,7 +143,7 @@ function WarningsPill() {
                     {w.message}
                     {ui.platformView === "ALL" && (
                       <span className="mt-0.5 block text-[11px] text-[var(--color-text-faint)]">
-                        {w.platforms.map((p) => PLATFORM_PROFILES[p].label).join(" · ")}
+                        {w.platforms.map((p) => PLATFORM_SHORT_LABEL[p]).join(" · ")}
                       </span>
                     )}
                   </span>
@@ -214,7 +194,9 @@ function Canvas({ w, h }: { w: number; h: number }) {
   const k = w / doc.canvas.width;
   const zoomLayerRef = useRef<HTMLDivElement>(null);
   const { slots } = useMemo(() => assignPlayers(doc, assetMap), [doc, assetMap]);
-  const grade = gradeCss(doc.grade);
+  const g = resolveGrade(doc.grade);
+  const gradeOn = g.brightness !== 0 || g.contrast !== 1 || g.saturation !== 1 || g.temperature !== 0;
+  const vignette = vignetteGradient(g.vignette);
   const [dragging, setDragging] = useState(false);
 
   useLayoutEffect(() => {
@@ -235,7 +217,14 @@ function Canvas({ w, h }: { w: number; h: number }) {
       const id = selectedClip.id;
       e.currentTarget.setPointerCapture(e.pointerId);
       const move = (ev: PointerEvent) => {
-        const pan = panAfterDrag(start.crop, asset?.width ?? 1080, asset?.height ?? 1920, w, h, ev.clientX - start.x, ev.clientY - start.y);
+        const W = doc.canvas.width;
+        const pan = panAfterDrag(
+          start.crop,
+          { width: asset?.width ?? 1080, height: asset?.height ?? 1920 },
+          doc.canvas,
+          ((ev.clientX - start.x) * W) / w,
+          ((ev.clientY - start.y) * W) / w,
+        );
         apply((d) => updateClip(d, id, { crop: { ...start.crop, ...pan } }), { coalesce: `crop:${id}` });
       };
       const up = () => {
@@ -297,7 +286,10 @@ function Canvas({ w, h }: { w: number; h: number }) {
       style={{ width: w, height: h, cursor: ui.reframe ? "move" : selectedZoom ? "crosshair" : "default" }}
       onPointerDown={onCanvasPointerDown}
     >
-      <div className="ed-layer" ref={zoomLayerRef} style={{ filter: grade.filter === "none" ? undefined : grade.filter, willChange: "transform" }}>
+      <GradeDefs grade={doc.grade} />
+      {/* video layer: clip crop → punch-in zoom (engine) → grade (exact SVG filter) */}
+      <div className="ed-layer" style={{ filter: gradeOn ? "url(#ed-grade)" : undefined }}>
+      <div className="ed-layer" ref={zoomLayerRef} style={{ willChange: "transform" }}>
         {slots.map((s) => (
           <video
             key={s.key}
@@ -309,21 +301,15 @@ function Canvas({ w, h }: { w: number; h: number }) {
             aria-label={`Take ${s.asset.name}`}
           />
         ))}
-        {grade.wash && <div className="ed-layer" style={{ background: grade.wash.color, opacity: grade.wash.opacity, mixBlendMode: "soft-light" }} />}
       </div>
-      {grade.vignette > 0 && (
-        <div
-          className="ed-layer pointer-events-none"
-          style={{ background: `radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,${Math.min(0.9, grade.vignette * 0.9)}) 100%)` }}
-        />
-      )}
+      </div>
+      {vignette && <div className="ed-layer pointer-events-none" style={{ background: vignette }} />}
 
       {ui.reframe && <ReframeGrid />}
       <SafeArea w={w} h={h} view={ui.platformView} emphasize={dragging} />
       {ui.platformView !== "ALL" && <PlatformChrome platform={ui.platformView} k={k} />}
 
-      <TextLayer w={w} h={h} k={k} onDragging={setDragging} />
-      <CaptionLayer w={w} h={h} k={k} onDragging={setDragging} />
+      <OverlaySvg w={w} h={h} onDragging={setDragging} />
 
       {selectedZoom && (
         <div
@@ -425,277 +411,6 @@ function PlatformChrome({ platform, k }: { platform: PlatformId; k: number }) {
         <div className="ed-chrome-bar opacity-70" style={{ width: s(460), height: s(22), marginTop: s(16) }} />
       </div>
       <div className="absolute rounded-full bg-white/50" style={{ left: s(48), right: s(48), bottom: s(platform === "YOUTUBE" ? 150 : 40), height: s(6) }} />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------------------
-// Text layer — direct manipulation
-// ---------------------------------------------------------------------------------------
-
-function TextLayer({ w, h, k, onDragging }: { w: number; h: number; k: number; onDragging: (v: boolean) => void }) {
-  const { doc, engine, state } = useEditor();
-  const visibleKey = usePlayheadValue(engine, (t) =>
-    doc.texts
-      .filter((x) => t >= x.start && t < x.end)
-      .map((x) => x.id)
-      .join(","),
-  );
-  const visible = new Set(visibleKey ? visibleKey.split(",") : []);
-  const selectedId = state.selection?.kind === "text" ? state.selection.id : null;
-  const [guides, setGuides] = useState({ v: false, h: false });
-  return (
-    <div className="ed-layer z-[6]" style={{ pointerEvents: "none" }}>
-      {doc.texts
-        .filter((t) => visible.has(t.id))
-        .map((t) => (
-          <TextItem key={t.id} t={t} w={w} h={h} k={k} selected={t.id === selectedId} onGuides={setGuides} onDragging={onDragging} />
-        ))}
-      {guides.v && <div className="ed-guide-v" />}
-      {guides.h && <div className="ed-guide-h" />}
-    </div>
-  );
-}
-
-function TextItem({
-  t,
-  w,
-  h,
-  k,
-  selected,
-  onGuides,
-  onDragging,
-}: {
-  t: TimelineText;
-  w: number;
-  h: number;
-  k: number;
-  selected: boolean;
-  onGuides: (g: { v: boolean; h: boolean }) => void;
-  onDragging: (v: boolean) => void;
-}) {
-  const { apply, commit, dispatch, engine, setUi } = useEditor();
-  const [editing, setEditing] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (editing && ref.current) {
-      ref.current.focus();
-      const range = document.createRange();
-      range.selectNodeContents(ref.current);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    }
-  }, [editing]);
-
-  const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
-    if (editing || e.button !== 0) return;
-    e.stopPropagation();
-    engine.pause();
-    dispatch({ type: "select", selection: { kind: "text", id: t.id } });
-    setUi({ tab: "selection" });
-    const start = { x: e.clientX, y: e.clientY, tx: t.x, ty: t.y };
-    let moved = false;
-    const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - start.x;
-      const dy = ev.clientY - start.y;
-      if (!moved && Math.hypot(dx, dy) < 3) return;
-      if (!moved) onDragging(true);
-      moved = true;
-      let nx = start.tx + dx / w;
-      let ny = start.ty + dy / h;
-      const snapV = Math.abs(nx * w - w / 2) < SNAP_PX;
-      const snapH = Math.abs(ny * h - h / 2) < SNAP_PX;
-      if (snapV) nx = 0.5;
-      if (snapH) ny = 0.5;
-      onGuides({ v: snapV, h: snapH });
-      nx = Math.round(Math.min(1, Math.max(0, nx)) * 1000) / 1000;
-      ny = Math.round(Math.min(1, Math.max(0, ny)) * 1000) / 1000;
-      apply((d) => updateText(d, t.id, { x: nx, y: ny }), { coalesce: `move:${t.id}` });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      onGuides({ v: false, h: false });
-      onDragging(false);
-      commit();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  const onResizeDown = (e: RPointerEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const d0 = Math.max(8, Math.hypot(e.clientX - cx, e.clientY - cy));
-    const fs0 = t.fontSize;
-    const move = (ev: PointerEvent) => {
-      const d = Math.hypot(ev.clientX - cx, ev.clientY - cy);
-      const fontSize = Math.round(Math.min(400, Math.max(12, (fs0 * d) / d0)));
-      apply((doc) => updateText(doc, t.id, { fontSize }), { coalesce: `size:${t.id}` });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      commit();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  const finishEditing = () => {
-    const text = (ref.current?.innerText ?? "").replace(/\n+$/, "").slice(0, 500);
-    setEditing(false);
-    if (text.trim() && text !== t.text) apply((d) => updateText(d, t.id, { text }));
-    else if (ref.current) ref.current.innerText = t.text;
-  };
-
-  return (
-    <div
-      ref={ref}
-      className={`ed-text ${selected ? "ed-text-sel" : "ed-text-hover"}`}
-      style={{
-        ...textCss(t, k),
-        left: t.x * w,
-        top: t.y * h,
-        maxWidth: t.maxWidth * w,
-        pointerEvents: "auto",
-        cursor: editing ? "text" : undefined,
-        userSelect: editing ? "text" : "none",
-        WebkitUserSelect: editing ? "text" : "none",
-      }}
-      contentEditable={editing}
-      suppressContentEditableWarning
-      onPointerDown={onPointerDown}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        setEditing(true);
-      }}
-      onBlur={() => editing && finishEditing()}
-      onKeyDown={(e) => {
-        if (!editing) return;
-        e.stopPropagation();
-        if (e.key === "Escape" || (e.key === "Enter" && !e.shiftKey)) {
-          e.preventDefault();
-          (e.currentTarget as HTMLDivElement).blur();
-        }
-      }}
-      role="textbox"
-      aria-label={`Text: ${t.text}`}
-      title={selected && !editing ? "Drag to move · double-click to edit" : undefined}
-    >
-      {t.text}
-      {selected && !editing && (
-        <div
-          className="ed-handle"
-          style={{ right: -12, bottom: -12, cursor: "nwse-resize" }}
-          onPointerDown={onResizeDown}
-          contentEditable={false}
-          aria-label="Resize text"
-        />
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------------------
-// Captions
-// ---------------------------------------------------------------------------------------
-
-function CaptionLayer({ w, h, k, onDragging }: { w: number; h: number; k: number; onDragging: (v: boolean) => void }) {
-  const { doc, chunks, engine, state, dispatch, apply, commit, setUi } = useEditor();
-  const c = doc.captions;
-  const key = usePlayheadValue(engine, (t) => {
-    if (!c.enabled) return "";
-    const ci = chunks.findIndex((ch) => t >= ch.start && t < ch.end);
-    if (ci < 0) return "";
-    const ch = chunks[ci]!;
-    let wi = -1;
-    for (let i = 0; i < ch.words.length; i++) if (t >= ch.words[i]!.start) wi = i;
-    return `${ci}:${wi}`;
-  });
-  const selected = state.selection?.kind === "captions";
-  if (!c.enabled) return null;
-  const [ciStr, wiStr] = key ? key.split(":") : ["-1", "-1"];
-  const chunk = chunks[Number(ciStr)];
-  const activeWord = Number(wiStr);
-  const placeholder = !chunk && selected;
-  if (!chunk && !placeholder) return null;
-
-  const fs = c.fontSize * k;
-  const plate = c.backgroundColor ?? (c.preset === "BOXED" ? "#000000B3" : null);
-  const words = chunk ? chunk.words.map((x) => x.word) : ["Captions", "show", "here"];
-
-  const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    dispatch({ type: "select", selection: { kind: "captions" } });
-    setUi({ tab: "captions" });
-    const startY = e.clientY;
-    const y0 = c.y;
-    let moved = false;
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.abs(ev.clientY - startY) < 3) return;
-      if (!moved) onDragging(true);
-      moved = true;
-      const y = Math.round(Math.min(0.95, Math.max(0.05, y0 + (ev.clientY - startY) / h)) * 1000) / 1000;
-      apply((d) => updateCaptions(d, { y }), { coalesce: "captions:y" });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      onDragging(false);
-      commit();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  return (
-    <div className="ed-layer z-[5]" style={{ pointerEvents: "none" }}>
-      <div
-        className={`ed-text ${selected ? "ed-text-sel" : "ed-text-hover"}`}
-        style={{
-          left: w / 2,
-          top: c.y * h,
-          maxWidth: 0.84 * w,
-          fontFamily: fontFamilyCss(c.fontId),
-          fontSize: fs,
-          color: c.color,
-          textAlign: "center",
-          textTransform: c.uppercase ? "uppercase" : "none",
-          WebkitTextStroke: c.strokeColor ? `${strokePx(c.fontSize) * k * 2}px ${c.strokeColor}` : undefined,
-          background: plate ? hexToRgba(plate) : undefined,
-          padding: plate ? "0.2em 0.4em" : undefined,
-          borderRadius: plate ? "0.2em" : undefined,
-          pointerEvents: "auto",
-          cursor: "ns-resize",
-          opacity: placeholder ? 0.55 : 1,
-        }}
-        onPointerDown={onPointerDown}
-        title="Drag up or down to move captions"
-        aria-label="Captions"
-      >
-        {words.map((word, i) => {
-          let color: string | undefined;
-          if (!placeholder) {
-            if ((c.preset === "BOLD_HIGHLIGHT" || c.preset === "BOXED") && i === activeWord) color = c.highlightColor;
-            if (c.preset === "KARAOKE" && i <= activeWord) color = c.highlightColor;
-          }
-          return (
-            <span key={i} style={{ color, transition: c.preset === "KARAOKE" ? "color 80ms linear" : undefined }}>
-              {word}
-              {i < words.length - 1 ? " " : ""}
-            </span>
-          );
-        })}
-      </div>
     </div>
   );
 }

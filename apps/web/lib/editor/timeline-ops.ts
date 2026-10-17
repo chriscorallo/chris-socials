@@ -4,6 +4,7 @@ import {
   locateOutputTime,
   timelineDuration,
   GRADE_PRESET_VALUES,
+  resolveGrade,
   DEFAULT_TEXT_FONT_ID,
   type TimelineClip,
   type TimelineText,
@@ -73,7 +74,7 @@ export function normalizeDoc(doc: EditorDoc, durations: AssetDurations = {}): Ed
   const D = timelineDuration({ clips });
   const texts = doc.texts.map((t) => clampSpan(t, D));
   const zooms = doc.zooms.map((z) => clampSpan(z, D));
-  let cover = doc.coverFrameSeconds;
+  let cover = doc.coverFrameSeconds ?? null;
   if (cover != null) cover = r3(clamp(cover, 0, Math.max(0, D - 0.04)));
   const changed =
     clips.some((c, i) => c !== doc.clips[i]) ||
@@ -81,7 +82,7 @@ export function normalizeDoc(doc: EditorDoc, durations: AssetDurations = {}): Ed
     zooms.some((z, i) => z !== doc.zooms[i]) ||
     cover !== doc.coverFrameSeconds;
   if (!changed) return doc;
-  return { ...doc, clips, texts, zooms, ...(cover !== undefined ? { coverFrameSeconds: cover } : {}) };
+  return { ...doc, clips, texts, zooms, coverFrameSeconds: cover };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -303,13 +304,19 @@ export function setWordEdit(doc: EditorDoc, key: string, value: string | null): 
   return { ...doc, captions: { ...doc.captions, wordEdits } };
 }
 
-/** Picking a look writes its concrete values (GRADE_PRESET_VALUES) — the sliders then start there. */
+/**
+ * Grade semantics follow the renderer's resolveGrade(): a field at its neutral value means
+ * "use the preset's value". Picking a look therefore stores the preset with neutral fields
+ * (the pure look). Moving a slider BAKES the current resolved look into explicit numbers and
+ * switches the preset to NONE, so every slider value — including back to neutral — means
+ * exactly what it shows.
+ */
 export function applyGradePreset(doc: EditorDoc, preset: (typeof GRADE_PRESETS)[number]): EditorDoc {
-  return { ...doc, grade: { preset, ...GRADE_PRESET_VALUES[preset] } };
+  return { ...doc, grade: { preset, ...GRADE_PRESET_VALUES.NONE } };
 }
 
 export function updateGrade(doc: EditorDoc, patch: Partial<Omit<TimelineGrade, "preset">>): EditorDoc {
-  return { ...doc, grade: { ...doc.grade, ...patch } };
+  return { ...doc, grade: { preset: "NONE", ...resolveGrade(doc.grade), ...patch } };
 }
 
 export function setCover(doc: EditorDoc, seconds: number | null): EditorDoc {

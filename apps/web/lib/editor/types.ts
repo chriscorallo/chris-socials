@@ -1,15 +1,8 @@
 import type { EditTimeline, TranscriptWord } from "@chris/media/timeline";
 
-/**
- * The finishing editor's document: the committed EditTimeline contract plus the fields the
- * editor already needs but the schema hasn't formalized yet (see
- * docs/decisions-pending/editor-ui.md — INTEGRATION NOTES). `EditTimelineSchema.parse` strips
- * unknown keys, so these are re-attached after validation when saving.
- */
-export type EditorDoc = EditTimeline & {
-  /** Cover/thumbnail frame on the OUTPUT timeline (seconds); null/undefined = platform default. */
-  coverFrameSeconds?: number | null;
-};
+/** The finishing editor's document: exactly the committed EditTimeline contract
+ * (including its top-level `coverFrameSeconds`). */
+export type EditorDoc = EditTimeline;
 
 /** One raw take available to the editor (media bin). Serializable — passed from the server page. */
 export interface EditorAsset {

@@ -6,6 +6,9 @@ import {
   FONT_REGISTRY,
   GRADE_PRESETS,
   GRADE_PRESET_VALUES,
+  LAYOUT,
+  resolveGrade,
+  isNeutralGrade,
   clipDuration,
   clipStartTimes,
   locateOutputTime,
@@ -30,11 +33,11 @@ import {
   deleteText,
   deleteZoom,
 } from "../../../../lib/editor/timeline-ops";
-import { gradeCss, hexToRgba, joinHexAlpha, splitHexAlpha, formatTime, strokePx } from "../../../../lib/editor/preview-math";
-import { PLATFORM_IDS, PLATFORM_PROFILES } from "../../../../lib/editor/platform-profiles";
+import { hexToRgba, joinHexAlpha, splitHexAlpha, formatTime, vignetteGradient } from "../../../../lib/editor/preview-math";
+import { PLATFORM_IDS, PLATFORM_PROFILES, PLATFORM_SHORT_LABEL } from "../../../../lib/editor/platform-profiles";
 import type { EditorDoc } from "../../../../lib/editor/types";
 import { useEditor, type InspectorTab } from "./context";
-import { fontFamilyCss } from "./Preview";
+import { fontFamilyCss, fontStyle } from "./Overlays";
 import { useFilmstrip, frameAt } from "./filmstrip";
 import { Icon } from "./icons";
 
@@ -243,18 +246,18 @@ function FontPicker({ value, onChange }: { value: string; onChange: (id: string)
   return (
     <div>
       <span className="ed-label">Font</span>
-      <div className="flex flex-col gap-1">
+      <div className="grid max-h-[212px] grid-cols-2 gap-1 overflow-y-auto pr-0.5">
         {FONT_REGISTRY.map((f) => (
           <button
             key={f.id}
             type="button"
-            className="ed-card flex items-center justify-between px-3 py-2"
+            className="ed-card truncate px-2.5 py-2"
             aria-pressed={value === f.id}
             onClick={() => onChange(f.id)}
-            style={{ fontFamily: fontFamilyCss(f.id) }}
+            style={{ ...fontStyle(f.id, 14), whiteSpace: "nowrap" }}
+            title={f.label}
           >
-            <span className="text-[15px]">{f.label}</span>
-            <span className="text-[13px] text-[var(--color-text-faint)]">Aa</span>
+            {f.label.replace(/ \(.*\)$/, "")}
           </button>
         ))}
       </div>
@@ -504,7 +507,6 @@ const CAPTION_LABELS: Record<(typeof CAPTION_PRESETS)[number], string> = {
 function CaptionSample({ c, preset }: { c: TimelineCaptions; preset: (typeof CAPTION_PRESETS)[number] }) {
   const words = ["THE", "BIG", "IDEA"];
   const plate = c.backgroundColor ?? (preset === "BOXED" ? "#000000B3" : null);
-  const k = 0.22;
   return (
     <div className="flex h-[54px] items-center justify-center bg-[radial-gradient(circle_at_50%_30%,#3a3530,#121014)]">
       <span
@@ -512,7 +514,7 @@ function CaptionSample({ c, preset }: { c: TimelineCaptions; preset: (typeof CAP
           fontFamily: fontFamilyCss(c.fontId),
           fontSize: 15,
           color: c.color,
-          WebkitTextStroke: c.strokeColor ? `${strokePx(64) * k}px ${c.strokeColor}` : undefined,
+          WebkitTextStroke: c.strokeColor ? `${Math.max(1, 2 * LAYOUT.captions.strokeWidth * 15)}px ${hexToRgba(c.strokeColor)}` : undefined,
           paintOrder: "stroke fill",
           background: plate ? hexToRgba(plate) : undefined,
           padding: plate ? "1px 6px" : undefined,
@@ -520,7 +522,7 @@ function CaptionSample({ c, preset }: { c: TimelineCaptions; preset: (typeof CAP
         }}
       >
         {words.map((w, i) => {
-          const hl = (preset === "BOLD_HIGHLIGHT" || preset === "BOXED") && i === 1 ? c.highlightColor : preset === "KARAOKE" && i <= 1 ? c.highlightColor : undefined;
+          const hl = preset === "BOLD_HIGHLIGHT" && i === 1 ? c.highlightColor : preset === "KARAOKE" && i <= 1 ? c.highlightColor : undefined;
           return (
             <span key={w} style={{ color: hl }}>
               {w}
@@ -558,7 +560,7 @@ function CaptionsPanel() {
             <FontPicker value={c.fontId} onChange={(fontId) => set({ fontId })} />
             <Slider label="Size" value={c.fontSize} min={24} max={200} step={1} format={(v) => `${Math.round(v)}px`} onChange={(v) => set({ fontSize: Math.round(v) }, "fs")} />
             <ColorRow label="Text color" value={c.color} onChange={(color) => set({ color })} />
-            {c.preset !== "CLEAN" && <ColorRow label="Spoken-word color" value={c.highlightColor} onChange={(highlightColor) => set({ highlightColor })} />}
+            {(c.preset === "BOLD_HIGHLIGHT" || c.preset === "KARAOKE") && <ColorRow label="Spoken-word color" value={c.highlightColor} onChange={(highlightColor) => set({ highlightColor })} />}
             <OptionalColor label="Outline" value={c.strokeColor} defaultColor="#000000" onChange={(strokeColor) => set({ strokeColor })} />
             <OptionalColor label="Background plate" value={c.backgroundColor} defaultColor="#000000B3" withOpacity onChange={(v, f) => set({ backgroundColor: v }, f ? undefined : "bg")} />
           </Section>
@@ -668,7 +670,8 @@ const GRADE_LABELS: Record<(typeof GRADE_PRESETS)[number], string> = {
 
 function LookPanel() {
   const { doc, apply, engine } = useEditor();
-  const g = doc.grade;
+  const g = resolveGrade(doc.grade);
+  const custom = doc.grade.preset === "NONE" && !isNeutralGrade(g);
   const [frame, setFrame] = useState<string | null>(null);
   useEffect(() => {
     const grab = () => setFrame(engine.snapshot(96));
@@ -689,14 +692,14 @@ function LookPanel() {
       >
         <div className="grid grid-cols-4 gap-1.5">
           {GRADE_PRESETS.map((p) => {
-            const css = gradeCss(GRADE_PRESET_VALUES[p]);
+            const filter = p === "NONE" ? undefined : `url(#ed-grade-${p})`;
+            const vig = vignetteGradient(GRADE_PRESET_VALUES[p].vignette);
             return (
-              <button key={p} type="button" className="ed-card" aria-pressed={g.preset === p} onClick={() => apply((d) => applyGradePreset(d, p))} title={GRADE_LABELS[p]}>
+              <button key={p} type="button" className="ed-card" aria-pressed={!custom && doc.grade.preset === p} onClick={() => apply((d) => applyGradePreset(d, p))} title={GRADE_LABELS[p]}>
                 <div className="relative aspect-[9/14] overflow-hidden bg-[linear-gradient(160deg,#c9a27a,#5b4636_55%,#1c2733)]">
-                  {frame && <img src={frame} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ filter: css.filter === "none" ? undefined : css.filter }} />}
-                  {!frame && <div className="absolute inset-0" style={{ filter: css.filter === "none" ? undefined : css.filter, background: "linear-gradient(160deg,#e0b48a,#7a5a44 50%,#2a3a4a)" }} />}
-                  {css.wash && <div className="absolute inset-0" style={{ background: css.wash.color, opacity: css.wash.opacity, mixBlendMode: "soft-light" }} />}
-                  {css.vignette > 0 && <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,${css.vignette * 0.9}) 100%)` }} />}
+                  {frame && <img src={frame} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ filter }} />}
+                  {!frame && <div className="absolute inset-0" style={{ filter, background: "linear-gradient(160deg,#e0b48a,#7a5a44 50%,#2a3a4a)" }} />}
+                  {vig && <div className="absolute inset-0" style={{ background: vig }} />}
                 </div>
                 <span className="block truncate px-1 py-1 text-center text-[10.5px] font-medium">{GRADE_LABELS[p]}</span>
               </button>
@@ -704,7 +707,7 @@ function LookPanel() {
           })}
         </div>
       </Section>
-      <Section title="Adjust">
+      <Section title="Adjust" right={custom ? <span className="text-[11px] font-medium text-[var(--color-gold-400)]">Custom look</span> : undefined}>
         <Slider label="Brightness" value={g.brightness} min={-1} max={1} format={(v) => signed(v)} resetTo={0} onChange={(v) => set({ brightness: r2(v) }, "b")} />
         <Slider label="Contrast" value={g.contrast} min={0} max={2} format={(v) => signed(v - 1)} resetTo={1} onChange={(v) => set({ contrast: r2(v) }, "c")} />
         <Slider label="Saturation" value={g.saturation} min={0} max={2} format={(v) => signed(v - 1)} resetTo={1} onChange={(v) => set({ saturation: r2(v) }, "s")} />
@@ -742,7 +745,7 @@ function CoverPanel() {
         <div className="flex gap-3">
           <div className="relative aspect-[9/16] w-[96px] shrink-0 overflow-hidden rounded-lg border border-[var(--ed-line-strong)] bg-black">
             {cover != null && thumb ? (
-              <img src={thumb} alt="Cover frame" className="h-full w-full object-cover" style={{ filter: gradeCss(doc.grade).filter === "none" ? undefined : gradeCss(doc.grade).filter }} />
+              <img src={thumb} alt="Cover frame" className="h-full w-full object-cover" style={{ filter: "url(#ed-grade)" }} />
             ) : (
               <div className="flex h-full items-center justify-center p-2 text-center text-[10.5px] text-[var(--color-text-faint)]">{cover != null ? formatTime(cover, true) : "Platform picks"}</div>
             )}
@@ -788,12 +791,12 @@ function CoverPanel() {
             const prof = PLATFORM_PROFILES[p];
             return (
               <li key={p} className="flex items-start gap-2 text-[12px]">
-                <span className={prof.coverFrame.supported ? "text-[var(--color-emerald-400)]" : "text-[var(--color-text-faint)]"}>
-                  <Icon name={prof.coverFrame.supported ? "check" : "close"} size={13} />
+                <span className={prof.cover.timestampSupported ? "text-[var(--color-emerald-400)]" : "text-[var(--color-text-faint)]"}>
+                  <Icon name={prof.cover.timestampSupported ? "check" : "close"} size={13} />
                 </span>
                 <span>
-                  <span className="font-medium">{prof.label}</span>
-                  {prof.coverFrame.note && <span className="block text-[11.5px] text-[var(--color-text-faint)]">{prof.coverFrame.note}</span>}
+                  <span className="font-medium">{PLATFORM_SHORT_LABEL[p]}</span>
+                  <span className="block text-[11.5px] leading-relaxed text-[var(--color-text-faint)]">{coverNote(prof.cover.timestampSupported, prof.cover.note)}</span>
                 </span>
               </li>
             );
@@ -804,3 +807,8 @@ function CoverPanel() {
   );
 }
 
+
+/** Plain-English version of each platform's cover support (the profile notes are API-level). */
+function coverNote(supported: boolean, apiNote: string): string {
+  return supported ? "Uses this frame as the cover when it publishes." : `Picks its own thumbnail — this frame isn't sent. (${apiNote.split(".")[0]}.)`;
+}

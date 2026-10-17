@@ -96,11 +96,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
   }
 }
 
-/**
- * Validates the doc against the committed contract and returns the payload to save: the
- * schema-parsed timeline (canonical, defaults filled) plus the not-yet-formalized editor
- * fields re-attached AFTER validation (the schema strips unknown keys).
- */
+/** Validates the doc against the committed contract and returns the canonical timeline to save. */
 export function buildSavePayload(
   doc: EditorDoc,
 ): { ok: true; timeline: EditorDoc; durationSeconds: number } | { ok: false; error: string } {
@@ -109,8 +105,6 @@ export function buildSavePayload(
     const first = parsed.error.issues[0];
     return { ok: false, error: first ? `${first.path.join(".") || "timeline"}: ${first.message}` : "Invalid timeline" };
   }
-  const timeline: EditorDoc = { ...parsed.data };
-  if (doc.coverFrameSeconds != null) timeline.coverFrameSeconds = doc.coverFrameSeconds;
   const durationSeconds = parsed.data.clips.reduce((s, c) => s + Math.max(0, c.sourceEnd - c.sourceStart), 0);
-  return { ok: true, timeline, durationSeconds };
+  return { ok: true, timeline: parsed.data, durationSeconds };
 }

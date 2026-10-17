@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { clipDuration, clipStartTimes, locateOutputTime, timelineDuration } from "@chris/media/timeline";
-import { coverLayout, zoomAt } from "../../../../lib/editor/preview-math";
+import {
+  clipDuration,
+  clipStartTimes,
+  locateOutputTime,
+  timelineDuration,
+  cropGeometry,
+  normalizeZooms,
+  zoomStateAt,
+  type TimelineZoom,
+} from "@chris/media/timeline";
 import type { EditorAsset, EditorDoc } from "../../../../lib/editor/types";
 
 /**
@@ -51,6 +59,8 @@ export class PlaybackEngine {
   private clipPlayer: string[] = [];
   private starts: number[] = [];
   private duration = 0;
+  /** Zooms exactly as the renderer sees them (normalizeZooms: clamped, overlaps dropped). */
+  private zooms: TimelineZoom[] = [];
   private players = new Map<string, HTMLVideoElement>();
   private wired = new WeakSet<HTMLVideoElement>();
   private zoomLayer: HTMLElement | null = null;
@@ -143,6 +153,7 @@ export class PlaybackEngine {
     this.clipPlayer = clipPlayer;
     this.starts = clipStartTimes(this.doc);
     this.duration = timelineDuration(this.doc);
+    this.zooms = normalizeZooms(this.doc.zooms, this.duration).zooms;
   }
 
   // --- transport ----------------------------------------------------------------------
@@ -211,8 +222,8 @@ export class PlaybackEngine {
       canvas.height = h;
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
-      const l = coverLayout(el.videoWidth, el.videoHeight, width, h, clip.crop);
-      ctx.drawImage(el, l.tx, l.ty, l.baseW * l.scale, l.baseH * l.scale);
+      const g = cropGeometry({ width: el.videoWidth, height: el.videoHeight }, { width, height: h }, clip.crop);
+      ctx.drawImage(el, -g.offsetX, -g.offsetY, g.scaledWidth, g.scaledHeight);
       return canvas.toDataURL("image/jpeg", 0.75);
     } catch {
       return null; // cross-origin storage without CORS taints the canvas
@@ -335,16 +346,17 @@ export class PlaybackEngine {
         const asset = this.assets.get(clip.mediaAssetId);
         const srcW = el.videoWidth || asset?.width || 1080;
         const srcH = el.videoHeight || asset?.height || 1920;
-        const l = coverLayout(srcW, srcH, w, h, clip.crop);
-        el.style.width = `${l.baseW}px`;
-        el.style.height = `${l.baseH}px`;
-        el.style.transform = `translate(${l.tx}px, ${l.ty}px) scale(${l.scale})`;
+        // Same geometry as the renderer (cropGeometry), at preview scale.
+        const g = cropGeometry({ width: srcW, height: srcH }, { width: w, height: h }, clip.crop);
+        el.style.width = `${g.scaledWidth}px`;
+        el.style.height = `${g.scaledHeight}px`;
+        el.style.transform = `translate(${-g.offsetX}px, ${-g.offsetY}px)`;
       }
     }
     if (this.zoomLayer) {
-      const z = this.previewOverride ? { scale: 1, x: 0.5, y: 0.5 } : zoomAt(this.doc.zooms, this.time);
+      const z = this.previewOverride ? { zoom: 1, x: 0.5, y: 0.5 } : zoomStateAt(this.zooms, this.time);
       this.zoomLayer.style.transformOrigin = `${z.x * 100}% ${z.y * 100}%`;
-      this.zoomLayer.style.transform = z.scale === 1 ? "none" : `scale(${z.scale})`;
+      this.zoomLayer.style.transform = z.zoom === 1 ? "none" : `scale(${z.zoom})`;
     }
   }
 }

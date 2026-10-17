@@ -4,7 +4,7 @@ import { prisma, getLatestEditPlan, parseTranscriptWords, FINISHING_EDIT_STATES 
 import { requireSession } from "../../../../lib/session";
 import { toDatetimeLocal } from "../../../../lib/calendar-week";
 import { TAKE_COLORS, type EditorAsset } from "../../../../lib/editor/types";
-import { planToEditorDoc } from "./lib/initial-timeline";
+import { initialEditorDoc } from "./lib/initial-timeline";
 import { Editor } from "./Editor";
 
 // "Finish & schedule" renders (ffmpeg) and runs the AI quality check synchronously from this
@@ -31,9 +31,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
           <p className="mb-5 text-sm text-[var(--color-text-muted)]">
             {!plan
               ? "This video doesn't have an edit yet. Once the AI has planned the edit, you can open it here and finish it off."
-              : item.currentState === "EDITING"
-                ? "The last render stopped partway, so editing is locked until it renders cleanly. Go back and press “Render again”, then reopen the editor."
-                : `This video can't be edited right now — it's ${item.currentState.toLowerCase().replace(/_/g, " ")}. Editing is available after the edit is planned and before it publishes.`}
+              : `This video can't be edited right now — it's ${item.currentState.toLowerCase().replace(/_/g, " ")}. Editing is available after the edit is planned and before it publishes.`}
           </p>
           <Link href={`/content/${id}`} className="btn btn-ghost">
             ← Back to the video
@@ -62,10 +60,12 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
 
   const selectedId = takeSelection?.selectedMediaAssetId ?? assets[0]?.id ?? "";
   const selected = assets.find((a) => a.id === selectedId);
-  const initialDoc = planToEditorDoc(plan.plan, {
+  const initialDoc = initialEditorDoc(plan.plan, {
     id: selectedId,
     duration: selected?.duration ?? 0,
     hasWords: !!selected?.words?.length,
+    width: selected?.width ?? null,
+    height: selected?.height ?? null,
   });
 
   const entry = item.scheduleEntry;

@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { EditTimelineSchema, timelineDuration, clipStartTimes, timelineCaptionWords } from "@chris/media/timeline";
+import {
+  EditTimelineSchema,
+  timelineDuration,
+  clipStartTimes,
+  timelineCaptionWords,
+  resolveGrade,
+  GRADE_PRESET_VALUES,
+  type MeasureText,
+} from "@chris/media/timeline";
 import {
   splitAt,
   trimClip,
@@ -13,6 +21,7 @@ import {
   updateText,
   setWordEdit,
   applyGradePreset,
+  updateGrade,
   setCover,
   normalizeDoc,
   switchClipSource,
@@ -20,30 +29,32 @@ import {
   trimSpan,
 } from "./timeline-ops";
 import { editorReducer, initEditorState, buildSavePayload, type EditorState } from "./reducer";
-import { coverLayout, panAfterDrag, zoomAt, gradeCss, estimateTextBox, joinHexAlpha, splitHexAlpha } from "./preview-math";
+import { panAfterDrag, gradeSvgParams, vignetteGradient, joinHexAlpha, splitHexAlpha } from "./preview-math";
 import { platformWarnings, safeRect } from "./platform-warnings";
-import { planToEditorDoc } from "../../app/content/[id]/edit/lib/initial-timeline";
+import { initialEditorDoc } from "../../app/content/[id]/edit/lib/initial-timeline";
 import type { EditorDoc } from "./types";
 
 const DUR = { A: 20, B: 8 };
 
+/** Deterministic stand-in for glyph measurement: 0.5 em per character. */
+const fakeMeasure: MeasureText = (text, _fontId, px) => text.length * px * 0.5;
+
+/** An explicit timeline (independent of the plan converter) for the op/reducer tests. */
 function baseDoc(): EditorDoc {
-  return planToEditorDoc(
-    {
-      segments: [
-        { startSeconds: 1, endSeconds: 5 },
-        { startSeconds: 7, endSeconds: 10 },
-      ],
-      textOverlays: [
-        { text: "Hook headline", startSeconds: 0, endSeconds: 2, position: "TOP", style: "HEADLINE" },
-        { text: "$1,000", startSeconds: 3, endSeconds: 6.5, position: "CENTER", style: "NUMBER_CALLOUT" },
-      ],
-      captions: { enabled: true, style: "BOLD_HIGHLIGHT", position: "LOWER" },
-      punchIns: [{ startSeconds: 2, endSeconds: 3, zoom: 1.2, focus: "UPPER_THIRD" }],
-      normalizeAudio: true,
-    },
-    { id: "A", duration: 20, hasWords: true },
-  );
+  return EditTimelineSchema.parse({
+    version: 2,
+    canvas: { width: 1080, height: 1920 },
+    clips: [
+      { id: "c1", mediaAssetId: "A", sourceStart: 1, sourceEnd: 5 },
+      { id: "c2", mediaAssetId: "A", sourceStart: 7, sourceEnd: 10 },
+    ],
+    texts: [
+      { id: "t1", text: "Hook headline", start: 0, end: 2, preset: "HEADLINE", fontId: "inter-display-extrabold", fontSize: 72, color: "#FFFFFF", backgroundColor: "#000000B3", x: 0.5, y: 0.15 },
+      { id: "t2", text: "$1,000", start: 3, end: 6.5, preset: "NUMBER_CALLOUT", fontId: "inter-display-extrabold", fontSize: 150, color: "#FFD54A", strokeColor: "#000000", x: 0.5, y: 0.42 },
+    ],
+    captions: { enabled: true, preset: "BOLD_HIGHLIGHT", fontId: "inter-display-bold", fontSize: 64, color: "#FFFFFF", highlightColor: "#FFD54A", y: 0.72 },
+    zooms: [{ id: "z1", start: 2, end: 3, zoom: 1.2, x: 0.5, y: 0.33, mode: "CUT" }],
+  });
 }
 
 function valid(doc: EditorDoc) {
@@ -52,31 +63,51 @@ function valid(doc: EditorDoc) {
   return true;
 }
 
-describe("initial timeline (fallback converter)", () => {
-  it("maps segments, overlays, captions and punch-ins to a valid timeline", () => {
-    const doc = baseDoc();
+const PLAN = {
+  segments: [
+    { startSeconds: 1, endSeconds: 5 },
+    { startSeconds: 7, endSeconds: 10 },
+  ],
+  targetDimensions: { width: 1080, height: 1920 },
+  textOverlays: [{ text: "Hook headline", startSeconds: 0, endSeconds: 2, position: "TOP", style: "HEADLINE" }],
+  captions: { enabled: true, style: "BOLD_HIGHLIGHT", position: "LOWER" },
+  punchIns: [{ startSeconds: 2, endSeconds: 3, zoom: 1.2, focus: "UPPER_THIRD" }],
+  normalizeAudio: true,
+  bRollRequests: [],
+  musicTrack: null,
+  sfxEvents: [],
+  transitions: [],
+  targetDurationSeconds: 7,
+  productionTier: "FAST",
+  doNothingElse: false,
+  rationale: "test",
+};
+const TAKE = { id: "A", duration: 20, hasWords: true, width: 1080, height: 1920 };
+
+describe("initial timeline (the renderer's own conversion)", () => {
+  it("converts an AI plan with planToTimeline (via the worker's timelineForPlan)", () => {
+    const doc = initialEditorDoc(PLAN, TAKE);
     expect(valid(doc)).toBe(true);
     expect(doc.clips.map((c) => [c.mediaAssetId, c.sourceStart, c.sourceEnd])).toEqual([
       ["A", 1, 5],
       ["A", 7, 10],
     ]);
     expect(timelineDuration(doc)).toBe(7);
-    expect(doc.texts[0]).toMatchObject({ preset: "HEADLINE", fontSize: 72, backgroundColor: "#000000B3", y: 0.15 });
-    expect(doc.texts[1]).toMatchObject({ preset: "NUMBER_CALLOUT", fontSize: 150, color: "#FFD54A", strokeColor: "#000000", y: 0.42 });
-    expect(doc.captions).toMatchObject({ enabled: true, preset: "BOLD_HIGHLIGHT", fontId: "inter-display-bold", fontSize: 64, y: 0.72 });
+    expect(doc.texts[0]).toMatchObject({ preset: "HEADLINE", text: "Hook headline" });
+    expect(doc.captions).toMatchObject({ enabled: true, preset: "BOLD_HIGHLIGHT" });
     expect(doc.zooms[0]).toMatchObject({ mode: "CUT", zoom: 1.2, y: 0.33 });
-    expect(doc.grade.preset).toBe("NONE");
+    expect(doc.coverFrameSeconds).toBeNull();
   });
 
-  it("passes a saved plan.timeline through, keeping coverFrameSeconds", () => {
+  it("opens a saved finishing edit (plan.timeline) as-is, cover frame included", () => {
     const saved = { ...baseDoc(), coverFrameSeconds: 2.5 };
-    const doc = planToEditorDoc({ segments: [{ startSeconds: 0, endSeconds: 1 }], timeline: saved }, { id: "A", duration: 20, hasWords: false });
-    expect(doc.clips).toHaveLength(2);
+    const doc = initialEditorDoc({ ...PLAN, timeline: saved }, TAKE);
+    expect(doc.texts.map((t) => t.id)).toEqual(["t1", "t2"]);
     expect(doc.coverFrameSeconds).toBe(2.5);
   });
 
-  it("falls back to the whole take when the plan has no segments", () => {
-    const doc = planToEditorDoc(null, { id: "A", duration: 12, hasWords: false });
+  it("falls back to the whole take when the plan is unusable", () => {
+    const doc = initialEditorDoc(null, { ...TAKE, duration: 12, hasWords: false });
     expect(doc.clips).toHaveLength(1);
     expect(doc.clips[0]).toMatchObject({ sourceStart: 0, sourceEnd: 12 });
     expect(doc.captions.enabled).toBe(false);
@@ -245,7 +276,7 @@ describe("reducer: history", () => {
     expect(s).toBe(before);
   });
 
-  it("builds a schema-valid save payload and re-attaches the cover frame", () => {
+  it("builds a schema-valid save payload including the cover frame", () => {
     const doc = setCover(baseDoc(), 1.5);
     const p = buildSavePayload(doc);
     expect(p.ok).toBe(true);
@@ -258,32 +289,41 @@ describe("reducer: history", () => {
   });
 });
 
+describe("grade semantics (renderer's resolveGrade)", () => {
+  it("a picked look is the pure preset; moving a slider bakes it into explicit values", () => {
+    let doc = applyGradePreset(baseDoc(), "WARM");
+    expect(doc.grade.preset).toBe("WARM");
+    expect(resolveGrade(doc.grade)).toEqual(GRADE_PRESET_VALUES.WARM);
+    doc = updateGrade(doc, { temperature: 0 });
+    expect(doc.grade.preset).toBe("NONE");
+    const g = resolveGrade(doc.grade);
+    expect(g.temperature).toBe(0); // back to neutral really means neutral
+    expect(g.contrast).toBe(GRADE_PRESET_VALUES.WARM.contrast);
+    expect(valid(doc)).toBe(true);
+  });
+});
+
 describe("preview math", () => {
-  it("covers the canvas and pans across the overflow", () => {
-    // 16:9 source into 9:16 canvas: height-bound.
-    const l = coverLayout(1920, 1080, 1080, 1920, { zoom: 1, panX: 0, panY: 0 });
-    expect(l.baseH).toBeCloseTo(1920);
-    expect(l.baseW).toBeCloseTo(3413.33, 1);
-    expect(l.tx).toBeCloseTo(-(3413.33 - 1080) / 2, 0);
-    expect(coverLayout(1920, 1080, 1080, 1920, { zoom: 1, panX: -1, panY: 0 }).tx).toBeCloseTo(0);
-    expect(coverLayout(1920, 1080, 1080, 1920, { zoom: 1, panX: 1, panY: 0 }).tx).toBeCloseTo(-(3413.33 - 1080), 0);
-    // dragging the picture right pans toward the left edge
-    expect(panAfterDrag({ zoom: 1, panX: 0, panY: 0 }, 1920, 1080, 1080, 1920, 100, 0).panX).toBeLessThan(0);
+  it("inverts the pan mapping for drag-to-reframe", () => {
+    const src = { width: 1920, height: 1080 };
+    const canvas = { width: 1080, height: 1920 };
+    // dragging the picture right reveals more of the left side → pan toward -1
+    expect(panAfterDrag({ zoom: 1, panX: 0, panY: 0 }, src, canvas, 100, 0).panX).toBeLessThan(0);
+    // dragging by half the overflow from centre lands on the edge
+    const overflow = 1920 * (1920 / 1080) - 1080;
+    expect(panAfterDrag({ zoom: 1, panX: 0, panY: 0 }, src, canvas, overflow / 2, 0).panX).toBe(-1);
+    // no vertical overflow at zoom 1 → panY stays 0
+    expect(panAfterDrag({ zoom: 1, panX: 0, panY: 0 }, src, canvas, 0, 300).panY).toBe(0);
   });
 
-  it("eases zoom in and cuts hard otherwise", () => {
-    const zooms = [{ id: "z", start: 1, end: 3, zoom: 1.5, x: 0.5, y: 0.4, mode: "EASE" as const, easeSeconds: 1 }];
-    expect(zoomAt(zooms, 0.5).scale).toBe(1);
-    expect(zoomAt(zooms, 1.5).scale).toBeCloseTo(1.25);
-    expect(zoomAt(zooms, 2.5).scale).toBe(1.5);
-    expect(zoomAt([{ ...zooms[0]!, mode: "CUT" }], 1.01).scale).toBe(1.5);
-  });
-
-  it("maps grade to CSS", () => {
-    expect(gradeCss({ brightness: 0, contrast: 1, saturation: 1, temperature: 0, vignette: 0 }).filter).toBe("none");
-    const g = gradeCss({ brightness: 0.1, contrast: 1.2, saturation: 0, temperature: 0.4, vignette: 0.3 });
-    expect(g.filter).toBe("brightness(1.1) contrast(1.2) saturate(0)");
-    expect(g.wash?.color).toBe("#ff9a3c");
+  it("expresses the grade as the renderer's eq/saturation/temperature parameters", () => {
+    const p = gradeSvgParams({ brightness: 0.1, contrast: 1.2, saturation: 0.5, temperature: 1, vignette: 0 });
+    expect(p.slope).toBe(1.2);
+    expect(p.intercept).toBeCloseTo(0.5 * (1 - 1.2) + 0.1);
+    expect(p.saturation).toBe(0.5);
+    expect(p.matrix.startsWith("1.1 0 0 0 0  0 1 0 0 0  0 0 0.88")).toBe(true);
+    expect(vignetteGradient(0)).toBeNull();
+    expect(vignetteGradient(0.5)).toMatch(/^radial-gradient\(circle farthest-corner at 50% 50%, rgba\(0,0,0,0\) 0%/);
   });
 
   it("splits and joins #RRGGBBAA", () => {
@@ -293,30 +333,34 @@ describe("preview math", () => {
   });
 });
 
-describe("platform warnings", () => {
+describe("platform warnings (renderer layouts + PLATFORM_PROFILES)", () => {
   it("flags text under platform UI and duration limits; All = union", () => {
     let doc = baseDoc();
-    const id = doc.texts[0]!.id;
-    doc = updateText(doc, id, { y: 0.04 }); // into every app's top bar
-    const all = platformWarnings(doc, ["TIKTOK", "INSTAGRAM", "YOUTUBE"], {});
-    const w = all.find((x) => x.id === `text:${id}`)!;
+    doc = updateText(doc, "t1", { y: 0.04 }); // into every app's top bar
+    const all = platformWarnings(doc, ["TIKTOK", "INSTAGRAM", "YOUTUBE"], {}, fakeMeasure);
+    const w = all.find((x) => x.id === "text:t1")!;
     expect(w.platforms.sort()).toEqual(["INSTAGRAM", "TIKTOK", "YOUTUBE"]);
-    expect(w.target).toEqual({ kind: "text", id });
-    // a headline at y=0.13 clears TikTok's 150px top bar but not Reels' 220px
-    const high = updateText(baseDoc(), id, { y: 0.13 });
-    const reels = platformWarnings(high, ["INSTAGRAM"], {});
-    const tiktok = platformWarnings(high, ["TIKTOK"], {});
-    expect(reels.some((x) => x.id.startsWith("text:"))).toBe(true);
-    expect(tiktok.some((x) => x.id.startsWith("text:"))).toBe(false);
+    expect(w.target).toEqual({ kind: "text", id: "t1" });
+    // headline block top at 250px: clears TikTok's 240px top bar but not Reels' 269px
+    const high = updateText(baseDoc(), "t1", { y: 0.161 });
+    expect(platformWarnings(high, ["INSTAGRAM"], {}, fakeMeasure).some((x) => x.id === "text:t1")).toBe(true);
+    expect(platformWarnings(high, ["TIKTOK"], {}, fakeMeasure).some((x) => x.id === "text:t1")).toBe(false);
     // too short everywhere
     const short = { ...doc, clips: [{ ...doc.clips[0]!, sourceStart: 1, sourceEnd: 1.5 }] };
-    expect(platformWarnings(short, ["TIKTOK"], {}).some((x) => x.id === "duration-min:TIKTOK")).toBe(true);
-    expect(safeRect(["TIKTOK", "INSTAGRAM"]).y0).toBe(220);
+    expect(platformWarnings(short, ["TIKTOK"], {}, fakeMeasure).some((x) => x.id === "duration-min:TIKTOK")).toBe(true);
+    expect(safeRect(["TIKTOK", "INSTAGRAM"]).y0).toBe(269);
   });
 
-  it("estimates text boxes centred on x/y", () => {
-    const b = estimateTextBox(baseDoc().texts[0]!);
-    expect((b.x0 + b.x1) / 2).toBeCloseTo(540);
-    expect((b.y0 + b.y1) / 2).toBeCloseTo(0.15 * 1920);
+  it("flags captions overlapping a text (the Quality Gate's collision check)", () => {
+    const doc = updateText(baseDoc(), "t1", { y: 0.72, start: 0, end: 7 });
+    const words = { A: [{ word: "hello", start: 1.2, end: 1.6 }, { word: "there", start: 1.7, end: 2.1 }] };
+    const ws = platformWarnings(doc, ["TIKTOK"], words, fakeMeasure);
+    expect(ws.some((x) => x.id.startsWith("overlap:CAPTION_TEXT"))).toBe(true);
+  });
+
+  it("flags a clip reframed so tight it will look soft", () => {
+    const doc = { ...baseDoc(), clips: [{ ...baseDoc().clips[0]!, crop: { zoom: 2, panX: 0, panY: 0 } }] };
+    const ws = platformWarnings(doc, ["TIKTOK"], {}, fakeMeasure, { A: { width: 1080, height: 1920 } });
+    expect(ws.some((x) => x.id === "soft:c1")).toBe(true);
   });
 });

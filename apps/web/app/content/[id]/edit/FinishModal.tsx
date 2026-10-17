@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildSavePayload } from "../../../../lib/editor/reducer";
 import { warningsForPlatform } from "../../../../lib/editor/platform-warnings";
-import { PLATFORM_IDS, PLATFORM_PROFILES, type PlatformId } from "../../../../lib/editor/platform-profiles";
+import { PLATFORM_IDS, PLATFORM_PROFILES, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
 import { saveFinishingEditAction, renderStepAction, qualityGateStepAction, scheduleStepAction } from "./actions";
 import { useEditor } from "./context";
+import { browserMeasureText } from "./measure";
 import { Icon } from "./icons";
 
 type StepId = "save" | "render" | "check" | "schedule";
@@ -53,7 +54,7 @@ export function FinishModal({
   onSaved: (state: string) => void;
   onStateChange: (state: string) => void;
 }) {
-  const { doc, wordsByAsset, assets, setUi, focus } = useEditor();
+  const { doc, wordsByAsset, assets, setUi, focus, fontsVersion } = useEditor();
   const [date, setDate] = useState(defaultDate);
   const [platforms, setPlatforms] = useState<Set<PlatformId>>(new Set(defaultPlatforms.filter((p): p is PlatformId => p in PLATFORM_PROFILES)));
   const [phase, setPhase] = useState<"form" | "running" | "done" | "stopped">("form");
@@ -64,8 +65,9 @@ export function FinishModal({
 
   const sizes = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, { width: a.width, height: a.height }])), [assets]);
   const readiness = useMemo(
-    () => Object.fromEntries(PLATFORM_IDS.map((p) => [p, warningsForPlatform(doc, PLATFORM_PROFILES[p], wordsByAsset, sizes)])) as Record<PlatformId, ReturnType<typeof warningsForPlatform>>,
-    [doc, wordsByAsset, sizes],
+    () => Object.fromEntries(PLATFORM_IDS.map((p) => [p, warningsForPlatform(doc, PLATFORM_PROFILES[p], wordsByAsset, browserMeasureText, sizes)])) as Record<PlatformId, ReturnType<typeof warningsForPlatform>>,
+    // fontsVersion: re-measure once webfonts load
+    [doc, wordsByAsset, sizes, fontsVersion],
   );
 
   useEffect(() => {
@@ -102,7 +104,7 @@ export function FinishModal({
         patch("save", { status: "failed", detail: `Something in the edit isn't valid: ${payload.error}` });
         return setPhase("stopped");
       }
-      const res = await saveFinishingEditAction({ contentItemId: itemId, timeline: payload.timeline, coverFrameSeconds: doc.coverFrameSeconds ?? null }).catch(() => null);
+      const res = await saveFinishingEditAction({ contentItemId: itemId, timeline: payload.timeline }).catch(() => null);
       if (!res || !res.ok) {
         patch("save", { status: "failed", detail: res ? res.error : "Couldn't reach the server. Check your connection and try again." });
         return setPhase("stopped");
@@ -166,7 +168,7 @@ export function FinishModal({
     }
     onStateChange(res.state);
     setScheduledFor(res.scheduledFor);
-    patch("schedule", { status: "done", detail: `Scheduled for ${res.scheduledFor} on ${[...platforms].map((p) => PLATFORM_PROFILES[p].label).join(", ")}.` });
+    patch("schedule", { status: "done", detail: `Scheduled for ${res.scheduledFor} on ${[...platforms].map((p) => PLATFORM_SHORT_LABEL[p]).join(", ")}.` });
     setPhase("done");
   }
 
@@ -214,7 +216,7 @@ export function FinishModal({
                     <div key={p} className={`ed-card flex items-center gap-3 px-3 py-2.5 ${on ? "" : "opacity-70"}`} aria-pressed={on}>
                       <input type="checkbox" checked={on} onChange={() => toggle(p)} id={`plat-${p}`} className="h-4 w-4 accent-[var(--color-gold-500)]" />
                       <label htmlFor={`plat-${p}`} className="flex-1 cursor-pointer text-[13.5px] font-medium">
-                        {PLATFORM_PROFILES[p].label}
+                        {PLATFORM_SHORT_LABEL[p]}
                       </label>
                       {warns.length === 0 ? (
                         <span className="flex items-center gap-1 text-[12px] text-[var(--color-emerald-400)]">

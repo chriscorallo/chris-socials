@@ -30,27 +30,29 @@ state container.
 
 ---
 
-## 2026-10-16 — Preview = real <video> elements + DOM overlays on one rAF clock (no canvas compositing)
+## 2026-10-16 — Preview = real <video> elements + the renderer's own layout math, on one rAF clock
 
-**Decision:** The 9:16 preview plays the timeline with one `<video>` per (take × slot): consecutive
-uses of the same take alternate between two elements so the next clip is already paused on its
-first frame — a cut is a visibility swap, not a seek. While playing, the active video's
-`currentTime` is the master clock (no A/V drift); a wall clock only bridges stalls. Crop,
-punch-in, grade, text and captions are CSS transforms/filters/DOM layers in canvas coordinates
-scaled to the preview. Per-frame work (playhead, transforms, timecode) bypasses React
-(direct DOM writes + `useSyncExternalStore` selectors that re-render only when a discrete value
-changes — e.g. the active caption word).
+**Decision:** The 9:16 preview plays the timeline with one `<video>` per (take × slot):
+consecutive uses of the same take alternate between two elements so the next clip is already
+paused on its first frame — a cut is a visibility swap, not a seek. While playing, the active
+video's `currentTime` is the master clock (no A/V drift); a wall clock only bridges stalls.
+Everything visual uses the renderer's browser-safe math from `@chris/media/timeline`
+(PREVIEW PARITY NOTES in timeline-engine.md): `cropGeometry` for crop/pan, `normalizeZooms` +
+`zoomStateAt` (ease-in-out cubic) for punch-ins, `resolveGrade` → an exact SVG filter
+(feComponentTransfer eq + feColorMatrix saturate + temperature gains, sRGB) and the cos⁴
+vignette as a radial gradient, and `layoutTimelineText` / `layoutCaptionChunk` with browser
+glyph measurement (canvas `measureText`, kerning off, registry weight) for texts and captions,
+drawn in an SVG whose viewBox is the canvas (alphabetic baselines, plates, outside strokes via
+`paint-order`, CLEAN shadow, BOLD_HIGHLIGHT active-word rule, KARAOKE clip-rect wipe updated per
+frame). Per-frame work bypasses React (direct DOM writes + `useSyncExternalStore` selectors).
+
+**Verified:** preview frame vs. the rendered MP4 frame at the same time are visually identical
+(evidence 06/07).
 
 **Alternatives considered:** WebCodecs/canvas compositing (pixel-exact, much more code, codec
-edge cases); a server-rendered low-res proxy per edit (slow feedback, contradicts "instant").
+edge cases); a server-rendered proxy per edit (slow feedback, contradicts "instant").
 
-**Rationale:** instant, smooth feedback on a laptop with zero server round-trips, using the
-same fonts and the same pure caption chunker as the renderer. Approximations are listed in the
-integration notes and are all cosmetic (the render remains the source of truth and is what the
-Quality Gate inspects).
-
-**Reversibility:** high — `playback.ts` is self-contained; a canvas compositor could replace it
-behind the same engine API.
+**Reversibility:** high — `playback.ts` / `Overlays.tsx` are self-contained.
 
 ---
 
@@ -78,15 +80,18 @@ timeout); a background job + polling (the right answer once render moves off-req
 **Decision:** The preview header offers All / TikTok / Reels / Shorts. A platform overlays a
 stylized, unbranded mock of that app's UI (top bar, right action column, caption/username area)
 plus a dashed safe-area guide; "All" shows only the union guide, faintly. Warnings
-(`apps/web/lib/editor/platform-warnings.ts`) are pure code: estimated text/caption boxes vs. the
-platform's safe zone, duration vs. min/max, canvas aspect, and source sharpness (a reframe so
-tight that < 720 source px span the 1080 canvas). Clicking a warning selects the offending
+(`apps/web/lib/editor/platform-warnings.ts`) are pure code over the renderer's exact layouts:
+text/caption footprints (`layoutTimelineText` / `layoutCaptionChunk`) vs. `PLATFORM_PROFILES`
+safe zones (`combinedSafeZone` for "All"), duration vs. the profile's min/max, canvas aspect,
+source sharpness (a reframe so tight that < 720 source px span the 1080 canvas), and the
+Quality Gate's own `findTimelineCollisions` (captions over a text, text over text). Clicking a warning selects the offending
 item. The Finish modal shows ✓ / ⚠ N per platform and lets Chris schedule anyway — the warnings
 are advisory, the hard gates are not.
 
-**Rationale:** per CLAUDE.md, geometry is deterministic code, not model judgment. Box sizes are
-estimated from an average glyph width (0.5 em, 0.62 em uppercase — calibrated against the
-Inter Display preview); good enough to flag "under the like button", not pixel-exact.
+**Rationale:** per CLAUDE.md, geometry is deterministic code, not model judgment — and using the
+renderer's layout functions means the warning is about the pixels that will actually render.
+Warnings are computed client-side only after webfonts load (avoids SSR/client mismatch and
+fallback-font widths).
 
 **Reversibility:** high.
 
@@ -115,103 +120,57 @@ EditPlan id means a newer server version never silently loses to a stale draft.
 
 ---
 
-## 2026-10-16 — Item stuck in EDITING after a failed render cannot be finished-edited (domain gap, flagged)
+## 2026-10-16 — Grade semantics in the UI follow `resolveGrade`
 
-**Decision (for the integrator / domain owner):** found during real verification: when a render
-fails its technical check the item stays in `EDITING`; `FINISHING_EDIT_STATES` excludes
-`EDITING` and the state table has no `EDITING → EDIT_PLANNED`, so the editor (correctly, per
-the domain) refuses to save. The editor shows a plain-English explanation ("press Render again
-on the video page") but Chris cannot fix the edit that caused the failure. Recommended fix in
-packages/domain: add `EDITING` to `FINISHING_EDIT_STATES` and an `EDITING → EDIT_PLANNED`
-rollback transition (HUMAN actor, reason "Finishing edit after a failed render") used by
-`saveFinishingEdit` when the latest Render is FAILED. Not changed here (packages/** out of scope).
+**Decision:** The renderer resolves a grade as "preset values, overridden by any field that is
+explicitly non-neutral". So in the editor, picking a look stores the preset with NEUTRAL fields
+(the pure look); moving any slider BAKES the resolved look into explicit numbers and sets the
+preset to NONE (labelled "Custom look"), so a slider dragged back to neutral really is neutral
+in the render. Sliders always display `resolveGrade(grade)`.
 
-**Reversibility:** n/a (not implemented).
+**Reversibility:** high.
 
 ---
 
 ## INTEGRATION NOTES
 
-Things the integrator must swap, merge or double-check:
+State after merging `fix/usable-v1` (timeline render engine, EDITING rollback, render variants):
 
-1. **Initial timeline fallback → `planToTimeline`.**
-   `apps/web/app/content/[id]/edit/lib/initial-timeline.ts` `planToEditorDoc()` is a FALLBACK
-   converter (EditPlan JSON → EditTimeline) used only when the latest plan has no
-   `plan.timeline`. Replace its body after the `plan.timeline` passthrough with the renderer
-   workstream's `planToTimeline` from `@chris/media/timeline` so editor and render agree on the
-   AI plan's look. Keep the passthrough (it also restores `coverFrameSeconds`). Its styling
-   (HEADLINE 72px Inter Display ExtraBold white on #000000B3 at y 0.15; NUMBER_CALLOUT 150px
-   #FFD54A + black stroke at y 0.42; LOWER_THIRD 48px at 0.78; CAPTION 56px; captions
-   BOLD_HIGHLIGHT/CLEAN, inter-display-bold 64px, highlight #FFD54A, y 0.72 (0.5 for CENTER);
-   punch-ins → CUT zooms, UPPER_THIRD focus → y 0.33) is covered by
-   `apps/web/lib/editor/editor.test.ts` — update those expectations if `planToTimeline` differs.
-
-2. **`PLATFORM_PROFILES` → `@chris/media/timeline`.**
-   `apps/web/lib/editor/platform-profiles.ts` holds a TEMPORARY local copy (same shape:
-   `{ id, label, canvas, minDurationSeconds, maxDurationSeconds, safeZone{top,bottom,left,right}
-   px@1080x1920, coverFrame{supported, note?} }`; values TikTok 150/420/60/140, Reels
-   220/420/60/140, Shorts 180/360/60/140). Once the renderer workstream merges, replace the file
-   body with a re-export: `export { PLATFORM_PROFILES, type PlatformProfile } from
-   "@chris/media/timeline";` and keep `PlatformId`/`PLATFORM_IDS`. Nothing else in the editor
-   imports platform data directly. The editor also reads `coverFrame.note` for the Cover tab.
-
-3. **`coverFrameSeconds` is not in `EditTimelineSchema` yet.** The editor stores it as a
-   top-level optional field on the timeline (output-timeline seconds). Because
-   `EditTimelineSchema.parse` strips unknown keys, the client re-attaches it after validation
-   (`buildSavePayload`) and the save action (`saveFinishingEditAction`) also receives it as a
-   separate argument and merges it into the stored `plan.timeline` after server-side
-   validation. To formalize: add `coverFrameSeconds: z.number().nonnegative().nullable().optional()`
-   to `EditTimelineSchema`; then the re-attach code becomes a no-op (safe to leave or delete).
-   Publishing should read it as each platform's cover/thumb offset where `coverFrame.supported`.
-
-4. **The current renderer still renders `plan.segments`, not `plan.timeline`.** Verified end to
-   end: saving writes `plan.timeline` on a new EditPlan (old plan fields carried over by
-   `saveFinishingEdit`), and `renderContentItem` then renders the carried-over segments of the
-   selected take, ignoring the timeline. Until the renderer workstream's timeline renderer
-   merges, finishing edits are saved and versioned but NOT reflected in the rendered file.
-   Nothing in the editor needs to change when it lands.
-
-5. **Preview-parity approximations (renderer is the source of truth; please align or tell us):**
-   - Grade: CSS `brightness(1+b) contrast(c) saturate(s)`; temperature = soft-light wash
-     (#ff9a3c warm / #3c8cff cool, opacity |t|×0.45, max 0.6); vignette = radial gradient
-     (transparent 45% → black at vignette×0.9). Grade applies to video only, not text/captions.
-   - Grade semantics the editor writes: picking a look writes `preset` AND copies
-     `GRADE_PRESET_VALUES[preset]` into the numeric fields; sliders then edit the numbers and
-     leave `preset` as the "starting look" name. **The renderer should treat the numeric fields
-     as authoritative** (not re-apply the preset's values on top).
-   - Text: CSS box centered on (x, y); `max-width = maxWidth × canvas width`; line-height 1.15;
-     plate padding 0.3em × 0.45em, radius 0.22em; stroke via `-webkit-text-stroke` of
-     2 × max(2, round(fontSize × 0.07)) px with `paint-order: stroke fill` (visible outline ≈
-     fontSize × 0.07). Captions: block centered at (0.5, y), max-width 0.84, plate padding
-     0.2em × 0.4em; BOXED with no `backgroundColor` uses #000000B3.
-   - Caption presets as previewed: CLEAN = plain; BOLD_HIGHLIGHT and BOXED = active word in
-     `highlightColor`; KARAOKE = every word up to and including the active one in
-     `highlightColor`.
-   - Zoom: scale about (x, y) as `transform-origin`; applies to video only (not overlays).
-     EASE = smoothstep 1 → zoom over `easeSeconds` from `start`, hold, hard cut back at `end`.
-     Last-defined zoom wins when spans overlap.
-   - Volume above 100% previews at 100% (HTMLMediaElement limit); the render applies the gain.
-   - Font faces: preview uses the exact registry TTFs via `/api/fonts`; any new FONT_REGISTRY
-     entries are picked up automatically (font picker + @font-face are generated from it).
-
-6. **Domain gap:** see the EDITING entry above — needed so a failed render can be fixed in the
-   editor.
-
-7. **Entry points (additive only):** `apps/web/app/content/[id]/page.tsx` gains an "Open
-   editor" action panel at the top of the step list and an "Edit this video" link in the
-   Render panel, both shown when the item has an edit plan and is in `FINISHING_EDIT_STATES`;
-   `apps/web/app/calendar/page.tsx` gains an "Edit video →" link inside each scheduled entry.
-   If another workstream restructured those blocks, re-apply as small insertions.
-
-8. **Long renders:** the Finish flow renders inside a Server Action (page `maxDuration = 300`).
-   If renders move to a background worker, swap `renderStepAction` for enqueue + poll; the
-   modal's step model already supports a long-running "running" state.
-
-9. **Blob storage mode:** media URLs are `/api/media/<storageKey>` (302 to a presigned URL in
+1. **No temporary fallbacks remain.** The initial timeline is the worker's own
+   `timelineForPlan` (→ `planToTimeline`), called from the server loader
+   (`apps/web/app/content/[id]/edit/lib/initial-timeline.ts`); a last-resort whole-take
+   timeline is used only if a plan row can't be parsed at all. `PLATFORM_PROFILES` /
+   `combinedSafeZone` are re-exported from `@chris/media/timeline`
+   (`apps/web/lib/editor/platform-profiles.ts` adds only display order + short labels).
+   `coverFrameSeconds` is stored directly on the timeline (schema field) — no side channel.
+2. **Fonts:** the font picker and `@font-face` rules are generated from `FONT_REGISTRY`
+   (15 fonts) at their registry weights; `/api/fonts/[file]` serves them via the renderer's
+   `resolveBundledFontsDir()`, whitelisted by the registry.
+3. **EDITING:** the domain now allows finishing edits from EDITING (rollback to
+   EDIT_PLANNED), so the editor opens and saves after a failed render; the earlier workaround
+   messaging was removed. The Finish flow re-saves from EDITING automatically.
+4. **End-to-end verified** (real dev server + PGlite + two synthetic takes): set the look to
+   B&W and added a text in the editor → Finish → save + render succeeded (the quality check then
+   stopped on the missing Anthropic key, as expected) → a frame extracted with ffmpeg-static from
+   the rendered MP4 shows the B&W grade, the new text and the highlighted caption exactly where
+   the preview drew them (evidence 06 vs 07).
+5. **Remaining preview approximations (all small):** the renderer applies `eq` to luma while the
+   SVG filter applies it per RGB channel (imperceptible per the parity notes); the paused preview
+   samples zooms at the playhead time rather than snapping to frame times `n/fps`; volume above
+   100% previews at 100% (HTMLMediaElement limit) — the render applies the gain.
+6. **Blob storage mode:** media URLs are `/api/media/<storageKey>` (302 to a presigned URL in
    blob mode). Playback works cross-origin; filmstrip thumbnails, the Look-tab frame and the
-   cover thumbnail need canvas reads and gracefully fall back (clip color + name / gradient
-   swatch) if the Blob store doesn't send CORS headers. Adding CORS on the blob store (or
-   `crossOrigin="anonymous"` + CORS) would enable them in production.
+   cover thumbnail read pixels via canvas and fall back gracefully (clip colour + name /
+   gradient swatch) unless the Blob store sends CORS headers.
+7. **Entry points (additive only):** "Open editor" panel + "Edit this video" link on
+   `apps/web/app/content/[id]/page.tsx` (when there's an edit plan and the state is in
+   `FINISHING_EDIT_STATES`), "Edit video →" on scheduled calendar entries.
+8. **Long renders:** Finish renders inside a Server Action (page `maxDuration = 300`). If
+   renders move to a background worker, swap `renderStepAction` for enqueue + poll; the modal's
+   step model already supports a long "running" state.
+9. **Overlapping zooms:** the renderer drops a zoom that overlaps an earlier one
+   (`normalizeZooms`); the preview uses the same function, so it shows exactly what renders. The
+   timeline still lets you place overlapping zooms — a small follow-up could dim skipped ones.
 
-Verification evidence: docs/evidence/2026-10-16-finishing-editor/ (real dev server, real
-PGlite DB, two synthetic takes — one with macOS `say` speech — captured with headless Chrome).
+Verification evidence: docs/evidence/2026-10-16-finishing-editor/ (01–07; headless Chrome against
+the real dev server).

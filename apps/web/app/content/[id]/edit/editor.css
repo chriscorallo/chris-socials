@@ -1023,6 +1023,15 @@ textarea.ed-input {
   outline-offset: 1px;
 }
 
+/* SVG overlay: hover outline only on hover */
+.ed-svg-hover {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.ed-svg-text:hover .ed-svg-hover {
+  opacity: 1;
+}
+
 /* platform chrome mock */
 .ed-chrome {
   position: absolute;
