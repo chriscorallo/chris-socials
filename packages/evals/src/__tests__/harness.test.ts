@@ -37,6 +37,16 @@ describe("eval harness (mock mode)", () => {
     expect(summarizeByPrompt(results).CLAIMS_GATE?.allPassed).toBe(false);
   });
 
+  it("motion-design cases: theme fits topic, taste respected, no invented numbers — and the grader catches a misfit", async () => {
+    const categories = new Set(cases.map((c) => c.category));
+    for (const c of ["motion_theme_fits_topic", "motion_taste_respected", "motion_no_invented_numbers"]) expect(categories).toContain(c);
+    const debt = cases.find((c) => c.id === "md-debt-theme")!;
+    const playful = { ...(debt.mockResponse as Record<string, unknown>), theme: { name: "Party", motionLanguage: "PLAYFUL", primary: null, secondary: null, iconStyle: "SOFT_CLAY", rationale: "fun" } };
+    const { results } = await runEvalSuite(new MockModelProvider(() => playful), [debt], { brandContext: "b" });
+    expect(results[0]!.passed).toBe(false);
+    expect(results[0]!.failures.join(" ")).toContain("theme.motionLanguage");
+  });
+
   it("assertion modes: all vs any, and path/threshold checks", () => {
     const out = { voiceScore: 50, brandScore: 90, requiredChanges: [] };
     expect(checkAssertions(out, [{ path: "voiceScore", lt: 70 }, { path: "brandScore", lt: 70 }], "any")).toEqual([]);

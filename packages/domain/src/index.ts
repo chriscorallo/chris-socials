@@ -34,6 +34,7 @@ export * from "./performance-evaluation";
 export * from "./evidence";
 export * from "./belief";
 export * from "./taste";
+export * from "./motion-taste";
 export * from "./brand-era";
 export * from "./experiment";
 export * from "./weekly-brief";

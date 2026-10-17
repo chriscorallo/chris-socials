@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  MOTION_LANGUAGES,
   MOTION_TEMPLATES,
   MotionPropsSchemas,
   SFX_SOUNDS,
@@ -12,13 +13,16 @@ import {
   type EditTimeline,
   type MeasureText,
   type MotionTemplate,
+  type MotionTheme,
   type PlacementWarning,
   type SafeZonePx,
   type SubjectTrack,
   type TimelineVisual,
   type TranscriptWord,
 } from "@chris/media/timeline";
+import type { MotionTopicInput } from "@chris/domain";
 import type { ModelProvider } from "./model-provider";
+import { fallbackMotionTheme, sanitizeMotionTheme } from "./motion-theme";
 import { buildSystemPrompt } from "./prompt-context";
 import { buildTranscriptPhrases, formatTimestampedTranscript } from "./transcript-timing";
 
@@ -125,10 +129,26 @@ export const MotionDesignerVisualSchema = z.discriminatedUnion("template", [
 ]);
 export type MotionDesignerVisual = z.infer<typeof MotionDesignerVisualSchema>;
 
+/** The per-video motion theme the model proposes (validated + contrast-guarded by code). */
+export const MotionDesignerThemeSchema = z
+  .object({
+    name: S,
+    motionLanguage: z.enum(MOTION_LANGUAGES),
+    /** #RRGGBB or null to keep the brand palette's color. */
+    primary: S.nullable(),
+    secondary: S.nullable(),
+    iconStyle: z.enum(["GOLD_METAL", "SOFT_CLAY", "GLASS", "LINE"]),
+    /** One sentence: why this look fits this topic (shown to Chris). */
+    rationale: S,
+  })
+  .strict();
+
 export const MotionDesignerOutputSchema = z
   .object({
     /** Overall approach in 1-3 sentences (shown to Chris). */
     rationale: S,
+    /** The video's motion theme (null = keep the suggested/fallback one). */
+    theme: MotionDesignerThemeSchema.nullable(),
     visuals: z.array(MotionDesignerVisualSchema),
   })
   .strict();
@@ -164,6 +184,20 @@ export interface DesignVisualsInput {
   replaceExisting?: boolean;
   platformSafe?: SafeZonePx;
   measure?: MeasureText;
+  /** What the video is about (ContentItem title/description/pillar) — drives the theme. */
+  topic?: Omit<MotionTopicInput, "script"> | null;
+  /** Chris's learned motion taste (domain getMotionTasteForDesign). Optional; absent = none. */
+  motionTaste?: MotionTasteInput | null;
+}
+
+/** The designer's view of the learned taste profile (see packages/domain motion-taste.ts). */
+export interface MotionTasteInput {
+  /** Compact text block for the prompt (STRONG/WEAK preferences with evidence counts). */
+  context: string | null;
+  /** -1 when "fewer graphics" is a STRONG, in-scope preference; never below 1 visual. */
+  capDelta?: number;
+  /** STRONG avoid-preferences: these are cut first when something must go (not banned). */
+  avoidTemplates?: string[];
 }
 
 export interface RejectedVisual {
@@ -185,6 +219,11 @@ export interface DesignVisualsResult {
   placementWarnings: PlacementWarning[];
   rationale: string;
   model: string;
+  /** The video's motion theme after design (save it as EditTimeline.motionTheme). */
+  motionTheme: MotionTheme;
+  /** KEPT = the timeline already had one (Chris's or an earlier design) and it was kept;
+   * MODEL = the designer's proposal (sanitized); FALLBACK = topic preset (no usable proposal). */
+  themeSource: "KEPT" | "MODEL" | "FALLBACK";
 }
 
 /** Max visuals per tier (RAW is restraint by definition). */
@@ -417,7 +456,27 @@ function onScreenSection(timeline: EditTimeline, keep: TimelineVisual[]): string
   return [caps, ...texts, ...vis].join("\n") || "(nothing)";
 }
 
-function buildUserPrompt(input: DesignVisualsInput, words: TranscriptWord[], allowed: number[], keep: TimelineVisual[], cap: number): string {
+function themeLine(t: MotionTheme): string {
+  return `"${t.name}" — motionLanguage ${t.motionLanguage}, iconStyle ${t.iconStyle}, primary ${t.primary ?? "brand gold"}, secondary ${t.secondary ?? "brand violet"}`;
+}
+
+function themeSection(input: DesignVisualsInput, suggested: { theme: MotionTheme; topic: string }, kept: MotionTheme | null): string {
+  const topic = input.topic;
+  const about = topic ? `Title: ${topic.title ?? "(untitled)"}${topic.pillar ? ` · pillar ${topic.pillar}` : ""}${topic.description ? `\nAbout: ${topic.description}` : ""}` : "(no title/pillar given)";
+  const choice = kept
+    ? `This video already has a theme (keep it; return theme: null): ${themeLine(kept)}`
+    : `Deterministic suggestion for topic ${suggested.topic}: ${themeLine(suggested.theme)}. Return your own theme if the script's tone calls for something better, else return this one (or null to accept it).`;
+  return `${about}\n${choice}`;
+}
+
+function buildUserPrompt(
+  input: DesignVisualsInput,
+  words: TranscriptWord[],
+  allowed: number[],
+  keep: TimelineVisual[],
+  cap: number,
+  theme: { suggested: { theme: MotionTheme; topic: string }; kept: MotionTheme | null },
+): string {
   const duration = timelineDuration(input.timeline);
   const phrases = buildTranscriptPhrases(words);
   const transcript = phrases.length
@@ -442,6 +501,14 @@ ${input.script?.spokenScript ?? "(no gated script available)"}
 
 ${researchSection(input.research, allowed)}
 
+## Topic and motion theme
+
+${themeSection(input, theme.suggested, theme.kept)}
+
+## Chris's motion taste (learned from his edits)
+
+${input.motionTaste?.context ?? "Nothing learned yet — use your judgment."}
+
 ## Already on screen
 
 ${onScreenSection(input.timeline, keep)}
@@ -456,7 +523,8 @@ Design the motion graphics for this video per your instructions. Time each visua
 phrase it illustrates (start as the key word is spoken), 1.5–5 s each, never overlapping each
 other or the existing ones, with space between them. Placement on screen is automatic (the
 engine keeps graphics off Chris's face, the captions and platform UI) — choose only template,
-props, timing, palette, enter/exit, enterSfx. Fewer, better. An empty list is a valid answer.`;
+props, timing, palette, enter/exit, enterSfx — and the video's motion theme. Fewer, better.
+An empty list is a valid answer.`;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -485,19 +553,44 @@ export async function designVisualsForTimeline(
   const words = outputTimelineWords(timeline, input.wordsByAsset);
   const allowed = groundedNumbers(input.research, input.script);
   const keep = input.replaceExisting ? [] : timeline.visuals;
-  const cap = Math.max(0, tierCap(input.tier, duration) - keep.length);
+  // Learned taste may lower the ceiling by one (STRONG "fewer graphics" only) — never raise it.
+  const tasteDelta = Math.min(0, Math.round(input.motionTaste?.capDelta ?? 0));
+  const cap = Math.max(0, Math.max(Math.min(1, tierCap(input.tier, duration)), tierCap(input.tier, duration) + tasteDelta) - keep.length);
+  const avoid = new Set(input.motionTaste?.avoidTemplates ?? []);
+
+  // Theme: an existing one is kept unless the design replaces everything (Chris's override
+  // or an earlier design is an explicit decision, not something to silently redo).
+  const suggested = fallbackMotionTheme({ ...(input.topic ?? {}), script: input.script?.spokenScript ?? null });
+  const kept = !input.replaceExisting && timeline.motionTheme ? timeline.motionTheme : null;
 
   const { systemPrompt, modelClass } = buildSystemPrompt("MOTION_DESIGNER");
   const result = await provider.completeStructured({
     modelClass,
     systemPrompt,
     stableContext: input.brandContext,
-    userPrompt: buildUserPrompt(input, words, allowed, keep, cap),
+    userPrompt: buildUserPrompt(input, words, allowed, keep, cap, { suggested, kept }),
     schema: MotionDesignerOutputSchema,
     promptId: "MOTION_DESIGNER",
   });
 
   const warnings: string[] = [];
+  let motionTheme: MotionTheme;
+  let themeSource: DesignVisualsResult["themeSource"];
+  if (kept) {
+    motionTheme = kept;
+    themeSource = "KEPT";
+  } else {
+    const proposed = result.output.theme ? sanitizeMotionTheme(result.output.theme) : null;
+    if (proposed) {
+      motionTheme = proposed.theme;
+      themeSource = "MODEL";
+      warnings.push(...proposed.notes);
+    } else {
+      if (result.output.theme) warnings.push("The proposed motion theme was invalid — used the topic preset instead.");
+      motionTheme = suggested.theme;
+      themeSource = "FALLBACK";
+    }
+  }
   const rejected: RejectedVisual[] = [];
   type Accepted = { v: MotionDesignerVisual; props: Record<string, unknown>; start: number; end: number };
   const accepted: Accepted[] = [];
@@ -580,9 +673,12 @@ export async function designVisualsForTimeline(
   // 6. Tier cap: keep the most important (earlier wins ties).
   let chosen = finalList;
   if (finalList.length > cap) {
-    const ranked = [...finalList].sort((a, b) => b.v.importance - a.v.importance || a.start - b.start);
+    // Templates Chris consistently deletes (STRONG, learned) are the first to go — not banned.
+    const rank = (a: Accepted) => a.v.importance - (avoid.has(a.v.template) ? 1.5 : 0);
+    const ranked = [...finalList].sort((a, b) => rank(b) - rank(a) || a.start - b.start);
     const keepSet = new Set(ranked.slice(0, cap));
-    for (const a of finalList) if (!keepSet.has(a)) rejected.push(rejection(a.v, `over the ${input.tier} tier's limit of ${cap} new visual(s)`));
+    for (const a of finalList)
+      if (!keepSet.has(a)) rejected.push(rejection(a.v, `over the ${input.tier} tier's limit of ${cap} new visual(s)${tasteDelta ? " (one fewer: Chris's learned preference)" : ""}${avoid.has(a.v.template) ? ` — ${a.v.template} is one Chris usually deletes` : ""}`));
     chosen = finalList.filter((a) => keepSet.has(a));
   }
 
@@ -638,6 +734,8 @@ export async function designVisualsForTimeline(
     placementWarnings,
     rationale: result.output.rationale,
     model: result.model,
+    motionTheme,
+    themeSource,
   };
 }
 

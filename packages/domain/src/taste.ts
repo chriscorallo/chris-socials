@@ -17,6 +17,8 @@ export const RecordTasteFeedbackSchema = z.object({
   rawFeedback: z.string().min(1),
   normalizedTag: z.string().min(1),
   productionTier: z.enum(["RAW", "FAST", "MEDIUM", "HERO"]).nullable().optional(),
+  /** Structured evidence for machine-captured signals (additive, 2026-10-17). */
+  context: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 export type RecordTasteFeedbackInput = z.input<typeof RecordTasteFeedbackSchema>;
 
@@ -34,6 +36,7 @@ export async function recordTasteFeedback(
       rawFeedback: parsed.rawFeedback,
       normalizedTag: parsed.normalizedTag,
       productionTier: parsed.productionTier ?? null,
+      ...(parsed.context ? { context: parsed.context as never } : {}),
     },
   });
 

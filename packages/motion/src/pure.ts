@@ -5,3 +5,4 @@
  */
 export * from "./timing";
 export * from "./samples";
+export * from "./style";

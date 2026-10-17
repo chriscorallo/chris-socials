@@ -1,10 +1,11 @@
 import type { ComponentType, ReactNode } from "react";
 import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import type { MotionTemplate, TimelineVisual } from "@chris/media/timeline";
-import { TEMPLATE_DESIGN_SIZE, parseVisuals, placementBox, resolveTransition, visualFrameWindow, type ParsedVisual } from "../timing";
+import type { MotionTheme } from "@chris/media/timeline";
+import { TEMPLATE_DESIGN_SIZE, parseVisuals, placementBox, visualFrameWindow, type ParsedVisual } from "../timing";
 import { MotionAssetsContext, useMotionFonts } from "./fonts";
 import { enterExitStyle } from "./motion";
-import { paletteFor } from "./theme";
+import { MotionThemeProvider, useVisualMotionStyle } from "./motion-theme-context";
 import { BarChart, Comparison, LineChart, PercentRing } from "./templates/charts";
 import { ListSteps, TimelineTemplate } from "./templates/lists";
 import { Callout, CalloutLeader, Definition, KineticText, NumberCounter, StatCard, TitleCard } from "./templates/text";
@@ -42,6 +43,8 @@ export interface VisualsLayerProps extends Record<string, unknown> {
   /** Render metadata (calculateMetadata): output fps and length in frames. */
   fps?: number;
   durationInFrames?: number;
+  /** Motion theme (EditTimeline.motionTheme) — palette overrides, motion language, icon style. */
+  motionTheme?: MotionTheme | null;
 }
 
 /** One visual, local frame 0 = its first frame. */
@@ -51,14 +54,16 @@ export function VisualItem({ pv, canvas }: { pv: ParsedVisual; canvas: { width: 
   const v = pv.visual;
   const win = visualFrameWindow(v, fps);
   const box = placementBox(pv.template, v.placement, canvas);
-  const palette = paletteFor(v.palette);
-  const enter = resolveTransition(pv.template, "enter", v.enter);
-  const exit = resolveTransition(pv.template, "exit", v.exit);
-  const style = enterExitStyle(frame, fps, win.durationInFrames, enter, exit, win.enterFrames, win.exitFrames);
+  // Theme styling (motion-themes): palette + motion feel + icon style + themed AUTO transitions.
+  const ms = useVisualMotionStyle(pv.template, v);
+  const { palette, enter, exit } = ms;
+  const style = enterExitStyle(frame, fps, win.durationInFrames, enter, exit, win.enterFrames, win.exitFrames, ms.feel);
   const Comp = TEMPLATES[pv.template];
   const tp: TemplateComponentProps<MotionTemplate> = {
     props: pv.props,
     palette,
+    feel: ms.feel,
+    iconStyle: ms.iconStyle,
     frame,
     fps,
     durationInFrames: win.durationInFrames,
@@ -93,10 +98,11 @@ function FontGate({ children }: { children: ReactNode }) {
 }
 
 /** Every visual of a timeline at its time and placement, on a transparent canvas. */
-export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = false }: VisualsLayerProps) {
+export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = false, motionTheme = null }: VisualsLayerProps) {
   const { fps } = useVideoConfig();
   const { parsed } = parseVisuals(visuals);
   return (
+    <MotionThemeProvider theme={motionTheme}>
     <MotionAssetsContext.Provider value={{ fontBaseUrl }}>
       <FontGate>
         <AbsoluteFill style={{ backgroundColor: "transparent" }}>
@@ -111,5 +117,6 @@ export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = f
         </AbsoluteFill>
       </FontGate>
     </MotionAssetsContext.Provider>
+    </MotionThemeProvider>
   );
 }
