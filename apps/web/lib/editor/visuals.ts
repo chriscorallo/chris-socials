@@ -8,7 +8,12 @@ import {
   type TimelineMusic,
   type TimelineSfx,
   type SfxSound,
-  type TimelineVisual, VISUAL_INTERACTION_DEFAULTS } from "@chris/media/timeline";
+  type TimelineVisual,
+  type MotionTheme,
+  MotionThemeSchema,
+  VISUAL_INTERACTION_DEFAULTS,
+  applyInteractionDefaults,
+} from "@chris/media/timeline";
 import { SAMPLE_PLACEMENT, SAMPLE_PROPS } from "@chris/motion/pure";
 import { newId } from "./timeline-ops";
 import { PLATFORM_IDS } from "./platform-profiles";
@@ -481,7 +486,9 @@ export function addVisual(
   const slot = freeSlotAt(doc.visuals, at, timelineDuration(doc));
   if (!slot) return { doc, id: null };
   const p = SAMPLE_PLACEMENT[template];
-  const v: TimelineVisual = {
+  // New graphics start from the veteran interaction defaults (cards ride punch-ins at 35%,
+  // shadows on, light wrap on 3D) — applied only at creation, never to existing graphics.
+  const v: TimelineVisual = applyInteractionDefaults({
     id,
     template,
     props,
@@ -494,7 +501,7 @@ export function addVisual(
     exit: "AUTO",
     enterSfx: "WHOOSH",
     anchorText: anchorText ? cut(anchorText, 200) : null,
-  };
+  });
   return { doc: { ...doc, visuals: [...doc.visuals, v] }, id };
 }
 
@@ -586,11 +593,92 @@ export function withResolvedPlacements(doc: EditorDoc, resolved: TimelineVisual[
     const r = byId.get(v.id);
     if (!r || v.placement.mode !== "AUTO") return v;
     const p = r.placement;
-    if (p.x === v.placement.x && p.y === v.placement.y && p.scale === v.placement.scale) return v;
+    // AUTO also owns depth for big type (auto-depth rule) — persist what the engine chose.
+    if (p.x === v.placement.x && p.y === v.placement.y && p.scale === v.placement.scale && r.depth === v.depth) return v;
     changed = true;
-    return { ...v, placement: { ...v.placement, x: p.x, y: p.y, scale: p.scale } };
+    return { ...v, depth: r.depth, placement: { ...v.placement, x: p.x, y: p.y, scale: p.scale } };
   });
   return changed ? { ...doc, visuals } : doc;
+}
+
+// ---------------------------------------------------------------------------------------
+// Motion v2: how a graphic interacts with the footage
+// ---------------------------------------------------------------------------------------
+
+/**
+ * "Behind me": depth BEHIND_SUBJECT / FRONT. Like dragging, choosing depth by hand pins the
+ * graphic where it's DRAWN (`shown` = its solved placement) — in AUTO the engine owns depth for
+ * big type (auto-depth), so a hand-picked depth must take it out of AUTO to stick.
+ */
+export function setVisualDepth(doc: EditorDoc, id: string, behind: boolean, shown?: Pick<TimelineVisual, "placement">): EditorDoc {
+  const v = doc.visuals.find((x) => x.id === id);
+  if (!v) return doc;
+  const at = shown?.placement ?? v.placement;
+  return updateVisual(doc, id, {
+    depth: behind ? "BEHIND_SUBJECT" : "FRONT",
+    placement: { mode: "MANUAL", x: at.x, y: at.y, scale: at.scale },
+  });
+}
+
+/**
+ * "Follow me": anchor to Chris's head with `offset` (anchorOffsetFor at the playhead — keeps it
+ * exactly where it is), or back to the screen at `stopAt` (where it's drawn now — no jump).
+ * Following is a placement choice by hand, so the graphic becomes MANUAL.
+ */
+export function setVisualFollow(
+  doc: EditorDoc,
+  id: string,
+  follow: { offsetX: number; offsetY: number } | null,
+  stopAt?: { x: number; y: number },
+): EditorDoc {
+  const v = doc.visuals.find((x) => x.id === id);
+  if (!v) return doc;
+  const placement = { ...v.placement, mode: "MANUAL" as const, ...(stopAt ? { x: r3(clamp(stopAt.x, 0, 1)), y: r3(clamp(stopAt.y, 0, 1)) } : {}) };
+  if (follow) {
+    return updateVisual(doc, id, { anchor: { type: "SUBJECT", offsetX: r3(clamp(follow.offsetX, -1, 1)), offsetY: r3(clamp(follow.offsetY, -1, 1)) }, placement });
+  }
+  return updateVisual(doc, id, { anchor: { type: "SCREEN", offsetX: v.anchor.offsetX, offsetY: v.anchor.offsetY }, placement });
+}
+
+/** Dragging a graphic that follows Chris moves its OFFSET from his head (and its fallback spot). */
+export function moveAnchoredVisual(doc: EditorDoc, id: string, offset: { offsetX: number; offsetY: number }, at: { x: number; y: number }, scale?: number): EditorDoc {
+  const v = doc.visuals.find((x) => x.id === id);
+  if (!v) return doc;
+  return updateVisual(doc, id, {
+    anchor: { type: "SUBJECT", offsetX: r3(clamp(offset.offsetX, -1, 1)), offsetY: r3(clamp(offset.offsetY, -1, 1)) },
+    placement: { mode: "MANUAL", x: r3(clamp(at.x, 0, 1)), y: r3(clamp(at.y, 0, 1)), scale: Math.round(clamp(scale ?? v.placement.scale, 0.3, 2.5) * 100) / 100 },
+  });
+}
+
+/** "Move with camera" 0..1 (stored to 2 decimals). */
+export function setCameraCoupling(doc: EditorDoc, id: string, value: number): EditorDoc {
+  return updateVisual(doc, id, { cameraCoupling: Math.round(clamp(value, 0, 1) * 100) / 100 });
+}
+
+export function setIntegration(doc: EditorDoc, id: string, patch: Partial<TimelineVisual["integration"]>): EditorDoc {
+  const v = doc.visuals.find((x) => x.id === id);
+  if (!v) return doc;
+  return updateVisual(doc, id, { integration: { ...v.integration, ...patch } });
+}
+
+/** Emphasis timing: "AUTO" (null — the strongest word in the window), "OFF" (0 — the
+ * template's own timing), or a target offset in seconds after the start ("hit near here"). */
+export type EmphasisChoice = "AUTO" | "OFF" | number;
+export function setEmphasisTiming(doc: EditorDoc, id: string, choice: EmphasisChoice): EditorDoc {
+  const v = doc.visuals.find((x) => x.id === id);
+  if (!v) return doc;
+  const emphasisAt = choice === "AUTO" ? null : choice === "OFF" ? 0 : r3(clamp(choice, 0.05, Math.max(0.05, v.end - v.start)));
+  return updateVisual(doc, id, { emphasisAt });
+}
+export function emphasisChoiceOf(v: Pick<TimelineVisual, "emphasisAt">): EmphasisChoice {
+  return v.emphasisAt == null ? "AUTO" : v.emphasisAt === 0 ? "OFF" : v.emphasisAt;
+}
+
+/** Per-video motion theme; null = "Auto (from topic)". Invalid input is refused (doc unchanged). */
+export function setMotionTheme(doc: EditorDoc, theme: Partial<MotionTheme> | null): EditorDoc {
+  if (theme === null) return { ...doc, motionTheme: null };
+  const merged = MotionThemeSchema.safeParse({ ...(doc.motionTheme ?? { name: "Custom" }), ...theme });
+  return merged.success ? { ...doc, motionTheme: merged.data } : doc;
 }
 
 // ---------------------------------------------------------------------------------------
