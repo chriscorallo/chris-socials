@@ -7,6 +7,7 @@ import {
   listUnscheduledReadyItems,
   listScheduleEntries,
   scheduleContentItemForPublishing,
+  unscheduleContentItem,
   parseLocalDateTimeInTz,
   ymdMinutesToUtc,
   parseYmd,
@@ -224,4 +225,16 @@ export async function runAutoFillWeek(formData: FormData) {
   }
 
   redirect(errorMessage ? withParam(back, "calendarError", errorMessage) : back);
+}
+
+/** "Remove from calendar" — SCHEDULED -> READY (packages/domain schedule.ts). */
+export async function unscheduleEvent(input: { contentItemId: string }): Promise<MoveResult> {
+  const session = await requireSession();
+  try {
+    await unscheduleContentItem(prisma, input.contentItemId, { actorId: session.user!.id! });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't remove it." };
+  }
+  refresh();
+  return { ok: true };
 }

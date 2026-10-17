@@ -7,7 +7,7 @@ import type { CalEvent, PoolItem } from "../../lib/calendar-data";
 import { formatMinutes, monthDayLabel, weekdayName } from "../../lib/calendar-views";
 import { formatHhmm, parseHhmm } from "@chris/domain/planning";
 import { ALL_PLATFORMS, PLATFORM_COLOR, PLATFORM_NAME, PlatformDots, StatusPill } from "./calendar-ui";
-import { moveEvent, scheduleAt } from "./actions";
+import { moveEvent, scheduleAt, unscheduleEvent } from "./actions";
 import { runAutopilotAction } from "../content/[id]/actions";
 
 export type SheetState =
@@ -143,6 +143,13 @@ function PostDetail({ e, onDone }: { e: CalEvent; onDone: (msg?: string) => void
       else setError(r.error);
     });
 
+  const unschedule = () =>
+    start(async () => {
+      const r = await unscheduleEvent({ contentItemId: e.contentItemId! });
+      if (r.ok) onDone("Removed from calendar");
+      else setError(r.error);
+    });
+
   return (
     <div>
       <div className="flex gap-4">
@@ -208,10 +215,15 @@ function PostDetail({ e, onDone }: { e: CalEvent; onDone: (msg?: string) => void
           <button type="button" onClick={save} disabled={pending} className="btn btn-primary mt-3 w-full">
             {pending ? "Saving…" : "Save new time"}
           </button>
+          {e.status === "scheduled" && (
+            <button type="button" onClick={unschedule} disabled={pending} className="btn btn-ghost mt-2 w-full !text-[var(--color-rose-400)]">
+              Remove from calendar
+            </button>
+          )}
           <ErrorLine error={error} />
           <p className="mt-3 text-[12.5px] leading-snug text-[var(--color-text-faint)]">
-            Or drag it: on a computer, drag in any view; on iPhone, press and hold in Week or Day. To take it off the calendar,
-            edit the video (it re-renders and re-checks) or cancel it on its page.
+            Or drag it: on a computer, drag in any view; on iPhone, press and hold in Week or Day. Removing it keeps the
+            video ready to schedule again.
           </p>
         </div>
       ) : (

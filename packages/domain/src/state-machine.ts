@@ -33,7 +33,7 @@ const TRANSITIONS: Record<ContentState, ContentState[]> = {
   QC_REPAIR: ["RENDERED", "QC_BLOCKED", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
   QC_BLOCKED: ["EDIT_PLANNED"], // rollback
   READY: ["SCHEDULED", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
-  SCHEDULED: ["PUBLISHING", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
+  SCHEDULED: ["PUBLISHING", "EDIT_PLANNED", "READY"], // EDIT_PLANNED = finishing-edit rollback; READY = unschedule (rollback)
   PUBLISHING: ["PUBLISHED"],
   PUBLISHED: ["MEASURING"],
   MEASURING: ["ARCHIVED"],
@@ -52,6 +52,8 @@ export const ROLLBACK_TRANSITIONS = new Set<string>([
   "QC_REPAIR->EDIT_PLANNED",
   "READY->EDIT_PLANNED",
   "SCHEDULED->EDIT_PLANNED",
+  // Calendar "Remove from calendar" (2026-10-17): back to the READY pool, gates untouched.
+  "SCHEDULED->READY",
 ]);
 
 export class InvalidTransitionError extends Error {

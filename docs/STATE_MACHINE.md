@@ -40,6 +40,7 @@ CANCELLED`
 | `EDITING` / `RENDERED` / `QC_REPAIR` / `READY` / `SCHEDULED` | `EDIT_PLANNED` | Chris saves a finishing edit in the in-app editor (rollback; from `EDITING` = fixing an edit whose render failed) |
 | `QC_BLOCKED` | `CANCELLED` | Human/system decision |
 | `READY` | `SCHEDULED` | Auto-Fill Week places it on the calendar |
+| `SCHEDULED` | `READY` | "Remove from calendar" (rollback; gates stay passed) |
 | `SCHEDULED` | `PUBLISHING` | Preflight passes, publish job starts |
 | `PUBLISHING` | `PUBLISHED` | Publish verified |
 | `PUBLISHED` | `MEASURING` | First metric snapshot job scheduled |
@@ -55,6 +56,9 @@ else, going backward means cancel-and-recreate a new `ContentItem`, not mutating
 
 - `QC_BLOCKED → EDIT_PLANNED`
 - `RESEARCH_BLOCKED → RESEARCHING`
+- `SCHEDULED → READY` — added 2026-10-17: "Remove from calendar". The video keeps its passed
+  gates and render; only its ScheduleEntry is removed (the transition + audit rows keep the
+  history).
 - `EDITING | RENDERED | QC_REPAIR | READY | SCHEDULED → EDIT_PLANNED` — added 2026-10-16 for the in-app
   finishing editor: saving a human edit to a finished/scheduled video sends it back through
   render + all four hard gates before it can be scheduled again (an edit can change what's on
