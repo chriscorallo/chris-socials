@@ -67,7 +67,9 @@ for (const c of ordered) {
     const summary = out
       ? r.promptId === "CLAIMS_GATE"
         ? `result=${String(out.result)}`
-        : `brand=${String(out.brandScore)} voice=${String(out.voiceScore)} orig=${String(out.originalityScore)} req=${(out.requiredChanges as unknown[] | undefined)?.length ?? 0}`
+        : r.promptId === "MOTION_DESIGNER"
+          ? `theme=${String((out.theme as { name?: string } | undefined)?.name)} (${String(out.themeSource)}) added=${String(out.addedCount)} ungrounded=${String(out.ungroundedShown)}`
+          : `brand=${String(out.brandScore)} voice=${String(out.voiceScore)} orig=${String(out.originalityScore)} req=${(out.requiredChanges as unknown[] | undefined)?.length ?? 0}`
       : (r.error ?? "");
     console.log(`${verdict.padEnd(5)} ${r.id.padEnd(30)} ${r.promptId.padEnd(15)} $${r.costUsd.toFixed(4)}  ${summary}${r.passed ? "" : `\n      ${r.failures.join("; ")}`}`);
   }

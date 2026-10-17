@@ -204,6 +204,9 @@ importers:
       '@chris/agents':
         specifier: workspace:*
         version: link:../agents
+      '@chris/media':
+        specifier: workspace:*
+        version: link:../media
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2

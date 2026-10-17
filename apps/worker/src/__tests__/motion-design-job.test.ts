@@ -41,6 +41,7 @@ function fakeAnalyzer(calls: string[], fail = false) {
 
 const designerResponse = {
   rationale: "Show the number when he says it; the rules as a list.",
+  theme: null,
   visuals: [
     {
       template: "NUMBER_COUNTER",
@@ -186,6 +187,10 @@ describe("motion design job (real DB, mocked model + tracker)", () => {
     expect(after!.id).toBe(res.editPlanId);
     const timeline = EditTimelineSchema.parse((after!.plan as { timeline: unknown }).timeline);
     expect(timeline.visuals.map((v) => v.template)).toEqual(["NUMBER_COUNTER"]);
+    // The model returned no theme -> the topic preset is saved on the timeline.
+    expect(res.themeSource).toBe("FALLBACK");
+    expect(timeline.motionTheme).toEqual(res.motionTheme);
+    expect(timeline.motionTheme?.name).toBeTruthy();
     const head = { x: HEAD.x * 1080, y: HEAD.y * 1920, width: HEAD.w * 1080, height: HEAD.h * 1920 };
     expect(intersectionArea(visualRect(timeline.visuals[0]!, timeline.canvas), head)).toBe(0);
     expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("EDIT_PLANNED");

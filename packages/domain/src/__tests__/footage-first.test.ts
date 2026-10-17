@@ -22,3 +22,21 @@ describe("footage-first upload", () => {
     expect(item.title).toBe("Untitled video");
   });
 });
+
+describe("unschedule (Remove from calendar)", () => {
+  it("moves SCHEDULED back to READY, removes the schedule entry, keeps history; refuses otherwise", async () => {
+    const { applyTransition } = await import("../state-machine");
+    const { scheduleContentItemForPublishing, unscheduleContentItem, UnscheduleRequiresScheduledStateError } = await import("../schedule");
+    const item = await createContentItemFromFootage(prisma, { title: "Unschedule me" }, { actorId: "chris" });
+    for (const to of ["MEDIA_INGESTED", "TAKE_SELECTED", "EDIT_PLANNED", "EDITING", "RENDERED", "READY"] as const) {
+      await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM" });
+    }
+    await scheduleContentItemForPublishing(prisma, { contentItemId: item.id, scheduledDate: new Date(Date.now() + 86400000), targetPlatforms: ["TIKTOK"] }, { actorId: "chris" });
+    await unscheduleContentItem(prisma, item.id, { actorId: "chris" });
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("READY");
+    expect(await prisma.scheduleEntry.findUnique({ where: { contentItemId: item.id } })).toBeNull();
+    const last = await prisma.contentStateTransition.findFirst({ where: { contentItemId: item.id }, orderBy: { createdAt: "desc" } });
+    expect(last?.fromState).toBe("SCHEDULED");
+    await expect(unscheduleContentItem(prisma, item.id, { actorId: "chris" })).rejects.toBeInstanceOf(UnscheduleRequiresScheduledStateError);
+  });
+});

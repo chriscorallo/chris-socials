@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, type ContentState } from "@chris/domain";
+import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, type ContentState } from "@chris/domain";
 import { EditTimelineSchema, type EditTimeline, type PlacementWarning } from "@chris/media/timeline";
 import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
@@ -145,6 +145,8 @@ export async function saveFinishingEditAction(input: {
   const cover = parsed.data.coverFrameSeconds;
   const timeline = { ...parsed.data, coverFrameSeconds: cover == null ? null : Math.min(Math.max(0, cover), duration) };
   try {
+    // Motion taste (additive): remember the version being replaced so the save can be diffed.
+    const previous = await getLatestEditPlan(prisma, input.contentItemId).catch(() => null);
     const plan = await saveFinishingEdit(prisma, {
       contentItemId: input.contentItemId,
       timeline,
@@ -152,9 +154,34 @@ export async function saveFinishingEditAction(input: {
       actorId: session.user!.id!,
       note: input.note,
     });
+    await learnMotionTaste(input.contentItemId, previous, timeline, plan.id, session.user!.id!);
     return { ok: true, editPlanId: plan.id, state: await stateOf(input.contentItemId), savedAt: new Date().toISOString() };
   } catch (err) {
     return { ok: false, error: plainError(err, "Saving"), state: await stateOf(input.contentItemId).catch(() => undefined) };
+  }
+}
+
+/** What Chris kept / edited / deleted in the motion graphics becomes taste evidence
+ * (packages/domain motion-taste.ts). Best effort: learning never blocks or fails a save. */
+async function learnMotionTaste(
+  contentItemId: string,
+  previous: { plan: unknown; revisionReason: string | null } | null,
+  after: EditTimeline,
+  planId: string,
+  actorId: string,
+): Promise<void> {
+  try {
+    const before = EditTimelineSchema.safeParse((previous?.plan as { timeline?: unknown } | null)?.timeline);
+    await recordMotionEditSignals(prisma, {
+      contentItemId,
+      before: before.success ? before.data : null,
+      after,
+      actorId,
+      planId,
+      beforeWasAiDesign: /Motion Designer:/.test(previous?.revisionReason ?? ""),
+    });
+  } catch (err) {
+    console.warn("[motion-taste] signals not recorded:", err instanceof Error ? err.message : err);
   }
 }
 

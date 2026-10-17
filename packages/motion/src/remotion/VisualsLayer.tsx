@@ -1,11 +1,11 @@
 import type { ComponentType, ReactNode } from "react";
 import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import type { MotionTemplate, MotionTheme, TimelineVisual, VisualInteraction } from "@chris/media/timeline";
-import { TEMPLATE_DESIGN_SIZE, parseVisuals, placementBox, resolveTransition, visualFrameWindow, type ParsedVisual } from "../timing";
+import { TEMPLATE_DESIGN_SIZE, parseVisuals, placementBox, visualFrameWindow, type ParsedVisual } from "../timing";
 import { MotionAssetsContext, useMotionFonts } from "./fonts";
 import { enterExitStyle } from "./motion";
+import { MotionThemeProvider, useVisualMotionStyle } from "./motion-theme-context";
 import { SceneIntegration, TrackedMotion } from "./integration";
-import { paletteFor } from "./theme";
 import { BarChart, Comparison, LineChart, PercentRing } from "./templates/charts";
 import { ListSteps, TimelineTemplate } from "./templates/lists";
 import { Callout, CalloutLeader, Definition, KineticText, NumberCounter, StatCard, TitleCard } from "./templates/text";
@@ -49,7 +49,7 @@ export interface VisualsLayerProps extends Record<string, unknown> {
    * editor preview compute it with the same pure functions. Absent → v1 behaviour.
    */
   interactions?: Record<string, VisualInteraction> | null;
-  /** Per-video motion theme (timeline.motionTheme), passed through to templates. */
+  /** Motion theme (EditTimeline.motionTheme) — palette overrides, motion language, icon style. */
   motionTheme?: MotionTheme | null;
   /** Which visuals to draw (the editor preview splits behind/front layers around the person cutout). */
   depthFilter?: "ALL" | "FRONT" | "BEHIND_SUBJECT";
@@ -60,26 +60,26 @@ export function VisualItem({
   pv,
   canvas,
   interaction = null,
-  motionTheme = null,
 }: {
   pv: ParsedVisual;
   canvas: { width: number; height: number };
   interaction?: VisualInteraction | null;
-  motionTheme?: MotionTheme | null;
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const v = pv.visual;
   const win = visualFrameWindow(v, fps);
   const box = placementBox(pv.template, v.placement, canvas);
-  const palette = paletteFor(v.palette);
-  const enter = resolveTransition(pv.template, "enter", v.enter);
-  const exit = resolveTransition(pv.template, "exit", v.exit);
-  const style = enterExitStyle(frame, fps, win.durationInFrames, enter, exit, win.enterFrames, win.exitFrames);
+  // Theme styling (motion-themes): palette + motion feel + icon style + themed AUTO transitions.
+  const ms = useVisualMotionStyle(pv.template, v);
+  const { palette, enter, exit } = ms;
+  const style = enterExitStyle(frame, fps, win.durationInFrames, enter, exit, win.enterFrames, win.exitFrames, ms.feel);
   const Comp = TEMPLATES[pv.template];
   const tp: TemplateComponentProps<MotionTemplate> = {
     props: pv.props,
     palette,
+    feel: ms.feel,
+    iconStyle: ms.iconStyle,
     frame,
     fps,
     durationInFrames: win.durationInFrames,
@@ -89,7 +89,6 @@ export function VisualItem({
     canvas,
     hitAtFrame: interaction?.hitAtFrame ?? null,
     scene: interaction?.scene ?? null,
-    theme: motionTheme,
   };
   const design = TEMPLATE_DESIGN_SIZE[pv.template];
   const look = interaction?.look;
@@ -129,6 +128,7 @@ export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = f
   const { parsed: all } = parseVisuals(visuals);
   const parsed = depthFilter === "ALL" ? all : all.filter((pv) => (pv.visual.depth ?? "FRONT") === depthFilter);
   return (
+    <MotionThemeProvider theme={motionTheme}>
     <MotionAssetsContext.Provider value={{ fontBaseUrl }}>
       <FontGate>
         <AbsoluteFill style={{ backgroundColor: "transparent" }}>
@@ -136,12 +136,13 @@ export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = f
             const win = visualFrameWindow(pv.visual, fps);
             return (
               <Sequence key={pv.visual.id} from={clipMode ? 0 : win.from} durationInFrames={win.durationInFrames} layout="none">
-                <VisualItem pv={pv} canvas={canvas} interaction={interactions?.[pv.visual.id] ?? null} motionTheme={motionTheme} />
+                <VisualItem pv={pv} canvas={canvas} interaction={interactions?.[pv.visual.id] ?? null} />
               </Sequence>
             );
           })}
         </AbsoluteFill>
       </FontGate>
     </MotionAssetsContext.Provider>
+    </MotionThemeProvider>
   );
 }

@@ -3,6 +3,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   computeCostUsd,
+  designVisualsForTimeline,
+  groundedNumbers,
+  numberIsGrounded,
+  numbersShownBy,
   runBrandGuardianAgent,
   runClaimsGateAgent,
   BilledModelCallError,
@@ -12,6 +16,7 @@ import {
   type StructuredCompletionRequest,
 } from "@chris/agents";
 import { z } from "zod";
+import { EditTimelineSchema } from "@chris/media/timeline";
 import { EvalCaseSchema, type Assertion, type EvalCase, type EvalCaseResult, type ResearchFixture } from "./types";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +111,45 @@ class MeteringProvider implements ModelProvider {
   }
 }
 
+type MotionCase = Extract<EvalCase, { promptId: "MOTION_DESIGNER" }>;
+
+/** Runs the real Motion Designer on a synthetic one-take timeline and returns a gradeable
+ * summary: the theme it chose, how taste was honored, and whether any shown number is
+ * ungrounded (must always be 0 — the factual hard rule is code). */
+async function runMotionCase(provider: ModelProvider, c: MotionCase, brandContext: string) {
+  const tokens = c.input.script.split(/\s+/).filter(Boolean);
+  const words = tokens.map((word, i) => ({ word, start: i * 0.4, end: i * 0.4 + 0.34 }));
+  const duration = Math.max(6, tokens.length * 0.4 + 0.5);
+  const timeline = EditTimelineSchema.parse({
+    version: 2,
+    clips: [{ id: "c1", mediaAssetId: "take", sourceStart: 0, sourceEnd: duration }],
+    captions: { enabled: true, fontId: "inter-display-bold", fontSize: 62, color: "#FFFFFF", highlightColor: "#FFD84D", y: 0.78 },
+  });
+  const research = c.input.numericInputs.length ? { primaryClaim: c.input.title, numericInputs: c.input.numericInputs, facts: [], calculationNotes: null } : null;
+  const script = { spokenScript: c.input.script };
+  const r = await designVisualsForTimeline(provider, {
+    timeline,
+    wordsByAsset: { take: words },
+    research,
+    script,
+    tier: c.input.tier,
+    brandContext,
+    topic: { title: c.input.title, pillar: c.input.pillar },
+    motionTaste: c.input.tasteContext || c.input.avoidTemplates.length || c.input.capDelta ? { context: c.input.tasteContext, avoidTemplates: c.input.avoidTemplates, capDelta: c.input.capDelta } : null,
+  });
+  const allowed = groundedNumbers(research, script);
+  const avoid = new Set(c.input.avoidTemplates);
+  return {
+    theme: r.motionTheme,
+    themeSource: r.themeSource,
+    addedCount: r.added.length,
+    addedTemplates: r.added.map((v) => v.template),
+    avoidedTemplateUsed: r.added.some((v) => avoid.has(v.template)),
+    ungroundedShown: r.added.reduce((n, v) => n + numbersShownBy(v.template, v.props).filter((x) => !numberIsGrounded(x.value, allowed)).length, 0),
+    factualRejections: r.rejectedVisuals.filter((x) => x.reason.startsWith("FACTUAL")).length,
+  };
+}
+
 async function invoke(provider: ModelProvider, c: EvalCase, brandContext: string): Promise<unknown> {
   if (c.promptId === "CLAIMS_GATE") {
     const research = toResearchPacket(c.input.research);
@@ -115,6 +159,7 @@ async function invoke(provider: ModelProvider, c: EvalCase, brandContext: string
       script: c.input.mode === "SCRIPT" ? { spokenScript: c.input.script ?? "" } : undefined,
     });
   }
+  if (c.promptId === "MOTION_DESIGNER") return runMotionCase(provider, c, brandContext);
   return runBrandGuardianAgent(provider, {
     script: { spokenScript: c.input.script },
     brandContext,

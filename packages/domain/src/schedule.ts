@@ -148,3 +148,43 @@ export async function scheduleContentItemForPublishing(
     return entry;
   });
 }
+
+export class UnscheduleRequiresScheduledStateError extends Error {
+  constructor(actual: ContentState) {
+    super(`Only a scheduled video can be taken off the calendar (this one is ${actual}).`);
+    this.name = "UnscheduleRequiresScheduledStateError";
+  }
+}
+
+/**
+ * Calendar "Remove from calendar": SCHEDULED -> READY (a rollback). The video keeps its passed
+ * hard gates and render — it simply goes back to the pool of ready videos. The ScheduleEntry
+ * (where/when, not history) is removed in the same transaction; the transition + audit rows
+ * record that it was scheduled and when it was taken off. Never possible once publishing has
+ * started (PUBLISHING is not SCHEDULED).
+ */
+export async function unscheduleContentItem(
+  prisma: PrismaClient,
+  contentItemId: string,
+  actor: { actorId: string },
+) {
+  return prisma.$transaction(async (tx) => {
+    const item = await tx.contentItem.findUniqueOrThrow({ where: { id: contentItemId } });
+    if (item.currentState !== "SCHEDULED") {
+      throw new UnscheduleRequiresScheduledStateError(item.currentState);
+    }
+    const entry = await tx.scheduleEntry.findUnique({ where: { contentItemId } });
+    if (entry) await tx.scheduleEntry.delete({ where: { contentItemId } });
+    await writeTransition(tx, {
+      contentItemId,
+      fromState: "SCHEDULED",
+      toState: "READY",
+      reason: entry
+        ? `Removed from the calendar (was ${entry.scheduledDate.toISOString()})`
+        : "Removed from the calendar",
+      actorType: "HUMAN",
+      actorId: actor.actorId,
+      auditAction: "UNSCHEDULED",
+    });
+  });
+}
