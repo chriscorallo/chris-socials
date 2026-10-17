@@ -68,16 +68,16 @@ export default async function HomePage() {
     <>
       <NavBar />
       <PageShell>
-        <header className="mb-8">
+        <header className="mb-6 sm:mb-8">
           <p className="eyebrow mb-1">Chris Content Intelligence</p>
-          <h1 className="text-[28px] font-semibold tracking-tight">
+          <h1 className="text-[30px] font-semibold leading-tight tracking-tight sm:text-[28px]">
             Welcome back{session.user?.name ? `, ${session.user.name}` : ""}
           </h1>
         </header>
 
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-4 sm:gap-5 md:grid-cols-2">
           {/* THIS WEEK */}
-          <Panel className="sm:col-span-2">
+          <Panel className="md:col-span-2">
             <SectionHeading
               eyebrow="This Week"
               title={
@@ -92,7 +92,7 @@ export default async function HomePage() {
                 No Weekly Programming Thesis exists yet. <QuietLink href="/strategy">Build one in Strategy →</QuietLink>
               </EmptyState>
             ) : (
-              <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
+              <p className="mb-3 text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">
                 <span className="text-[var(--color-text)]">{approvedCount}</span> of{" "}
                 {portfolioItems.length} portfolio ideas approved
                 <span className="opacity-70"> (spec target ~30/week)</span> ·{" "}
@@ -108,17 +108,20 @@ export default async function HomePage() {
             ) : (
               <ul className="divide-y divide-[var(--color-border)]">
                 {thisWeeksEntries.slice(0, 6).map((entry) => (
-                  <li key={entry.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                    <Link href={`/content/${entry.contentItemId}`} className="hover:text-[var(--color-gold-400)]">
-                      {entry.contentItem.title}
-                    </Link>
-                    <span className="whitespace-nowrap text-xs text-[var(--color-text-faint)]">
+                  <li key={entry.id}>
+                    <Link
+                      href={`/content/${entry.contentItemId}`}
+                      className="-mx-2 flex min-h-[52px] items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-[15px] hover:text-[var(--color-gold-400)] active:bg-white/[0.05] sm:text-sm"
+                    >
+                    <span className="min-w-0 flex-1">{entry.contentItem.title}</span>
+                    <span className="shrink-0 whitespace-nowrap text-xs text-[var(--color-text-faint)]">
                       {entry.scheduledDate.toLocaleDateString(undefined, {
                         weekday: "short",
                         month: "short",
                         day: "numeric",
                       })}
                     </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -140,11 +143,11 @@ export default async function HomePage() {
                   <li key={evaluation.id} className="py-3 first:pt-0">
                     <Link
                       href={`/content/${evaluation.contentItemId}`}
-                      className="text-sm font-medium hover:text-[var(--color-gold-400)]"
+                      className="block text-[15px] font-medium hover:text-[var(--color-gold-400)] active:opacity-70 sm:text-sm"
                     >
                       {evaluation.contentItem.title}
                     </Link>
-                    <p className="mt-1 text-[13px] leading-snug text-[var(--color-text-muted)]">
+                    <p className="mt-1 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-[13px]">
                       {evaluation.overallSummary}
                       {evaluation.strategicallyValuableDespiteLowerViews && (
                         <span className="text-[var(--color-gold-400)]"> · valuable despite lower views</span>
@@ -164,9 +167,9 @@ export default async function HomePage() {
               <EmptyState>No coherence call has been made for this week yet.</EmptyState>
             ) : (
               <>
-                <p className="mb-3 text-sm leading-relaxed text-[var(--color-text)]">{thesis.thesis}</p>
+                <p className="mb-3 text-[15px] leading-relaxed text-[var(--color-text)] sm:text-sm">{thesis.thesis}</p>
                 {(thesis.risks as unknown as string[])?.length > 0 && (
-                  <p className="text-[13px] text-[var(--color-text-muted)]">
+                  <p className="text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">
                     <span className="font-medium text-[var(--color-text)]">Watching: </span>
                     {(thesis.risks as unknown as string[]).slice(0, 2).join(" · ")}
                   </p>
@@ -179,7 +182,7 @@ export default async function HomePage() {
           </Panel>
 
           {/* NEEDS YOU */}
-          <Panel className="sm:col-span-2">
+          <Panel className="order-first md:order-none md:col-span-2">
             <SectionHeading
               eyebrow="Needs You"
               title={needsYou.entries.length === 0 ? "Nothing needs a decision right now" : `${needsYou.entries.length} waiting on you`}
@@ -192,21 +195,19 @@ export default async function HomePage() {
               </EmptyState>
             ) : (
               <>
-                <ul className="grid gap-3 sm:grid-cols-2">
+                <ul className="grid gap-3 md:grid-cols-2">
                   {needsYou.entries.map((entry, i) => (
-                    <li
-                      key={i}
-                      className="rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-3.5"
-                    >
-                      <Badge tone={NEEDS_YOU_TONE[entry.category]}>{needsYouCategoryLabel(entry.category)}</Badge>
-                      <div className="mt-2 text-sm">
-                        <Link href={entry.href} className="font-medium hover:text-[var(--color-gold-400)]">
-                          {entry.title}
-                        </Link>
-                      </div>
-                      <p className="mt-1 text-[13px] leading-snug text-[var(--color-text-muted)]">
-                        {entry.description}
-                      </p>
+                    <li key={i}>
+                      <Link
+                        href={entry.href}
+                        className="block h-full rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-4 transition-colors hover:bg-white/[0.05] active:bg-white/[0.07]"
+                      >
+                        <Badge tone={NEEDS_YOU_TONE[entry.category]}>{needsYouCategoryLabel(entry.category)}</Badge>
+                        <p className="mt-2 text-[15px] font-medium sm:text-sm">{entry.title}</p>
+                        <p className="mt-1 line-clamp-3 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-[13px]">
+                          {entry.description}
+                        </p>
+                      </Link>
                     </li>
                   ))}
                 </ul>

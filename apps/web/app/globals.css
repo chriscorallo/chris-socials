@@ -38,11 +38,57 @@
 
 html {
   color-scheme: dark;
+  /* iOS: never auto-inflate text on rotate; no grey flash on tap (we give our own :active). */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--color-ink);
 }
 
 body {
   background: var(--color-ink);
   color: var(--color-text);
+  min-height: 100dvh;
+  /* Long unbroken words (titles, URLs, filenames) wrap instead of pushing the page sideways. */
+  overflow-wrap: break-word;
+  /* Last-resort guard against horizontal page scroll on phones; real overflow is fixed at
+   * the source (min-w-0, truncation, cards instead of tables) and asserted by the mobile
+   * screenshot check — this only keeps a future regression from making the whole page pan. */
+  overflow-x: clip;
+}
+
+/* Safe areas (viewport-fit=cover + black-translucent status bar on the home-screen app). */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Bottom tab bar (below lg): 56px of buttons + the home-indicator inset. */
+  --tabbar-h: calc(56px + var(--safe-bottom));
+  --gutter: 1rem;
+}
+@media (min-width: 640px) {
+  :root {
+    --gutter: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  :root {
+    --tabbar-h: 0px;
+  }
+}
+
+/* Anchor jumps (#next-step, #day-…) land below the sticky header, not under it. */
+[id] {
+  scroll-margin-top: calc(var(--safe-top) + 72px);
+}
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 /* Ambient background: a few soft, blurred color fields fixed behind everything, the way an
@@ -122,8 +168,23 @@ body {
     font-size: 0.875rem;
     font-weight: 600;
     padding: 0.55rem 1.1rem;
+    min-height: 2.75rem; /* 44px — Apple HIG minimum tap target */
     transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
     white-space: nowrap;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  @media (min-width: 1024px) and (pointer: fine) {
+    .btn {
+      min-height: 2.375rem;
+    }
+  }
+  /* Long labels may wrap on narrow phones instead of overflowing the card. */
+  .btn-wrap {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
   }
   .btn:active {
     transform: scale(0.97);
@@ -197,8 +258,40 @@ body {
     border: 1px solid var(--color-border);
     background: rgba(255, 255, 255, 0.04);
     color: var(--color-text);
-    padding: 0.55rem 0.75rem;
-    font-size: 0.875rem;
+    padding: 0.6rem 0.8rem;
+    /* 16px minimum: anything smaller makes iOS Safari zoom the page on focus. */
+    font-size: 1rem;
+    line-height: 1.4;
+    min-height: 2.75rem;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  select.field-input {
+    padding-right: 2.2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23a7a39c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+  }
+  textarea.field-input {
+    min-height: 5.5rem;
+    resize: vertical;
+  }
+  /* iOS renders empty date/time inputs with zero height and centered text — pin both. */
+  input.field-input[type="date"],
+  input.field-input[type="datetime-local"],
+  input.field-input[type="time"] {
+    display: block;
+    text-align: left;
+  }
+  input.field-input::-webkit-date-and-time-value {
+    text-align: left;
+    min-height: 1.4em;
+  }
+  @media (min-width: 1024px) and (pointer: fine) {
+    .field-input {
+      font-size: 0.875rem;
+      min-height: 2.5rem;
+    }
   }
   .field-input:focus {
     outline: none;
@@ -224,4 +317,84 @@ body {
 
 * {
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+@layer base {
+/* Checkboxes/radios: native control, brand tint, a size you can hit with a thumb. */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  accent-color: var(--color-gold-500);
+}
+
+/* <details>: no default triangle; we draw our own chevron where it matters. */
+summary {
+  list-style: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+.chevron {
+  transition: transform 0.2s ease;
+}
+details[open] > summary .chevron {
+  transform: rotate(180deg);
+}
+}
+
+/* Horizontal chip rows (stage tabs, day strip): swipeable, no visible scrollbar. */
+.scroll-row {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
+.scroll-row > * {
+  scroll-snap-align: start;
+}
+
+/* Bottom sheet (More menu) */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.sheet-enter {
+  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.backdrop-enter {
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  width: 1em;
+  height: 1em;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
 }

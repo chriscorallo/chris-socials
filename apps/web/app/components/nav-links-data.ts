@@ -16,3 +16,29 @@ export const NAV_LINKS = [
   { href: "/learnings", label: "Learnings" },
   { href: "/settings/connections", label: "Connections" },
 ];
+
+export type TabIcon = "home" | "content" | "film" | "calendar";
+
+/** Phone/tablet bottom tab bar (below lg): the four destinations Chris uses daily, in thumb
+ * order, plus "More" for the rest. See /docs/decisions-pending/mobile-app.md. */
+export const TAB_LINKS: { href: string; label: string; icon: TabIcon }[] = [
+  { href: "/", label: "Home", icon: "home" },
+  { href: "/content", label: "Content", icon: "content" },
+  { href: "/film", label: "Film", icon: "film" },
+  { href: "/calendar", label: "Calendar", icon: "calendar" },
+];
+
+/** Everything not in the tab bar, shown in the "More" sheet. */
+export const MORE_LINKS: { href: string; label: string; hint: string }[] = [
+  { href: "/ideas", label: "Ideas", hint: "Capture and browse ideas" },
+  { href: "/strategy", label: "Strategy", hint: "This week's thesis and portfolio" },
+  { href: "/analytics", label: "Analytics", hint: "How published videos are doing" },
+  { href: "/learnings", label: "Learnings", hint: "Evidence, beliefs, experiments" },
+  { href: "/reference", label: "Reference", hint: "Creators you learn from" },
+  { href: "/settings/connections", label: "Connections", hint: "Instagram, TikTok, YouTube" },
+];
+
+export function isActive(href: string, pathname: string | null): boolean {
+  if (!pathname) return false;
+  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+}
