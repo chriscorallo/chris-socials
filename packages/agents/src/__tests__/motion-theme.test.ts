@@ -21,7 +21,7 @@ describe("topic presets", () => {
       expect(MotionThemeSchema.safeParse(p).success, t).toBe(true);
       if (p.primary) expect(themeContrast(p.primary), `${t} primary`).toBeGreaterThanOrEqual(THEME_MIN_PRIMARY_CONTRAST);
       if (p.secondary) expect(themeContrast(p.secondary), `${t} secondary`).toBeGreaterThanOrEqual(THEME_MIN_SECONDARY_CONTRAST);
-      expect(p.rationale.length).toBeGreaterThan(10);
+      expect(p.rationale?.length ?? 0).toBeGreaterThan(10);
     }
   });
 
