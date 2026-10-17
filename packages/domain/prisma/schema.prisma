@@ -1103,3 +1103,38 @@ model RenderVariant {
   @@unique([renderId, platform, profileVersion])
   @@index([contentItemId])
 }
+
+// Posting plan — Chris's chosen schedule + frequency per platform (calendar "open slots" and
+// the Stay-on-course nudges are computed from it; see src/posting-plan-core.ts). Versioned and
+// append-only like other config: saving a change writes a NEW row with version+1 and flips
+// `active` off on the previous one, inside one transaction — old plans are never overwritten.
+// See docs/decisions-pending/calendar.md.
+model PostingPlan {
+  id            String   @id @default(cuid())
+  version       Int      @unique
+  active        Boolean  @default(true)
+  // YYYY-MM-DD in `timezone` — no slots before this day.
+  startDate     String
+  timezone      String
+  readyLeadDays Int      @default(1)
+  filmLeadDays  Int      @default(3)
+  sameForAll    Boolean  @default(false)
+  // PlatformCadence[] — validated by PostingPlanDataSchema on every read and write.
+  cadences      Json
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  @@index([active])
+}
+
+// "Dismiss for today" on a to-do / stay-on-course nudge. Keyed by the nudge's stable key and
+// the local day it was dismissed on, so it comes back tomorrow if it's still true. Not an
+// audit record — rows can be pruned freely. See docs/decisions-pending/calendar.md.
+model NudgeDismissal {
+  id        String   @id @default(cuid())
+  key       String
+  day       String // YYYY-MM-DD in APP_TIMEZONE
+  createdAt DateTime @default(now())
+
+  @@unique([key, day])
+}
