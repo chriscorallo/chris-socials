@@ -272,8 +272,8 @@ export function zoomFilter(
   fps: number,
 ): string | null {
   if (zooms.length === 0) return null;
-  // T = output time of the frame. perspective's `in` is the 0-based input frame index.
-  const T = `(in/${fps})`;
+  // T = output time of the frame. perspective's `in` is the 1-based input frame count (verified by test).
+  const T = `((in-1)/${fps})`;
   let z = "1";
   for (const zm of [...zooms].reverse()) {
     let expr: string;
@@ -498,7 +498,9 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
     vChain.push("format=yuv420p");
     parts.push(`[vcat]${vChain.join(",")}[vout]`);
 
-    const aChain = timeline.audio.normalize
+    // loudnorm can't normalise pure digital silence (every clip from audio-less takes).
+    const anyAudio = timeline.clips.some((c) => probes.get(c.mediaAssetId)!.hasAudio);
+    const aChain = timeline.audio.normalize && anyAudio
       ? // -14 LUFS integrated / -1.5 dBTP: the short-form master target (variants re-normalise per platform).
         "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"
       : "anull";
