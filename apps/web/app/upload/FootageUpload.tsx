@@ -4,13 +4,18 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadRawTake } from "../../lib/upload-client";
 import { createFootageItem } from "./actions";
+import { captionStatus, startEditingNow } from "../content/[id]/flow-actions";
 
 type Row = { name: string; percent: number; status: "waiting" | "uploading" | "processing" | "done" | "error"; error?: string };
 
+/** How long the upload screen waits for captions before opening the editor anyway. */
+const CAPTION_WAIT_MS = 90_000;
+
 /**
  * The one obvious place to upload: pick videos from Photos/Files, the app creates the video
- * entry (footage-first) and uploads every take into it, then opens it. Optional title; a
- * filename-based one is used otherwise.
+ * entry (footage-first), uploads every take into it, waits briefly for the captions
+ * (transcription runs in the background), makes the no-AI starter edit and opens the EDITOR.
+ * Optional title; a filename-based one is used otherwise. See docs/decisions-pending/flow.md.
  */
 export function FootageUpload({ mode }: { mode: "blob" | "local" }) {
   const router = useRouter();
@@ -18,7 +23,34 @@ export function FootageUpload({ mode }: { mode: "blob" | "local" }) {
   const [title, setTitle] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const busy = rows.some((r) => r.status === "uploading" || r.status === "processing" || r.status === "waiting");
+  const [finishing, setFinishing] = useState<null | { phase: "captions" | "opening"; ready: number; total: number }>(null);
+  const skipRef = useRef(false);
+  const busy = finishing != null || rows.some((r) => r.status === "uploading" || r.status === "processing" || r.status === "waiting");
+
+  /** Uploads are in: wait for captions (capped, skippable), make the starter edit, open the editor. */
+  async function openEditor(id: string) {
+    skipRef.current = false;
+    const started = Date.now();
+    setFinishing({ phase: "captions", ready: 0, total: 0 });
+    while (!skipRef.current && Date.now() - started < CAPTION_WAIT_MS) {
+      let st: Awaited<ReturnType<typeof captionStatus>>;
+      try {
+        st = await captionStatus(id);
+      } catch {
+        break;
+      }
+      setFinishing({ phase: "captions", ready: st.ready, total: st.total });
+      if (!st.waiting) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    setFinishing((f) => ({ phase: "opening", ready: f?.ready ?? 0, total: f?.total ?? 0 }));
+    const res = await startEditingNow(id);
+    if ("error" in res) {
+      router.push(`/content/${id}?pipelineError=${encodeURIComponent(res.error)}`);
+      return;
+    }
+    router.push(`/content/${id}/edit`);
+  }
 
   async function handle(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -44,7 +76,7 @@ export function FootageUpload({ mode }: { mode: "blob" | "local" }) {
         patch({ status: "error", error: err instanceof Error ? err.message : "Upload failed" });
       }
     }
-    if (ok > 0) router.push(`/content/${created.id}`);
+    if (ok > 0) await openEditor(created.id);
     else router.refresh();
   }
 
@@ -70,11 +102,31 @@ export function FootageUpload({ mode }: { mode: "blob" | "local" }) {
           <path d="M12 16V4M7 9l5-5 5 5" />
           <path d="M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15" />
         </svg>
-        <span className="text-[17px] font-semibold">{busy ? "Uploading…" : "Choose videos"}</span>
+        <span className="text-[17px] font-semibold">{finishing ? "Uploaded" : busy ? "Uploading…" : "Choose videos"}</span>
         <span className="text-[13px] text-[var(--color-text-faint)]">
           {busy ? "Keep this screen open until it finishes." : "From Photos, Files or the camera. Several takes of the same video at once is fine."}
         </span>
       </label>
+      {finishing && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-[var(--color-gold-500)]/40 bg-[var(--color-gold-500)]/[0.08] p-4" aria-live="polite">
+          <div className="flex items-center gap-3">
+            <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--color-gold-400)] border-t-transparent" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-[16px] font-semibold">{finishing.phase === "captions" ? "Getting your captions ready…" : "Opening the editor…"}</p>
+              <p className="text-[13px] text-[var(--color-text-muted)]">
+                {finishing.phase === "captions"
+                  ? "Listening to your video so captions are on when the editor opens. Usually under a minute."
+                  : "Your video goes straight into the editor."}
+              </p>
+            </div>
+          </div>
+          {finishing.phase === "captions" && (
+            <button type="button" onClick={() => (skipRef.current = true)} className="btn btn-ghost w-full">
+              Open the editor now (captions appear later)
+            </button>
+          )}
+        </div>
+      )}
       {error && <p className="text-sm text-[var(--color-rose-400)]">{error}</p>}
       {rows.length > 0 && (
         <ul className="flex flex-col gap-2.5 text-[13px]" aria-live="polite">

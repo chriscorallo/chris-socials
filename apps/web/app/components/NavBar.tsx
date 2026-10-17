@@ -3,7 +3,7 @@ import Link from "next/link";
 import { logout } from "../actions";
 import { NavLinks } from "./NavLinks";
 import { MobileNav, MobileNavShell } from "./MobileNav";
-import { NAV_LINKS } from "./nav-links-data";
+import { PRIMARY_LINKS } from "./nav-links-data";
 
 // Primary nav per /docs/PRODUCT_SPEC.md — UI principle: CALENDAR / CONTENT / ANALYTICS /
 // LEARNINGS / IDEAS. Kept deliberately plain in *count*; the backend can get sophisticated,
@@ -12,8 +12,9 @@ import { NAV_LINKS } from "./nav-links-data";
 // Two shapes, one source list (nav-links-data.ts):
 // - lg+ (desktop): the horizontal link row in a sticky top bar, as before.
 // - below lg (phones, iPad portrait): a slim sticky top bar (brand only, padded under the
-//   status bar / Dynamic Island) + a fixed bottom tab bar (Home, Content, Film, Calendar,
-//   More) in the thumb zone, with the rest in a "More" bottom sheet. Chris mostly uses this
+//   status bar / Dynamic Island) + a fixed bottom tab bar (Home, Videos, + Upload, Calendar,
+//   More) in the thumb zone, with the rest in a "More" bottom sheet. Desktop shows the same
+//   four places with a "More" menu (docs/decisions-pending/flow.md). Chris mostly uses this
 //   on his iPhone — see /docs/decisions-pending/mobile-app.md.
 //
 // Server component on purpose — the active-link highlight needs usePathname (client-only),
@@ -23,7 +24,7 @@ import { NAV_LINKS } from "./nav-links-data";
 function StaticFallbackLinks() {
   return (
     <>
-      {NAV_LINKS.map((link) => (
+      {PRIMARY_LINKS.map((link) => (
         <a
           key={link.href}
           href={link.href}
@@ -32,6 +33,7 @@ function StaticFallbackLinks() {
           {link.label}
         </a>
       ))}
+      <span className="rounded-full px-3 py-1.5 text-[13px] font-medium text-[var(--color-text-muted)]">More</span>
     </>
   );
 }

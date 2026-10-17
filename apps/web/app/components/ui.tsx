@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SubmitButton } from "./SubmitButton";
+import { friendlyStateLabel, friendlyStateTone } from "@chris/domain/planning";
+import type { ContentState } from "@chris/domain/planning";
 
 /**
  * The shared visual language every page composes from — see app/globals.css for the actual
@@ -215,26 +217,20 @@ export function Button({
   );
 }
 
-const BLOCKED_STATES = new Set(["RESEARCH_BLOCKED", "QC_BLOCKED", "CANCELLED"]);
-const DONE_STATES = new Set(["PUBLISHED", "ARCHIVED", "READY", "SCHEDULED"]);
-const EARLY_STATES = new Set(["IDEA", "SELECTED", "CONTRACTED"]);
-
-/** A quick-glance color for any of the 23 states in the state machine (/docs/STATE_MACHINE.md)
- * — rose for anything blocked/cancelled, emerald for anything finished-and-live, gold for
- * still-early idea stages, violet for the broad "actively being produced" middle. Not a
- * precise per-state palette (23 distinct colors would defeat the point) — a coarse read of
- * "does this need worry" at a glance. */
-export function contentStateTone(state: string): "rose" | "emerald" | "gold" | "violet" {
-  if (BLOCKED_STATES.has(state)) return "rose";
-  if (DONE_STATES.has(state)) return "emerald";
-  if (EARLY_STATES.has(state)) return "gold";
-  return "violet";
+/** Pill color for a state — see packages/domain friendly-status.ts. */
+export function contentStateTone(state: string): "rose" | "emerald" | "gold" | "violet" | "neutral" {
+  return friendlyStateTone(state as ContentState);
 }
 
-/** Human-readable state name for badges ("READY_TO_FILM" -> "Ready to film"). */
+/** Plain-English status ("MEDIA_INGESTED" -> "Editing") — never a raw state name in the UI.
+ * One source: packages/domain friendly-status.ts. */
 export function stateLabel(state: string): string {
-  const s = state.toLowerCase().replace(/_/g, " ");
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return friendlyStateLabel(state as ContentState) ?? "In progress";
+}
+
+/** A status pill in plain words. */
+export function StatusPill({ state }: { state: string }) {
+  return <Badge tone={contentStateTone(state)}>{stateLabel(state)}</Badge>;
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
