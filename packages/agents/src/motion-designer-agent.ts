@@ -19,6 +19,7 @@ import {
   type SubjectTrack,
   type TimelineVisual,
   type TranscriptWord,
+  applyInteractionDefaults,
 } from "@chris/media/timeline";
 import type { MotionTopicInput } from "@chris/domain";
 import type { ModelProvider } from "./model-provider";
@@ -690,8 +691,10 @@ export async function designVisualsForTimeline(
     used.add(`mv-${n}`);
     return `mv-${n}`;
   };
+  // AI-designed visuals get the same veteran defaults as hand-added ones (ride punch-ins,
+  // shadows + scene match, light wrap on 3D) — see packages/media visual-interaction.ts.
   const added = chosen.map((a) =>
-    TimelineVisualSchema.parse({
+    applyInteractionDefaults(TimelineVisualSchema.parse({
       id: nextId(),
       template: a.v.template,
       props: a.props,
@@ -703,7 +706,7 @@ export async function designVisualsForTimeline(
       exit: a.v.exit,
       enterSfx: a.v.enterSfx,
       anchorText: a.v.anchorText.slice(0, 200),
-    }),
+    })),
   );
 
   let visuals = [...keep, ...added].sort((a, b) => a.start - b.start);
