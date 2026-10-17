@@ -1,7 +1,7 @@
 import { prisma, getCurrentWeekThesis, getWeeklyThesisWithPortfolio, listPendingIdeaProposals } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
-import { PageShell, PageHeader, Panel, SectionHeading, EmptyState, Button, Badge } from "../components/ui";
+import { PageShell, PageHeader, Panel, SectionHeading, CollapsiblePanel, EmptyState, Button, Badge } from "../components/ui";
 import {
   generateThesis,
   generatePortfolio,
@@ -69,8 +69,7 @@ export default async function StrategyPage({
           </Panel>
         )}
 
-        <Panel className="mb-5">
-          <SectionHeading eyebrow="Creative Director" title="Generate this week's thesis" />
+        <CollapsiblePanel eyebrow="Creative Director" title="Generate a weekly thesis" className="mb-5" defaultOpen={!current}>
           <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
             Runs the Creative Director agent against the current IDEA backlog and Brand
             Constitution. Requires ANTHROPIC_API_KEY.
@@ -82,7 +81,7 @@ export default async function StrategyPage({
             </label>
             <Button tone="primary" className="w-full sm:w-auto" pendingLabel="Thinking…">Generate thesis</Button>
           </form>
-        </Panel>
+        </CollapsiblePanel>
 
         {withPortfolio && (
           <Panel className="mb-5">

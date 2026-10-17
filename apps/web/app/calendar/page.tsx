@@ -119,7 +119,7 @@ export default async function CalendarPage({
             under the top bar so the whole week is always one tap away. */}
         <nav
           aria-label="Days this week"
-          className="sticky z-30 mb-4 flex gap-1.5 bg-[color-mix(in_srgb,var(--color-ink)_80%,transparent)] py-2 backdrop-blur-xl lg:hidden"
+          className="sticky z-30 mb-4 flex gap-1.5 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-ink)_94%,transparent)] py-2 backdrop-blur-xl lg:hidden"
           style={{
             top: "calc(var(--safe-top) + 48px)",
             marginLeft: "calc(-1 * var(--gutter))",
@@ -179,7 +179,7 @@ export default async function CalendarPage({
           {days.map(({ date, entries }) => {
             const isToday = date.toDateString() === todayKey;
             return (
-              <div key={date.toISOString()} id={dayId(date)} className="min-w-0">
+              <div key={date.toISOString()} id={dayId(date)} className="min-w-0" style={{ scrollMarginTop: "calc(var(--safe-top) + 48px + 86px)" }}>
                 <Panel padding="p-0" className={isToday ? "panel-action" : ""}>
                   <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3 lg:flex-col lg:justify-center lg:gap-0 lg:px-3 lg:py-2.5">
                     <p className="text-[15px] font-semibold lg:hidden">

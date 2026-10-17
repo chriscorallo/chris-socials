@@ -100,7 +100,7 @@ export function MobileNavShell({ signOut, pathname }: { signOut: ReactNode; path
     <>
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-ink)_82%,transparent)] backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-ink)_92%,transparent)] backdrop-blur-xl lg:hidden"
         style={{ paddingBottom: "var(--safe-bottom)", paddingLeft: "var(--safe-left)", paddingRight: "var(--safe-right)" }}
       >
         <div className="mx-auto flex max-w-xl items-stretch">

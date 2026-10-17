@@ -146,7 +146,7 @@ export function StickyActionBar({ label, eyebrow = "Next step", children }: { la
     <>
       <style>{`@media (max-width: 1023.98px) { :root { --action-bar-h: 76px; } }`}</style>
       <div
-        className="fixed inset-x-0 z-40 border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-ink)_88%,transparent)] backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 z-40 border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-ink)_93%,transparent)] backdrop-blur-xl lg:hidden"
         style={{ bottom: "var(--tabbar-h)", paddingLeft: "var(--safe-left)", paddingRight: "var(--safe-right)" }}
       >
         <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
