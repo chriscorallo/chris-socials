@@ -1653,6 +1653,11 @@ html:has(.ed-root) body {
   height: 10px;
   border-radius: 2px 2px 6px 6px;
   background: #fff;
+  /* mask the ruler label it sits on rather than overlapping it */
+  box-shadow:
+    0 0 0 4px var(--ed-panel),
+    -11px 0 0 5px var(--ed-panel),
+    11px 0 0 5px var(--ed-panel);
 }
 .ed-mtl-drop,
 .ed-mtl-snapline {
