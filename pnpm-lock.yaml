@@ -133,6 +133,9 @@ importers:
       '@chris/domain':
         specifier: workspace:*
         version: link:../domain
+      '@chris/media':
+        specifier: workspace:*
+        version: link:../media
       '@chris/prompts':
         specifier: workspace:*
         version: link:../prompts

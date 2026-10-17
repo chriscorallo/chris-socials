@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.124.0",
     "@chris/prompts": "workspace:*",
     "@chris/domain": "workspace:*",
+    "@chris/media": "workspace:*",
     "zod": "^4.5.4"
   },
   "devDependencies": {
