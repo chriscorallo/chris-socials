@@ -273,7 +273,7 @@ describe("plan import — preview, defaults, sheets", () => {
     expect(summarizeRows(v)).toMatchObject({ count: 1, duplicates: 2, needsFix: 1 });
   });
 
-  it("default time comes from the posting plan, else 18:00", () => {
+  it("default time comes from the posting plan, else Chris's 4 daily slots", () => {
     const plan = {
       cadences: [
         { platform: "TIKTOK" as const, enabled: true, postsPerWeek: 5, preferredDays: [1, 2, 3], preferredTimes: ["19:00", "08:00"] },
@@ -283,8 +283,8 @@ describe("plan import — preview, defaults, sheets", () => {
     };
     expect(defaultTimeFor("2026-10-19", ["TIKTOK"], plan)).toBe("08:00");
     expect(defaultTimeFor("2026-10-23", ["TIKTOK", "YOUTUBE"], plan)).toBe("12:00"); // Friday: TikTok doesn't post
-    expect(defaultTimeFor("2026-10-23", ["INSTAGRAM"], plan)).toBe("18:00");
-    expect(defaultTimeFor("2026-10-23", ["TIKTOK"], null)).toBe("18:00");
+    expect(defaultTimeFor("2026-10-23", ["INSTAGRAM"], plan)).toBe("09:00");
+    expect(defaultTimeFor("2026-10-23", ["TIKTOK"], null)).toBe("09:00");
     expect(enabledPlatformsOf(plan)).toEqual(["TIKTOK", "YOUTUBE"]);
   });
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import {
   FIELD_LABELS,
-  defaultTimeFor,
+  assignDefaultTimes,
   detectPastedTable,
   formatTime12,
   formatYmdShort,
@@ -68,11 +68,14 @@ export function ImportClient({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const ctx = (start = startDate) => ({ today, startDate: start, enabledPlatforms });
-  const plan = cadences ? { cadences } : null;
 
   const live = useMemo(() => (rows ?? []).filter((r) => !r.dropped), [rows]);
   const validated = useMemo(() => validateRows(live, existing), [live, existing]);
   const summary = useMemo(() => summarizeRows(validated), [validated]);
+  const autoTimes = useMemo(() => {
+    const t = assignDefaultTimes(validated, cadences ? { cadences } : null);
+    return new Map(validated.map((r, i) => [r.key, t[i] ?? null]));
+  }, [validated, cadences]);
   const needsFix = validated.filter((r) => r.status === "needsDate" || r.status === "needsTitle");
 
   function showRows(res: { rows: PlanDraftRow[]; usesRelativeDates: boolean }, src: Source, tbl: TableState | null) {
@@ -353,7 +356,7 @@ export function ImportClient({
               open={openKey === r.key}
               onToggle={() => setOpenKey(openKey === r.key ? null : r.key)}
               onPatch={(p) => patch(r.key, p)}
-              defaultTime={r.ymd ? defaultTimeFor(r.ymd, r.platforms, plan) : null}
+              defaultTime={autoTimes.get(r.key) ?? null}
             />
           ))}
         </ul>

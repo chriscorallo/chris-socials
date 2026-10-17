@@ -70,7 +70,11 @@ export function BatchUpload({ targets, tz, mode }: { targets: UploadTarget[]; tz
   const [finished, setFinished] = useState<{ id: string; title: string; takes: number }[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const titleOf = useMemo(() => new Map(targets.map((t) => [t.id, t.title])), [targets]);
-  const sorted = useMemo(() => [...targets].sort((a, b) => a.ymd.localeCompare(b.ymd)), [targets]);
+  const byDay = useMemo(() => {
+    const m = new Map<string, UploadTarget[]>();
+    for (const t of [...targets].sort((a, b) => a.ymd.localeCompare(b.ymd))) m.set(t.ymd, [...(m.get(t.ymd) ?? []), t]);
+    return [...m.entries()];
+  }, [targets]);
 
   function pick(files: FileList | null) {
     if (!files?.length) return;
@@ -209,13 +213,18 @@ export function BatchUpload({ targets, tz, mode }: { targets: UploadTarget[]; tz
               aria-label={`Video for ${c.file.name}`}
               data-testid="batch-choice"
             >
-              {sorted.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {formatYmdShort(t.ymd)} — {t.title}
-                </option>
-              ))}
               <option value="new">＋ New video (not in my plan)</option>
               <option value="skip">Skip this clip</option>
+              {/* Grouped by day — at 4 videos a day the list is long; the wheel picker on iOS shows the day headers. */}
+              {byDay.map(([ymd, ts]) => (
+                <optgroup key={ymd} label={formatYmdShort(ymd)}>
+                  {ts.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
             <div className="flex items-center justify-between gap-3 text-[12.5px]">
               <span className="min-w-0 truncate text-[var(--color-text-faint)]">{c.status === "error" ? <span className="text-[var(--color-rose-400)]">{c.error}</span> : c.reason}</span>

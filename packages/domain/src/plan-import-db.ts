@@ -10,7 +10,7 @@ import { PLAN_PLATFORMS, type PostingPlanData } from "./posting-plan-core";
 import {
   canonicalCommitRows,
   dedupeKey,
-  defaultTimeFor,
+  assignDefaultTimes,
   plannedDescription,
   type CommitRow,
   type ExistingPlanned,
@@ -104,8 +104,10 @@ export async function commitPlanImport(
   let skipped = 0;
   const failed: { title: string; error: string }[] = [];
 
+  // Untimed rows spread over the day's posting slots (4 videos a day → 09:00, 12:00, 17:00, 20:00).
+  const times = assignDefaultTimes(rows, opts.plan);
   // Sequential on purpose (PGlite; and one bad row must not sink the rest — see DECISIONS).
-  for (const row of rows) {
+  for (const [idx, row] of rows.entries()) {
     const key = dedupeKey(row.title, row.ymd);
     if (known.has(key)) {
       skipped++;
@@ -131,7 +133,7 @@ export async function commitPlanImport(
         reason: PLAN_IMPORT_REASON,
         idempotencyKey: `plan-import:${item.id}:SELECTED`,
       });
-      const time = row.time ?? defaultTimeFor(row.ymd, row.platforms, opts.plan);
+      const time = times[idx] ?? "09:00";
       await setScheduleEntry(
         prisma,
         { contentItemId: item.id, scheduledDate: ymdMinutesToUtc(row.ymd, parseHhmm(time) ?? 18 * 60, opts.tz), targetPlatforms: row.platforms },

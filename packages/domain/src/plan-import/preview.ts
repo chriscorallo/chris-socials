@@ -101,14 +101,51 @@ export function summaryLine(s: PlanSummary): string {
  * 18:00 — the same default the posting plan itself uses.
  */
 export function defaultTimeFor(ymd: string, platforms: PlanPlatform[], plan: Pick<PostingPlanData, "cadences"> | null): string {
+  return slotTimesFor(ymd, platforms, plan)[0]!;
+}
+
+/** Chris's posting times (4 a day per app) — used when there is no posting plan yet. */
+export const DEFAULT_SLOT_TIMES = ["09:00", "12:00", "17:00", "20:00"];
+
+/**
+ * The day's posting times for these platforms, sorted: the posting plan's preferred times of
+ * the cadences that post that weekday (else any cadence for those platforms), else
+ * DEFAULT_SLOT_TIMES.
+ */
+export function slotTimesFor(ymd: string, platforms: PlanPlatform[], plan: Pick<PostingPlanData, "cadences"> | null): string[] {
   if (plan) {
     const wd = weekdayOfYmd(ymd);
     const cads = plan.cadences.filter((c) => c.enabled && platforms.includes(c.platform) && c.preferredTimes.length);
-    const onDay = cads.find((c) => c.preferredDays.length === 0 || c.preferredDays.includes(wd));
-    const pick = (onDay ?? cads[0])?.preferredTimes.filter((t) => parseHhmm(t) !== null).sort()[0];
-    if (pick) return pick;
+    const onDay = cads.filter((c) => c.preferredDays.length === 0 || c.preferredDays.includes(wd));
+    const times = [...new Set((onDay.length ? onDay : cads).flatMap((c) => c.preferredTimes))].filter((t) => parseHhmm(t) !== null).sort();
+    if (times.length) return times;
   }
-  return "18:00";
+  return DEFAULT_SLOT_TIMES;
+}
+
+/**
+ * Times for rows the plan gave no time: several videos on the same day are spread over that
+ * day's posting times in order (1st → 09:00, 2nd → 12:00, 3rd → 17:00, 4th → 20:00), skipping
+ * times another row that day already asked for; more videos than times cycle round. A plan
+ * with 4 videos a day therefore lands exactly on the 4 daily slots.
+ */
+export function assignDefaultTimes<T extends { ymd: string | null; time: string | null; platforms: PlanPlatform[] }>(
+  rows: T[],
+  plan: Pick<PostingPlanData, "cadences"> | null,
+): (string | null)[] {
+  const explicit = new Map<string, Set<string>>();
+  for (const r of rows) if (r.ymd && r.time) explicit.set(r.ymd, (explicit.get(r.ymd) ?? new Set()).add(r.time));
+  const nth = new Map<string, number>();
+  return rows.map((r) => {
+    if (r.time || !r.ymd) return r.time;
+    const taken = explicit.get(r.ymd) ?? new Set<string>();
+    const all = slotTimesFor(r.ymd, r.platforms, plan);
+    const free = all.filter((t) => !taken.has(t));
+    const pool = free.length ? free : all;
+    const k = nth.get(r.ymd) ?? 0;
+    nth.set(r.ymd, k + 1);
+    return pool[k % pool.length]!;
+  });
 }
 
 export function enabledPlatformsOf(plan: Pick<PostingPlanData, "cadences"> | null): PlanPlatform[] {

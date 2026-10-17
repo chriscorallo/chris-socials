@@ -93,7 +93,7 @@ describe("plan import — create, idempotency, undo", () => {
     const list = (await listPlannedVideos(prisma, { tz: TZ })).filter((v) => v.planImportId === res.importId);
     expect(list.map((v) => [v.ymd, v.time, v.takes, v.state])).toEqual([
       ["2027-03-01", "07:30", 0, "SELECTED"],
-      ["2027-03-02", "18:00", 0, "SELECTED"],
+      ["2027-03-02", "09:00", 0, "SELECTED"],
     ]);
   });
 });
