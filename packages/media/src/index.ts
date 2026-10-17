@@ -36,3 +36,7 @@ export * from "./plan-to-timeline";
 export * from "./platform-profiles";
 export * from "./platform-variant";
 export * from "./motion-contract";
+export * from "./subject-track-core";
+export * from "./subject-track";
+export * from "./visual-footprints";
+export * from "./visual-placement";

@@ -15,7 +15,9 @@
     "./scheduled-jobs": "./src/scheduled-jobs.ts",
     "./transcribe-job": "./src/transcribe-job.ts",
     "./auto-repair-job": "./src/auto-repair-job.ts",
-    "./platform-variant-job": "./src/platform-variant-job.ts"
+    "./platform-variant-job": "./src/platform-variant-job.ts",
+    "./subject-track-job": "./src/subject-track-job.ts",
+    "./motion-design-job": "./src/motion-design-job.ts"
   },
   "scripts": {
     "start": "tsx src/index.ts"

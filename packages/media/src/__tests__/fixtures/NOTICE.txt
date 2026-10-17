@@ -1,0 +1,6 @@
+face-portrait-pd.jpg
+
+Official Portrait of President Reagan, 1981 (White House photograph), 500x625 rendition.
+Source: https://commons.wikimedia.org/wiki/File:Official_Portrait_of_President_Reagan_1981.jpg
+License: Public domain — work of an employee of the US federal government (17 U.S.C. 105).
+Used only as a test fixture for the face/subject tracker (a real face, composited moving across a synthetic frame).
