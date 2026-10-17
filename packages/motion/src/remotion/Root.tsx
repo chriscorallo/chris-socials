@@ -3,10 +3,7 @@ import { MOTION_TEMPLATES } from "@chris/media/timeline";
 import { sampleVisual } from "../samples";
 import { VisualsLayer, type VisualsLayerProps } from "./VisualsLayer";
 
-export interface LayerInputProps extends VisualsLayerProps {
-  fps: number;
-  durationInFrames: number;
-}
+export type LayerInputProps = VisualsLayerProps;
 
 const DEFAULTS: LayerInputProps = {
   visuals: [],
@@ -18,14 +15,14 @@ const DEFAULTS: LayerInputProps = {
 };
 
 const fromProps: CalculateMetadataFunction<LayerInputProps> = ({ props }) => ({
-  fps: props.fps,
-  durationInFrames: Math.max(1, Math.round(props.durationInFrames)),
+  fps: props.fps ?? 30,
+  durationInFrames: Math.max(1, Math.round(props.durationInFrames ?? 30)),
   width: props.canvas.width,
   height: props.canvas.height,
 });
 
 /** Composition ids. `VisualsLayer` = whole timeline; `VisualClip` = one visual from frame 0. */
-export const COMPOSITION_IDS = { layer: "VisualsLayer", clip: "VisualClip", preview: (t: string) => `Preview-${t}` } as const;
+export const COMPOSITION_IDS = { layer: "VisualsLayer", clip: "VisualClip", preview: (t: string) => `Preview-${t.replace(/_/g, "-")}` } as const;
 
 export function Root() {
   return (

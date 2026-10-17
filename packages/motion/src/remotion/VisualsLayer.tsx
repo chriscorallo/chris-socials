@@ -39,6 +39,9 @@ export interface VisualsLayerProps extends Record<string, unknown> {
    * holds exactly that visual and its timing is shifted so start = 0.
    */
   clipMode?: boolean;
+  /** Render metadata (calculateMetadata): output fps and length in frames. */
+  fps?: number;
+  durationInFrames?: number;
 }
 
 /** One visual, local frame 0 = its first frame. */
