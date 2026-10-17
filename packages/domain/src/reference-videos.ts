@@ -164,15 +164,33 @@ export async function countPendingReferenceVideos(prisma: PrismaClient): Promise
   return prisma.referenceContent.count({ where: { analysisStatus: "PENDING", mediaStorageKey: { not: null } } });
 }
 
-/** Puts FAILED (or, with `includeDone`, already measured) videos back in the queue — only ones whose file still exists. */
+/** Measured with an older measuring version, file still present — re-measuring would improve them. */
+const OUTDATED_WHERE = {
+  analysisStatus: "DONE" as const,
+  mediaStorageKey: { not: null },
+  OR: [{ metricsVersion: null }, { metricsVersion: { lt: REFERENCE_METRICS_VERSION } }],
+};
+
+/** How many measured videos (of one creator, or all) predate the current measuring version. */
+export async function countOutdatedReferenceVideos(prisma: PrismaClient, options: { referenceCreatorId?: string } = {}): Promise<number> {
+  return prisma.referenceContent.count({ where: { ...OUTDATED_WHERE, ...(options.referenceCreatorId ? { referenceCreatorId: options.referenceCreatorId } : {}) } });
+}
+
+/**
+ * Puts FAILED (or, with `includeDone`, already measured) videos back in the queue — only ones
+ * whose file still exists. `outdated` re-queues only measured videos from an older measuring
+ * version (their old numbers stay readable until the new ones land).
+ */
 export async function requeueReferenceVideos(
   prisma: PrismaClient,
-  options: { ids?: string[]; includeDone?: boolean } = {},
+  options: { ids?: string[]; includeDone?: boolean; outdated?: boolean } = {},
   actor: { actorId: string },
 ): Promise<number> {
   const statuses = options.includeDone ? (["FAILED", "DONE"] as const) : (["FAILED"] as const);
   const res = await prisma.referenceContent.updateMany({
-    where: { analysisStatus: { in: [...statuses] }, mediaStorageKey: { not: null }, ...(options.ids ? { id: { in: options.ids } } : {}) },
+    where: options.outdated
+      ? { ...OUTDATED_WHERE, ...(options.ids ? { id: { in: options.ids } } : {}) }
+      : { analysisStatus: { in: [...statuses] }, mediaStorageKey: { not: null }, ...(options.ids ? { id: { in: options.ids } } : {}) },
     data: { analysisStatus: "PENDING", analysisError: null },
   });
   if (res.count > 0) {
@@ -182,7 +200,7 @@ export async function requeueReferenceVideos(
       action: "REFERENCE_VIDEOS_REQUEUED",
       entityType: "ReferenceContent",
       entityId: options.ids?.length === 1 ? options.ids[0]! : "batch",
-      after: { count: res.count, ids: options.ids ?? null, includeDone: !!options.includeDone },
+      after: { count: res.count, ids: options.ids ?? null, includeDone: !!options.includeDone, outdated: !!options.outdated, toVersion: REFERENCE_METRICS_VERSION },
     });
   }
   return res.count;
@@ -212,7 +230,8 @@ export async function recordReferenceAnalysis(
         analysisError: null,
         analyzedAt: new Date(),
         metrics: m as never,
-        metricsVersion: REFERENCE_METRICS_VERSION,
+        // The version the numbers were actually measured with (an old runner may still write v1).
+        metricsVersion: m.version,
         durationSeconds: Math.round(m.video.durationS),
         hook: before.hook || m.speech?.hookText || null,
       },
@@ -307,8 +326,10 @@ export async function getReferenceStyleProfile(
   prisma: PrismaClient,
   options: { referenceCreatorId?: string; group?: ReferenceStyleGroup } = {},
 ): Promise<StyleProfile> {
+  // Any row with numbers counts — including one waiting to be re-measured with a newer measuring
+  // version (its previous numbers stand until the new ones land), so updating doesn't blank the style.
   const rows = await prisma.referenceContent.findMany({
-    where: { analysisStatus: "DONE", metrics: { not: Prisma.AnyNull }, ...(options.referenceCreatorId ? { referenceCreatorId: options.referenceCreatorId } : {}) },
+    where: { analysisStatus: { not: null }, metrics: { not: Prisma.AnyNull }, ...(options.referenceCreatorId ? { referenceCreatorId: options.referenceCreatorId } : {}) },
     orderBy: { analyzedAt: "desc" },
     select: { referenceCreatorId: true, metrics: true, referenceCreator: { select: { formats: true } } },
     take: 2000,

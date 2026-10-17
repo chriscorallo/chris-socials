@@ -10,7 +10,12 @@ import { z } from "zod";
  * See docs/DECISIONS.md ("Reference videos").
  */
 
-export const REFERENCE_METRICS_VERSION = 1;
+/**
+ * v2 (2026-10-17): platform end cards (Instagram / TikTok download outro) are detected and left
+ * out of every number; videos with little or no talking get speech marked not-applicable and
+ * their audio characterised (music-led) instead of read as a voice. v1 rows still parse.
+ */
+export const REFERENCE_METRICS_VERSION = 2;
 
 /** Storage keys / Blob pathnames of reference videos: `reference/<creatorId>/<file>` (private). */
 export const REFERENCE_VIDEO_KEY_PATTERN = /^reference\/[\w-]+\/[\w.-]+$/;
@@ -19,9 +24,15 @@ const num = z.number().finite();
 const nnum = num.nullable();
 
 export const ReferenceVideoMetricsSchema = z.object({
-  version: z.literal(REFERENCE_METRICS_VERSION),
+  /** 1 = first measuring; 2 = end cards left out + no-speech handling (fields below marked v2). */
+  version: z.union([z.literal(1), z.literal(2)]),
   video: z.object({
+    /** The analyzed length — up to where a platform end card starts (v2), else the file's. */
     durationS: num.nonnegative(),
+    /** v2: the file's full length, end card included. */
+    sourceDurationS: num.nonnegative().optional(),
+    /** v2: seconds of platform end card (logo + @username outro) left out; null = none found. */
+    endCardS: nnum.optional(),
     width: z.number().int().positive().nullable(),
     height: z.number().int().positive().nullable(),
     /** "9:16", "16:9", "1:1", or "1080:1350"-style when it's no common ratio. */
@@ -83,17 +94,70 @@ export const ReferenceVideoMetricsSchema = z.object({
       backgroundUnderVoiceDb: nnum,
       background: z.enum(["none", "present", "unknown"]),
       backgroundMethod: z.enum(["floor", "none"]),
+      /**
+       * v2: what the soundtrack is. "voice" = talking, nothing under it; "voice-over-music" =
+       * talking over a bed; "music-led" = no talking, sustained music/sound; "quiet" = no talking,
+       * little sound.
+       */
+      mix: z.enum(["voice", "voice-over-music", "music-led", "quiet", "unknown"]).optional(),
+      /** v2: share of the video with sound in it (0–1). */
+      activeShare: num.min(0).max(1).nullable().optional(),
     })
     .nullable(),
+  /**
+   * v2: is there talking at all? Speech numbers are only measured when `present`. Music-only
+   * or text-on-screen videos get speech = null instead of numbers from words Whisper invented.
+   */
+  voice: z
+    .object({
+      present: z.boolean(),
+      /** Real words (non-speech tags like "[Music]" and words outside the video removed). */
+      wordCount: z.number().int().nonnegative(),
+      /** Share of the video covered by words (0–1). */
+      coverage: num.min(0).max(1),
+      /** Loudness inside words minus between them (dB); a real voice stands out, invented words don't. */
+      contrastDb: nnum,
+      reason: z.string().max(200),
+    })
+    .nullable()
+    .optional(),
   transcript: z.string().max(6000).nullable(),
   /** Caveats worth showing ("Very few words — speech numbers are rough"). */
   notes: z.array(z.string().max(300)).max(20),
 });
 export type ReferenceVideoMetrics = z.infer<typeof ReferenceVideoMetricsSchema>;
 
+/** Validated + sanitized (impossible values from older measurements dropped), or null. */
 export function parseReferenceVideoMetrics(raw: unknown): ReferenceVideoMetrics | null {
   const r = ReferenceVideoMetricsSchema.safeParse(raw);
-  return r.success ? r.data : null;
+  return r.success ? sanitizeReferenceMetrics(r.data) : null;
+}
+
+/**
+ * Drops values that can't be true — v1 measured music videos with words Whisper invented past
+ * the end ("starts talking at 19 s" on an 11 s video, a 0.0 s hook). Speech that starts after
+ * the video ends, or ends well after it, isn't speech; a hook of no length isn't a hook.
+ * Pure; never invents a value.
+ */
+export function sanitizeReferenceMetrics(m: ReferenceVideoMetrics): ReferenceVideoMetrics {
+  const d = m.video.durationS;
+  let speech = m.speech;
+  if (speech && d > 0 && (speech.speechStartS >= d || speech.speechEndS > d + 1 || speech.speechEndS < speech.speechStartS)) speech = null;
+  if (speech && m.voice && !m.voice.present) speech = null;
+  if (speech) {
+    const hookBad = speech.hookDurationS != null && (speech.hookDurationS <= 0.05 || speech.hookDurationS > d + 0.5);
+    const tailBad = d > 0 && speech.tailAfterLastWordS > d;
+    if (hookBad || tailBad) {
+      speech = {
+        ...speech,
+        ...(hookBad ? { hookDurationS: null, hookEndS: null } : {}),
+        ...(tailBad ? { tailAfterLastWordS: 0, endsRightAfterLastWord: false } : {}),
+      };
+    }
+  }
+  let cuts = m.cuts;
+  if (cuts && cuts.firstCutS != null && d > 0 && cuts.firstCutS > d) cuts = { ...cuts, firstCutS: null };
+  return speech === m.speech && cuts === m.cuts ? m : { ...m, speech, cuts };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -207,7 +271,9 @@ function hookOf(sentences: TimedWord[][]): TimedWord[] {
 export function speechMetrics(rawWords: TimedWord[], durationS: number, cutTimes: number[] | null): ReferenceVideoMetrics["speech"] {
   const words = rawWords
     .filter((w) => w && typeof w.word === "string" && w.word.trim() && Number.isFinite(w.start) && Number.isFinite(w.end))
-    .map((w) => ({ word: w.word.trim(), start: Math.max(0, w.start), end: Math.max(w.start, w.end) }))
+    // A word that starts after the video ends is a transcription artefact, not speech.
+    .filter((w) => !(durationS > 0 && w.start >= durationS))
+    .map((w) => ({ word: w.word.trim(), start: Math.max(0, w.start), end: Math.min(Math.max(w.start, w.end), durationS > 0 ? Math.max(durationS, w.start) : Infinity) }))
     .sort((a, b) => a.start - b.start);
   if (words.length === 0) return null;
   const first = words[0]!;
@@ -230,13 +296,105 @@ export function speechMetrics(rawWords: TimedWord[], durationS: number, cutTimes
     longestGapS: gaps.length ? r3(Math.max(...gaps)) : null,
     pausesPerMinute: span >= 3 ? r2((gaps.filter((g) => g >= 0.3).length / span) * 60) : null,
     hookText: joinWords(hook),
-    hookDurationS: hook.length ? r3(hook[hook.length - 1]!.end - hook[0]!.start) : null,
-    hookEndS: hook.length ? r3(hook[hook.length - 1]!.end) : null,
+    // A zero-length "hook" is a timing artefact, not a hook.
+    hookDurationS: hook.length && hook[hook.length - 1]!.end - hook[0]!.start > 0.05 ? r3(hook[hook.length - 1]!.end - hook[0]!.start) : null,
+    hookEndS: hook.length && hook[hook.length - 1]!.end - hook[0]!.start > 0.05 ? r3(hook[hook.length - 1]!.end) : null,
     lastSentence: joinWords(lastSentence.length > 25 ? lastSentence.slice(-25) : lastSentence),
     tailAfterLastWordS: r3(tail),
     endsRightAfterLastWord: tail <= 0.3,
     closingShotAfterSpeech: cutTimes ? cutTimes.some((t) => t > last.end - 0.05 && t < durationS - 0.1) : null,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Is anyone talking? (music-only / text-on-screen videos)
+// ---------------------------------------------------------------------------------------------
+
+/** Whisper's non-speech tags ("[Music]", "(upbeat music)", "♪") and bare punctuation. */
+export function isLexicalWord(word: string): boolean {
+  const w = word.trim();
+  if (!w || /♪|♫/.test(w)) return false;
+  if (/^[[(*]/.test(w) || /[\])*]$/.test(w)) return false;
+  return /[\p{L}\p{N}]/u.test(w);
+}
+
+export const SPEECH_RULES = {
+  minWords: 4,
+  /** Words must cover at least this share of the video. */
+  minCoverage: 0.2,
+  /** In-word minus between-word loudness under this (dB) = the "words" sit on the music. */
+  minContrastDb: 3,
+  /** Half or more zero-length words = invented timings. */
+  maxZeroLengthShare: 0.5,
+  /** One word making up this share (6+ words) = a hallucination loop ("you you you…"). */
+  maxRepeatShare: 0.4,
+  /** Spoken words last ~0.2–0.4 s; a median this long is singing or stretched invented words. */
+  maxMedianWordS: 0.6,
+} as const;
+
+export interface SpeechClassification {
+  present: boolean;
+  /** The real words (in range, non-speech tags removed) — what speech metrics should use. */
+  words: TimedWord[];
+  wordCount: number;
+  coverage: number;
+  contrastDb: number | null;
+  reason: string;
+}
+
+/**
+ * Pure: is there real talking in this video? Whisper invents words over music (often with
+ * timings past the end, zero length, or one phrase looped), so words alone aren't proof. Each
+ * word must sit inside the video; together they must cover a real share of it; and, when the
+ * acoustic check is available (`contrastDb`, from @chris/media's measureAudioActivity), the
+ * words must be louder than the gaps between them — a voice stands out, invented words don't.
+ */
+export function classifySpeech(rawWords: TimedWord[], durationS: number, contrastDb: number | null): SpeechClassification {
+  const words = rawWords
+    .filter((w) => w && typeof w.word === "string" && Number.isFinite(w.start) && Number.isFinite(w.end) && isLexicalWord(w.word))
+    .filter((w) => w.start >= 0 && (durationS <= 0 || w.start < durationS - 0.02))
+    .map((w) => ({ word: w.word.trim(), start: w.start, end: Math.max(w.start, durationS > 0 ? Math.min(w.end, durationS) : w.end) }))
+    .sort((a, b) => a.start - b.start);
+  // Union of word spans (each capped at 1.5 s — a "word" stretched over a whole bar of music isn't 1.5 s of talking).
+  let covered = 0;
+  let reach = -Infinity;
+  for (const w of words) {
+    const s = Math.max(w.start, reach);
+    const e = Math.min(w.end, w.start + 1.5);
+    if (e > s) covered += e - s;
+    reach = Math.max(reach, e);
+  }
+  const coverage = durationS > 0 ? Math.min(1, covered / durationS) : 0;
+  const base = { words, wordCount: words.length, coverage: r3(coverage), contrastDb: contrastDb == null ? null : Math.round(contrastDb * 10) / 10 };
+  const no = (reason: string): SpeechClassification => ({ ...base, present: false, reason });
+  if (words.length === 0) return no(rawWords.length ? "No real words — only music / sound tags" : "No words heard");
+  if (words.length < SPEECH_RULES.minWords) return no(`Only ${words.length} word${words.length === 1 ? "" : "s"} — not a talking video`);
+  const zeroShare = words.filter((w) => w.end - w.start < 0.02).length / words.length;
+  if (zeroShare >= SPEECH_RULES.maxZeroLengthShare) return no("Word timings look invented (music, not talking)");
+  if (words.length >= 6) {
+    const counts = new Map<string, number>();
+    for (const w of words) {
+      const k = w.word.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    if (Math.max(...counts.values()) / words.length >= SPEECH_RULES.maxRepeatShare) return no("The same words repeated — a transcription loop over music");
+  }
+  const medianWordS = median(words.map((w) => w.end - w.start)) ?? 0;
+  if (medianWordS >= SPEECH_RULES.maxMedianWordS) return no("The words are drawn out — singing or music, not talking");
+  if (coverage < SPEECH_RULES.minCoverage) return no(`Words cover only ${Math.round(coverage * 100)}% of the video — mostly not talking`);
+  if (contrastDb != null && contrastDb < SPEECH_RULES.minContrastDb) return no("The words aren't louder than the sound between them — music, not a voice");
+  return { ...base, present: true, reason: "Talking" };
+}
+
+/** Plain label for a video's soundtrack (v2 `audio.mix`). */
+export function audioMix(
+  voicePresent: boolean,
+  background: "none" | "present" | "unknown",
+  activity: { activeShare: number | null; integratedLufs: number | null },
+): NonNullable<NonNullable<ReferenceVideoMetrics["audio"]>["mix"]> {
+  if (voicePresent) return background === "present" ? "voice-over-music" : background === "none" ? "voice" : "unknown";
+  if (activity.activeShare == null) return "unknown";
+  return activity.activeShare >= 0.5 && (activity.integratedLufs ?? -70) > -40 ? "music-led" : "quiet";
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -275,10 +433,16 @@ export interface StyleProfile {
   speechStartS: StatValue | null;
   tailAfterLastWordS: StatValue | null;
   integratedLufs: StatValue | null;
-  /** Among videos with background audio only. */
+  /** Among videos with talking and background audio only. */
   backgroundUnderVoiceDb: StatValue | null;
-  /** How many videos had background audio / were measurable for it. */
+  /** Among videos with talking: how many had sound under the voice / were measurable for it. */
   backgroundPresent: { withBackground: number; measured: number };
+  /** Videos with talking (speech measured) / with audio. */
+  talking: { yes: number; measured: number };
+  /** Videos with no talking but sustained music/sound / whose soundtrack is known (talking videos, or v2 rows). */
+  musicLed: { yes: number; measured: number };
+  /** Videos whose platform end card (logo + @username outro) was left out. */
+  endCardsRemoved: number;
   endsRightAfterLastWord: { yes: number; measured: number };
   clipping: { yes: number; measured: number };
   /** A few example opening lines (most recent first). */
@@ -300,8 +464,10 @@ function stat(values: Array<number | null | undefined>): StatValue | null {
 
 /** Medians across videos — each video counts once, however long it is. */
 export function aggregateStyle(items: Array<{ metrics: ReferenceVideoMetrics; creatorId?: string }>): StyleProfile {
-  const m = items.map((i) => i.metrics);
-  const bgMeasured = m.filter((x) => x.audio && x.audio.background !== "unknown");
+  // Sanitized (impossible values dropped) — callers may pass metrics that never went through parse.
+  const m = items.map((i) => sanitizeReferenceMetrics(i.metrics));
+  // Background-under-the-voice only means something when there's a voice.
+  const bgMeasured = m.filter((x) => x.speech && x.audio && x.audio.background !== "unknown" && x.audio.mix !== "music-led");
   const bgPresent = bgMeasured.filter((x) => x.audio!.background === "present");
   const speech = m.filter((x) => x.speech);
   return {
@@ -326,6 +492,10 @@ export function aggregateStyle(items: Array<{ metrics: ReferenceVideoMetrics; cr
     integratedLufs: stat(m.map((x) => x.audio?.integratedLufs)),
     backgroundUnderVoiceDb: stat(bgPresent.map((x) => x.audio!.backgroundUnderVoiceDb)),
     backgroundPresent: { withBackground: bgPresent.length, measured: bgMeasured.length },
+    talking: { yes: speech.length, measured: m.filter((x) => x.audio).length },
+    // A talking video (any version) is known not to be music-led; a v1 row without speech is unknown.
+    musicLed: { yes: m.filter((x) => x.audio?.mix === "music-led").length, measured: m.filter((x) => x.audio && (x.speech || (x.audio.mix != null && x.audio.mix !== "unknown"))).length },
+    endCardsRemoved: m.filter((x) => (x.video.endCardS ?? 0) > 0).length,
     endsRightAfterLastWord: { yes: speech.filter((x) => x.speech!.endsRightAfterLastWord).length, measured: speech.length },
     clipping: { yes: m.filter((x) => x.audio?.clipping).length, measured: m.filter((x) => x.audio).length },
     exampleHooks: speech.map((x) => x.speech!.hookText).filter(Boolean).slice(0, 3),
@@ -395,8 +565,17 @@ export function describeStyle(p: StyleProfile): StyleLine[] {
     const t = p.tailAfterLastWordS.value;
     lines.push({ key: "ending", text: t <= 0.3 ? `Ends right on the last word (${fmtSeconds(t)} after)` : `Ends ${fmtSeconds(t)} after the last word` });
   }
+  const ml = p.musicLed ?? { yes: 0, measured: 0 };
+  const musicLed = ml.yes > 0 && ml.yes * 2 >= ml.measured;
+  if (musicLed) {
+    lines.push({
+      key: "music",
+      text: "Music-led — no talking",
+      detail: ml.yes === ml.measured ? "Music and what's on screen carry it; speech numbers don't apply" : `In ${ml.yes} of ${ml.measured} videos`,
+    });
+  }
   const bg = p.backgroundPresent;
-  if (bg.measured > 0) {
+  if (bg.measured > 0 && !musicLed) {
     if (bg.withBackground === 0) lines.push({ key: "music", text: "No background music — just the voice" });
     else if (p.backgroundUnderVoiceDb) {
       const most = bg.withBackground * 2 >= bg.measured;
@@ -410,7 +589,14 @@ export function describeStyle(p: StyleProfile): StyleLine[] {
     }
   }
   if (p.integratedLufs) lines.push({ key: "loudness", text: `Loudness ${Math.round(p.integratedLufs.value)} LUFS`, detail: p.integratedLufs.value >= -16 ? "Loud and punchy, like most short-form" : "On the quiet side for short-form" });
-  if (p.durationS) lines.push({ key: "length", text: `Videos run about ${fmtSeconds(p.durationS.value)}` });
+  if (p.durationS) {
+    const ec = p.endCardsRemoved ?? 0;
+    lines.push({
+      key: "length",
+      text: `Videos run about ${fmtSeconds(p.durationS.value)}`,
+      detail: ec > 0 ? `Not counting the app's end card (logo + @name)${ec < p.sampleSize ? ` on ${ec} of ${p.sampleSize}` : ""}` : undefined,
+    });
+  }
   return lines;
 }
 
@@ -420,7 +606,8 @@ export function videoSummary(m: ReferenceVideoMetrics): string {
   if (m.cuts?.shotMedianS != null) parts.push(m.cuts.count === 0 ? "No cuts" : `Cuts every ${fmtSeconds(m.cuts.shotMedianS)}`);
   if (m.speech?.wpm != null) parts.push(`${m.speech.wpm} wpm`);
   if (m.speech?.hookDurationS != null) parts.push(`hook ${fmtSeconds(m.speech.hookDurationS)}`);
-  if (m.audio?.background === "present" && m.audio.backgroundUnderVoiceDb != null) parts.push(`music −${Math.round(m.audio.backgroundUnderVoiceDb)} dB`);
+  if (m.audio?.mix === "music-led") parts.push("music-led, no talking");
+  else if (m.speech && m.audio?.background === "present" && m.audio.backgroundUnderVoiceDb != null) parts.push(`music −${Math.round(m.audio.backgroundUnderVoiceDb)} dB`);
   return parts.join(" · ");
 }
 
