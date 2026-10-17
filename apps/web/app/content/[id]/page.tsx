@@ -9,6 +9,8 @@ import { RawTakeUploader } from "./RawTakeUploader";
 import { FlowProgress } from "./FlowProgress";
 import { startEditing } from "./flow-actions";
 import { FootageUpload } from "../../upload/FootageUpload";
+import { prompterCanFilm } from "../../../lib/teleprompter/data";
+import { TeleprompterLink } from "../../components/TeleprompterLink";
 import { NavBar } from "../../components/NavBar";
 import { VideoThumb } from "../../components/VideoCard";
 import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, BackLink, CollapsiblePanel, StickyActionBar, StatusPill, stateLabel, platformLabel } from "../../components/ui";
@@ -77,6 +79,8 @@ export default async function ContentDetailPage({
   const manualTransitions = listManualTransitions(state);
   // Waiting on footage → the simple upload box (straight into the editor afterwards).
   const needsFootage = state === "READY_TO_FILM" || state === "FILMED";
+  // Not filmed yet (no takes) → "Film with teleprompter" (docs/decisions-pending/teleprompter.md).
+  const canPrompt = prompterCanFilm(state) && rawTakes.length === 0;
   const latestResearch = item.researchPackets[0];
   const latestScript = item.scriptVersions[0];
   const latestTakeSelection = item.takeSelections[0];
@@ -366,6 +370,7 @@ export default async function ContentDetailPage({
 
         <div className="flex flex-col gap-5">
           {/* Only the input the CURRENT step needs is open on the page. */}
+          {canPrompt && !needsFootage && <TeleprompterLink id={item.id} />}
           {needsFootage && (
             <Panel id="upload" className="panel-action scroll-mt-24">
               <SectionHeading eyebrow="Upload" title="Upload your footage" />
@@ -373,6 +378,12 @@ export default async function ContentDetailPage({
                 Pick what you filmed — it opens straight in the editor, with captions.
               </p>
               <FootageUpload mode={storageMode} contentItemId={item.id} />
+              {canPrompt && (
+                <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+                  <p className="mb-2.5 text-[13.5px] text-[var(--color-text-muted)]">Not filmed yet?</p>
+                  <TeleprompterLink id={item.id} />
+                </div>
+              )}
             </Panel>
           )}
 
@@ -1381,3 +1392,4 @@ export default async function ContentDetailPage({
     </>
   );
 }
+

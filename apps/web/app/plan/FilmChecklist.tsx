@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatYmdShort } from "@chris/domain/plan-import";
 import { PlanItemUpload } from "./PlanItemUpload";
+import { TeleprompterLink } from "../components/TeleprompterLink";
 
 export interface ChecklistItem {
   id: string;
@@ -73,8 +74,9 @@ export function FilmChecklist({ items, mode }: { items: ChecklistItem[]; mode: "
               {i.hook && <p className="mt-2 text-[14.5px] leading-snug">“{i.hook}”</p>}
               {i.notes && <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-snug text-[var(--color-text-muted)]">{i.notes}</p>}
             </div>
-            <div className="shrink-0 self-center">
+            <div className="flex shrink-0 flex-col items-end gap-2 self-center">
               <PlanItemUpload contentItemId={i.id} mode={mode} label="Upload" compact />
+              <TeleprompterLink id={i.id} variant="icon" from="plan" />
             </div>
           </li>
         ))}

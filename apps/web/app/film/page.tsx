@@ -4,6 +4,7 @@ import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, SectionHeading, Button, EmptyState } from "../components/ui";
 import { markFilmed } from "./actions";
+import { TeleprompterLink } from "../components/TeleprompterLink";
 
 const SETUP_LABELS: Record<string, string> = {
   DESK: "Desk",
@@ -63,6 +64,12 @@ export default async function FilmQueuePage({
           }
         />
 
+        <div className="mb-5">
+          <Link href="/film/teleprompter?from=film" className="btn btn-primary w-full !min-h-[52px] gap-2 !text-[16px] sm:w-auto" data-testid="film-teleprompter-cta">
+            Film with teleprompter
+          </Link>
+        </div>
+
         {filmed && <p className="mb-4 text-[15px] text-[var(--color-emerald-400)] sm:text-sm">Marked {filmed} as filmed — upload the footage below.</p>}
         {error && <p className="mb-4 text-sm text-[var(--color-rose-400)]">{error}</p>}
 
@@ -81,9 +88,12 @@ export default async function FilmQueuePage({
                           <input type="checkbox" name="contentItemId" value={item.id} aria-label={`Filmed: ${item.title}`} />
                         </label>
                         <div className="min-w-0 flex-1">
-                          <Link href={`/content/${item.id}`} className="text-[16px] font-semibold leading-snug hover:underline sm:text-sm">
-                            {item.title}
-                          </Link>
+                          <div className="flex items-start justify-between gap-2">
+                            <Link href={`/content/${item.id}`} className="min-w-0 text-[16px] font-semibold leading-snug hover:underline sm:text-sm">
+                              {item.title}
+                            </Link>
+                            <TeleprompterLink id={item.id} variant="icon" from="film" />
+                          </div>
                           {item.creatorCard ? (
                             <>
                               <p className="mt-1.5 text-[15px] leading-snug sm:text-[13px]"><span className="text-[var(--color-text-faint)]">Hook: </span>{item.creatorCard.hook}</p>

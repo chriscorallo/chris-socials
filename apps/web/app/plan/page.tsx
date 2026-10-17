@@ -17,6 +17,7 @@ import { APP_TZ } from "../../lib/calendar-data";
 import { NavBar } from "../components/NavBar";
 import { Badge, PageHeader, PageShell, Panel } from "../components/ui";
 import { PlanItemUpload } from "./PlanItemUpload";
+import { TeleprompterLink } from "../components/TeleprompterLink";
 import { FilmChecklist, type ChecklistItem } from "./FilmChecklist";
 import { editPlannedVideo, undoImportAction } from "./actions";
 
@@ -263,7 +264,10 @@ function PlanRow({ v, today, urgent }: { v: PlannedVideo; today: string; urgent:
       </div>
       <div className="shrink-0">
         {st.action.kind === "UPLOAD" ? (
-          <PlanItemUpload contentItemId={v.id} mode={storageMode} label="Upload" compact quiet={!urgent} />
+          <div className="flex items-center gap-1.5">
+            <TeleprompterLink id={v.id} variant="icon" from="plan" />
+            <PlanItemUpload contentItemId={v.id} mode={storageMode} label="Upload" compact quiet={!urgent} />
+          </div>
         ) : st.action.kind === "START_EDIT" ? (
           <form action={editPlannedVideo}>
             <input type="hidden" name="contentItemId" value={v.id} />
