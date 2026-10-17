@@ -18,7 +18,7 @@ import {
 } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
-import { PageShell, PageHeader, Panel, SectionHeading, Badge, Button } from "../components/ui";
+import { PageShell, PageHeader, Panel, SectionHeading, CollapsiblePanel, Badge, Button } from "../components/ui";
 import {
   submitManualEvidence,
   runLearningAgentAction,
@@ -78,7 +78,7 @@ export default async function LearningsPage({
         <PageHeader
           eyebrow="Adaptive Intelligence"
           title="Learnings"
-          description="Spec §6/§7 — Evidence Ledger, the Belief system, the Experiment engine, the Brand Timeline, the Human Taste Model, and the Weekly Review / Learning Council. A belief proposal is never accepted automatically."
+          description="What the system has learned — evidence, beliefs, experiments, your taste, and how much autonomy each part has earned. Nothing is believed until you accept it."
         />
 
         {learningError && (
@@ -87,13 +87,12 @@ export default async function LearningsPage({
           </Panel>
         )}
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4 sm:gap-5">
           {/* Evidence Ledger */}
-          <Panel>
-            <SectionHeading eyebrow="Evidence Ledger" title={evidenceTotal > 15 ? `${evidenceTotal} entries (showing 15)` : `${evidenceTotal} entries`} />
-            <ul className="mb-4 max-h-48 overflow-y-auto text-[13px]">
+          <CollapsiblePanel eyebrow="Evidence Ledger" title={evidenceTotal > 15 ? `${evidenceTotal} entries (showing 15)` : `${evidenceTotal} entries`} className="order-2">
+            <ul className="mb-4 text-[14px] sm:max-h-48 sm:overflow-y-auto sm:text-[13px]">
               {evidence.map((e) => (
-                <li key={e.id} className="border-b border-[var(--color-border)] py-1.5 last:border-0">
+                <li key={e.id} className="border-b border-[var(--color-border)] py-2 last:border-0">
                   <Badge tone="neutral">{e.sourceType}</Badge>{" "}
                   <span className="text-[var(--color-text-faint)]">(confidence {e.confidence.toFixed(2)})</span>{" "}
                   {e.statement}
@@ -103,12 +102,13 @@ export default async function LearningsPage({
             <form action={submitManualEvidence} className="flex flex-col gap-3">
               <label className="block">
                 <span className="field-label">Statement</span>
-                <input type="text" name="statement" required className="field-input" />
+                <input type="text" name="statement" required autoComplete="off" className="field-input" />
               </label>
               <label className="block">
                 <span className="field-label">Confidence (0-1)</span>
                 <input
                   type="number"
+                  inputMode="decimal"
                   name="confidence"
                   min="0"
                   max="1"
@@ -117,19 +117,19 @@ export default async function LearningsPage({
                   className="field-input"
                 />
               </label>
-              <Button>Record manual evidence</Button>
+              <Button className="w-full sm:w-auto sm:self-start">Record manual evidence</Button>
             </form>
-          </Panel>
+          </CollapsiblePanel>
 
-          {/* Beliefs */}
-          <Panel>
+          {/* Beliefs — the review queue, so it leads on every screen size. */}
+          <Panel className="order-1">
             <SectionHeading eyebrow="Belief System" title="Beliefs" />
             <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
               Requires ANTHROPIC_API_KEY. A proposal is never auto-accepted — review and approve
               or reject each one below.
             </p>
             <form action={runLearningAgentAction}>
-              <Button>Run Learning Agent (propose from Evidence Ledger)</Button>
+              <Button className="w-full sm:w-auto" pendingLabel="Proposing…">Run Learning Agent (propose from Evidence Ledger)</Button>
             </form>
 
             {proposedBeliefs.length > 0 && (
@@ -139,8 +139,8 @@ export default async function LearningsPage({
                 </p>
                 <div className="flex flex-col gap-3">
                   {proposedBeliefs.map((b) => (
-                    <div key={b.id} className="rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-4 text-[13px]">
-                      <p className="font-medium">{b.statement}</p>
+                    <div key={b.id} className="rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-4 text-[14px] sm:text-[13px]">
+                      <p className="text-[15px] font-medium sm:text-[13px]">{b.statement}</p>
                       {b.causalClaim && (
                         <p className="mt-1 text-[var(--color-text-muted)]">Interpretation: {b.causalClaim}</p>
                       )}
@@ -153,14 +153,14 @@ export default async function LearningsPage({
                           Confounders: {(b.confounders as string[]).join("; ")}
                         </p>
                       )}
-                      <div className="mt-3 flex gap-2">
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
                         <form action={approveBeliefAction}>
                           <input type="hidden" name="beliefId" value={b.id} />
-                          <Button tone="primary">Accept</Button>
+                          <Button tone="primary" className="w-full">Accept</Button>
                         </form>
                         <form action={rejectBeliefAction}>
                           <input type="hidden" name="beliefId" value={b.id} />
-                          <Button tone="danger">Reject</Button>
+                          <Button tone="danger" className="w-full">Reject</Button>
                         </form>
                       </div>
                     </div>
@@ -190,17 +190,18 @@ export default async function LearningsPage({
           </Panel>
 
           {/* Experiments */}
-          <Panel>
-            <SectionHeading
-              eyebrow="Experiment Engine"
-              title={experimentsTotal > 15 ? `Experiments (showing 15 of ${experimentsTotal})` : "Experiments"}
-            />
+          <CollapsiblePanel
+            eyebrow="Experiment Engine"
+            title={experimentsTotal > 15 ? `Experiments (showing 15 of ${experimentsTotal})` : "Experiments"}
+            className="order-3"
+            defaultOpen={experiments.some((e) => e.status === "RUNNING" || e.status === "PROPOSED")}
+          >
             <form action={runExperimentAgentAction}>
-              <Button>Run Experiment Agent (propose from current slate)</Button>
+              <Button className="w-full sm:w-auto" pendingLabel="Proposing…">Run Experiment Agent (propose from current slate)</Button>
             </form>
 
             <details className="mt-4">
-              <summary className="cursor-pointer text-[13px] text-[var(--color-text-muted)]">Create manually</summary>
+              <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">Create manually ›</summary>
               <form action={submitExperiment} className="mt-3 flex flex-col gap-3">
                 <label className="block">
                   <span className="field-label">Hypothesis</span>
@@ -213,11 +214,11 @@ export default async function LearningsPage({
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <span className="field-label">Min sample size</span>
-                    <input type="number" name="minSampleSize" defaultValue="10" className="field-input" />
+                    <input type="number" inputMode="numeric" name="minSampleSize" defaultValue="10" className="field-input" />
                   </label>
                   <label className="block">
                     <span className="field-label">Min duration (days)</span>
-                    <input type="number" name="minDurationDays" defaultValue="7" className="field-input" />
+                    <input type="number" inputMode="numeric" name="minDurationDays" defaultValue="7" className="field-input" />
                   </label>
                 </div>
                 <label className="block">
@@ -229,7 +230,7 @@ export default async function LearningsPage({
                     className="field-input"
                   />
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block">
                     <span className="field-label">Variant A label</span>
                     <input type="text" name="variantALabel" className="field-input" />
@@ -247,14 +248,14 @@ export default async function LearningsPage({
                     <input type="text" name="variantBDescription" className="field-input" />
                   </label>
                 </div>
-                <Button tone="primary">Create experiment</Button>
+                <Button tone="primary" className="w-full sm:w-auto sm:self-start">Create experiment</Button>
               </form>
             </details>
 
             {experiments.length > 0 && (
               <div className="mt-5 flex flex-col gap-3">
                 {experiments.map((e) => (
-                  <div key={e.id} className="border-t border-[var(--color-border)] pt-3 text-[13px]">
+                  <div key={e.id} className="border-t border-[var(--color-border)] pt-3 text-[14px] sm:text-[13px]">
                     <p className="mb-1">
                       <Badge tone={e.status === "RUNNING" ? "gold" : e.status === "PROPOSED" ? "neutral" : "emerald"}>
                         {e.status}
@@ -281,29 +282,29 @@ export default async function LearningsPage({
                       <form action={concludeExperimentAction} className="flex flex-col gap-2">
                         <input type="hidden" name="experimentId" value={e.id} />
                         <input type="text" name="conclusion" placeholder="Conclusion" required className="field-input" />
-                        <div className="flex gap-4 text-[13px]">
-                          <label className="flex items-center gap-1.5">
+                        <div className="grid grid-cols-2 gap-2 text-[14px] sm:flex sm:gap-4 sm:text-[13px]">
+                          <label className="flex min-h-[44px] items-center gap-2">
                             <input type="radio" name="status" value="CONCLUDED" defaultChecked /> Concluded
                           </label>
-                          <label className="flex items-center gap-1.5">
+                          <label className="flex min-h-[44px] items-center gap-2">
                             <input type="radio" name="status" value="INCONCLUSIVE" /> Inconclusive
                           </label>
                         </div>
-                        <Button>Submit</Button>
+                        <Button className="w-full sm:w-auto sm:self-start">Submit</Button>
                       </form>
                     )}
                   </div>
                 ))}
               </div>
             )}
-          </Panel>
+          </CollapsiblePanel>
 
           {/* Brand Timeline */}
-          <Panel>
-            <SectionHeading
-              eyebrow="Truth Layer"
-              title={erasTotal > 15 ? `Brand Timeline (most recent 15 of ${erasTotal})` : "Brand Timeline"}
-            />
+          <CollapsiblePanel
+            eyebrow="Truth Layer"
+            title={erasTotal > 15 ? `Brand Timeline (most recent 15 of ${erasTotal})` : "Brand Timeline"}
+            className="order-5"
+          >
             <ul className="mb-4 flex flex-col gap-2 text-[13px]">
               {eras.map((era) => (
                 <li key={era.id}>
@@ -329,19 +330,18 @@ export default async function LearningsPage({
                 <span className="field-label">Description</span>
                 <input type="text" name="description" required className="field-input" />
               </label>
-              <Button>Add era</Button>
+              <Button className="w-full sm:w-auto sm:self-start">Add era</Button>
             </form>
-          </Panel>
+          </CollapsiblePanel>
 
           {/* Weekly Brief */}
-          <Panel>
-            <SectionHeading eyebrow="Learning Council" title="Weekly Brief" />
-            <form action={runWeeklyReviewAction} className="flex items-center gap-3">
-              <label className="flex-1">
+          <CollapsiblePanel eyebrow="Learning Council" title="Weekly Brief" className="order-4" defaultOpen={!!briefs[0]}>
+            <form action={runWeeklyReviewAction} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="block sm:flex-1">
                 <span className="field-label">Week start date</span>
                 <input type="date" name="weekStartDate" required className="field-input" />
               </label>
-              <Button tone="primary">Run Weekly Review</Button>
+              <Button tone="primary" className="w-full sm:w-auto" pendingLabel="Reviewing…">Run Weekly Review</Button>
             </form>
             {briefs[0] && (
               <div className="mt-4 text-[13px]">
@@ -352,12 +352,11 @@ export default async function LearningsPage({
                 <p className="mt-1 text-[var(--color-text-muted)]">{briefs[0].whatItMeans}</p>
               </div>
             )}
-          </Panel>
+          </CollapsiblePanel>
 
           {/* Taste Model */}
-          <Panel>
-            <SectionHeading eyebrow="Human Taste Model" title={tasteFeedbackTotal > 15 ? `${tasteFeedbackTotal} feedback instances (showing 15)` : `${tasteFeedbackTotal} feedback instances`} />
-            <ul className="max-h-40 overflow-y-auto text-[13px]">
+          <CollapsiblePanel eyebrow="Human Taste Model" title={tasteFeedbackTotal > 15 ? `${tasteFeedbackTotal} feedback instances (showing 15)` : `${tasteFeedbackTotal} feedback instances`} className="order-6">
+            <ul className="text-[14px] sm:max-h-40 sm:overflow-y-auto sm:text-[13px]">
               {tasteFeedback.map((f) => (
                 <li key={f.id} className="border-b border-[var(--color-border)] py-1.5 last:border-0">
                   <Badge tone="violet">{f.normalizedTag}</Badge>{" "}
@@ -369,14 +368,18 @@ export default async function LearningsPage({
               Recorded per artifact from each content item&apos;s own detail page.
             </p>
             <form action={refreshTasteModelAction} className="mt-3 flex flex-wrap items-center gap-3">
-              <Button>Refresh taste model</Button>
+              <Button className="w-full sm:w-auto" pendingLabel="Refreshing…">Refresh taste model</Button>
               {tasteRefreshed && <span className="text-[13px] text-[var(--color-text-muted)]">{tasteRefreshed}</span>}
             </form>
-          </Panel>
+          </CollapsiblePanel>
 
           {/* Autonomy */}
-          <Panel>
-            <SectionHeading eyebrow="Autonomy" title="Reliability & Trust" />
+          <CollapsiblePanel
+            eyebrow="Autonomy"
+            title="Reliability & Trust"
+            className="order-7"
+            meta={<Badge tone={shadowOnly ? "rose" : "emerald"}>{shadowOnly ? "Shadow only" : "On where earned"}</Badge>}
+          >
             <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
               Spec §23 — a subsystem only reaches a higher level after enough real,
               human-approved outcomes for that specific (subsystem, production tier) pair,
@@ -385,17 +388,61 @@ export default async function LearningsPage({
               {AUTONOMY_LEVEL_THRESHOLDS[4]} approved outcomes.
             </p>
 
-            <form action={toggleShadowOnly} className="mb-5 flex flex-wrap items-center gap-3">
+            <form action={toggleShadowOnly} className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <input type="hidden" name="enabled" value={shadowOnly ? "false" : "true"} />
               <Badge tone={shadowOnly ? "rose" : "emerald"}>
                 {shadowOnly ? "Shadow only — all autonomy disabled" : "Autonomy enabled where earned"}
               </Badge>
-              <Button tone={shadowOnly ? "primary" : "danger"}>
+              <Button tone={shadowOnly ? "primary" : "danger"} className="w-full sm:w-auto">
                 {shadowOnly ? "Turn autonomy on" : "Emergency stop: force shadow-only"}
               </Button>
             </form>
 
-            <div className="overflow-x-auto rounded-lg border border-[var(--color-border)]">
+            {/* Phones: one card per subsystem, a row per tier — not a 6-column, 20-row table. */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {SUBSYSTEMS.map((subsystem) => (
+                <div key={subsystem} className="rounded-xl border border-[var(--color-border)] bg-white/[0.03]">
+                  <p className="border-b border-[var(--color-border)] px-3 py-2.5 text-[13px] font-semibold">
+                    {subsystem.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase())}
+                  </p>
+                  <ul className="divide-y divide-[var(--color-border)]">
+                    {TIERS.map((tier) => {
+                      const row = autonomyLevels.find((a) => a.subsystem === subsystem && a.productionTier === tier);
+                      return (
+                        <li key={tier} className="flex items-center gap-3 px-3 py-2">
+                          <div className="min-w-0 flex-1 text-[13px]">
+                            <p className="font-medium">{tier.charAt(0) + tier.slice(1).toLowerCase()}</p>
+                            <p className="text-[12px] text-[var(--color-text-faint)]">
+                              Level {row?.level ?? 0} · {row?.approvedOutcomeCount ?? 0} approved
+                            </p>
+                          </div>
+                          <form action={submitAutonomyCeiling} className="flex shrink-0 items-center gap-1.5">
+                            <input type="hidden" name="subsystem" value={subsystem} />
+                            <input type="hidden" name="productionTier" value={tier} />
+                            <label className="sr-only" htmlFor={`ceil-m-${subsystem}-${tier}`}>Ceiling</label>
+                            <select
+                              id={`ceil-m-${subsystem}-${tier}`}
+                              name="ceilingLevel"
+                              defaultValue={String(row?.ceilingLevel ?? 4)}
+                              className="field-input !w-[4.5rem] !py-1.5"
+                              aria-label={`Ceiling for ${subsystem} ${tier}`}
+                            >
+                              {[0, 1, 2, 3, 4].map((n) => (
+                                <option key={n} value={n}>
+                                  L{n}
+                                </option>
+                              ))}
+                            </select>
+                            <Button className="!px-3.5 !text-[13px]" pendingLabel="…">Set</Button>
+                          </form>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto rounded-lg border border-[var(--color-border)] md:block">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-[var(--color-border)] text-left text-[var(--color-text-faint)]">
@@ -446,7 +493,7 @@ export default async function LearningsPage({
               HERO&apos;s ceiling stays low by default policy — set it to 0 or 1 to require
               permanent human review regardless of how many outcomes accumulate.
             </p>
-          </Panel>
+          </CollapsiblePanel>
         </div>
       </PageShell>
     </>

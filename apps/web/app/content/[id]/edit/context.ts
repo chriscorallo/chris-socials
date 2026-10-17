@@ -11,12 +11,19 @@ import type { PlaybackEngine } from "./playback";
 export type InspectorTab = "selection" | "captions" | "look" | "cover";
 export type PlatformView = "ALL" | PlatformId;
 
+/** Bottom sheets of the touch (phone/tablet) shell. */
+export type SheetId = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms";
+
 export interface EditorUi {
   reframe: boolean;
   platformView: PlatformView;
   tab: InspectorTab;
   /** Pixels per second on the timeline. */
   pxPerSec: number;
+  /** Touch shell: the open bottom sheet, if any. */
+  sheet: SheetId | null;
+  /** The text element being typed into (inline editor on desktop, keyboard bar on touch). */
+  editingTextId: string | null;
 }
 
 export interface EditorContextValue {
@@ -39,6 +46,8 @@ export interface EditorContextValue {
   /** Selects an item and moves the playhead into it if it's off-screen in time. */
   focus: (sel: Selection) => void;
   toast: (message: string, tone?: "ok" | "warn" | "error") => void;
+  /** True in the touch (phone/tablet) shell. */
+  touch: boolean;
 }
 
 export const EditorContext = createContext<EditorContextValue | null>(null);

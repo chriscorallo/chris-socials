@@ -28,6 +28,18 @@ const nextConfig: NextConfig = {
   // prompt registry reads /prompts/** at call time — while working locally only because the
   // repo happens to be on disk. Brand docs are read by the seed; fonts by the renderer. See
   // /docs/DECISIONS.md ("Deploy: ship runtime-read files explicitly").
+  // Never ship local data or other platforms' binaries in a function (Vercel caps a function
+  // at 250 MB): the dynamic local-storage path otherwise drags <repo>/.storage (uploaded raw
+  // takes) into the trace, and ffprobe-static carries binaries for every OS.
+  outputFileTracingExcludes: {
+    "/*": [
+      "../../.storage/**",
+      "../../.cache/**",
+      "../../packages/domain/.pglite*/**",
+      "../../node_modules/.pnpm/ffprobe-static@*/node_modules/ffprobe-static/bin/win32/**",
+      "../../node_modules/.pnpm/ffprobe-static@*/node_modules/ffprobe-static/bin/darwin/**",
+    ],
+  },
   outputFileTracingIncludes: {
     "/*": ["../../prompts/**/*.md", "../../brand/**/*.md", "../../packages/media/assets/**/*"],
   },
