@@ -566,8 +566,8 @@ const STUCK_TITLE: Record<StuckKind, (t: string) => string> = {
   EDIT_STALLED: (t) => `Stalled in editing: ${t}`,
   RESERVED_NOT_READY: (t) => `Not ready for its date: ${t}`,
 };
-const STUCK_ACTION: Record<StuckKind, (id: string) => NudgeAction> = {
-  MISSED: (id) => ({ kind: "link", label: "Reschedule", href: `/calendar?event=${id}` }),
+const STUCK_ACTION: Record<StuckKind, (id: string, ymd: string) => NudgeAction> = {
+  MISSED: (id, ymd) => ({ kind: "link", label: "Reschedule", href: `/calendar?view=day&date=${ymd}&event=${id}` }),
   PUBLISH_FAILED: (id) => ({ kind: "link", label: "Open & retry", href: `/content/${id}` }),
   PUBLISH_STALLED: (id) => ({ kind: "link", label: "Open & retry", href: `/content/${id}` }),
   QC_BLOCKED: (id) => ({ kind: "link", label: "Review", href: `/content/${id}` }),
@@ -577,7 +577,7 @@ const STUCK_ACTION: Record<StuckKind, (id: string) => NudgeAction> = {
   RESERVED_NOT_READY: (id) => ({ kind: "link", label: "Open", href: `/content/${id}` }),
 };
 
-function stuckNudges(stuck: StuckItem[], _tz: string): Nudge[] {
+function stuckNudges(stuck: StuckItem[], tz: string): Nudge[] {
   return stuck.map((s) => ({
     key: `stuck:${s.kind}:${s.contentItemId}`,
     severity: s.severity,
@@ -586,7 +586,7 @@ function stuckNudges(stuck: StuckItem[], _tz: string): Nudge[] {
     title: STUCK_TITLE[s.kind](s.title),
     detail: s.detail,
     due: s.since,
-    action: STUCK_ACTION[s.kind](s.contentItemId),
+    action: STUCK_ACTION[s.kind](s.contentItemId, ymdInTz(s.since, tz)),
   }));
 }
 
