@@ -9,6 +9,11 @@ import type { MotionTemplate } from "./motion-contract";
  * bleed a little; the engine's margins absorb that). If a template's design grows, change
  * the number here and placement follows, in the editor and the render alike.
  *
+ * Sizes tuned to the final @chris/motion designs (2026-10-16, motion engine): each template's
+ * designed box IS this footprint (packages/motion TEMPLATE_DESIGN_SIZE reads it). TIMELINE
+ * is a vertical milestone list — a horizontal 5-event row can't fit 16-char labels + subs
+ * at >= 34 px on a phone.
+ *
  * `kind`:
  * - BOX         an ordinary panel the engine positions freely;
  * - FULL_FRAME  covers the whole frame by design (TITLE_CARD dims/blurs the background) —
@@ -24,19 +29,19 @@ export interface TemplateFootprint {
 }
 
 export const TEMPLATE_FOOTPRINTS: Record<MotionTemplate, TemplateFootprint> = {
-  KINETIC_TEXT: { width: 900, height: 320, kind: "BOX", preferY: 0.42 },
+  KINETIC_TEXT: { width: 900, height: 380, kind: "BOX", preferY: 0.42 },
   NUMBER_COUNTER: { width: 760, height: 300, kind: "BOX", preferY: 0.3 },
-  STAT_CARD: { width: 700, height: 380, kind: "BOX", preferY: 0.32 },
+  STAT_CARD: { width: 720, height: 400, kind: "BOX", preferY: 0.32 },
   BAR_CHART: { width: 900, height: 760, kind: "BOX", preferY: 0.4 },
-  LINE_CHART: { width: 900, height: 640, kind: "BOX", preferY: 0.38 },
-  COMPARISON: { width: 940, height: 520, kind: "BOX", preferY: 0.36 },
+  LINE_CHART: { width: 900, height: 680, kind: "BOX", preferY: 0.38 },
+  COMPARISON: { width: 900, height: 560, kind: "BOX", preferY: 0.36 },
   PERCENT_RING: { width: 520, height: 560, kind: "BOX", preferY: 0.34 },
-  LIST_STEPS: { width: 860, height: 620, kind: "BOX", preferY: 0.4 },
-  ICON_3D: { width: 520, height: 520, kind: "BOX", preferY: 0.32 },
-  MONEY_STACK_3D: { width: 600, height: 600, kind: "BOX", preferY: 0.36 },
+  LIST_STEPS: { width: 860, height: 640, kind: "BOX", preferY: 0.4 },
+  ICON_3D: { width: 560, height: 600, kind: "BOX", preferY: 0.32 },
+  MONEY_STACK_3D: { width: 720, height: 680, kind: "BOX", preferY: 0.36 },
   CALLOUT: { width: 520, height: 200, kind: "CALLOUT", preferY: 0.4 },
-  TIMELINE: { width: 940, height: 420, kind: "BOX", preferY: 0.36 },
-  DEFINITION: { width: 880, height: 420, kind: "BOX", preferY: 0.34 },
+  TIMELINE: { width: 760, height: 800, kind: "BOX", preferY: 0.36 },
+  DEFINITION: { width: 880, height: 440, kind: "BOX", preferY: 0.34 },
   TITLE_CARD: { width: 1080, height: 1920, kind: "FULL_FRAME", preferY: 0.5 },
 };
 

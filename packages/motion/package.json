@@ -1,0 +1,37 @@
+{
+  "name": "@chris/motion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./player": "./src/player.tsx",
+    "./pure": "./src/pure.ts"
+  },
+  "scripts": {
+    "sfx": "node scripts/generate-sfx.mjs"
+  },
+  "dependencies": {
+    "@chris/media": "workspace:*",
+    "@react-three/fiber": "9.8.1",
+    "@remotion/bundler": "4.0.533",
+    "@remotion/player": "4.0.533",
+    "@remotion/renderer": "4.0.533",
+    "@remotion/three": "4.0.533",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.533",
+    "three": "0.186.1",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@types/three": "0.186.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  }
+}
