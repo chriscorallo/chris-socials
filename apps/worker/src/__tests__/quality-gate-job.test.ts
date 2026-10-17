@@ -473,4 +473,38 @@ describe("runQualityGateForContentItem (real ffmpeg render, real state machine, 
     },
     30000,
   );
+
+  it(
+    "a finishing-edit timeline is checked by its own texts' laid-out rects (not the AI plan's overlays)",
+    async () => {
+      const { item } = await makeRenderedItem(); // AI plan: no overlays at all
+      const asset = await prisma.mediaAsset.findFirstOrThrow({ where: { contentItemId: item.id } });
+      const planRow = await prisma.editPlan.findFirstOrThrow({ where: { contentItemId: item.id }, orderBy: { createdAt: "desc" } });
+      const text = (id: string, label: string, y: number, start: number, end: number) => ({
+        id, text: label, start, end, fontId: "anton", fontSize: 140, color: "#FFFFFF", y,
+      });
+      await prisma.editPlan.update({
+        where: { id: planRow.id },
+        data: {
+          plan: {
+            ...(planRow.plan as Record<string, unknown>),
+            timeline: {
+              version: 2,
+              clips: [{ id: "c", mediaAssetId: asset.id, sourceStart: 1, sourceEnd: 5 }],
+              texts: [text("a", "First", 0.4, 0, 3), text("b", "Second", 0.42, 2, 4), text("c", "Apart", 0.8, 0, 4)],
+              captions: { enabled: false, fontId: "inter-display-bold", fontSize: 64, color: "#FFFFFF", highlightColor: "#FFD84D" },
+            },
+          },
+        },
+      });
+      const cleanVisualQA = new MockModelProvider(() => ({ issues: [], overallImpression: "Clean." }));
+      const result = await runQualityGateForContentItem(prisma, storage, cleanVisualQA, item.id, { actorId: "chris" }, { maxFrames: 2 });
+      expect(result.gates.technical).toBe("BLOCK");
+      const issues = await getQCIssuesForReport(prisma, result.qcReportId);
+      const collisions = issues.filter((i) => i.source === "OVERLAY_COLLISION");
+      expect(collisions).toHaveLength(1);
+      expect(collisions[0]!.description).toMatch(/"First" and "Second" overlap on screen from 2s to 3s/);
+    },
+    30000,
+  );
 });
