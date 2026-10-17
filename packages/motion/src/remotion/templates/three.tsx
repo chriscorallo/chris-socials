@@ -6,7 +6,9 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { EASE_IN_OUT, EASE_OUT, SPRINGS, clamp01, countUp, prog, springAt } from "../motion";
 import { FONT, TEXT_LIFT, compactNumber, formatNumber, mix, rgba, withUnit, type Palette } from "../theme";
 import { gradientText } from "./text";
-import type { TemplateComponentProps } from "./types";
+import { feelOf, iconStyleOf, type TemplateComponentProps } from "./types";
+import type { IconStyle } from "../../style";
+import { LineIcon, LineMoneyStack } from "./line-icons";
 import { stackCountFor } from "../../timing";
 
 /**
@@ -19,29 +21,32 @@ import { stackCountFor } from "../../timing";
 const fill: CSSProperties = { position: "absolute", inset: 0 };
 
 // ------------------------------------------------------------------ shared scene pieces
-function StudioEnvironment() {
+function StudioEnvironment({ style = "GOLD_METAL" }: { style?: IconStyle }) {
   const { gl, scene } = useThree();
   // Synchronous (not an effect) so the very first captured frame already has reflections.
   useMemo(() => {
     const pm = new THREE.PMREMGenerator(gl);
     scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.85;
+    scene.environmentIntensity = style === "SOFT_CLAY" ? 0.6 : style === "GLASS" ? 1.1 : 0.85;
     pm.dispose();
-  }, [gl, scene]);
+  }, [gl, scene, style]);
   return null;
 }
 
-function StudioLights({ p }: { p: Palette }) {
+/** Three-point studio light. Clay gets a big soft wrap (more ambient, gentler key/rim) so it
+ * reads matte; glass gets a stronger rim so its edges catch light. */
+function StudioLights({ p, style = "GOLD_METAL" }: { p: Palette; style?: IconStyle }) {
+  const k = style === "SOFT_CLAY" ? { amb: 0.75, key: 1.7, rim: 1.4, fill: 0.9, pt: 2.5 } : style === "GLASS" ? { amb: 0.35, key: 2.2, rim: 4.2, fill: 0.7, pt: 5 } : { amb: 0.22, key: 2.4, rim: 3.2, fill: 0.55, pt: 6 };
   return (
     <>
-      <ambientLight intensity={0.22} />
+      <ambientLight intensity={k.amb} />
       {/* key: warm, high front-right */}
-      <directionalLight position={[3.5, 4.5, 5]} intensity={2.4} color="#FFF4E0" />
+      <directionalLight position={[3.5, 4.5, 5]} intensity={k.key} color="#FFF4E0" />
       {/* rim: tinted with the palette's secondary, behind-left — the cinematic edge light */}
-      <directionalLight position={[-4.5, 2.5, -3.5]} intensity={3.2} color={mix(p.secondary, "#FFFFFF", 0.35)} />
+      <directionalLight position={[-4.5, 2.5, -3.5]} intensity={k.rim} color={mix(p.secondary, "#FFFFFF", 0.35)} />
       {/* fill: soft, low front-left */}
-      <directionalLight position={[-3.5, -1, 4]} intensity={0.55} color="#DDE6FF" />
-      <pointLight position={[0, -2.5, 2]} intensity={6} distance={8} color={mix(p.primary, "#FFFFFF", 0.4)} />
+      <directionalLight position={[-3.5, -1, 4]} intensity={k.fill} color="#DDE6FF" />
+      <pointLight position={[0, -2.5, 2]} intensity={k.pt} distance={8} color={mix(p.primary, "#FFFFFF", 0.4)} />
     </>
   );
 }
@@ -102,8 +107,19 @@ function roundedSlab(w: number, h: number, depth: number, r: number, bevel = 0.0
   return g;
 }
 
-function useMaterials(p: Palette) {
+/**
+ * Material families (theme `iconStyle`). Every family returns the SAME slots, so every model
+ * renders in every family without per-model code:
+ * - GOLD_METAL: polished metal + clearcoat (the original look);
+ * - SOFT_CLAY: matte pastel "clay" — no metal, high roughness, sheen, softer light;
+ * - GLASS: frosted, tinted, see-through acrylic with iridescent edges (the layer has no
+ *   footage behind it to refract, so it reads as frosted glass rather than true refraction).
+ * LINE never reaches three.js (2D line icons instead).
+ */
+function useMaterials(p: Palette, style: IconStyle = "GOLD_METAL"): MatSlots {
   return useMemo(() => {
+    if (style === "SOFT_CLAY") return clayMaterials(p);
+    if (style === "GLASS") return glassMaterials(p);
     const metal = (color: string, roughness = 0.26) => new THREE.MeshPhysicalMaterial({ color, metalness: 1, roughness, clearcoat: 0.4, clearcoatRoughness: 0.2 });
     return {
       gold: metal(mix(p.primary, "#C8901A", 0.25)),
@@ -120,9 +136,66 @@ function useMaterials(p: Palette) {
       glass: new THREE.MeshPhysicalMaterial({ color: "#BFE3FF", metalness: 0, roughness: 0.08, transmission: 0, clearcoat: 1, emissive: new THREE.Color("#5FB4FF"), emissiveIntensity: 0.25 }),
       positive: new THREE.MeshPhysicalMaterial({ color: p.positive, metalness: 0.2, roughness: 0.3, clearcoat: 1 }),
     };
-  }, [p]);
+  }, [p, style]);
 }
-type Mats = ReturnType<typeof useMaterials>;
+type Mats = MatSlots;
+type MatSlots = Record<"gold" | "goldBright" | "silver" | "accent" | "accentDeep" | "ceramic" | "dark" | "ink" | "pink" | "leather" | "leatherDark" | "glass" | "positive", THREE.Material>;
+
+function clayMaterials(p: Palette): MatSlots {
+  const clay = (color: string, rough = 0.82) =>
+    new THREE.MeshPhysicalMaterial({ color, metalness: 0, roughness: rough, sheen: 0.7, sheenRoughness: 0.75, sheenColor: new THREE.Color("#FFFFFF"), clearcoat: 0.06, clearcoatRoughness: 0.8, envMapIntensity: 0.55 });
+  return {
+    gold: clay(mix(p.primary, "#FFF3DE", 0.32)),
+    goldBright: clay(mix(p.primary, "#FFFFFF", 0.5), 0.7),
+    silver: clay("#E4E6EE"),
+    accent: clay(mix(p.secondary, "#FFFFFF", 0.42)),
+    accentDeep: clay(mix(p.secondary, "#FFFFFF", 0.2)),
+    ceramic: clay("#F6F1EA", 0.75),
+    dark: clay("#6B7086"),
+    ink: clay("#33364A", 0.9),
+    pink: clay("#F6B3C6", 0.78),
+    leather: clay("#CF9E7C"),
+    leatherDark: clay("#A9785A"),
+    glass: clay("#CFE6FA", 0.6),
+    positive: clay(mix(p.positive, "#FFFFFF", 0.35)),
+  };
+}
+
+function glassMaterials(p: Palette): MatSlots {
+  const glass = (tint: string, opacity = 0.5) =>
+    new THREE.MeshPhysicalMaterial({
+      color: tint,
+      metalness: 0,
+      roughness: 0.14,
+      transparent: true,
+      opacity,
+      clearcoat: 1,
+      clearcoatRoughness: 0.04,
+      iridescence: 0.55,
+      iridescenceIOR: 1.35,
+      specularIntensity: 1,
+      envMapIntensity: 1.7,
+      emissive: new THREE.Color(tint),
+      emissiveIntensity: 0.1,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+  return {
+    gold: glass(mix(p.primary, "#FFFFFF", 0.25), 0.55),
+    goldBright: glass(mix(p.primary, "#FFFFFF", 0.45), 0.7),
+    silver: glass("#E8F1FF", 0.6),
+    accent: glass(mix(p.secondary, "#FFFFFF", 0.2), 0.5),
+    accentDeep: glass(mix(p.secondary, "#FFFFFF", 0.1), 0.5),
+    ceramic: glass("#F4F8FF", 0.4),
+    dark: glass("#9AA6C4", 0.45),
+    ink: glass("#3A4258", 0.75),
+    pink: glass("#FFC2D4", 0.5),
+    leather: glass("#E2B48F", 0.5),
+    leatherDark: glass("#B9855E", 0.6),
+    glass: glass("#CFEAFF", 0.35),
+    positive: glass(mix(p.positive, "#FFFFFF", 0.2), 0.55),
+  };
+}
 
 // ------------------------------------------------------------------ icon models
 function Coin({ m }: { m: Mats }) {
@@ -528,13 +601,18 @@ function Stage({ width, height, dpr, children, cameraZ = 6, fov = 30, cameraY = 
   );
 }
 
-export function Icon3D({ props, palette: p, frame, fps, box }: TemplateComponentProps<"ICON_3D">) {
-  const m = useMaterials(p);
-  const s = springAt(frame, fps, 0, { damping: 15, stiffness: 70, mass: 1 });
+export function Icon3D(tp: TemplateComponentProps<"ICON_3D">) {
+  const { props, palette: p, frame, fps, box } = tp;
+  const feel = feelOf(tp);
+  const style = iconStyleOf(tp);
+  const m = useMaterials(p, style);
+  if (style === "LINE") return <LineIcon {...tp} />;
+  const s = springAt(frame, fps, 0, feel.springs.object);
   const t = frame / fps;
   const f = ICON_FRAMING[props.icon]!;
-  const rotY = -2.6 * (1 - s) - 0.38 + Math.sin(t * 0.9) * 0.16;
-  const floatY = Math.sin(t * 1.6) * 0.06;
+  // Entrance spin follows the language (calm: a gentle quarter-turn; playful: a full twirl).
+  const rotY = -feel.spin * (1 - s) - 0.38 + Math.sin(t * 0.9) * 0.16;
+  const floatY = Math.sin(t * 1.6) * 0.06 * (feel.language === "PLAYFUL" ? 1.6 : 1);
   const capT = prog(frame, 12, 18, EASE_OUT);
   const dpr = Math.max(1, box.scale);
   let model: ReactNode = null;
@@ -557,8 +635,8 @@ export function Icon3D({ props, palette: p, frame, fps, box }: TemplateComponent
       <div style={{ position: "absolute", left: 30, right: 30, top: canvasH * 0.14, height: canvasH * 0.64, borderRadius: 999, background: `radial-gradient(ellipse at center, ${rgba(p.primary, 0.2)} 0%, ${rgba(p.secondary, 0.08)} 45%, transparent 70%)`, filter: "blur(20px)", opacity: clamp01(s) }} />
       <div style={{ position: "absolute", left: 0, top: 0, width: 560, height: canvasH }}>
         <Stage width={560} height={canvasH} dpr={dpr} cameraZ={hasCap ? 6.6 : 7}>
-          <StudioEnvironment />
-          <StudioLights p={p} />
+          <StudioEnvironment style={style} />
+          <StudioLights p={p} style={style} />
           <group position={[0, f.y + floatY + (1 - s) * -0.6, 0]} rotation={[f.tiltX, rotY, 0]} scale={f.scale * (0.35 + 0.65 * s)}>
             {model}
           </group>
@@ -626,16 +704,28 @@ function billTextures(): { top: THREE.CanvasTexture; side: THREE.CanvasTexture; 
   return { top: mk(top), side: mk(side, true), end: mk(side, true) };
 }
 
-function MoneyStack({ height, tex, band }: { height: number; tex: ReturnType<typeof billTextures>; band: THREE.Material }) {
+function MoneyStack({ height, tex, band, style = "GOLD_METAL" }: { height: number; tex: ReturnType<typeof billTextures>; band: THREE.Material; style?: IconStyle }) {
   const W = 1.56;
   const D = 0.68;
   const mats = useMemo(() => {
     const side = tex.side;
-    const sideMat = new THREE.MeshStandardMaterial({ map: side, color: "#7FAE88", roughness: 0.85, envMapIntensity: 0.3 });
-    const topMat = new THREE.MeshStandardMaterial({ map: tex.top, color: "#B9D6BC", roughness: 0.7, envMapIntensity: 0.3 });
+    let sideMat: THREE.Material;
+    let topMat: THREE.Material;
+    if (style === "SOFT_CLAY") {
+      // Matte pastel bills: the print stays, the paper goes chalky.
+      sideMat = new THREE.MeshPhysicalMaterial({ color: "#B5DDBE", roughness: 0.95, sheen: 0.6, sheenColor: new THREE.Color("#FFFFFF"), envMapIntensity: 0.3 });
+      topMat = new THREE.MeshPhysicalMaterial({ map: tex.top, color: "#E1F2E3", roughness: 0.92, sheen: 0.5, envMapIntensity: 0.3 });
+    } else if (style === "GLASS") {
+      const g = { metalness: 0, roughness: 0.12, transparent: true, clearcoat: 1, iridescence: 0.5, envMapIntensity: 1.6, depthWrite: false } as const;
+      sideMat = new THREE.MeshPhysicalMaterial({ ...g, color: "#A8EBC2", opacity: 0.5, emissive: new THREE.Color("#5FD39A"), emissiveIntensity: 0.12 });
+      topMat = new THREE.MeshPhysicalMaterial({ ...g, map: tex.top, color: "#DDF7E8", opacity: 0.72 });
+    } else {
+      sideMat = new THREE.MeshStandardMaterial({ map: side, color: "#7FAE88", roughness: 0.85, envMapIntensity: 0.3 });
+      topMat = new THREE.MeshStandardMaterial({ map: tex.top, color: "#B9D6BC", roughness: 0.7, envMapIntensity: 0.3 });
+    }
     // BoxGeometry material order: +x, -x, +y, -y, +z, -z
     return [sideMat, sideMat, topMat, sideMat, sideMat, sideMat];
-  }, [tex, height]);
+  }, [tex, style]);
   if (height < 0.005) return null;
   return (
     <group>
@@ -651,10 +741,19 @@ function MoneyStack({ height, tex, band }: { height: number; tex: ReturnType<typ
   );
 }
 
-export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateComponentProps<"MONEY_STACK_3D">) {
+export function MoneyStack3D(tp: TemplateComponentProps<"MONEY_STACK_3D">) {
+  const { props, palette: p, frame, fps, box } = tp;
+  const feel = feelOf(tp);
+  const style = iconStyleOf(tp);
   const n = stackCountFor(props.amount);
   const tex = useMemo(() => billTextures(), []);
-  const band = useMemo(() => new THREE.MeshPhysicalMaterial({ color: mix(p.primary, "#9A6A10", 0.35), roughness: 0.5, metalness: 0.1, clearcoat: 0.4, envMapIntensity: 0.5 }), [p]);
+  const band = useMemo(
+    () =>
+      style === "SOFT_CLAY"
+        ? new THREE.MeshPhysicalMaterial({ color: mix(p.primary, "#FFFFFF", 0.35), roughness: 0.85, sheen: 0.5, envMapIntensity: 0.4 })
+        : new THREE.MeshPhysicalMaterial({ color: mix(p.primary, "#9A6A10", 0.35), roughness: 0.5, metalness: 0.1, clearcoat: 0.4, envMapIntensity: 0.5 }),
+    [p, style],
+  );
   const t = frame / fps;
   const growLen = Math.round(fps * 1.4);
   // Layout: rows of up to 3, back rows first; pyramid-ish heights.
@@ -678,24 +777,25 @@ export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateCom
   const camZ = 4.2 + Math.max(width * 0.95, span * 1.6);
   const v = countUp(frame, 0, props.amount, 4, growLen);
   const labelT = prog(frame, 6, 16, EASE_OUT);
-  const orbit = -0.42 + Math.sin(t * 0.5) * 0.08 + (1 - springAt(frame, fps, 0, SPRINGS.settle)) * -0.5;
+  const orbit = -0.42 + Math.sin(t * 0.5) * 0.08 + (1 - springAt(frame, fps, 0, feel.springs.settle)) * -0.5;
   const amountText = `$${formatNumber(Math.round(v))}`;
   const finalText = `$${formatNumber(props.amount)}`;
   const size = finalText.length <= 7 ? 112 : finalText.length <= 10 ? 96 : 80;
+  if (style === "LINE") return <LineMoneyStack {...tp} />;
   return (
     <div style={{ ...fill }}>
       <div style={{ position: "absolute", left: 60, right: 60, top: 80, height: 340, background: `radial-gradient(ellipse at center, ${rgba(p.positive, 0.16)} 0%, transparent 70%)`, filter: "blur(16px)" }} />
       <div style={{ position: "absolute", left: 0, top: 0, width: 720, height: 470 }}>
         <Stage width={720} height={470} dpr={Math.max(1, box.scale)} cameraZ={camZ} cameraY={camZ * 0.42} fov={28}>
-          <StudioEnvironment />
-          <StudioLights p={p} />
+          <StudioEnvironment style={style} />
+          <StudioLights p={p} style={style} />
           <CameraLookAt y={0.35} />
           <group rotation={[0, orbit, 0]}>
             {slots.map((sl, i) => {
-              const g = springAt(frame, fps, 4 + sl.delay, SPRINGS.grow, growLen);
+              const g = springAt(frame, fps, 4 + sl.delay, feel.springs.grow, growLen);
               return (
                 <group key={i} position={[sl.x, 0, sl.z]}>
-                  <MoneyStack height={sl.h * g} tex={tex} band={band} />
+                  <MoneyStack height={sl.h * g} tex={tex} band={band} style={style} />
                 </group>
               );
             })}
@@ -766,12 +866,15 @@ function CameraFrom({ cam }: { cam: THREE.PerspectiveCamera }) {
   return null;
 }
 
-export function BarChart3D({ props, palette: p, frame, fps, box }: TemplateComponentProps<"BAR_CHART">) {
+export function BarChart3D(tp: TemplateComponentProps<"BAR_CHART">) {
+  const { props, palette: p, frame, fps, box } = tp;
+  const feel = feelOf(tp);
+  const style = iconStyleOf(tp);
   const W = 796;
   const H = props.title ? 596 : 672;
   const n = props.bars.length;
   const lay = useMemo(() => barLayout(n, W, H), [n, W, H]);
-  const m = useMaterials(p);
+  const m = useMaterials(p, style);
   const max = Math.max(...props.bars.map((b) => Math.abs(b.value)), 1e-9);
   const hl = props.highlightIndex != null && props.highlightIndex < n ? props.highlightIndex : null;
   const w = Math.min(0.86, 1.25 * 0.68);
@@ -780,22 +883,22 @@ export function BarChart3D({ props, palette: p, frame, fps, box }: TemplateCompo
     <div style={{ position: "absolute", inset: 0 }}>
       <Stage width={W} height={H} dpr={Math.max(1, box.scale)}>
         <CameraFrom cam={lay.camera} />
-        <StudioEnvironment />
-        <StudioLights p={p} />
+        <StudioEnvironment style={style} />
+        <StudioLights p={p} style={style} />
         <mesh position={[0, -0.03, 0]} material={m.ink}>
           <boxGeometry args={[floorW, 0.06, 1.6]} />
         </mesh>
         <ContactShadow y={0.002} scale={[floorW, 1.4]} opacity={0.6} />
         {props.bars.map((b, i) => {
-          const s = springAt(frame, fps, 8 + i * 5, SPRINGS.grow);
-          const h = Math.max(0.04, (Math.abs(b.value) / max) * lay.plotH) * s;
+          const s = springAt(frame, fps, 8 + i * 5, feel.springs.grow);
+          const h = Math.max(0.04, (Math.abs(b.value) / max) * lay.plotH) * Math.min(s, 1.08);
           const mat = hl === null || hl === i ? m.gold : m.accent;
           return <Bar3D key={i} x={lay.xs[i]!} h={h} w={w} mat={mat} />;
         })}
       </Stage>
       {props.bars.map((b, i) => {
-        const s = springAt(frame, fps, 8 + i * 5, SPRINGS.grow);
-        const h = Math.max(0.04, (Math.abs(b.value) / max) * lay.plotH) * s;
+        const s = springAt(frame, fps, 8 + i * 5, feel.springs.grow);
+        const h = Math.max(0.04, (Math.abs(b.value) / max) * lay.plotH) * Math.min(s, 1.08);
         const top = lay.project(lay.xs[i]!, h + 0.12, 0);
         const base = lay.project(lay.xs[i]!, 0, 0.8);
         const focus = hl === i;
