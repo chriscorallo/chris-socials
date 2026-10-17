@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { auth } from "../../../auth";
+import { REFERENCE_VIDEO_KEY_PATTERN } from "@chris/domain/style-metrics";
 
 /** Largest raw take accepted (4K phone footage of a few minutes fits comfortably). */
 const MAX_RAW_TAKE_BYTES = 5 * 1024 * 1024 * 1024;
@@ -23,6 +24,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       onBeforeGenerateToken: async (pathname) => {
         const session = await auth();
         if (!session?.user) throw new Error("Unauthorized");
+        // reference/<creator>/<file> = a reference video (private style analysis only; video only).
+        if (/^reference\//.test(pathname)) {
+          if (!REFERENCE_VIDEO_KEY_PATTERN.test(pathname)) throw new Error(`Refusing upload to unexpected pathname: ${pathname}`);
+          return { allowedContentTypes: ["video/*"], maximumSizeInBytes: MAX_RAW_TAKE_BYTES, addRandomSuffix: false, allowOverwrite: false };
+        }
         // raw/<item>/<file> = a take (video or audio); music/<item>/<file> = a music bed (audio only).
         const kind = /^music\//.test(pathname) ? "MUSIC" : "RAW_TAKE";
         if (!/^(raw|music)\/[\w-]+\/[\w.-]+$/.test(pathname)) {

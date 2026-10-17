@@ -121,7 +121,10 @@ export function detectCuts(frames: FrameChange[], options: CutDetectionOptions =
   const cand: Array<{ t: number; strength: number }> = [];
   for (let i = 1; i < frames.length; i++) {
     const f = frames[i]!;
-    const nb = Math.max(frames[i - 1]?.mad ?? 0, frames[i + 1]?.mad ?? 0, i > 1 ? frames[i - 2]!.mad : 0, frames[i + 2]?.mad ?? 0);
+    // ±3 frames too: encoders with B-frames make grainy footage "pulse" every 2–3 frames, which
+    // would otherwise read as a spike (measured on a noisy 360p encode).
+    let nb = 0;
+    for (const k of [-3, -2, -1, 1, 2, 3]) if (i + k >= 1 && i + k < frames.length) nb = Math.max(nb, frames[i + k]!.mad);
     const spike = f.mad / Math.max(nb, 0.5);
     const isCut = f.mad >= options.hardChange || (f.mad >= options.minChange && spike >= options.spikeRatio) || f.scene >= options.sceneScore;
     if (isCut) cand.push({ t: f.t, strength: Math.max(f.mad / 255, f.scene) });
@@ -235,10 +238,15 @@ export function parseStyleLoudnessStderr(stderr: string): StyleLoudness {
   };
 }
 
-/** Peaks at full scale that repeat (or are flat-topped) — one stray full-scale sample isn't clipping. */
+/**
+ * Peaks at full scale that repeat or are flat-topped (one stray full-scale sample isn't
+ * clipping), or decoded peaks OVER full scale — a lossy (AAC) encode of clipped audio rounds off
+ * the flat tops but overshoots 0 dBFS (measured: a clipped voice decoded at +0.98 dBFS with few
+ * repeated peaks).
+ */
 export function isClipping(samplePeakDb: number | null, peakCount: number | null, flatFactor: number | null): boolean {
   if (samplePeakDb == null || samplePeakDb < -0.3) return false;
-  return (peakCount ?? 0) >= 20 || (flatFactor ?? 0) >= 1;
+  return samplePeakDb > 0.1 || (peakCount ?? 0) >= 20 || (flatFactor ?? 0) >= 1;
 }
 
 export async function measureStyleLoudness(filePath: string): Promise<StyleLoudness> {
@@ -254,6 +262,7 @@ export async function measureStyleLoudness(filePath: string): Promise<StyleLoudn
   return parseStyleLoudnessStderr(stderr);
 }
 
+
 // ---------------------------------------------------------------------------------------------
 // Voice vs background (music / room tone)
 // ---------------------------------------------------------------------------------------------
@@ -261,18 +270,18 @@ export async function measureStyleLoudness(filePath: string): Promise<StyleLoudn
 export interface VoiceBackground {
   voiceLevelDb: number | null;
   backgroundLevelDb: number | null;
-  /** Voice minus background, dB (null when not measurable). */
+  /** Voice minus background, dB (null when there's no audible background). */
   differenceDb: number | null;
   background: "none" | "present" | "unknown";
-  method: "gaps" | "floor" | "none";
+  method: "floor" | "none";
 }
 
-/** Background quieter than this (dBFS RMS, 16 kHz mono) is silence / faint room tone, not music. */
-export const SILENT_BACKGROUND_DB = -52;
+/** Background quieter than this (dBFS RMS, 16 kHz mono) is silence / faint room tone. */
+export const SILENT_BACKGROUND_DB = -55;
 /** Background more than this far under the voice is inaudible in practice. */
-export const INAUDIBLE_UNDER_VOICE_DB = 32;
-
-const FRAME_S = 0.05;
+export const INAUDIBLE_UNDER_VOICE_DB = 36;
+/** Short frames, so the brief dips between syllables are caught. */
+const FRAME_S = 0.02;
 
 function frameLevels(pcm: Float32Array, sr: number): number[] {
   const n = Math.max(1, Math.round(FRAME_S * sr));
@@ -285,7 +294,7 @@ function frameLevels(pcm: Float32Array, sr: number): number[] {
   return out;
 }
 
-function q(values: number[], p: number): number | null {
+function pct(values: number[], p: number): number | null {
   if (!values.length) return null;
   const v = [...values].sort((a, b) => a - b);
   const pos = (v.length - 1) * p;
@@ -294,7 +303,7 @@ function q(values: number[], p: number): number | null {
   return v[lo]! + (v[hi]! - v[lo]!) * (pos - lo);
 }
 
-/** Power-average of dB levels (so a loud word dominates as it does to the ear). */
+/** Power-average of dB levels (a loud word dominates, as it does to the ear). */
 function energyMeanDb(levels: number[]): number | null {
   if (!levels.length) return null;
   const mean = levels.reduce((s, l) => s + 10 ** (l / 10), 0) / levels.length;
@@ -303,52 +312,33 @@ function energyMeanDb(levels: number[]): number | null {
 
 /**
  * Pure: how loud whatever plays under the voice is, from mono PCM + word timings.
- * - "gaps": with ≥ 0.6 s of clean non-speech (gaps between words ≥ 0.25 s, trimmed 60 ms each
- *   side, plus lead-in/tail), background = the median level there; voice = the energy mean of
- *   frames inside words.
- * - "floor" (tightly edited videos have almost no gaps): background = the 10th-percentile frame
- *   level over the speech span (the dips between syllables are filled by any music bed);
- *   voice = the 90th percentile.
- * Background is "none" when it's near-silent or ≥ 32 dB under the voice.
+ * Voice = energy mean of 20 ms frames inside words. Background = the 2nd-percentile 20 ms frame
+ * over the whole video (edges trimmed): a music bed fills every dip between syllables, so the
+ * quietest moments ARE the music; clean speech dips to (near) silence. Whisper's word edges are
+ * too loose to measure "between the words" directly (tested — it read voice tails as music).
+ * Limit: it can't tell a music bed from equally loud room noise — both are "background sound".
  */
 export function measureVoiceBackground(pcm: Float32Array, sampleRate: number, words: Array<{ start: number; end: number }>, durationS: number): VoiceBackground {
+  const unknown: VoiceBackground = { voiceLevelDb: null, backgroundLevelDb: null, differenceDb: null, background: "unknown", method: "none" };
   const levels = frameLevels(pcm, sampleRate);
-  if (levels.length === 0 || words.length === 0) return { voiceLevelDb: null, backgroundLevelDb: null, differenceDb: null, background: "unknown", method: "none" };
+  if (levels.length < 50 || words.length === 0) return unknown;
+  const edge = 0.08;
+  const end = Math.min(durationS > 0 ? durationS : Infinity, levels.length * FRAME_S) - edge;
   const ws = [...words].sort((a, b) => a.start - b.start);
-  const frameAt = (i: number) => (i + 0.5) * FRAME_S;
-  const inWord = (t: number) => ws.some((w) => t >= w.start && t <= w.end);
-  const quiet: Array<[number, number]> = [];
-  const pad = 0.06;
-  if (ws[0]!.start - 0.1 > pad) quiet.push([pad, ws[0]!.start - 0.1]);
-  for (let i = 1; i < ws.length; i++) {
-    const a = ws[i - 1]!.end + pad;
-    const b = ws[i]!.start - pad;
-    if (ws[i]!.start - ws[i - 1]!.end >= 0.25 && b > a) quiet.push([a, b]);
-  }
-  const lastEnd = ws[ws.length - 1]!.end;
-  if (durationS - lastEnd > 0.1 + 2 * pad) quiet.push([lastEnd + 0.1, durationS - pad]);
-  const gapLevels: number[] = [];
   const wordLevels: number[] = [];
+  const all: number[] = [];
+  let k = 0;
   levels.forEach((l, i) => {
-    const t = frameAt(i);
-    if (quiet.some(([a, b]) => t >= a && t <= b)) gapLevels.push(l);
-    else if (inWord(t)) wordLevels.push(l);
+    const t = (i + 0.5) * FRAME_S;
+    if (t < edge || t > end) return;
+    all.push(l);
+    while (k < ws.length && ws[k]!.end < t) k++;
+    const w = ws[k];
+    if (w && t >= w.start && t <= w.end) wordLevels.push(l);
   });
-  let voice: number | null;
-  let bg: number | null;
-  let method: VoiceBackground["method"];
-  if (gapLevels.length * FRAME_S >= 0.6 && wordLevels.length >= 10) {
-    voice = energyMeanDb(wordLevels);
-    bg = q(gapLevels, 0.5);
-    method = "gaps";
-  } else {
-    const span = levels.filter((_, i) => frameAt(i) >= ws[0]!.start && frameAt(i) <= lastEnd);
-    if (span.length < 20) return { voiceLevelDb: null, backgroundLevelDb: null, differenceDb: null, background: "unknown", method: "none" };
-    voice = q(span, 0.9);
-    bg = q(span, 0.1);
-    method = "floor";
-  }
-  if (voice == null || bg == null) return { voiceLevelDb: null, backgroundLevelDb: null, differenceDb: null, background: "unknown", method: "none" };
+  const voice = wordLevels.length >= 10 ? energyMeanDb(wordLevels) : pct(all, 0.9);
+  const bg = pct(all, 0.02);
+  if (voice == null || bg == null) return unknown;
   const diff = voice - bg;
   const r1 = (x: number) => Math.round(x * 10) / 10;
   const none = bg <= SILENT_BACKGROUND_DB || diff >= INAUDIBLE_UNDER_VOICE_DB;
@@ -357,6 +347,6 @@ export function measureVoiceBackground(pcm: Float32Array, sampleRate: number, wo
     backgroundLevelDb: r1(bg),
     differenceDb: none ? null : r1(Math.max(0, diff)),
     background: none ? "none" : "present",
-    method,
+    method: "floor",
   };
 }

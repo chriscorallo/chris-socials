@@ -3,6 +3,7 @@ import { z } from "zod";
 import { recordAudit } from "./audit";
 import {
   REFERENCE_METRICS_VERSION,
+  REFERENCE_VIDEO_KEY_PATTERN,
   ReferenceVideoMetricsSchema,
   aggregateOwnSpeech,
   aggregateStyle,
@@ -27,13 +28,13 @@ export function referenceVideoKeyPrefix(referenceCreatorId: string): string {
 }
 
 export function isReferenceVideoKey(key: string, referenceCreatorId: string): boolean {
-  return key.startsWith(referenceVideoKeyPrefix(referenceCreatorId)) && !key.includes("..") && /^reference\/[\w-]+\/[\w.-]+$/.test(key);
+  return key.startsWith(referenceVideoKeyPrefix(referenceCreatorId)) && !key.includes("..") && REFERENCE_VIDEO_KEY_PATTERN.test(key);
 }
 
 /** TikTok / Instagram / YouTube from a link (null otherwise). */
 export function platformFromUrl(url: string | null | undefined): ContentPlatform | null {
   if (!url) return null;
-  let host = "";
+  let host: string;
   try {
     host = new URL(url).hostname.toLowerCase();
   } catch {

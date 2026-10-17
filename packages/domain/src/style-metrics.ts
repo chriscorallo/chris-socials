@@ -12,6 +12,9 @@ import { z } from "zod";
 
 export const REFERENCE_METRICS_VERSION = 1;
 
+/** Storage keys / Blob pathnames of reference videos: `reference/<creatorId>/<file>` (private). */
+export const REFERENCE_VIDEO_KEY_PATTERN = /^reference\/[\w-]+\/[\w.-]+$/;
+
 const num = z.number().finite();
 const nnum = num.nullable();
 
@@ -79,7 +82,7 @@ export const ReferenceVideoMetricsSchema = z.object({
       /** Voice minus background (dB) — only when background audio is present. */
       backgroundUnderVoiceDb: nnum,
       background: z.enum(["none", "present", "unknown"]),
-      backgroundMethod: z.enum(["gaps", "floor", "none"]),
+      backgroundMethod: z.enum(["floor", "none"]),
     })
     .nullable(),
   transcript: z.string().max(6000).nullable(),
@@ -186,7 +189,12 @@ function joinWords(ws: TimedWord[]): string {
 /** The opening line: the first sentence, capped (an unpunctuated run stops at its first ≥0.35 s
  * pause after 4 words, or 25 words). */
 function hookOf(sentences: TimedWord[][]): TimedWord[] {
-  const first = sentences[0] ?? [];
+  // A one- or two-word opener ("Okay.", "So,") isn't the hook — it runs on into the next sentence.
+  let first: TimedWord[] = [];
+  for (const s of sentences) {
+    first = [...first, ...s];
+    if (first.length >= 3) break;
+  }
   if (first.length <= 25) return first;
   for (let i = 4; i < Math.min(first.length - 1, 25); i++) if (first[i + 1]!.start - first[i]!.end >= 0.35) return first.slice(0, i + 1);
   return first.slice(0, 25);
@@ -362,7 +370,7 @@ export function describeStyle(p: StyleProfile): StyleLine[] {
     lines.push({
       key: "cuts",
       text: `Cuts every ${fmtSeconds(shot.value)}`,
-      detail: shot.n > 1 ? `Typical shot ${fmtSeconds(shot.p25)}–${fmtSeconds(shot.p75)} across videos` : undefined,
+      detail: shot.n > 1 && fmtSeconds(shot.p25) !== fmtSeconds(shot.p75) ? `Typical shot ${fmtSeconds(shot.p25)}–${fmtSeconds(shot.p75)} across videos` : undefined,
     });
   }
   const f = p.pacingFirst3sPer10s?.value;
@@ -392,10 +400,12 @@ export function describeStyle(p: StyleProfile): StyleLine[] {
     if (bg.withBackground === 0) lines.push({ key: "music", text: "No background music — just the voice" });
     else if (p.backgroundUnderVoiceDb) {
       const most = bg.withBackground * 2 >= bg.measured;
+      const under = Math.round(p.backgroundUnderVoiceDb.value);
       lines.push({
         key: "music",
-        text: `Music sits ${Math.round(p.backgroundUnderVoiceDb.value)} dB under the voice`,
-        detail: most ? (bg.withBackground === bg.measured ? undefined : `In ${bg.withBackground} of ${bg.measured} videos`) : `Only ${bg.withBackground} of ${bg.measured} videos have background music`,
+        // ≥ 28 dB down is barely audible — could be a very quiet bed or just room sound.
+        text: under >= 28 ? `Faint background sound, ${under} dB under the voice` : `Music sits ${under} dB under the voice`,
+        detail: most ? (bg.withBackground === bg.measured ? undefined : `In ${bg.withBackground} of ${bg.measured} videos`) : `Only ${bg.withBackground} of ${bg.measured} videos have background sound`,
       });
     }
   }

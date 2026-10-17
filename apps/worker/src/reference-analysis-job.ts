@@ -81,7 +81,6 @@ export async function analyzeReferenceVideoFile(filePath: string, options: Analy
       const { extractAudioPcm16k } = await import("@chris/media/transcription");
       vb = measureVoiceBackground(await extractAudioPcm16k(filePath), 16000, words, durationS);
     }
-    if (vb.method === "floor") notes.push("Almost no silence between words — the music level is estimated from the quietest moments.");
     if (loud.clipping) notes.push("The audio clips (distorts) at its loudest moments.");
     audio = {
       integratedLufs: loud.integratedLufs,
@@ -153,7 +152,7 @@ export async function analyzePendingReferenceVideos(
     if (pending.length === 0) break;
     const total = attempted.size + pending.length;
     for (const row of pending) {
-      if (Date.now() - started > budget) {
+      if (Date.now() - started >= budget) {
         const remaining = (await listPendingReferenceVideos(db, { ids: options.ids })).filter((r) => !attempted.has(r.id)).length;
         return { measured, remaining };
       }
