@@ -18,6 +18,8 @@ import type { TranscriptWord } from "../captions";
 
 export const DEFAULT_TRANSCRIPTION_MODEL = "onnx-community/whisper-base.en_timestamped";
 export const WHISPER_SAMPLE_RATE = 16000;
+/** Long-audio window (s) — must stay below 30 (see transcribe()). */
+export const WHISPER_CHUNK_SECONDS = 25;
 
 export interface LocalTranscriptionResult {
   text: string;
@@ -184,8 +186,13 @@ export class LocalWhisperTranscriptionProvider {
     const asr = await this.loadPipeline();
     const out = await asr(audio, {
       return_timestamps: "word",
-      // Long takes: 30 s windows with 5 s overlap, merged by transformers.js.
-      chunk_length_s: 30,
+      // Long takes: 25 s windows with 5 s overlap, merged by transformers.js. NOT 30 s: a
+      // window equal to Whisper's own 30 s input breaks transformers.js word timestamps on
+      // takes longer than 30 s — measured 2026-10-17 on a 46 s take: 31 of 118 words came
+      // back, the first sentence all stamped 29.96 s and the rest of the first 30 s missing.
+      // 20/4 and 25/5 both returned all 118 words with sane times. See
+      // docs/decisions-pending/style-cut.md.
+      chunk_length_s: WHISPER_CHUNK_SECONDS,
       stride_length_s: 5,
     });
     const words = normalizeWhisperChunks(out.chunks ?? [], durationSeconds);

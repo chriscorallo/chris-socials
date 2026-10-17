@@ -25,7 +25,7 @@ import { deleteSfx, deleteVisual, duplicateVisual, visualWarnings, withResolvedP
 import { PLATFORM_IDS } from "../../../../lib/editor/platform-profiles";
 import { formatTime } from "../../../../lib/editor/preview-math";
 import type { EditorAsset, EditorDoc, EditorMusicAsset, Selection } from "../../../../lib/editor/types";
-import { EditorContext, type EditorContextValue, type EditorUi } from "./context";
+import { EditorContext, type EditorContextValue, type EditorStyleCut, type EditorUi } from "./context";
 import { usePlaybackEngine } from "./playback";
 import { usePreviewAudio } from "./preview-audio";
 import { useFootageInteractions } from "./interaction";
@@ -50,6 +50,8 @@ export interface EditorProps {
   music: EditorMusicAsset[];
   storageMode: "blob" | "local";
   schedule: { date: string; platforms: string[]; isScheduled: boolean };
+  /** Style cut state of the opened version (docs/decisions-pending/style-cut.md). */
+  styleCut: EditorStyleCut;
 }
 
 interface Toast {
@@ -70,7 +72,8 @@ function isTypingTarget(t: EventTarget | null): boolean {
   return false;
 }
 
-export function Editor({ item, planId, initialDoc, assets, music: initialMusic, storageMode, schedule }: EditorProps) {
+export function Editor({ item, planId, initialDoc, assets, music: initialMusic, storageMode, schedule, styleCut: initialStyleCut }: EditorProps) {
+  const [styleCut, setStyleCut] = useState<EditorStyleCut>(initialStyleCut);
   const assetMap = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const durations = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.duration])), [assets]);
   const [state, dispatch] = useReducer(editorReducer, undefined, () => initEditorState(initialDoc, durations));
@@ -137,6 +140,14 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
     setToasts((t) => [...t.slice(-2), { id, message, tone }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === "error" ? 7000 : 3200);
   }, []);
+
+  // Opening a style cut: say what was done, once (the Style cut tool has the details + undo).
+  const styleCutToasted = useRef(false);
+  useEffect(() => {
+    if (styleCutToasted.current || !initialStyleCut.active) return;
+    styleCutToasted.current = true;
+    toast("Edited to your references' pace — tap Style cut to see what changed or go back to the full take.");
+  }, [initialStyleCut.active, toast]);
 
   const apply = useCallback<EditorContextValue["apply"]>(
     (recipe, opts) => dispatch({ type: "apply", recipe, coalesce: opts?.coalesce, select: opts?.select }),
@@ -430,6 +441,8 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
     dirty,
     save,
     loadSavedVersion,
+    styleCut,
+    setStyleCut,
   };
 
   const duration = timelineDuration(doc);

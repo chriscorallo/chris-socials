@@ -24,6 +24,12 @@ export function timelineCaptionWords(
 ): TimelineCaptionWord[] {
   const starts = clipStartTimes(timeline);
   const out: TimelineCaptionWord[] = [];
+  // A word can straddle a removed pause (Whisper's word edges drift into silence): if it
+  // survives on both sides of a FORWARD splice of the same take, show it once — on the side
+  // where more of it is. (A clip that repeats footage, e.g. a duplicate, is not a forward
+  // splice and keeps its own captions.)
+  const shownAt = new Map<string, { index: number; kept: number; clip: number }>();
+  const dropped = new Set<number>();
   timeline.clips.forEach((clip, ci) => {
     const words = wordsByAsset[clip.mediaAssetId] ?? [];
     const offset = starts[ci]!;
@@ -39,6 +45,13 @@ export function timelineCaptionWords(
       const edited = timeline.captions.wordEdits[key];
       const text = edited ?? w.word;
       if (text.trim() === "") return;
+      const prev = shownAt.get(key);
+      const prevClip = prev ? timeline.clips[prev.clip] : undefined;
+      if (prev && prev.clip === ci - 1 && prevClip && prevClip.mediaAssetId === clip.mediaAssetId && clip.sourceStart >= prevClip.sourceEnd - 1e-6) {
+        if (kept <= prev.kept) return;
+        dropped.add(prev.index);
+      }
+      shownAt.set(key, { index: out.length, kept, clip: ci });
       out.push({
         key,
         word: timeline.captions.uppercase ? text.toUpperCase() : text,
@@ -47,7 +60,7 @@ export function timelineCaptionWords(
       });
     });
   });
-  return out.sort((a, b) => a.start - b.start);
+  return out.filter((_, i) => !dropped.has(i)).sort((a, b) => a.start - b.start);
 }
 
 export function timelineCaptionChunks(

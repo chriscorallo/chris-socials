@@ -1,0 +1,133 @@
+{
+ "maxDiffWholeFile": 0.7534782658331096,
+ "splices": [
+  {
+   "cut": 1,
+   "at": 2.5,
+   "kind": "splice",
+   "zoom": "1->1.2",
+   "jumpAtCut": 0.00032,
+   "rmsAround_dB": -59.3
+  },
+  {
+   "cut": 2,
+   "at": 3.367,
+   "kind": "splice",
+   "zoom": "1.2->1",
+   "jumpAtCut": 0.00036,
+   "rmsAround_dB": -60.4
+  },
+  {
+   "cut": 3,
+   "at": 6.633,
+   "kind": "splice",
+   "zoom": "1->1.12",
+   "jumpAtCut": 0.00034,
+   "rmsAround_dB": -59.8
+  },
+  {
+   "cut": 4,
+   "at": 9.033,
+   "kind": "splice",
+   "zoom": "1.12->1",
+   "jumpAtCut": 0.00031,
+   "rmsAround_dB": -60.8
+  },
+  {
+   "cut": 5,
+   "at": 10.467,
+   "kind": "splice",
+   "zoom": "1->1.2",
+   "jumpAtCut": 0.00043,
+   "rmsAround_dB": -60.6
+  },
+  {
+   "cut": 6,
+   "at": 13.5,
+   "kind": "splice",
+   "zoom": "1.2->1",
+   "jumpAtCut": 0.00033,
+   "rmsAround_dB": -60
+  },
+  {
+   "cut": 7,
+   "at": 16.467,
+   "kind": "rhythm",
+   "zoom": "1->1.12",
+   "jumpAtCut": 0.0015,
+   "rmsAround_dB": -59.9
+  },
+  {
+   "cut": 8,
+   "at": 18.5,
+   "kind": "splice",
+   "zoom": "1.12->1",
+   "jumpAtCut": 0.00033,
+   "rmsAround_dB": -60.9
+  },
+  {
+   "cut": 9,
+   "at": 21.267,
+   "kind": "splice",
+   "zoom": "1->1.2",
+   "jumpAtCut": 0.00031,
+   "rmsAround_dB": -60.7
+  },
+  {
+   "cut": 10,
+   "at": 22.9,
+   "kind": "rhythm",
+   "zoom": "1.2->1",
+   "jumpAtCut": 0.75348,
+   "rmsAround_dB": -10.3
+  },
+  {
+   "cut": 11,
+   "at": 25.2,
+   "kind": "splice",
+   "zoom": "1->1.12",
+   "jumpAtCut": 0.00042,
+   "rmsAround_dB": -58.9
+  },
+  {
+   "cut": 12,
+   "at": 28.4,
+   "kind": "splice",
+   "zoom": "1.12->1",
+   "jumpAtCut": 0.0004,
+   "rmsAround_dB": -61
+  },
+  {
+   "cut": 13,
+   "at": 29.4,
+   "kind": "splice",
+   "zoom": "1->1.2",
+   "jumpAtCut": 0.00033,
+   "rmsAround_dB": -60.3
+  },
+  {
+   "cut": 14,
+   "at": 30.667,
+   "kind": "splice",
+   "zoom": "1.2->1",
+   "jumpAtCut": 0.00034,
+   "rmsAround_dB": -60
+  },
+  {
+   "cut": 15,
+   "at": 32.067,
+   "kind": "splice",
+   "zoom": "1->1.12",
+   "jumpAtCut": 0.00035,
+   "rmsAround_dB": -59.2
+  },
+  {
+   "cut": 16,
+   "at": 34.7,
+   "kind": "splice",
+   "zoom": "1.12->1",
+   "jumpAtCut": 0.00039,
+   "rmsAround_dB": -59.2
+  }
+ ]
+}

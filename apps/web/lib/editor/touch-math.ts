@@ -96,7 +96,7 @@ export function resolveSheetSnap(opts: { height: number; velocity: number; half:
   return Math.abs(height - full) < Math.abs(height - half) ? "full" : "half";
 }
 
-export type SheetKind = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound";
+export type SheetKind = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound" | "style";
 
 /**
  * The open sheet after the selection changes: sheets about ONE item (clip / volume / text /

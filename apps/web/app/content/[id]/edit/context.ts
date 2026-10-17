@@ -9,11 +9,11 @@ import type { PlatformWarning } from "../../../../lib/editor/platform-warnings";
 import type { PlaybackEngine } from "./playback";
 import type { PreviewAudio } from "./preview-audio";
 
-export type InspectorTab = "selection" | "captions" | "look" | "cover" | "visuals" | "sound";
+export type InspectorTab = "selection" | "captions" | "look" | "cover" | "visuals" | "sound" | "style";
 export type PlatformView = "ALL" | PlatformId;
 
 /** Bottom sheets of the touch (phone/tablet) shell. */
-export type SheetId = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound";
+export type SheetId = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound" | "style";
 
 export interface EditorUi {
   reframe: boolean;
@@ -25,6 +25,16 @@ export interface EditorUi {
   sheet: SheetId | null;
   /** The text element being typed into (inline editor on desktop, keyboard bar on touch). */
   editingTextId: string | null;
+}
+
+/** The "Style cut" state of the version being edited (StyleCutPanel). */
+export interface EditorStyleCut {
+  /** The selected take has word timings (a style cut is possible). */
+  hasWords: boolean;
+  /** The current version is a style cut. */
+  active: boolean;
+  summary: string | null;
+  profileNote: string | null;
 }
 
 export interface EditorContextValue {
@@ -69,6 +79,8 @@ export interface EditorContextValue {
   save: () => Promise<boolean>;
   /** Replaces the doc with a version the SERVER just saved (e.g. AI visuals) — undoable. */
   loadSavedVersion: (doc: EditorDoc, state?: string) => void;
+  styleCut: EditorStyleCut;
+  setStyleCut: (s: EditorStyleCut) => void;
 }
 
 export const EditorContext = createContext<EditorContextValue | null>(null);

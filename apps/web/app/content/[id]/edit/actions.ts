@@ -5,6 +5,7 @@ import { EditTimelineSchema, type EditTimeline, type PlacementWarning } from "@c
 import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
 import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
+import { applyStyleCutChoice } from "@chris/worker/style-cut-job";
 import { requireSession } from "../../../../lib/session";
 import { storage } from "../../../../lib/storage";
 import { getModelProvider } from "../../../../lib/model-provider";
@@ -175,6 +176,25 @@ async function designResultFromJob(contentItemId: string, ok: boolean, raw: unkn
     notes: r.notes ?? [],
     rationale: r.rationale ?? "",
   };
+}
+
+/**
+ * "Style cut" sheet: STYLE re-applies the reference-paced cut (pauses out, cuts on the
+ * references' rhythm); PLAIN goes back to the whole take. Either is saved as a new version
+ * (the client loads it as the saved doc — undo brings the previous edit back). No AI.
+ */
+export async function styleCutAction(input: {
+  contentItemId: string;
+  mode: "STYLE" | "PLAIN";
+}): Promise<StepResult<{ editPlanId: string; state: ContentState; timeline: EditTimeline; summary: string | null; profileNote: string | null }>> {
+  const session = await requireSession();
+  try {
+    const r = await applyStyleCutChoice(prisma, storage, input.contentItemId, input.mode, session.user!.id!);
+    if (!r.ok) return { ok: false, error: r.error };
+    return { ok: true, editPlanId: r.editPlanId, state: await stateOf(input.contentItemId), timeline: r.timeline, summary: r.summary, profileNote: r.profileNote };
+  } catch (err) {
+    return { ok: false, error: plainError(err, input.mode === "STYLE" ? "The style cut" : "Going back to the full take") };
+  }
 }
 
 /** The item's music beds (after an upload from the Sound sheet). */

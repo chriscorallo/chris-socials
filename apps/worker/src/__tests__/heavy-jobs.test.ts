@@ -101,7 +101,7 @@ describe("heavy jobs", () => {
 
     // A second run finds nothing to do.
     const again = await executeHeavyJob("ingest", { contentItemId: item.id, transcribe: true, track: true, matte: true }, { db: prisma, storage, actor: { actorId: "chris" }, transcriptionProvider: provider, analyze, computeMatte });
-    expect(again.result).toEqual({ transcribe: [], track: [], matte: [] });
+    expect(again.result).toEqual({ transcribe: [], track: [], matte: [], styleCut: [] });
   });
 
   it("records the outcome on the JobRun: SUCCEEDED with a small result, or FAILED with the reason", async () => {

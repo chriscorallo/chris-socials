@@ -139,3 +139,6 @@ export type { PlanImport } from "@prisma/client";
 export * from "./style-metrics";
 export * from "./reference-videos";
 export type { ReferenceAnalysisStatus } from "@prisma/client";
+// Style cut (2026-10-17) — persistence of the deterministic reference-paced edit
+// (docs/decisions-pending/style-cut.md); the cut itself is packages/media style-cut.ts.
+export * from "./style-cut-plan";

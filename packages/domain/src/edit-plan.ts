@@ -194,7 +194,15 @@ export class FinishingEditNotAllowedError extends Error {
  */
 export async function saveFinishingEdit(
   prisma: PrismaClient,
-  input: { contentItemId: string; timeline: unknown; durationSeconds: number; actorId: string; note?: string },
+  input: {
+    contentItemId: string;
+    timeline: unknown;
+    durationSeconds: number;
+    actorId: string;
+    note?: string;
+    /** Extra top-level plan fields for this version (e.g. `styleCut`; null clears a field). */
+    planExtras?: Record<string, unknown>;
+  },
 ) {
   const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: input.contentItemId } });
   if (!FINISHING_EDIT_STATES.has(item.currentState)) {
@@ -222,7 +230,7 @@ export async function saveFinishingEdit(
       productionTier: base.productionTier,
       targetDurationSeconds: Math.max(0.1, input.durationSeconds),
       doNothingElse: false,
-      plan: { ...basePlan, timeline: input.timeline },
+      plan: { ...basePlan, ...input.planExtras, timeline: input.timeline },
       revisionOfEditPlanId: null,
       revisionReason: input.note?.trim() ? `Finishing edit by Chris: ${input.note.trim()}` : "Finishing edit by Chris",
     },
