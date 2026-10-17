@@ -251,7 +251,7 @@ export function buildAudioMix(opts: {
     const pre =
       `[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,` +
       // Reference the bed to the voice target so levelDb means "dB under the voice".
-      `loudnorm=I=-14:TP=-2:LRA=11,aresample=48000,apad,atrim=end=${n(duration)},asetpts=PTS-STARTPTS`;
+      `loudnorm=I=-14:TP=-2:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=end=${n(duration)},asetpts=PTS-STARTPTS`;
     const fades =
       (music.fadeInSeconds > 0 ? `,afade=t=in:st=0:d=${n(music.fadeInSeconds)}` : "") +
       (music.fadeOutSeconds > 0 ? `,afade=t=out:st=${n(fadeOutStart)}:d=${n(music.fadeOutSeconds)}` : "");

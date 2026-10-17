@@ -63,7 +63,7 @@ function Bars2D({ props, palette: p, frame, fps }: TemplateComponentProps<"BAR_C
               <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "38%", borderRadius: "18px 0 0 6px", background: `linear-gradient(90deg, ${rgba("#FFFFFF", 0.16)}, transparent)` }} />
             </div>
             <div style={{ position: "absolute", left: x - 20, width: bw + 40, top: valueH + plotH - h - valueH + 6, height: valueH, display: "flex", alignItems: "flex-end", justifyContent: "center", fontFamily: FONT.display, fontSize: n >= 6 ? 36 : 42, color: focus ? p.primary : p.ink, opacity: vT * (focus || hl === null ? 1 : 0.8), letterSpacing: "-0.02em", textShadow: focus ? `0 0 24px ${rgba(p.primary, 0.5)}` : undefined, whiteSpace: "nowrap" }}>
-              {withUnit(compactNumber(Math.round(v * 10) / 10), props.unit)}
+              {withUnit(compactNumber(Number.isInteger(b.value) ? Math.round(v) : Math.round(v * 10) / 10), props.unit)}
             </div>
             <div style={{ position: "absolute", left: x - 16, width: bw + 32, top: valueH + plotH + 16, textAlign: "center", fontFamily: FONT.text, fontSize: n >= 6 ? 34 : 38, color: focus ? p.ink : p.muted, opacity: prog(frame, 6 + i * 4, 14, EASE_OUT), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {b.label}

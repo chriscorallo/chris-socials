@@ -114,7 +114,7 @@ function useMaterials(p: Palette) {
       ceramic: new THREE.MeshPhysicalMaterial({ color: "#F3F3F6", metalness: 0, roughness: 0.38, clearcoat: 0.7, clearcoatRoughness: 0.25 }),
       dark: new THREE.MeshPhysicalMaterial({ color: "#16161D", metalness: 0.55, roughness: 0.25, clearcoat: 0.8 }),
       ink: new THREE.MeshStandardMaterial({ color: "#0B0B10", metalness: 0, roughness: 0.6 }),
-      pink: new THREE.MeshPhysicalMaterial({ color: "#F6A9C2", metalness: 0, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.12, sheen: 0.4 }),
+      pink: new THREE.MeshPhysicalMaterial({ color: "#F08AAE", metalness: 0, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.12, sheen: 0.4 }),
       leather: new THREE.MeshPhysicalMaterial({ color: "#7A4A2A", metalness: 0, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.4 }),
       leatherDark: new THREE.MeshPhysicalMaterial({ color: "#4A2C18", metalness: 0, roughness: 0.6 }),
       glass: new THREE.MeshPhysicalMaterial({ color: "#BFE3FF", metalness: 0, roughness: 0.08, transmission: 0, clearcoat: 1, emissive: new THREE.Color("#5FB4FF"), emissiveIntensity: 0.25 }),
@@ -579,24 +579,24 @@ function billTextures(): { top: THREE.CanvasTexture; side: THREE.CanvasTexture; 
   top.height = 220;
   const g = top.getContext("2d")!;
   const bg = g.createLinearGradient(0, 0, 512, 220);
-  bg.addColorStop(0, "#9CC9A4");
-  bg.addColorStop(0.5, "#B7D9B5");
-  bg.addColorStop(1, "#8DBB97");
+  bg.addColorStop(0, "#4E8A5E");
+  bg.addColorStop(0.5, "#6FA67A");
+  bg.addColorStop(1, "#467F55");
   g.fillStyle = bg;
   g.fillRect(0, 0, 512, 220);
-  g.strokeStyle = "rgba(30,80,50,0.65)";
+  g.strokeStyle = "rgba(220,240,215,0.55)";
   g.lineWidth = 6;
   g.strokeRect(14, 14, 484, 192);
   g.lineWidth = 2;
   g.strokeRect(26, 26, 460, 168);
-  g.fillStyle = "rgba(30,80,50,0.18)";
+  g.fillStyle = "rgba(20,60,35,0.35)";
   g.beginPath();
   g.ellipse(256, 110, 62, 74, 0, 0, Math.PI * 2);
   g.fill();
-  g.strokeStyle = "rgba(30,80,50,0.55)";
+  g.strokeStyle = "rgba(220,240,215,0.5)";
   g.lineWidth = 3;
   g.stroke();
-  g.fillStyle = "rgba(25,70,45,0.85)";
+  g.fillStyle = "rgba(230,245,225,0.9)";
   g.font = "bold 44px sans-serif";
   g.textAlign = "center";
   g.textBaseline = "middle";
@@ -605,12 +605,14 @@ function billTextures(): { top: THREE.CanvasTexture; side: THREE.CanvasTexture; 
   g.fillText("100", 70, 58);
   g.fillText("100", 442, 162);
   const side = document.createElement("canvas");
-  side.width = 16;
-  side.height = 256;
+  side.width = 64;
+  side.height = 512;
   const s = side.getContext("2d")!;
-  for (let y = 0; y < 256; y += 4) {
-    s.fillStyle = y % 8 === 0 ? "#E4EFE0" : "#A9CDA9";
-    s.fillRect(0, y, 16, 4);
+  // Paper edges: fine alternating light/dark bill edges with a little irregularity.
+  for (let y = 0; y < 512; y += 3) {
+    const k = (Math.sin(y * 12.9898) * 43758.5453) % 1;
+    s.fillStyle = y % 6 === 0 ? "#D7E6D0" : Math.abs(k) > 0.5 ? "#7FAF88" : "#6A9A74";
+    s.fillRect(0, y, 64, 3);
   }
   const mk = (c: HTMLCanvasElement, rep = false) => {
     const t = new THREE.CanvasTexture(c);
@@ -628,11 +630,9 @@ function MoneyStack({ height, tex, band }: { height: number; tex: ReturnType<typ
   const W = 1.56;
   const D = 0.68;
   const mats = useMemo(() => {
-    const side = tex.side.clone();
-    side.needsUpdate = true;
-    side.repeat.set(1, Math.max(1, height * 6));
-    const sideMat = new THREE.MeshStandardMaterial({ map: side, roughness: 0.75 });
-    const topMat = new THREE.MeshStandardMaterial({ map: tex.top, roughness: 0.6 });
+    const side = tex.side;
+    const sideMat = new THREE.MeshStandardMaterial({ map: side, color: "#7FAE88", roughness: 0.85, envMapIntensity: 0.3 });
+    const topMat = new THREE.MeshStandardMaterial({ map: tex.top, color: "#B9D6BC", roughness: 0.7, envMapIntensity: 0.3 });
     // BoxGeometry material order: +x, -x, +y, -y, +z, -z
     return [sideMat, sideMat, topMat, sideMat, sideMat, sideMat];
   }, [tex, height]);
@@ -654,7 +654,7 @@ function MoneyStack({ height, tex, band }: { height: number; tex: ReturnType<typ
 export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateComponentProps<"MONEY_STACK_3D">) {
   const n = stackCountFor(props.amount);
   const tex = useMemo(() => billTextures(), []);
-  const band = useMemo(() => new THREE.MeshPhysicalMaterial({ color: mix(p.primary, "#FFFFFF", 0.25), roughness: 0.45, metalness: 0.2, clearcoat: 0.6 }), [p]);
+  const band = useMemo(() => new THREE.MeshPhysicalMaterial({ color: mix(p.primary, "#9A6A10", 0.35), roughness: 0.5, metalness: 0.1, clearcoat: 0.4, envMapIntensity: 0.5 }), [p]);
   const t = frame / fps;
   const growLen = Math.round(fps * 1.4);
   // Layout: rows of up to 3, back rows first; pyramid-ish heights.
@@ -668,7 +668,7 @@ export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateCom
       const inRow = Math.min(cols, n - r * cols);
       const x = (c - (inRow - 1) / 2) * 1.75;
       const z = (r - (rows - 1) / 2) * -0.95;
-      const h = 0.55 + 0.45 * (1 - Math.abs(c - (inRow - 1) / 2) / 2) - r * 0.08;
+      const h = 0.8 + 0.5 * (1 - Math.abs(c - (inRow - 1) / 2) / 2) - r * 0.1;
       out.push({ x, z, h, delay: i * 3 });
     }
     return out;
@@ -686,7 +686,7 @@ export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateCom
     <div style={{ ...fill }}>
       <div style={{ position: "absolute", left: 60, right: 60, top: 80, height: 340, background: `radial-gradient(ellipse at center, ${rgba(p.positive, 0.16)} 0%, transparent 70%)`, filter: "blur(16px)" }} />
       <div style={{ position: "absolute", left: 0, top: 0, width: 720, height: 470 }}>
-        <Stage width={720} height={470} dpr={Math.max(1, box.scale)} cameraZ={camZ} cameraY={camZ * 0.55} fov={28}>
+        <Stage width={720} height={470} dpr={Math.max(1, box.scale)} cameraZ={camZ} cameraY={camZ * 0.42} fov={28}>
           <StudioEnvironment />
           <StudioLights p={p} />
           <CameraLookAt y={0.35} />
@@ -781,7 +781,7 @@ export function BarChart3D({ props, palette: p, frame, fps, box }: TemplateCompo
         <CameraFrom cam={lay.camera} />
         <StudioEnvironment />
         <StudioLights p={p} />
-        <mesh position={[0, -0.03, 0]} material={m.dark}>
+        <mesh position={[0, -0.03, 0]} material={m.ink}>
           <boxGeometry args={[floorW, 0.06, 1.6]} />
         </mesh>
         <ContactShadow y={0.002} scale={[floorW, 1.4]} opacity={0.6} />
@@ -801,7 +801,7 @@ export function BarChart3D({ props, palette: p, frame, fps, box }: TemplateCompo
         const v = countUp(frame, 0, b.value, 8 + i * 5, Math.round(fps * 1.0));
         return (
           <div key={i}>
-            <div style={{ position: "absolute", left: top.x - 110, width: 220, top: top.y - 58, textAlign: "center", fontFamily: FONT.display, fontSize: n >= 6 ? 36 : 42, letterSpacing: "-0.02em", color: focus ? p.primary : p.ink, opacity: prog(frame, 12 + i * 5, 12, EASE_OUT), textShadow: focus ? `0 0 24px ${rgba(p.primary, 0.5)}` : TEXT_LIFT, whiteSpace: "nowrap" }}>{withUnit(compactNumber(Math.round(v * 10) / 10), props.unit)}</div>
+            <div style={{ position: "absolute", left: top.x - 110, width: 220, top: top.y - 58, textAlign: "center", fontFamily: FONT.display, fontSize: n >= 6 ? 36 : 42, letterSpacing: "-0.02em", color: focus ? p.primary : p.ink, opacity: prog(frame, 12 + i * 5, 12, EASE_OUT), textShadow: focus ? `0 0 24px ${rgba(p.primary, 0.5)}` : TEXT_LIFT, whiteSpace: "nowrap" }}>{withUnit(compactNumber(Number.isInteger(b.value) ? Math.round(v) : Math.round(v * 10) / 10), props.unit)}</div>
             <div style={{ position: "absolute", left: base.x - 110, width: 220, top: base.y + 10, textAlign: "center", fontFamily: FONT.text, fontSize: n >= 6 ? 34 : 38, color: focus ? p.ink : p.muted, opacity: prog(frame, 6 + i * 4, 14, EASE_OUT), whiteSpace: "nowrap" }}>{b.label}</div>
           </div>
         );

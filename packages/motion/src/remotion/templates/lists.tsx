@@ -64,6 +64,7 @@ export function TimelineTemplate({ props, palette: p, frame, fps, durationInFram
   const reach = top + lineT * (H - top - bottom);
   return (
     <div style={{ ...fill }}>
+      <div style={{ position: "absolute", inset: 0, ...glassCard(p), opacity: prog(frame, 0, 12, EASE_OUT) }} />
       <div style={{ position: "absolute", left: x - 2, top, width: 4, height: H - top - bottom, borderRadius: 4, background: rgba("#FFFFFF", 0.12), boxShadow: `0 0 0 1px ${rgba("#000000", 0.15)}` }} />
       <div style={{ position: "absolute", left: x - 2, top, width: 4, height: reach - top, borderRadius: 4, background: `linear-gradient(180deg, ${p.secondary}, ${p.primary})`, boxShadow: `0 0 18px ${rgba(p.primary, 0.5)}` }} />
       {ev.map((e, i) => {

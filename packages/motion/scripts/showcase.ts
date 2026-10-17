@@ -13,7 +13,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { FFMPEG_PATH, MOTION_TEMPLATES, renderTimeline, type MotionTemplate, type SfxSound } from "@chris/media";
-import { renderVisualsLayer, sampleVisual, sfxFiles } from "../src/index";
+import { SAMPLE_PROPS, renderVisualsLayer, sampleVisual, sfxFiles } from "../src/index";
+
+const ICONS = ["COIN", "CREDIT_CARD", "HOUSE", "PIGGY_BANK", "CHART_UP", "CALENDAR", "LOCK", "PHONE", "BRIEFCASE", "GRADUATION_CAP"] as const;
 
 const ENTER_SFX: Record<MotionTemplate, SfxSound> = {
   KINETIC_TEXT: "WHOOSH",
@@ -68,9 +70,17 @@ async function main() {
   await mkdir(join(outDir, "frames"), { recursive: true });
 
   const gap = 0.15;
-  const visuals = templates.map((t, i) => {
+  // --gallery3d: every ICON_3D model + the extruded 3D bar chart instead of the template list.
+  const gallery = args.includes("--gallery3d");
+  const specs: Array<{ t: MotionTemplate; props?: Record<string, unknown>; tag: string }> = gallery
+    ? [
+        { t: "BAR_CHART", props: { ...SAMPLE_PROPS.BAR_CHART, depth3d: true }, tag: "bar_chart_3d" },
+        ...ICONS.map((icon) => ({ t: "ICON_3D" as const, props: { icon, caption: icon.replace(/_/g, " ").toLowerCase() }, tag: `icon_${icon.toLowerCase()}` })),
+      ]
+    : templates.map((t) => ({ t, tag: t.toLowerCase() }));
+  const visuals = specs.map((sp, i) => {
     const start = Math.round((0.3 + i * (per + gap)) * 100) / 100;
-    return sampleVisual(t, start, Math.round((start + per) * 100) / 100, { enterSfx: ENTER_SFX[t] });
+    return sampleVisual(sp.t, start, Math.round((start + per) * 100) / 100, { id: sp.tag, enterSfx: ENTER_SFX[sp.t], ...(sp.props ? { props: sp.props } : {}) });
   });
   const duration = Math.ceil(visuals[visuals.length - 1]!.end + 0.6);
   const canvas = { width: 1080, height: 1920 };
@@ -114,7 +124,7 @@ async function main() {
     for (const v of visuals) {
       const len = v.end - v.start;
       for (const [tag, at] of [["in", v.start + 0.22], ["mid", v.start + len * 0.55], ["out", v.end - 0.12]] as const) {
-        const png = join(outDir, "frames", `${v.template.toLowerCase()}-${tag}-${mode}.png`);
+        const png = join(outDir, "frames", `${v.id}-${tag}-${mode}.png`);
         await ff(["-ss", at.toFixed(3), "-i", out, "-frames:v", "1", "-vf", "scale=540:960", png]);
         tiles.push(png);
       }

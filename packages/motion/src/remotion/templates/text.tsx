@@ -20,6 +20,14 @@ export function gradientText(primary: string): CSSProperties {
   };
 }
 
+/**
+ * Soft dark falloff behind bare (card-less) type so it holds up over bright footage, invisible
+ * as a shape: a blurred radial ellipse, ~30% at the centre, gone at the edges.
+ */
+export function Scrim({ strength = 0.3 }: { strength?: number }) {
+  return <div style={{ position: "absolute", inset: "-6% -4%", background: `radial-gradient(ellipse 50% 50% at 50% 50%, ${rgba("#08080C", strength)} 0%, ${rgba("#08080C", strength * 0.55)} 45%, transparent 75%)`, filter: "blur(18px)" }} />;
+}
+
 function cleanWord(w: string): string {
   return w.toLowerCase().replace(/[^\p{L}\p{N}%$]/gu, "");
 }
@@ -40,6 +48,7 @@ export function KineticText({ props, palette: p, frame, fps, durationInFrames }:
     const caretOn = Math.floor(frame / (fps * 0.5)) % 2 === 0 || shown < chars;
     return (
       <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Scrim />
         <div style={{ fontFamily: FONT.display, fontSize: size, lineHeight: 1.08, letterSpacing: "-0.02em", color: p.ink, textAlign: "center", textShadow: TEXT_LIFT, maxWidth: 880 }}>
           {words.map((w, i) => {
             const start = idx;
@@ -62,6 +71,7 @@ export function KineticText({ props, palette: p, frame, fps, durationInFrames }:
 
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Scrim />
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "baseline", columnGap: size * 0.26, rowGap: size * 0.06, maxWidth: 880, fontFamily: FONT.display, fontSize: size, lineHeight: 1.06, letterSpacing: "-0.025em" }}>
         {words.map((w, i) => {
           const isE = emph.has(cleanWord(w));
@@ -113,6 +123,7 @@ export function NumberCounter({ props, palette: p, frame, fps, durationInFrames 
   const breathe = 0.85 + 0.15 * Math.sin((frame / fps) * 2.2);
   return (
     <div style={{ ...fill, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+      <Scrim strength={0.32} />
       <div style={{ position: "absolute", left: "50%", top: "44%", width: 680, height: 300, transform: "translate(-50%,-50%)", background: `radial-gradient(ellipse at center, ${rgba(p.primary, 0.22 * breathe)} 0%, ${rgba(p.primary, 0.07)} 42%, transparent 70%)`, filter: "blur(10px)" }} />
       <div style={{ position: "relative", fontFamily: FONT.display, fontSize: size, lineHeight: 1, letterSpacing: "-0.035em", fontVariantNumeric: "tabular-nums", transform: `scale(${pulse})`, whiteSpace: "nowrap" }}>
         {/* invisible final value reserves the width so the layout never jitters while counting */}
