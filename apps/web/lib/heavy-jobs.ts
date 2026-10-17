@@ -75,6 +75,17 @@ export function sandboxConfig() {
   };
 }
 
+/**
+ * Which job kinds may run in the cloud. RENDER_SANDBOX_KINDS is a comma list (e.g.
+ * "reference-analyze"); unset or "*" allows every kind. Lets Chris turn the cloud on one job at
+ * a time — reference measuring first, video editing only once he's approved its quality.
+ * See /docs/DECISIONS.md ("Cloud processing per job kind").
+ */
+export function cloudKindAllowed(kind: string, raw = process.env.RENDER_SANDBOX_KINDS): boolean {
+  const list = (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return list.length === 0 || list.includes("*") || list.includes(kind);
+}
+
 /** Explicit credentials when given (local testing of sandbox mode); on Vercel the SDK uses OIDC. */
 function sandboxCredentials(): Record<string, string> {
   const { VERCEL_TOKEN, VERCEL_TEAM_ID, VERCEL_PROJECT_ID } = process.env;
@@ -186,6 +197,13 @@ export async function runHeavyJob<K extends HeavyJobKind>(
       status: "refused",
       jobRunId: null,
       message: "The cloud renderer isn't set up yet, so this can't run on the live site (RENDER_SANDBOX_SNAPSHOT_ID is missing). Nothing was changed.",
+    };
+  }
+  if (mode === "sandbox" && !cloudKindAllowed(kind)) {
+    return {
+      status: "refused",
+      jobRunId: null,
+      message: "Cloud processing is only switched on for measuring reference videos right now, so this can't run on the live site yet. Nothing was changed.",
     };
   }
   const lease = await acquireHeavyJobLease(prisma, {

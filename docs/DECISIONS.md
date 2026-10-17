@@ -5262,3 +5262,14 @@ signed-in only, preview only). Creators can be marked "No-face motivational"
 own style card instead of skewing the talking-video target style.
 
 **Reversibility:** high — UI + additive domain functions; no schema change.
+
+
+## Cloud processing per job kind (2026-10-17)
+
+Chris approved cloud (Vercel Sandbox) processing for **measuring reference videos only** —
+video editing/rendering stays off until he has seen and approved its quality.
+`RENDER_SANDBOX_KINDS` (comma list; unset or `*` = all kinds) gates which heavy-job kinds may
+dispatch to the sandbox; anything else is refused with a plain message and nothing changes.
+Production: `RENDER_SANDBOX_KINDS=reference-analyze`, snapshot
+`snap_GeA378dem515lBwMM1c64y192O1r` (runner b1ee76956ae20fd7, includes `reference-analyze`).
+Reversible by editing one env var.

@@ -160,3 +160,15 @@ describe("heavy job wording", () => {
     expect(plainJobError("")).toMatch(/try again/);
   });
 });
+
+describe("cloudKindAllowed (RENDER_SANDBOX_KINDS)", () => {
+  it("allows every kind when unset or '*', otherwise only the listed kinds", async () => {
+    const { cloudKindAllowed } = await import("./heavy-jobs");
+    expect(cloudKindAllowed("render", undefined)).toBe(true);
+    expect(cloudKindAllowed("render", "")).toBe(true);
+    expect(cloudKindAllowed("render", "*")).toBe(true);
+    expect(cloudKindAllowed("reference-analyze", "reference-analyze")).toBe(true);
+    expect(cloudKindAllowed("render", "reference-analyze")).toBe(false);
+    expect(cloudKindAllowed("ingest", " reference-analyze , ingest ")).toBe(true);
+  });
+});
