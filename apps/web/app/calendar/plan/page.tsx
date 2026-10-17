@@ -1,4 +1,4 @@
-import { prisma, getActivePostingPlan, listPostingPlanVersions, defaultPostingPlanData, ymdInTz, mondayOfYmd } from "@chris/domain";
+import { prisma, getActivePostingPlan, listPostingPlanVersions, ownerStarterPostingPlanData, ymdInTz, mondayOfYmd } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { NavBar } from "../../components/NavBar";
 import { PageShell, BackLink } from "../../components/ui";
@@ -14,7 +14,7 @@ export default async function PostingPlanPage() {
   const today = ymdInTz(new Date(), APP_TZ);
   const active = await getActivePostingPlan(prisma);
   const versions = await listPostingPlanVersions(prisma);
-  const initial = active ?? defaultPostingPlanData(mondayOfYmd(today), APP_TZ);
+  const initial = active ?? ownerStarterPostingPlanData(mondayOfYmd(today), APP_TZ);
 
   return (
     <>

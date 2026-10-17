@@ -200,3 +200,24 @@ describe("matchSlotsToSchedule", () => {
     expect(groups.length).toBe(5); // Mon–Fri
   });
 });
+
+describe("high-volume plan: 4 posts a day on every app", () => {
+  it("produces 4 slots per day per platform — 84 a week across TikTok, Instagram, YouTube", () => {
+    const fourADay = (platform: "TIKTOK" | "INSTAGRAM" | "YOUTUBE") => ({
+      platform,
+      enabled: true,
+      postsPerWeek: 28,
+      preferredDays: [] as number[],
+      preferredTimes: ["09:00", "12:00", "17:00", "20:00"],
+    });
+    const p = plan({ startDate: "2026-01-01", cadences: [fourADay("TIKTOK"), fourADay("INSTAGRAM"), fourADay("YOUTUBE")] });
+    const from = new Date("2026-10-19T07:00:00Z"); // Mon 00:00 Pacific
+    const to = new Date("2026-10-26T07:00:00Z");
+    const slots = generatePlanSlots(p, from, to);
+    expect(slots).toHaveLength(84);
+    const perDayPerPlatform = new Map<string, number>();
+    for (const s of slots) perDayPerPlatform.set(`${s.ymd}|${s.platform}`, (perDayPerPlatform.get(`${s.ymd}|${s.platform}`) ?? 0) + 1);
+    expect([...perDayPerPlatform.values()].every((n) => n === 4)).toBe(true);
+  });
+});
+

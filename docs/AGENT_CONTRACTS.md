@@ -50,6 +50,7 @@ From `/prompts/shared/SYSTEM_BASE.md` and spec §12:
 | Taste Learner | Learns from Chris's edits/rejections | 4 (Learning System) | `TasteFeedback` | Updated `ChrisAcceptanceProbability` (never a universal rule from one data point) | MEDIUM | No |
 | Weekly Review / Learning Council | Produces the executive brief + candidate learnings | 2/3 (Creative-Director-adjacent) | Full week's episodic data | Weekly brief, candidate `BeliefProposal`s | HIGH | No |
 | Active Week Monitor | Surfaces only materially actionable live-week events | 3 | Live production/publishing state | `NEEDS YOU` queue entries | LOW | No |
+| Plan Importer (optional "Clean up with AI") | Restructures Chris's pasted video plan into rows when the deterministic parser can't; transcribes, never invents (code drops titles/hooks not in the text) | 3 | Raw plan text, today/start date, enabled platforms | `PlanImporterResult` (rows for the import preview — nothing is created until Chris confirms) | MEDIUM | No |
 
 ## Notes
 

@@ -11,9 +11,12 @@ import { writeTransition } from "./state-machine";
 export const SetScheduleEntrySchema = z.object({
   contentItemId: z.string().min(1),
   scheduledDate: z.coerce.date(),
+  /** Optional (added for plan import): which platforms the planned video is meant for. When
+   * omitted, an existing entry keeps its platforms. */
+  targetPlatforms: z.array(z.enum(["INSTAGRAM", "TIKTOK", "YOUTUBE"])).optional(),
 });
 
-export type SetScheduleEntryInput = z.infer<typeof SetScheduleEntrySchema>;
+export type SetScheduleEntryInput = z.input<typeof SetScheduleEntrySchema>;
 
 export async function setScheduleEntry(
   prisma: PrismaClient,
@@ -24,8 +27,15 @@ export async function setScheduleEntry(
 
   const entry = await prisma.scheduleEntry.upsert({
     where: { contentItemId: parsed.contentItemId },
-    create: { contentItemId: parsed.contentItemId, scheduledDate: parsed.scheduledDate },
-    update: { scheduledDate: parsed.scheduledDate },
+    create: {
+      contentItemId: parsed.contentItemId,
+      scheduledDate: parsed.scheduledDate,
+      ...(parsed.targetPlatforms ? { targetPlatforms: parsed.targetPlatforms } : {}),
+    },
+    update: {
+      scheduledDate: parsed.scheduledDate,
+      ...(parsed.targetPlatforms ? { targetPlatforms: parsed.targetPlatforms } : {}),
+    },
   });
 
   await recordAudit(prisma, {
@@ -34,7 +44,7 @@ export async function setScheduleEntry(
     action: "SCHEDULE_ENTRY_SET",
     entityType: "ContentItem",
     entityId: parsed.contentItemId,
-    after: { scheduledDate: entry.scheduledDate },
+    after: { scheduledDate: entry.scheduledDate, ...(parsed.targetPlatforms ? { targetPlatforms: parsed.targetPlatforms } : {}) },
   });
 
   return entry;

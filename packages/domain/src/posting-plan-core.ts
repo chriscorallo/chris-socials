@@ -27,11 +27,12 @@ const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Times are HH:mm");
 export const PlatformCadenceSchema = z.object({
   platform: z.enum(PLAN_PLATFORMS),
   enabled: z.boolean(),
-  postsPerWeek: z.number().int().min(0).max(21),
+  // Up to 10 a day, every day (Chris posts 4/day per app — 28/week).
+  postsPerWeek: z.number().int().min(0).max(70),
   /** JS weekdays, 0 = Sunday … 6 = Saturday. Empty = spread across the whole week. */
   preferredDays: z.array(z.number().int().min(0).max(6)).max(7),
   /** "HH:mm" wall times in the plan's time zone. Empty = 18:00. */
-  preferredTimes: z.array(HHMM).max(6),
+  preferredTimes: z.array(HHMM).max(10),
 });
 export type PlatformCadence = z.infer<typeof PlatformCadenceSchema>;
 
@@ -62,6 +63,22 @@ export function defaultPostingPlanData(startDate: string, timezone: string): Pos
       { platform: "INSTAGRAM", enabled: true, postsPerWeek: 4, preferredDays: [1, 2, 4, 5], preferredTimes: ["18:00"] },
       { platform: "YOUTUBE", enabled: true, postsPerWeek: 3, preferredDays: [1, 3, 5], preferredTimes: ["18:00"] },
     ],
+  };
+}
+
+/** What the plan screen starts from when no plan has been saved yet: Chris's real cadence
+ * (2026-10-17) — 4 posts a day on every app, every day, at 9am/12pm/5pm/8pm. */
+export function ownerStarterPostingPlanData(startDate: string, timezone: string): PostingPlanData {
+  return {
+    ...defaultPostingPlanData(startDate, timezone),
+    sameForAll: true,
+    cadences: PLAN_PLATFORMS.map((platform) => ({
+      platform,
+      enabled: true,
+      postsPerWeek: 28,
+      preferredDays: [],
+      preferredTimes: ["09:00", "12:00", "17:00", "20:00"],
+    })),
   };
 }
 

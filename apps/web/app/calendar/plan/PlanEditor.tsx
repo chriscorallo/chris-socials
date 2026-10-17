@@ -59,6 +59,28 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
   );
 }
 
+/** Spread posting times used when Chris raises posts-per-day past the times he picked. */
+const DEFAULT_TIMES = ["09:00", "12:00", "17:00", "20:00", "07:30", "14:30", "19:00", "21:30", "11:00", "16:00"];
+
+function postingDays(c: PlatformCadence): number {
+  return c.preferredDays.length || 7;
+}
+
+function perDay(c: PlatformCadence): number {
+  return Math.round(c.postsPerWeek / postingDays(c));
+}
+
+/** Sets posts per day (stored as posts per week = per day × posting days) and makes sure there
+ * are at least that many distinct times, adding well-spread defaults. */
+function withPerDay(c: PlatformCadence, n: number): PlatformCadence {
+  const times = [...c.preferredTimes];
+  for (const t of DEFAULT_TIMES) {
+    if (times.length >= n) break;
+    if (!times.includes(t)) times.push(t);
+  }
+  return { ...c, postsPerWeek: n * postingDays(c), preferredTimes: times.sort() };
+}
+
 function CadenceFields({ c, onChange }: { c: PlatformCadence; onChange: (c: PlatformCadence) => void }) {
   const [newTime, setNewTime] = useState("");
   const effective = effectivePostsPerWeek(c);
@@ -71,12 +93,21 @@ function CadenceFields({ c, onChange }: { c: PlatformCadence; onChange: (c: Plat
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[15px] font-medium">Posts per week</p>
+          <p className="text-[15px] font-medium">Posts per day</p>
+          <p className="text-[12.5px] text-[var(--color-text-faint)]">
+            = {c.postsPerWeek} a week{c.preferredDays.length > 0 && c.preferredDays.length < 7 ? ` on ${c.preferredDays.length} days` : ""}
+          </p>
           {effective < c.postsPerWeek && (
             <p className="text-[12.5px] text-[var(--color-gold-400)]">Only {effective} fit — add days or times</p>
           )}
         </div>
-        <Stepper value={c.postsPerWeek} onChange={(n) => onChange({ ...c, postsPerWeek: n })} min={0} max={21} label="posts per week" />
+        <Stepper
+          value={perDay(c)}
+          onChange={(n) => onChange(withPerDay(c, n))}
+          min={0}
+          max={10}
+          label="posts per day"
+        />
       </div>
       <div>
         <p className="mb-2 text-[15px] font-medium">Days</p>
@@ -89,7 +120,11 @@ function CadenceFields({ c, onChange }: { c: PlatformCadence; onChange: (c: Plat
                 type="button"
                 aria-pressed={on}
                 aria-label={DAY_NAMES[d]}
-                onClick={() => onChange({ ...c, preferredDays: on ? c.preferredDays.filter((x) => x !== d) : [...c.preferredDays, d].sort() })}
+                onClick={() => {
+                  const pd = perDay(c);
+                  const next = { ...c, preferredDays: on ? c.preferredDays.filter((x) => x !== d) : [...c.preferredDays, d].sort() };
+                  onChange({ ...next, postsPerWeek: pd * postingDays(next) });
+                }}
                 className={`flex h-11 items-center justify-center rounded-full text-[15px] font-semibold transition-colors ${
                   on ? "bg-[var(--color-gold-400)] text-[#14100a]" : "border border-[var(--color-border)] bg-white/[0.03] text-[var(--color-text-muted)]"
                 }`}
@@ -146,7 +181,7 @@ export function PlanEditor({ initial, today, hasPlan }: { initial: PostingPlanDa
     ...initial,
     // Every platform present in the editor, even if an older plan left one out.
     cadences: PLAN_PLATFORMS.map(
-      (p) => initial.cadences.find((c) => c.platform === p) ?? { platform: p, enabled: false, postsPerWeek: 3, preferredDays: [1, 3, 5], preferredTimes: ["18:00"] },
+      (p) => initial.cadences.find((c) => c.platform === p) ?? { platform: p, enabled: false, postsPerWeek: 28, preferredDays: [], preferredTimes: ["09:00", "12:00", "17:00", "20:00"] },
     ),
   }));
   const [saved, setSaved] = useState<null | "ok" | string>(null);
