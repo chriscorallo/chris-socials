@@ -16,7 +16,11 @@ import {
   timelineDuration,
   EditTimelineSchema,
   DEFAULT_CAPTIONS_CONFIG,
+  chooseOutputFps,
+  probeMedia,
   type EditTimeline,
+  type SfxSound,
+  type VisualOverlaySegment,
   type RenderInstructions,
   type TranscriptWord,
 } from "@chris/media";
@@ -75,6 +79,120 @@ export function mapEditPlanToRenderInstructions(
           : null,
     punchIns: editPlan.punchIns,
   };
+}
+
+/** The slice of @chris/motion the worker uses (injectable for tests). */
+export interface MotionModule {
+  renderVisualsLayer(input: {
+    timeline: Pick<EditTimeline, "visuals" | "canvas">;
+    fps: number;
+    durationSeconds: number;
+    outputPath: string;
+    concurrency?: number | null;
+  }): Promise<{ framesRendered: number; segments: VisualOverlaySegment[]; skipped: Array<{ id: string; error: string }>; renderMs: number }>;
+  sfxFiles(): Partial<Record<SfxSound, string>>;
+}
+
+export interface MotionOptions {
+  /** Override how @chris/motion is loaded (tests inject a fake). */
+  load?: () => Promise<MotionModule>;
+  concurrency?: number | null;
+  /** Feature flag: false renders without the motion layer (SFX/music still mix). Default true. */
+  visualsEnabled?: boolean;
+}
+
+/**
+ * Loaded lazily and through a non-literal specifier so bundlers (apps/web imports this module)
+ * never try to pull Remotion/webpack/three into a serverless bundle; only the worker process
+ * that actually renders visuals loads it.
+ */
+async function defaultLoadMotion(): Promise<MotionModule> {
+  const specifier = ["@chris", "motion"].join("/");
+  return (await import(/* webpackIgnore: true */ /* @vite-ignore */ specifier)) as MotionModule;
+}
+
+export interface PreparedMotion {
+  visualsLayer: { segments: VisualOverlaySegment[] } | null;
+  musicPath: string | null;
+  sfxFiles: Partial<Record<SfxSound, string>> | null;
+  framesRendered: number;
+  renderMs: number;
+}
+
+/**
+ * Everything renderTimeline needs for motion + sound design: the rendered visuals layer (only
+ * when there are visuals), the SFX kit paths (only when any SFX will play) and the music bed
+ * downloaded from storage (only when the timeline has one). Never throws: each part that fails
+ * is reported in `warnings` and left out.
+ */
+export async function prepareMotion(
+  db: PrismaClient,
+  storage: StorageAdapter,
+  timeline: EditTimeline,
+  sources: Record<string, string>,
+  workDir: string,
+  warnings: string[],
+  options: MotionOptions = {},
+): Promise<PreparedMotion> {
+  const out: PreparedMotion = { visualsLayer: null, musicPath: null, sfxFiles: null, framesRendered: 0, renderMs: 0 };
+  const wantsVisuals = timeline.visuals.length > 0 && options.visualsEnabled !== false;
+  const wantsSfx = timeline.audio.sfxEnabled && (timeline.sfx.length > 0 || timeline.visuals.some((v) => v.enterSfx));
+  if (timeline.visuals.length > 0 && options.visualsEnabled === false) {
+    warnings.push(`Motion visuals not rendered (visuals disabled by flag): ${timeline.visuals.length} visual(s).`);
+  }
+  let motion: MotionModule | null = null;
+  if (wantsVisuals || wantsSfx) {
+    try {
+      motion = await (options.load ?? defaultLoadMotion)();
+    } catch (err) {
+      warnings.push(`Motion engine unavailable (${err instanceof Error ? err.message : String(err)}) — rendered without visuals/SFX.`);
+    }
+  }
+  if (motion && wantsSfx) {
+    try {
+      out.sfxFiles = motion.sfxFiles();
+    } catch (err) {
+      warnings.push(`SFX kit not found (${err instanceof Error ? err.message : String(err)}) — rendered without SFX.`);
+    }
+  }
+  if (motion && wantsVisuals) {
+    try {
+      // Same fps rule as renderTimeline (probe of the actual sources), so frames line up.
+      const probes = await Promise.all(
+        [...new Set(timeline.clips.map((c) => c.mediaAssetId))].map(async (id) =>
+          sources[id] ? (await probeMedia(sources[id]!)).frameRate : null,
+        ),
+      );
+      const fps = chooseOutputFps(probes);
+      const res = await motion.renderVisualsLayer({
+        timeline,
+        fps,
+        durationSeconds: timelineDuration(timeline),
+        outputPath: join(workDir, "motion"),
+        concurrency: options.concurrency ?? null,
+      });
+      for (const s of res.skipped) warnings.push(`Motion visual ${s.id} not rendered (invalid): ${s.error}`);
+      out.visualsLayer = { segments: res.segments };
+      out.framesRendered = res.framesRendered;
+      out.renderMs = res.renderMs;
+    } catch (err) {
+      warnings.push(`Motion visuals failed to render (${err instanceof Error ? err.message : String(err)}) — rendered without them.`);
+    }
+  }
+  const music = timeline.audio.music;
+  if (music) {
+    try {
+      const asset = await db.mediaAsset.findUnique({ where: { id: music.musicAssetId } });
+      if (!asset) throw new Error("asset not found");
+      if (asset.kind !== "MUSIC") throw new Error(`asset is ${asset.kind}, not MUSIC`);
+      const path = join(workDir, `music${extname(asset.originalFilename) || ".m4a"}`);
+      await writeFile(path, await storage.get(asset.storageKey));
+      out.musicPath = path;
+    } catch (err) {
+      warnings.push(`Music bed ${music.musicAssetId} unavailable (${err instanceof Error ? err.message : String(err)}) — rendered without music.`);
+    }
+  }
+  return out;
 }
 
 export interface RenderJobResult {
@@ -157,6 +275,7 @@ export async function renderContentItem(
     targetVideoCodec?: string;
     targetAudioCodec?: string;
     encode?: { preset?: string; crf?: number };
+    motion?: MotionOptions;
   } = {},
   actor: { actorId: string },
 ): Promise<RenderJobResult> {
@@ -233,14 +352,28 @@ export async function renderContentItem(
       sourceWords[asset.id] = parseTranscriptWords(asset.transcriptWords);
     }
 
+    // Motion graphics + sound design (packages/motion). Graceful: a failed motion render or a
+    // missing music file never fails the video — the edit renders without them and says so.
+    const motionWarnings: string[] = [];
+    const motionInputs = await prepareMotion(db, storage, timeline, sources, workDir, motionWarnings, options.motion);
+
     let renderResult: Awaited<ReturnType<typeof renderTimeline>>;
     try {
-      renderResult = await renderTimeline({ timeline, sources, sourceWords, outputPath, encode: options.encode });
+      renderResult = await renderTimeline({
+        timeline,
+        sources,
+        sourceWords,
+        outputPath,
+        encode: options.encode,
+        visualsLayer: motionInputs.visualsLayer,
+        musicPath: motionInputs.musicPath,
+        sfxFiles: motionInputs.sfxFiles,
+      });
     } catch (err) {
       return fail(err);
     }
 
-    const unexecutedInstructions = [...listUnexecutedPlanInstructions(plan), ...renderResult.warnings];
+    const unexecutedInstructions = [...listUnexecutedPlanInstructions(plan), ...motionWarnings, ...renderResult.warnings];
 
     const duration = timelineDuration(timeline);
     const qc = await runTechnicalQC(outputPath, {
@@ -267,6 +400,14 @@ export async function renderContentItem(
       timelineSource,
       renderMs: renderResult.renderMs,
       ffmpegWarnings: renderResult.ffmpegWarnings,
+      motion: {
+        visuals: timeline.visuals.length,
+        overlays: renderResult.motion.overlays,
+        framesRendered: motionInputs.framesRendered,
+        motionRenderMs: motionInputs.renderMs,
+        sfxEvents: renderResult.motion.sfxEvents.length,
+        music: renderResult.motion.music ? { mode: renderResult.motion.music.mode, speechRegions: renderResult.motion.music.regions } : null,
+      },
     };
 
     const outputBytes = await readFile(outputPath);
