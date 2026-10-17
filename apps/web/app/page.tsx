@@ -143,7 +143,7 @@ export default async function HomePage() {
                   <li key={evaluation.id} className="py-3 first:pt-0">
                     <Link
                       href={`/content/${evaluation.contentItemId}`}
-                      className="block text-[15px] font-medium hover:text-[var(--color-gold-400)] active:opacity-70 sm:text-sm"
+                      className="flex min-h-[44px] items-center text-[15px] font-medium hover:text-[var(--color-gold-400)] active:opacity-70 sm:min-h-0 sm:text-sm"
                     >
                       {evaluation.contentItem.title}
                     </Link>

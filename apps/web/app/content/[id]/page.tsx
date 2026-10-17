@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, NEXT_STEP, FINISHING_EDIT_STATES } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
 import { RawTakeUploader } from "./RawTakeUploader";
 import { NavBar } from "../../components/NavBar";
-import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, contentStateTone } from "../../components/ui";
+import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, BackLink, CollapsiblePanel, StickyActionBar, contentStateTone, stateLabel, platformLabel } from "../../components/ui";
 import {
   selectForWeek,
   advanceManual,
@@ -63,16 +64,64 @@ export default async function ContentDetailPage({
   const ALL_PLATFORMS = ["INSTAGRAM", "TIKTOK", "YOUTUBE"] as const;
   const packagedPlatforms = new Set(item.platformPackages.map((p) => p.platform));
 
+  // The one obvious next action, pinned in the thumb zone on phones (StickyActionBar hides at
+  // lg+, where the gold "Next Step" panels below are all visible). Same server actions as the
+  // panels — this is a second entry point, never a different behavior. Steps that need input
+  // (scheduling, uploads) jump to their panel instead of acting blind.
+  const oneTap = (action: (fd: FormData) => Promise<void>, label: string, pending = "Working…") => (
+    <form action={action}>
+      <input type="hidden" name="contentItemId" value={item.id} />
+      <Button tone="primary" className="!px-5" pendingLabel={pending}>{label}</Button>
+    </form>
+  );
+  const jump = (href: string, label: string) => (
+    <a href={href} className="btn btn-primary !px-5">{label}</a>
+  );
+  const scriptFilmable = latestScript ? isScriptVersionFilmable(latestScript).ok : false;
+  let sticky: { label: string; node: ReactNode } | null = null;
+  switch (item.currentState) {
+    case "IDEA": sticky = { label: "Select for this week", node: oneTap(selectForWeek, "Select") }; break;
+    case "SELECTED": sticky = { label: "Draft the production contract", node: oneTap(draftContractAction, "Draft", "Drafting…") }; break;
+    case "RESEARCHING": sticky = { label: "Research → script pipeline", node: oneTap(runPipeline, "Run", "Running…") }; break;
+    case "SCRIPTED": if (scriptFilmable) sticky = { label: "Draft the Creator Card", node: oneTap(draftCreatorCardAction, "Draft", "Drafting…") }; break;
+    case "FILMED": sticky = { label: "Upload your raw takes", node: jump("#media", "Upload") }; break;
+    case "MEDIA_INGESTED": sticky = { label: "Pick the best take", node: oneTap(runTakeSelector, "Run", "Picking…") }; break;
+    case "TAKE_SELECTED": sticky = { label: "Plan the edit", node: oneTap(runEditPlanner, "Plan", "Planning…") }; break;
+    case "EDIT_PLANNED": sticky = { label: "Render the video", node: oneTap(runRender, "Render", "Rendering…") }; break;
+    case "EDITING": sticky = { label: "Render again", node: oneTap(runRender, "Render", "Rendering…") }; break;
+    case "QC_REPAIR": sticky = { label: "Auto-repair and re-check", node: oneTap(runAutoRepair, "Repair", "Repairing…") }; break;
+    case "RENDERED": sticky = { label: "Run the Quality Gate", node: oneTap(runQualityGate, "Run", "Checking…") }; break;
+    case "READY": sticky = { label: "Pick a date and schedule", node: jump("#schedule", "Schedule") }; break;
+    case "SCHEDULED": sticky = { label: "Publish now", node: oneTap(runPublish, "Publish", "Publishing…") }; break;
+    case "PUBLISHING": sticky = { label: "Retry publishing", node: oneTap(runPublish, "Retry", "Publishing…") }; break;
+    case "PUBLISHED":
+    case "MEASURING": sticky = { label: "Capture due snapshots", node: oneTap(runCaptureSnapshots, "Capture", "Capturing…") }; break;
+  }
+  if (!sticky && !isTerminal && manualTransitions.length > 0) {
+    const t = manualTransitions[0]!;
+    sticky = {
+      label: t.label,
+      node: (
+        <form action={advanceManual}>
+          <input type="hidden" name="contentItemId" value={item.id} />
+          <input type="hidden" name="to" value={t.to} />
+          <Button tone="primary" className="!px-5">Go</Button>
+        </form>
+      ),
+    };
+  }
+
   return (
     <>
       <NavBar />
       <PageShell maxWidth={760}>
-        <header className="mb-6">
+        <BackLink href="/content">Content</BackLink>
+        <header className="mb-5 sm:mb-6">
           <p className="eyebrow mb-1">Content Item</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{item.title}</h1>
-          {item.description && <p className="mt-2 text-sm text-[var(--color-text-muted)]">{item.description}</p>}
+          <h1 className="text-[26px] font-semibold leading-tight tracking-tight sm:text-2xl">{item.title}</h1>
+          {item.description && <p className="mt-2 text-[15px] text-[var(--color-text-muted)] sm:text-sm">{item.description}</p>}
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-muted)]">
-            <Badge tone={contentStateTone(item.currentState)}>{item.currentState}</Badge>
+            <Badge tone={contentStateTone(item.currentState)}>{stateLabel(item.currentState)}</Badge>
             {item.pillar && <span>{item.pillar}</span>}
             {item.format && <span>· {item.format}</span>}
           </div>
@@ -86,8 +135,8 @@ export default async function ContentDetailPage({
 
         {!isTerminal && NEXT_STEP[item.currentState].owner === "SYSTEM" && item.currentState !== "SCHEDULED" && item.currentState !== "PUBLISHED" && item.currentState !== "MEASURING" && (
           <Panel className="mb-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <p className="eyebrow">Autopilot</p>
                 <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
                   Runs every step the system can do from here — through every hard gate — and
@@ -97,7 +146,7 @@ export default async function ContentDetailPage({
               </div>
               <form action={runAutopilotAction}>
                 <input type="hidden" name="contentItemId" value={item.id} />
-                <Button tone="primary">Run Autopilot</Button>
+                <Button tone="primary" className="w-full sm:w-auto" pendingLabel="Autopilot running…">Run Autopilot</Button>
               </form>
             </div>
           </Panel>
@@ -123,14 +172,14 @@ export default async function ContentDetailPage({
               until it publishes, Chris can open the in-house editor to finish the video. */}
           {latestEditPlan && FINISHING_EDIT_STATES.has(item.currentState) && (
             <Panel className="panel-action">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                   <p className="eyebrow">Editor</p>
                   <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
                     Trim clips, fix captions, change text, color and framing — then finish and put it on the calendar.
                   </p>
                 </div>
-                <ButtonLink href={`/content/${item.id}/edit`} tone="primary">
+                <ButtonLink href={`/content/${item.id}/edit`} tone="primary" className="w-full sm:w-auto">
                   Open editor
                 </ButtonLink>
               </div>
@@ -195,7 +244,7 @@ export default async function ContentDetailPage({
                   ? "Auto-repair revises the edit plan against the blocking QC issues, re-renders and re-runs the Quality Gate — repeating within the repair budget. Stops early on factual/brand/creative blocks, which a re-edit can't fix."
                   : "Deterministic ffmpeg render + technical QC (loudness, black/frozen frames, format). No AI call."}
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="btn-stack">
                 {item.currentState === "QC_REPAIR" && (
                   <form action={runAutoRepair}>
                     <input type="hidden" name="contentItemId" value={item.id} />
@@ -235,13 +284,13 @@ export default async function ContentDetailPage({
                 Packages the final video per platform (spec §9 step 20) — required before
                 publishing. Requires ANTHROPIC_API_KEY.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="btn-stack">
                 {ALL_PLATFORMS.map((platform) => (
                   <form action={runPlatformPackaging} key={platform}>
                     <input type="hidden" name="contentItemId" value={item.id} />
                     <input type="hidden" name="platform" value={platform} />
                     <Button>
-                      {packagedPlatforms.has(platform) ? "Re-package" : "Package"} {platform}
+                      {packagedPlatforms.has(platform) ? "Re-package" : "Package"} {platformLabel(platform)}
                     </Button>
                   </form>
                 ))}
@@ -250,7 +299,7 @@ export default async function ContentDetailPage({
           )}
 
           {item.currentState === "READY" && (
-            <Panel className="panel-action">
+            <Panel className="panel-action" id="schedule">
               <form action={submitPublishSchedule}>
                 <SectionHeading eyebrow="Next Step" title="Schedule for Publishing" />
                 <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
@@ -262,15 +311,17 @@ export default async function ContentDetailPage({
                   <span className="field-label">Scheduled date/time</span>
                   <input type="datetime-local" name="scheduledDate" required className="field-input" />
                 </label>
-                <div className="mt-3 flex flex-wrap gap-4 text-[13px]">
+                <div className="mt-3 mb-4 grid grid-cols-3 gap-2 text-[13px]">
                   {ALL_PLATFORMS.map((platform) => (
-                    <label key={platform} className="flex items-center gap-1.5">
-                      <input type="checkbox" name="targetPlatforms" value={platform} /> {platform}
+                    <label
+                      key={platform}
+                      className="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-lg border border-[var(--color-border)] bg-white/[0.03] px-2 has-[:checked]:border-[var(--color-gold-500)]/60 has-[:checked]:bg-[var(--color-gold-500)]/10"
+                    >
+                      <input type="checkbox" name="targetPlatforms" value={platform} /> {platformLabel(platform)}
                     </label>
                   ))}
                 </div>
-                <Button tone="primary">Schedule</Button>
-                <span className="ml-3" />
+                <Button tone="primary" className="w-full sm:w-auto" pendingLabel="Scheduling…">Schedule</Button>
               </form>
             </Panel>
           )}
@@ -328,7 +379,7 @@ export default async function ContentDetailPage({
                 absent metrics stay absent, never fabricated), comment ingestion, and a
                 performance evaluation across all eight categories.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="btn-stack">
                 <form action={runCaptureSnapshots}>
                   <input type="hidden" name="contentItemId" value={item.id} />
                   <Button tone="primary">Capture due snapshots</Button>
@@ -366,7 +417,7 @@ export default async function ContentDetailPage({
                 <Button tone="primary">Draft &amp; issue contract</Button>
               </form>
               <details className="mt-4">
-                <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">Or fill it in by hand</summary>
+                <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">Or fill it in by hand</summary>
               <form action={submitContract} className="mt-3 flex flex-col gap-4">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <label className="block">
@@ -474,7 +525,7 @@ export default async function ContentDetailPage({
                 </>
               )}
               <details className="mt-4">
-                <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">Or write it by hand</summary>
+                <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">Or write it by hand</summary>
               <form action={submitCreatorCard} className="mt-3 flex flex-col gap-4">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <label className="block">
@@ -516,7 +567,7 @@ export default async function ContentDetailPage({
             <Panel className="panel-action">
               <SectionHeading eyebrow="Next Step" title="Advance" />
               {manualTransitions.map((t) => (
-                <div key={t.to} className="flex flex-wrap items-center gap-3">
+                <div key={t.to} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                   <form action={advanceManual}>
                     <input type="hidden" name="contentItemId" value={item.id} />
                     <input type="hidden" name="to" value={t.to} />
@@ -529,8 +580,7 @@ export default async function ContentDetailPage({
           )}
 
           {item.productionContract && (
-            <Panel>
-              <SectionHeading eyebrow="Contracted" title="Production Contract" />
+            <CollapsiblePanel eyebrow="Contracted" title="Production Contract">
               <p className="text-sm">
                 <span className="font-medium">{item.productionContract.purpose}</span> —{" "}
                 {item.productionContract.primaryIdea}
@@ -544,12 +594,11 @@ export default async function ContentDetailPage({
                 <span className="font-medium">DO NOT expand into: </span>
                 {item.productionContract.doNotExpandInto}
               </p>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {latestResearch && (
-            <Panel>
-              <SectionHeading eyebrow="Research" title="Research Packet" />
+            <CollapsiblePanel eyebrow="Research" title="Research Packet">
               <p className="mb-2 text-[13px] text-[var(--color-text-muted)]">
                 Status: <Badge tone="neutral">{latestResearch.status}</Badge> · Confidence:{" "}
                 {latestResearch.confidence}
@@ -565,7 +614,7 @@ export default async function ContentDetailPage({
                   {(latestResearch.claimsGateResult as { result?: string }).result ?? "unknown"}
                 </p>
               )}
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {latestScript && (() => {
@@ -577,11 +626,11 @@ export default async function ContentDetailPage({
               | null;
             const editable = item.currentState === "SCRIPTED" || item.currentState === "RESEARCH_BLOCKED";
             return (
-              <Panel>
-                <SectionHeading
-                  eyebrow={`Script · v${item.scriptVersions.length}${latestScript.authorType === "HUMAN" ? " · your edit" : ""}`}
-                  title="Latest Draft"
-                />
+              <CollapsiblePanel
+                eyebrow={`Script · v${item.scriptVersions.length}${latestScript.authorType === "HUMAN" ? " · your edit" : ""}`}
+                title="Latest Draft"
+                defaultOpen={editable || item.currentState === "READY_TO_FILM"}
+              >
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{latestScript.spokenScript}</p>
                 <p className="mt-2 text-[13px] text-[var(--color-text-muted)]">
                   Target: {latestScript.targetRuntimeSeconds}s · Estimated speaking:{" "}
@@ -612,7 +661,7 @@ export default async function ContentDetailPage({
                 )}
                 {editable && (
                   <details className="mt-3">
-                    <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">Edit the script in your own words</summary>
+                    <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">Edit the script in your own words</summary>
                     <form action={editScriptAction} className="mt-2 flex flex-col gap-2">
                       <input type="hidden" name="contentItemId" value={item.id} />
                       <input type="hidden" name="baseScriptVersionId" value={latestScript.id} />
@@ -627,7 +676,7 @@ export default async function ContentDetailPage({
                 )}
                 {item.scriptVersions.length > 1 && (
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-[13px] text-[var(--color-text-faint)]">History ({item.scriptVersions.length} versions)</summary>
+                    <summary className="flex min-h-[44px] cursor-pointer items-center text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">History ({item.scriptVersions.length} versions)</summary>
                     <ol className="mt-2 flex flex-col gap-1 text-[12px] text-[var(--color-text-muted)]">
                       {item.scriptVersions.map((v, i) => (
                         <li key={v.id}>
@@ -639,23 +688,21 @@ export default async function ContentDetailPage({
                     </ol>
                   </details>
                 )}
-              </Panel>
+              </CollapsiblePanel>
             );
           })()}
 
           {latestTakeSelection && (
-            <Panel>
-              <SectionHeading eyebrow="Production" title="Take Selection" />
+            <CollapsiblePanel eyebrow="Production" title="Take Selection">
               <p className="mb-2 text-[13px] text-[var(--color-text-muted)]">
                 Confidence: {latestTakeSelection.confidence}
               </p>
               <p className="text-sm">{latestTakeSelection.reason}</p>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {latestEditPlan && (
-            <Panel>
-              <SectionHeading eyebrow="Production" title="Edit Plan" />
+            <CollapsiblePanel eyebrow="Production" title="Edit Plan">
               <p className="mb-2 text-[13px] text-[var(--color-text-muted)]">
                 Tier: {latestEditPlan.productionTier} · Target: {latestEditPlan.targetDurationSeconds}s
                 {latestEditPlan.doNothingElse ? " · restraint: DO NOTHING ELSE" : ""}
@@ -689,12 +736,11 @@ export default async function ContentDetailPage({
                   </ul>
                 );
               })()}
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {latestRender && (
-            <Panel>
-              <SectionHeading eyebrow="Production" title={`Render (attempt ${latestRender.attempt})`} />
+            <CollapsiblePanel eyebrow="Production" title={`Render (attempt ${latestRender.attempt})`} defaultOpen={latestRender.status === "SUCCESS"}>
               <p className="mb-2 text-[13px] text-[var(--color-text-muted)]">
                 Status: <Badge tone={latestRender.status === "SUCCESS" ? "emerald" : latestRender.status === "FAILED" ? "rose" : "neutral"}>{latestRender.status}</Badge>
                 {latestRender.width && latestRender.height ? ` · ${latestRender.width}x${latestRender.height}` : ""}
@@ -705,7 +751,8 @@ export default async function ContentDetailPage({
                   src={`/api/media/${latestRender.storageKey}`}
                   controls
                   preload="metadata"
-                  className="mb-3 max-h-[480px] w-auto self-start rounded-lg border border-[var(--color-border)]"
+                  playsInline
+                  className="mx-auto mb-3 block max-h-[70dvh] w-auto max-w-full rounded-lg border border-[var(--color-border)] bg-black sm:mx-0 sm:max-h-[480px]"
                 />
               )}
               {FINISHING_EDIT_STATES.has(item.currentState) && (
@@ -747,12 +794,16 @@ export default async function ContentDetailPage({
               {latestRender.errorMessage && (
                 <p className="mt-1.5 text-[13px] text-[var(--color-rose-400)]">{latestRender.errorMessage}</p>
               )}
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {latestQCReport && (
-            <Panel>
-              <SectionHeading eyebrow="Quality" title="Quality Gate" />
+            <CollapsiblePanel
+              eyebrow="Quality"
+              title="Quality Gate"
+              defaultOpen={latestQCReport.overallStatus !== "PASS" && (item.currentState === "QC_REPAIR" || item.currentState === "QC_BLOCKED")}
+              meta={<Badge tone={latestQCReport.overallStatus === "PASS" ? "emerald" : "rose"}>{latestQCReport.overallStatus}</Badge>}
+            >
               <p className="mb-2 text-[13px]">
                 Overall: <Badge tone={latestQCReport.overallStatus === "PASS" ? "emerald" : "rose"}>{latestQCReport.overallStatus}</Badge>
               </p>
@@ -797,19 +848,18 @@ export default async function ContentDetailPage({
                   </ul>
                 </>
               )}
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {item.platformPackages.length > 0 && (
-            <Panel>
-              <SectionHeading eyebrow="Distribution" title="Platform Packages" />
+            <CollapsiblePanel eyebrow="Distribution" title="Platform Packages">
               <div className="flex flex-col gap-3">
                 {ALL_PLATFORMS.filter((p) => packagedPlatforms.has(p)).map((platform) => {
                   const pkg = item.platformPackages.find((p) => p.platform === platform)!;
                   return (
                     <div key={platform} className="border-t border-[var(--color-border)] pt-3 first:border-0 first:pt-0">
                       <p className="text-[13px]">
-                        <span className="font-medium">{platform}</span>
+                        <span className="font-medium">{platformLabel(platform)}</span>
                         {pkg.title ? ` — ${pkg.title}` : ""}
                       </p>
                       <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">{pkg.caption}</p>
@@ -822,25 +872,24 @@ export default async function ContentDetailPage({
                   );
                 })}
               </div>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {item.publications.length > 0 && (
-            <Panel>
-              <SectionHeading eyebrow="Distribution" title="Publications" />
+            <CollapsiblePanel eyebrow="Distribution" title="Publications" defaultOpen={item.currentState === "PUBLISHING"}>
               <div className="flex flex-col gap-2">
                 {ALL_PLATFORMS.filter((p) => item.publications.some((pub) => pub.platform === p)).map((platform) => {
                   const latest = item.publications.find((p) => p.platform === platform)!;
                   return (
                     <p key={platform} className="text-[13px]">
-                      <span className="font-medium">{platform}</span> (attempt {latest.attempt}):{" "}
+                      <span className="font-medium">{platformLabel(platform)}</span> (attempt {latest.attempt}):{" "}
                       <Badge tone={latest.status === "SUCCESS" ? "emerald" : latest.status === "DRAFT" ? "gold" : "rose"}>
                         {latest.status}
                       </Badge>
                       {latest.url && (
                         <>
                           {" — "}
-                          <a href={latest.url} className="link-quiet underline">
+                          <a href={latest.url} className="link-quiet break-all underline">
                             {latest.url}
                           </a>
                         </>
@@ -855,17 +904,42 @@ export default async function ContentDetailPage({
                   );
                 })}
               </div>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {item.performanceSnapshots.length > 0 && (
-            <Panel>
-              <SectionHeading eyebrow="Learning" title="Performance Snapshots" />
+            <CollapsiblePanel eyebrow="Learning" title="Performance Snapshots" defaultOpen={item.currentState === "PUBLISHED" || item.currentState === "MEASURING"}>
               <p className="mb-3 text-[13px] text-[var(--color-text-muted)]">
                 Absent metrics mean the platform genuinely doesn&apos;t return them — never
                 fabricated.
               </p>
-              <div className="overflow-x-auto rounded-lg border border-[var(--color-border)]">
+              {/* Phones: one card per snapshot (a metric grid) instead of an 8-column table. */}
+              <ul className="flex flex-col gap-2 sm:hidden">
+                {item.performanceSnapshots.map((s) => (
+                  <li key={s.id} className="rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-3">
+                    <p className="mb-2 flex items-center justify-between text-[13px]">
+                      <span className="font-medium">{platformLabel(s.platform)}</span>
+                      <Badge tone="neutral">{s.offset.replace("T_PLUS_", "T+").replace("H", "h").replace("D", "d")}</Badge>
+                    </p>
+                    <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-[13px]">
+                      {([
+                        ["Views", s.viewCount],
+                        ["Likes", s.likeCount],
+                        ["Comments", s.commentCount],
+                        ["Shares", s.shareCount],
+                        ["Saves", s.saveCount],
+                        ["Avg watch", s.avgWatchTimeSeconds != null ? `${s.avgWatchTimeSeconds}s` : null],
+                      ] as const).map(([k, v]) => (
+                        <div key={k} className="min-w-0">
+                          <dt className="text-[11px] text-[var(--color-text-faint)]">{k}</dt>
+                          <dd className="font-medium tabular-nums">{v == null ? "—" : typeof v === "number" ? v.toLocaleString() : v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden overflow-x-auto rounded-lg border border-[var(--color-border)] sm:block">
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-text-faint)]">
@@ -895,7 +969,7 @@ export default async function ContentDetailPage({
                   </tbody>
                 </table>
               </div>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {item.performanceEvaluations.length > 0 &&
@@ -908,8 +982,7 @@ export default async function ContentDetailPage({
                 dataCompleteness: string;
               }[];
               return (
-                <Panel>
-                  <SectionHeading eyebrow="Learning" title="Performance Evaluation" />
+                <CollapsiblePanel eyebrow="Learning" title="Performance Evaluation">
                   <p className="text-sm">{latest.overallSummary}</p>
                   {latest.strategicallyValuableDespiteLowerViews && (
                     <p className="mt-1.5 text-[13px] text-[var(--color-gold-400)]">
@@ -927,13 +1000,12 @@ export default async function ContentDetailPage({
                       </li>
                     ))}
                   </ul>
-                </Panel>
+                </CollapsiblePanel>
               );
             })()}
 
           {item.comments.length > 0 && (
-            <Panel>
-              <SectionHeading eyebrow="Audience" title={`Comments (${item.comments.length})`} />
+            <CollapsiblePanel eyebrow="Audience" title={`Comments (${item.comments.length})`}>
               <ul className="flex flex-col gap-1.5 text-[13px]">
                 {item.comments.slice(0, 20).map((c) => (
                   <li key={c.id}>
@@ -943,12 +1015,11 @@ export default async function ContentDetailPage({
                   </li>
                 ))}
               </ul>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {item.creatorCard && (
-            <Panel>
-              <SectionHeading eyebrow="Production" title="Creator Card" />
+            <CollapsiblePanel eyebrow="Production" title="Creator Card" defaultOpen={item.currentState === "READY_TO_FILM"}>
               <p className="text-sm font-medium">{item.creatorCard.hook}</p>
               <ul className="mt-2 list-disc pl-5 text-[13px] text-[var(--color-text-muted)]">
                 {(item.creatorCard.talkingPoints as string[]).map((point, i) => (
@@ -956,10 +1027,10 @@ export default async function ContentDetailPage({
                 ))}
               </ul>
               <p className="mt-2 text-[13px] text-[var(--color-text-faint)]">Setup: {item.creatorCard.setup}</p>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
-          <Panel>
+          <Panel id="media" className={item.currentState === "FILMED" ? "panel-action" : ""}>
             <SectionHeading eyebrow="Assets" title="Media" />
             <RawTakeUploader contentItemId={item.id} mode={storageMode} />
             {item.mediaAssets.length > 0 && !item.mediaAssets.some((a) => a.transcript) && (
@@ -972,7 +1043,7 @@ export default async function ContentDetailPage({
               {item.mediaAssets.map((asset) => (
                 <li key={asset.id} className="flex flex-col gap-1.5">
                   <div>
-                    <a href={`/api/media/${asset.storageKey}`} className="link-quiet underline">
+                    <a href={`/api/media/${asset.storageKey}`} className="link-quiet break-all underline">
                       {asset.originalFilename}
                     </a>{" "}
                     <span className="text-[var(--color-text-faint)]">
@@ -989,7 +1060,7 @@ export default async function ContentDetailPage({
                     <p className="line-clamp-3 text-[var(--color-text-muted)]">{asset.transcript}</p>
                   )}
                   <details className="text-[var(--color-text-muted)]">
-                    <summary className="cursor-pointer text-[12px] text-[var(--color-text-faint)]">
+                    <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] text-[var(--color-text-muted)] sm:text-[12px]">
                       {asset.transcript ? "Fix transcript / re-transcribe" : "Transcribe or paste transcript"}
                     </summary>
                     <div className="mt-2 flex flex-col gap-2">
@@ -1014,21 +1085,20 @@ export default async function ContentDetailPage({
 
           <Panel>
             <SectionHeading eyebrow="Distribution" title="Schedule" />
-            <form action={submitSchedule} className="flex items-center gap-3">
+            <form action={submitSchedule} className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <input type="hidden" name="contentItemId" value={item.id} />
               <input
                 type="date"
                 name="scheduledDate"
                 defaultValue={item.scheduleEntry ? item.scheduleEntry.scheduledDate.toISOString().slice(0, 10) : ""}
-                className="field-input w-auto"
+                className="field-input sm:w-auto"
               />
-              <Button>{item.scheduleEntry ? "Update date" : "Add to calendar"}</Button>
+              <Button className="w-full sm:w-auto">{item.scheduleEntry ? "Update date" : "Add to calendar"}</Button>
             </form>
           </Panel>
 
           {!isTerminal && (
-            <Panel>
-              <SectionHeading eyebrow="Feedback" title="Taste Feedback & Second Opinion" />
+            <CollapsiblePanel eyebrow="Feedback" title="Taste Feedback & Second Opinion">
               <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
                 Spec §7&apos;s Human Taste Model — Chris&apos;s real, raw feedback on any
                 artifact here, plus an independent Adversarial Evaluator critique of the current
@@ -1093,12 +1163,12 @@ export default async function ContentDetailPage({
                   ))}
                 </div>
               )}
-            </Panel>
+            </CollapsiblePanel>
           )}
 
           {!isTerminal && (
-            <Panel>
-              <form action={cancelItem} className="flex items-center gap-3">
+            <CollapsiblePanel eyebrow="Danger zone" title="Cancel this item">
+              <form action={cancelItem} className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <input
                   type="text"
@@ -1107,13 +1177,12 @@ export default async function ContentDetailPage({
                   required
                   className="field-input flex-1"
                 />
-                <Button tone="danger">Cancel this item</Button>
+                <Button tone="danger" pendingLabel="Cancelling…">Cancel this item</Button>
               </form>
-            </Panel>
+            </CollapsiblePanel>
           )}
 
-          <Panel>
-            <SectionHeading eyebrow="Audit Trail" title="History" />
+          <CollapsiblePanel eyebrow="Audit Trail" title="History">
             <ul className="flex flex-col gap-1.5 text-[13px] text-[var(--color-text-muted)]">
               {item.transitions.map((t) => (
                 <li key={t.id}>
@@ -1125,8 +1194,9 @@ export default async function ContentDetailPage({
               ))}
               {item.transitions.length === 0 && <li>No transitions yet.</li>}
             </ul>
-          </Panel>
+          </CollapsiblePanel>
         </div>
+        {sticky && <StickyActionBar label={sticky.label}>{sticky.node}</StickyActionBar>}
       </PageShell>
     </>
   );

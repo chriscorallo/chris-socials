@@ -63,7 +63,7 @@ export function NavBar() {
       >
         {/* Phone / tablet: brand only — navigation lives in the bottom tab bar. */}
         <div className="flex h-12 items-center justify-center px-4 lg:hidden">
-          <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+          <Link href="/" className="flex h-11 items-center gap-2 px-2 text-[15px] font-semibold tracking-tight">
             <BrandMark className="h-2.5 w-2.5" />
             Chris Studio
           </Link>

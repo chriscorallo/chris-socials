@@ -170,7 +170,10 @@ html {
     padding: 0.55rem 1.1rem;
     min-height: 2.75rem; /* 44px — Apple HIG minimum tap target */
     transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
-    white-space: nowrap;
+    white-space: normal; /* wraps only when a phone is too narrow for the label */
+    text-align: center;
+    line-height: 1.25;
+    max-width: 100%;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
@@ -359,6 +362,31 @@ details[open] > summary .chevron {
 }
 .scroll-row > * {
   scroll-snap-align: start;
+}
+
+/* A row of actions that stacks into full-width buttons on phones, a wrapping row from sm up.
+ * Also makes a lone primary action inside a .panel-action full-width on phones. */
+.btn-stack {
+  display: grid;
+  gap: 0.5rem;
+}
+.btn-stack > form > .btn,
+.btn-stack > .btn,
+.panel-action > form > .btn,
+.panel-action > form > div > .btn {
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .btn-stack {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .btn-stack > form > .btn,
+  .btn-stack > .btn,
+  .panel-action > form > .btn,
+  .panel-action > form > div > .btn {
+    width: auto;
+  }
 }
 
 /* Bottom sheet (More menu) */
