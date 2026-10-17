@@ -25,10 +25,10 @@ import { Icon } from "./icons";
 const PAD = 14;
 const SNAP_PX = 8;
 const RULER_H = 26;
-const VIDEO_H = 64;
-const LANE_H = 26;
-const CAPTION_H = 28;
-const ZOOM_H = 30;
+const VIDEO_H = 58;
+const LANE_H = 24;
+const CAPTION_H = 26;
+const ZOOM_H = 28;
 const MIN_PPS = 8;
 const MAX_PPS = 480;
 
@@ -182,7 +182,7 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
   };
 
   // ruler ticks
-  const ticks = useMemo(() => {
+  const { ticks, majorStep } = useMemo(() => {
     const minLabelPx = 70;
     const steps = [0.5, 1, 2, 5, 10, 15, 30, 60];
     const major = steps.find((s) => s * pps >= minLabelPx) ?? 60;
@@ -193,7 +193,7 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
       const isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
       out.push({ t, major: isMajor });
     }
-    return out;
+    return { ticks: out, majorStep: major };
   }, [pps, contentW]);
 
   const sel = state.selection;
@@ -316,7 +316,7 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
                   <div className="ed-tick" style={{ left: xOf(t), height: major ? 10 : 5 }} />
                   {major && (
                     <span className="ed-tick-label" style={{ left: xOf(t) }}>
-                      {formatTime(t)}
+                      {majorStep < 1 ? `${t.toFixed(1)}s` : formatTime(t)}
                     </span>
                   )}
                 </div>

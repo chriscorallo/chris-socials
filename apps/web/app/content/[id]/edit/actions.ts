@@ -28,6 +28,9 @@ async function stateOf(contentItemId: string): Promise<ContentState> {
 function plainError(err: unknown, step: string): string {
   const name = err instanceof Error ? err.name : "";
   const msg = err instanceof Error ? err.message : String(err);
+  if (name === "FinishingEditNotAllowedError" && /EDITING/.test(msg)) {
+    return "The last render stopped partway, so this video is locked until it renders cleanly. Open the video page and press “Render again”, then come back to edit.";
+  }
   if (name === "SpendCapExceededError") {
     return "Today's AI spending limit has been reached, so the AI quality check couldn't run. Your edit is saved — try again tomorrow, or raise MODEL_SPEND_DAILY_CAP_USD.";
   }
@@ -80,7 +83,7 @@ export async function renderStepAction(contentItemId: string): Promise<StepResul
     const result = await renderContentItem(prisma, storage, contentItemId, { fontPath: getRenderFontPath() }, { actorId: session.user!.id! });
     const state = await stateOf(contentItemId);
     if (result.status !== "SUCCESS") {
-      return { ok: false, error: `The render didn't pass its technical check: ${result.errorMessage ?? "see the item page for details"}. Your edit is saved.`, state };
+      return { ok: false, error: `The render didn't pass its technical check: ${(result.errorMessage ?? "see the item page for details").replace(/\.+$/, "")}. Your edit is saved.`, state };
     }
     return { ok: true, state, renderKey: result.outputStorageKey ?? null };
   } catch (err) {

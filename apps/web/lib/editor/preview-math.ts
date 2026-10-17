@@ -107,8 +107,8 @@ export interface Box {
   y1: number;
 }
 
-const AVG_CHAR_EM = 0.56;
-const AVG_CHAR_EM_UPPER = 0.66;
+const AVG_CHAR_EM = 0.5;
+const AVG_CHAR_EM_UPPER = 0.62;
 const LINE_HEIGHT_EM = 1.15;
 
 /** Greedy word-wrap of `text` into lines no wider than `maxPx`, using an average glyph width. */

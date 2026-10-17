@@ -31,7 +31,9 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
           <p className="mb-5 text-sm text-[var(--color-text-muted)]">
             {!plan
               ? "This video doesn't have an edit yet. Once the AI has planned the edit, you can open it here and finish it off."
-              : `This video can't be edited right now — it's ${item.currentState.toLowerCase().replace(/_/g, " ")}. Editing is available after the edit is planned and before it publishes.`}
+              : item.currentState === "EDITING"
+                ? "The last render stopped partway, so editing is locked until it renders cleanly. Go back and press “Render again”, then reopen the editor."
+                : `This video can't be edited right now — it's ${item.currentState.toLowerCase().replace(/_/g, " ")}. Editing is available after the edit is planned and before it publishes.`}
           </p>
           <Link href={`/content/${id}`} className="btn btn-ghost">
             ← Back to the video

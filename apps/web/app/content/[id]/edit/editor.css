@@ -1011,6 +1011,18 @@ textarea.ed-input {
   }
 }
 
+/* keyboard focus: a quiet gold ring instead of the browser default */
+.ed-root button:focus,
+.ed-modal button:focus {
+  outline: none;
+}
+.ed-root button:focus-visible,
+.ed-modal button:focus-visible,
+.ed-root [role="button"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-gold-400) 70%, transparent);
+  outline-offset: 1px;
+}
+
 /* platform chrome mock */
 .ed-chrome {
   position: absolute;
