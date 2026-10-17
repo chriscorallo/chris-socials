@@ -79,6 +79,20 @@ function sandboxCredentials(): Record<string, string> {
   return VERCEL_TOKEN && VERCEL_TEAM_ID && VERCEL_PROJECT_ID ? { token: VERCEL_TOKEN, teamId: VERCEL_TEAM_ID, projectId: VERCEL_PROJECT_ID } : {};
 }
 
+/** Credentials the worker uses only to stop its own sandbox. Empty → it can't; the poll
+ * endpoint and the sandbox timeout still stop it. */
+async function selfStopCredentials(): Promise<Record<string, string>> {
+  const explicit = sandboxCredentials();
+  if (explicit.token) return { VERCEL_TOKEN: explicit.token, VERCEL_TEAM_ID: explicit.teamId!, VERCEL_PROJECT_ID: explicit.projectId! };
+  try {
+    const { getVercelOidcToken } = await import("@vercel/oidc");
+    const token = await getVercelOidcToken();
+    return token ? { VERCEL_OIDC_TOKEN: token } : {};
+  } catch {
+    return {};
+  }
+}
+
 export const vercelSandboxLauncher: SandboxLauncher = {
   async launch(input) {
     const { Sandbox } = await import("@vercel/sandbox");
@@ -94,14 +108,18 @@ export const vercelSandboxLauncher: SandboxLauncher = {
     });
     try {
       const dir = `/vercel/sandbox/jobs/${input.jobRunId}`;
+      // Self-stop: a VM that powers itself off still counts as "running" to Vercel until its
+      // timeout (measured), so the worker stops its sandbox through the API when it's done —
+      // with this project's short-lived OIDC token (or the explicit operator credentials).
+      const selfStop = await selfStopCredentials();
       // Secrets travel as a 0600 file the runner deletes on read — never on the command line.
       await sandbox.writeFiles([
-        { path: `${dir}/env.json`, content: Buffer.from(JSON.stringify(input.env)), mode: 0o600 },
+        { path: `${dir}/env.json`, content: Buffer.from(JSON.stringify({ ...input.env, ...selfStop, SANDBOX_SELF_NAME: name })), mode: 0o600 },
         { path: `${dir}/args.json`, content: Buffer.from(JSON.stringify(input.args)) },
       ]);
       await sandbox.runCommand({
         cmd: "bash",
-        args: [RUNNER, input.kind, `@${dir}/args.json`, "--job-run-id", input.jobRunId, "--env-file", `${dir}/env.json`, "--poweroff"],
+        args: [RUNNER, input.kind, `@${dir}/args.json`, "--job-run-id", input.jobRunId, "--env-file", `${dir}/env.json`, "--stop-self"],
         detached: true,
       });
     } catch (err) {
@@ -135,7 +153,7 @@ export function setSandboxLauncherForTests(l: SandboxLauncher | null) {
 
 /** Only what the worker needs — never the whole server env. */
 export function workerEnv(kind: HeavyJobKind, args: unknown): Record<string, string> {
-  const pick = ["DATABASE_URL", "BLOB_READ_WRITE_TOKEN", "APP_TIMEZONE", "MODEL_SPEND_DAILY_CAP_USD", "TRANSCRIPTION_MODEL", "MODEL_REFUSAL_FALLBACK", "RESEARCH_WEB_SEARCH"];
+  const pick = ["DATABASE_URL", "BLOB_READ_WRITE_TOKEN", "APP_TIMEZONE", "MODEL_SPEND_DAILY_CAP_USD", "TRANSCRIPTION_MODEL", "MODEL_REFUSAL_FALLBACK", "RESEARCH_WEB_SEARCH", "MODEL_HIGH", "MODEL_MEDIUM", "MODEL_LOW"];
   if (heavyJobNeedsModel(kind, args)) pick.push("ANTHROPIC_API_KEY");
   const env: Record<string, string> = {};
   for (const k of pick) {

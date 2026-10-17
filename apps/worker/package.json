@@ -32,7 +32,8 @@
     "@chris/media": "workspace:*",
     "@chris/motion": "workspace:*",
     "@chris/platforms": "workspace:*",
-    "@vercel/blob": "2.8.2"
+    "@vercel/blob": "2.8.2",
+    "@vercel/sandbox": "3.8.0"
   },
   "devDependencies": {
     "@types/node": "^26.5.0",

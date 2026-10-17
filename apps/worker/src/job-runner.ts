@@ -4,7 +4,7 @@
  * (scripts/sandbox/create-snapshot.ts); the web app starts it in a fresh sandbox per job
  * (apps/web/lib/heavy-jobs.ts). Also runnable locally under tsx.
  *
- *   node job-runner.mjs <kind> <jsonArgs | @args.json> --job-run-id <id> [--env-file <env.json>] [--poweroff]
+ *   node job-runner.mjs <kind> <jsonArgs | @args.json> --job-run-id <id> [--env-file <env.json>] [--stop-self]
  *       Real database (DATABASE_URL) + real storage (BLOB_READ_WRITE_TOKEN → private Vercel
  *       Blob, else STORAGE_LOCAL_DIR). Progress and the result go on the JobRun row (which the
  *       web app already claimed — it is the per-item lease). Exit 0 = recorded (even a job
@@ -24,7 +24,6 @@
  * therefore imported dynamically, after that.
  */
 import { readFileSync, rmSync } from "node:fs";
-import { spawn } from "node:child_process";
 
 interface Cli {
   kind: string;
@@ -32,18 +31,18 @@ interface Cli {
   jobRunId: string | null;
   envFile: string | null;
   offline: string | null;
-  poweroff: boolean;
+  stopSelf: boolean;
 }
 
 export function parseCli(argv: string[]): Cli {
-  const out: Cli = { kind: "", args: null, jobRunId: null, envFile: null, offline: null, poweroff: false };
+  const out: Cli = { kind: "", args: null, jobRunId: null, envFile: null, offline: null, stopSelf: false };
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--job-run-id") out.jobRunId = argv[++i] ?? null;
     else if (a === "--env-file") out.envFile = argv[++i] ?? null;
     else if (a === "--offline") out.offline = argv[++i] ?? null;
-    else if (a === "--poweroff") out.poweroff = true;
+    else if (a === "--stop-self") out.stopSelf = true;
     else rest.push(a);
   }
   out.kind = rest[0] ?? "";
@@ -155,14 +154,23 @@ async function createModelProviderFactory(prisma: import("@chris/domain").Prisma
   return () => (instance ??= new CostTrackingModelProvider(new AnthropicModelProvider(), prisma, { dailyCapUsd: cap }));
 }
 
-/** Ends the microVM as soon as the job is recorded (the dispatcher's timeout is only the
- * safety net). Best effort: the web app also stops the sandbox when it sees the job finish. */
-function powerOff(): void {
-  try {
-    spawn("sudo", ["-n", "poweroff"], { stdio: "ignore", detached: true }).unref();
-  } catch {
-    // ignore
-  }
+/**
+ * Stops this sandbox through the Vercel API as soon as the job is recorded. (Powering the VM off
+ * from inside is NOT enough: Vercel keeps reporting — and provisioning — the sandbox as
+ * "running" until its timeout; measured.) Uses the credentials the dispatcher put in the env
+ * file (the project's short-lived OIDC token on Vercel). Best effort: the web app also stops a
+ * finished job's sandbox when it polls, and the sandbox timeout is the last safety net.
+ */
+export async function stopSelf(): Promise<string> {
+  const name = process.env.SANDBOX_SELF_NAME;
+  if (!name) return "no SANDBOX_SELF_NAME";
+  const { VERCEL_TOKEN, VERCEL_TEAM_ID, VERCEL_PROJECT_ID } = process.env;
+  const creds = VERCEL_TOKEN && VERCEL_TEAM_ID && VERCEL_PROJECT_ID ? { token: VERCEL_TOKEN, teamId: VERCEL_TEAM_ID, projectId: VERCEL_PROJECT_ID } : {};
+  if (!creds.token && !process.env.VERCEL_OIDC_TOKEN) return "no credentials";
+  const { Sandbox } = await import("@vercel/sandbox");
+  const sb = await Sandbox.get({ ...creds, name });
+  await sb.stop();
+  return "stopped";
 }
 
 const isMain = (() => {
@@ -171,7 +179,7 @@ const isMain = (() => {
 })();
 
 if (isMain) {
-  const poweroff = process.argv.includes("--poweroff");
+  const stopAfter = process.argv.includes("--stop-self");
   main()
     .then((code) => {
       process.exitCode = code;
@@ -181,9 +189,15 @@ if (isMain) {
       process.exitCode = 1;
       await recordCrash?.(err instanceof Error ? err.message : String(err)).catch(() => undefined);
     })
-    .finally(() => {
-      if (poweroff) setTimeout(powerOff, 500);
-      // Don't let a stray handle (an idle pg pool, a browser) keep the VM alive.
-      setTimeout(() => process.exit(process.exitCode ?? 0), poweroff ? 2_000 : 200).unref();
+    .finally(async () => {
+      if (stopAfter) {
+        log("stopping_sandbox");
+        // The stop kills this process mid-call when it works; the log line is for when it doesn't.
+        await Promise.race([stopSelf(), new Promise<string>((r) => setTimeout(() => r("timed out"), 20_000))])
+          .then((how) => log("stop_self", { result: how }))
+          .catch((err) => log("stop_self_failed", { error: err instanceof Error ? err.message : String(err) }));
+      }
+      // Don't let a stray handle (an idle pg pool, a browser) keep the process alive.
+      setTimeout(() => process.exit(process.exitCode ?? 0), 200).unref();
     });
 }

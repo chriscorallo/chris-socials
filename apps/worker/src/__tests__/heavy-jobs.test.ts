@@ -147,8 +147,8 @@ describe("heavy jobs", () => {
     const dir = await mkdtemp(join(tmpdir(), "chris-runner-cli-"));
     try {
       await writeFile(join(dir, "args.json"), JSON.stringify({ contentItemId: "x" }));
-      const cli = parseCli(["render", `@${join(dir, "args.json")}`, "--job-run-id", "j1", "--env-file", "/e.json", "--poweroff"]);
-      expect(cli).toMatchObject({ kind: "render", args: { contentItemId: "x" }, jobRunId: "j1", envFile: "/e.json", poweroff: true, offline: null });
+      const cli = parseCli(["render", `@${join(dir, "args.json")}`, "--job-run-id", "j1", "--env-file", "/e.json", "--stop-self"]);
+      expect(cli).toMatchObject({ kind: "render", args: { contentItemId: "x" }, jobRunId: "j1", envFile: "/e.json", stopSelf: true, offline: null });
       const envPath = join(dir, "env.json");
       await writeFile(envPath, JSON.stringify({ CHRIS_TEST_ENV_A: "1", "bad key": "x", CHRIS_TEST_ENV_B: 5 }));
       expect(loadEnvFile(envPath)).toEqual(["CHRIS_TEST_ENV_A"]);

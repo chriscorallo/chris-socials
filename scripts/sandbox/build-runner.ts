@@ -68,6 +68,9 @@ export function runtimeEnv(root = SANDBOX_ROOT, cache = SANDBOX_CACHE): Record<s
     TRANSCRIPTION_CACHE_DIR: `${cache}/transformers`,
     // GPU-less microVM: WebGL (3D templates) through ANGLE on SwiftShader.
     REMOTION_GL: "swangle",
+    // SwiftShader is multi-threaded per tab: 2 tabs measured fastest on 8 vCPU (60 s vs 89 s at
+    // 1, 117 s at 4, 152 s at 8 for the same 159 frames).
+    REMOTION_CONCURRENCY: "2",
   };
 }
 
