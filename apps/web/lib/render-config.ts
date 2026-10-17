@@ -32,3 +32,16 @@ export function isAutoSubjectTrackingEnabled(): boolean {
   if (flag === "off") return false;
   return !process.env.VERCEL;
 }
+
+/**
+ * Person matte after upload (Motion v2: graphics behind Chris). Like tracking: on locally, off on
+ * Vercel (ONNX + ~26 MB model + minutes of CPU per take). PERSON_MATTE=on|off overrides. Takes
+ * without a matte still render — behind-subject graphics fall back to the render-time job or
+ * render in front with a warning.
+ */
+export function isAutoPersonMatteEnabled(): boolean {
+  const flag = process.env.PERSON_MATTE?.toLowerCase();
+  if (flag === "on") return true;
+  if (flag === "off") return false;
+  return !process.env.VERCEL;
+}

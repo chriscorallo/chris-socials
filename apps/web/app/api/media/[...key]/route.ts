@@ -27,13 +27,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   const storageKey = keySegments.join("/");
 
   const asset = await prisma.mediaAsset.findFirst({ where: { storageKey } });
-  const render = asset ? null : await prisma.render.findFirst({ where: { storageKey } });
-  if (!asset && !render) {
+  // A take's person matte (Motion v2 — the editor previews graphics behind Chris with it).
+  const matteOf = asset ? null : await prisma.mediaAsset.findFirst({ where: { matteStorageKey: storageKey } });
+  const render = asset || matteOf ? null : await prisma.render.findFirst({ where: { storageKey } });
+  if (!asset && !render && !matteOf) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const contentType = asset?.mimeType ?? "video/mp4";
   // Header-safe filename: strip quotes/control chars rather than trusting the upload name.
-  const filename = (asset?.originalFilename ?? "render.mp4").replace(/[^\w.-]+/g, "_");
+  const filename = (asset?.originalFilename ?? (matteOf ? "matte.mp4" : "render.mp4")).replace(/[^\w.-]+/g, "_");
 
   const local = getLocalStorage();
   if (!local) {
