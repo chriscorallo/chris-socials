@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MOTION_TEMPLATES, MotionPropsSchemas, TimelineVisualSchema } from "@chris/media/timeline";
+import { MOTION_TEMPLATES, MotionPropsSchemas, TEMPLATE_FOOTPRINTS, TimelineVisualSchema } from "@chris/media/timeline";
 import {
   AUTO_TRANSITIONS,
   PLACEMENT_MARGIN,
@@ -18,7 +18,8 @@ describe("template props", () => {
   it("every template has valid sample props, a design size and AUTO transitions", () => {
     for (const t of MOTION_TEMPLATES) {
       expect(MotionPropsSchemas[t].safeParse(SAMPLE_PROPS[t]).success, t).toBe(true);
-      expect(TEMPLATE_DESIGN_SIZE[t].width).toBeGreaterThan(0);
+      // The designed box IS the placement engine's footprint.
+      expect(TEMPLATE_DESIGN_SIZE[t]).toEqual({ width: TEMPLATE_FOOTPRINTS[t].width, height: TEMPLATE_FOOTPRINTS[t].height });
       expect(AUTO_TRANSITIONS[t].enter).toBeTruthy();
     }
   });
@@ -85,8 +86,8 @@ describe("placement", () => {
     expect(b.clamped).toBe(false);
     expect(b.cx).toBeCloseTo(540);
     expect(b.cy).toBeCloseTo(576);
-    expect(b.width).toBe(840);
-    expect(b.left).toBeCloseTo(120);
+    expect(b.width).toBe(720);
+    expect(b.left).toBeCloseTo(180);
   });
 
   it("nudges boxes back inside the safe margin and says so", () => {

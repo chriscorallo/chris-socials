@@ -1,6 +1,7 @@
 import {
   MOTION_TEMPLATES,
   MotionPropsSchemas,
+  TEMPLATE_FOOTPRINTS,
   TimelineVisualSchema,
   type MotionProps,
   type MotionTemplate,
@@ -114,25 +115,14 @@ export function parseVisuals(visuals: unknown[]): { parsed: ParsedVisual[]; erro
 }
 
 /**
- * Designed box (px at a 1080-wide portrait canvas, scale 1) each template is laid out in.
- * `placement.x/y` is the CENTER of this box. TITLE_CARD is full-frame and ignores placement.
+ * Designed box (px at a 1080-wide canvas, scale 1) each template is laid out in — exactly the
+ * placement engine's TEMPLATE_FOOTPRINTS (packages/media/src/visual-footprints.ts), so the
+ * box the engine keeps clear of Chris/captions/UI is the box the template draws in.
+ * `placement.x/y` is its CENTER. TITLE_CARD is full-frame and ignores placement.
  */
-export const TEMPLATE_DESIGN_SIZE: Record<MotionTemplate, { width: number; height: number }> = {
-  KINETIC_TEXT: { width: 940, height: 520 },
-  NUMBER_COUNTER: { width: 920, height: 480 },
-  STAT_CARD: { width: 840, height: 460 },
-  BAR_CHART: { width: 940, height: 820 },
-  LINE_CHART: { width: 940, height: 760 },
-  COMPARISON: { width: 960, height: 640 },
-  PERCENT_RING: { width: 720, height: 800 },
-  LIST_STEPS: { width: 900, height: 760 },
-  ICON_3D: { width: 720, height: 800 },
-  MONEY_STACK_3D: { width: 940, height: 860 },
-  CALLOUT: { width: 640, height: 150 },
-  TIMELINE: { width: 860, height: 840 },
-  DEFINITION: { width: 900, height: 560 },
-  TITLE_CARD: { width: 1080, height: 1920 },
-};
+export const TEMPLATE_DESIGN_SIZE: Record<MotionTemplate, { width: number; height: number }> = Object.fromEntries(
+  MOTION_TEMPLATES.map((t) => [t, { width: TEMPLATE_FOOTPRINTS[t].width, height: TEMPLATE_FOOTPRINTS[t].height }]),
+) as Record<MotionTemplate, { width: number; height: number }>;
 
 /** Safe margin (px at unit scale) a placed box is kept inside. */
 export const PLACEMENT_MARGIN = 36;
@@ -151,9 +141,9 @@ export interface PlacementBox {
   clamped: boolean;
 }
 
-/** Canvas unit: templates are designed at 1080 px on the short side. */
+/** Canvas unit: templates are designed at 1080 px canvas WIDTH (same rule as footprintPx). */
 export function canvasUnit(canvas: { width: number; height: number }): number {
-  return Math.min(canvas.width, canvas.height) / 1080;
+  return canvas.width / 1080;
 }
 
 /**

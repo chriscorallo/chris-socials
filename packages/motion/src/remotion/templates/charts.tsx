@@ -18,11 +18,11 @@ export function BarChart(tp: TemplateComponentProps<"BAR_CHART">) {
   const hasTitle = !!props.title;
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 940, height: 820, boxSizing: "border-box", padding: "52px 56px 44px", display: "flex", flexDirection: "column", ...glassCard(p) }}>
+      <div style={{ position: "relative", width: 900, height: 760, boxSizing: "border-box", padding: "48px 52px 40px", display: "flex", flexDirection: "column", ...glassCard(p) }}>
         {hasTitle ? (
-          <div style={{ fontFamily: FONT.displayBold, fontSize: 52, lineHeight: 1.1, color: p.ink, letterSpacing: "-0.015em", opacity: titleT, transform: `translateY(${(1 - titleT) * 14}px)` }}>{props.title}</div>
+          <div style={{ fontFamily: FONT.displayBold, fontSize: 48, lineHeight: 1.1, color: p.ink, letterSpacing: "-0.015em", opacity: titleT, transform: `translateY(${(1 - titleT) * 14}px)` }}>{props.title}</div>
         ) : null}
-        <div style={{ position: "relative", flex: 1, marginTop: hasTitle ? 28 : 0 }}>
+        <div style={{ position: "relative", flex: 1, marginTop: hasTitle ? 24 : 0 }}>
           {props.depth3d ? <BarChart3D {...tp} /> : <Bars2D {...tp} />}
         </div>
       </div>
@@ -31,8 +31,8 @@ export function BarChart(tp: TemplateComponentProps<"BAR_CHART">) {
 }
 
 function Bars2D({ props, palette: p, frame, fps }: TemplateComponentProps<"BAR_CHART">) {
-  const W = 828;
-  const H = props.title ? 640 : 724;
+  const W = 796;
+  const H = props.title ? 596 : 672;
   const labelH = 62;
   const valueH = 64;
   const plotH = H - labelH - valueH;
@@ -101,9 +101,9 @@ function smoothPolyline(pts: Array<[number, number]>, samplesPerSeg = 24): Array
 export function LineChart({ props, palette: p, frame, fps }: TemplateComponentProps<"LINE_CHART">) {
   const id = sid(useId());
   const hasTitle = !!props.title;
-  const W = 828;
-  const H = hasTitle ? 470 : 560;
-  const padTop = 92;
+  const W = 796;
+  const H = hasTitle ? 418 : 500;
+  const padTop = 88;
   const plotH = H - padTop;
   const vals = props.points.map((q) => q.value);
   const min = Math.min(0, ...vals);
@@ -137,11 +137,11 @@ export function LineChart({ props, palette: p, frame, fps }: TemplateComponentPr
   const pillLeft = Math.min(W - pillW + 20, Math.max(-20, end[0] - pillW / 2));
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 940, height: 760, boxSizing: "border-box", padding: "52px 56px 40px", ...glassCard(p) }}>
+      <div style={{ position: "relative", width: 900, height: 680, boxSizing: "border-box", padding: "46px 52px 40px", ...glassCard(p) }}>
         {hasTitle ? (
-          <div style={{ fontFamily: FONT.displayBold, fontSize: 52, lineHeight: 1.1, color: p.ink, letterSpacing: "-0.015em", opacity: titleT, transform: `translateY(${(1 - titleT) * 14}px)` }}>{props.title}</div>
+          <div style={{ fontFamily: FONT.displayBold, fontSize: 48, lineHeight: 1.1, color: p.ink, letterSpacing: "-0.015em", opacity: titleT, transform: `translateY(${(1 - titleT) * 14}px)` }}>{props.title}</div>
         ) : null}
-        <div style={{ position: "relative", width: W, height: H, marginTop: hasTitle ? 22 : 0 }}>
+        <div style={{ position: "relative", width: W, height: H, marginTop: hasTitle ? 18 : 0 }}>
           <svg width={W} height={H} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
             <defs>
               <linearGradient id={`${id}-stroke`} x1="0" x2="1" y1="0" y2="0">
@@ -181,7 +181,7 @@ export function LineChart({ props, palette: p, frame, fps }: TemplateComponentPr
           </svg>
           {props.highlightLast ? (
             <div style={{ position: "absolute", left: pillLeft, width: pillW, top: Math.max(-6, end[1] - 112), display: "flex", justifyContent: "center", transform: `translateY(${(1 - pillT) * 16}px) scale(${0.85 + 0.15 * pillT})`, opacity: clamp01(pillT * 1.3) }}>
-              <div style={{ padding: "10px 26px", borderRadius: 999, background: rgba(p.primary, 0.14), boxShadow: `inset 0 0 0 2px ${rgba(p.primary, 0.55)}, 0 0 30px ${rgba(p.primary, 0.25)}`, fontFamily: FONT.display, fontSize: 50, letterSpacing: "-0.02em", ...{ color: p.primary }, whiteSpace: "nowrap" }}>
+              <div style={{ padding: "10px 26px", borderRadius: 999, background: rgba(p.primary, 0.14), boxShadow: `inset 0 0 0 2px ${rgba(p.primary, 0.55)}, 0 0 30px ${rgba(p.primary, 0.25)}`, fontFamily: FONT.display, fontSize: 46, letterSpacing: "-0.02em", color: p.primary, whiteSpace: "nowrap" }}>
                 {withUnit(compactNumber(Math.round(lastV)), props.unit)}
               </div>
             </div>
@@ -215,12 +215,12 @@ export function Comparison({ props, palette: p, frame, fps }: TemplateComponentP
     const win = props.winner === which;
     const lose = props.winner !== "NONE" && !win;
     const L = data.value.length;
-    const size = L <= 5 ? 112 : L <= 7 ? 92 : L <= 10 ? 74 : 60;
+    const size = L <= 5 ? 104 : L <= 7 ? 86 : L <= 10 ? 70 : 56;
     const accent = which === "LEFT" ? p.primary : p.secondary;
     const valueColor = props.winner === "NONE" ? accent : win ? p.primary : p.ink;
     return (
-      <div style={{ position: "relative", width: 424, height: 470, boxSizing: "border-box", padding: "46px 34px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", ...glassCard(p, 40), opacity: clamp01(t * 1.3) * (lose ? 1 - 0.4 * decide : 1), transform: `translateX(${(1 - t) * (which === "LEFT" ? -70 : 70)}px) scale(${win ? 1 + 0.04 * decide : lose ? 1 - 0.03 * decide : 1})`, boxShadow: win ? `${glassCard(p, 40).boxShadow}, 0 0 0 ${3 * decide}px ${rgba(p.primary, 0.85)}, 0 0 ${60 * decide}px ${rgba(p.primary, 0.3)}` : glassCard(p, 40).boxShadow }}>
-        <div style={{ fontFamily: FONT.text, fontSize: 38, letterSpacing: "0.1em", textTransform: "uppercase", color: p.muted }}>{data.label}</div>
+      <div style={{ position: "relative", width: 404, height: 420, boxSizing: "border-box", padding: "40px 30px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", ...glassCard(p, 40), opacity: clamp01(t * 1.3) * (lose ? 1 - 0.4 * decide : 1), transform: `translateX(${(1 - t) * (which === "LEFT" ? -70 : 70)}px) scale(${win ? 1 + 0.04 * decide : lose ? 1 - 0.03 * decide : 1})`, boxShadow: win ? `${glassCard(p, 40).boxShadow}, 0 0 0 ${3 * decide}px ${rgba(p.primary, 0.85)}, 0 0 ${60 * decide}px ${rgba(p.primary, 0.3)}` : glassCard(p, 40).boxShadow }}>
+        <div style={{ fontFamily: FONT.text, fontSize: 36, lineHeight: 1.2, letterSpacing: "0.08em", textTransform: "uppercase", color: p.muted }}>{data.label}</div>
         <div style={{ marginTop: 22, fontFamily: FONT.display, fontSize: size, lineHeight: 1, letterSpacing: "-0.035em", whiteSpace: "nowrap", ...(win || props.winner === "NONE" ? gradientText(valueColor) : { color: valueColor }) }}>{data.value}</div>
         {win ? (
           <div style={{ position: "absolute", top: -26, right: 34, width: 60, height: 60, borderRadius: 99, background: p.primary, display: "flex", alignItems: "center", justifyContent: "center", transform: `scale(${springAt(frame, fps, Math.round(fps * 1.05), SPRINGS.soft)})`, boxShadow: `0 8px 24px ${rgba("#000000", 0.4)}, 0 0 30px ${rgba(p.primary, 0.5)}` }}>
@@ -234,13 +234,13 @@ export function Comparison({ props, palette: p, frame, fps }: TemplateComponentP
   };
   return (
     <div style={{ ...fill, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", display: "flex", gap: 56, alignItems: "center" }}>
+      <div style={{ position: "relative", display: "flex", gap: 48, alignItems: "center" }}>
         {side("LEFT")}
         {side("RIGHT")}
-        <div style={{ position: "absolute", left: "50%", top: "50%", width: 112, height: 112, marginLeft: -56, marginTop: -56, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(160deg, ${mix(p.primary, "#FFFFFF", 0.2)}, ${mix(p.primary, "#000000", 0.2)})`, boxShadow: `0 14px 40px ${rgba("#000000", 0.5)}, 0 0 0 8px ${rgba("#0B0B10", 0.85)}`, transform: `scale(${vsT}) rotate(${(1 - vsT) * -40}deg)`, fontFamily: FONT.display, fontSize: 40, color: "#14110A", letterSpacing: "-0.02em" }}>VS</div>
+        <div style={{ position: "absolute", left: "50%", top: "50%", width: 104, height: 104, marginLeft: -52, marginTop: -52, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(160deg, ${mix(p.primary, "#FFFFFF", 0.2)}, ${mix(p.primary, "#000000", 0.2)})`, boxShadow: `0 14px 40px ${rgba("#000000", 0.5)}, 0 0 0 8px ${rgba("#0B0B10", 0.85)}`, transform: `scale(${vsT}) rotate(${(1 - vsT) * -40}deg)`, fontFamily: FONT.display, fontSize: 40, color: "#14110A", letterSpacing: "-0.02em" }}>VS</div>
       </div>
       {props.verdict ? (
-        <div style={{ marginTop: 40, padding: "16px 34px", borderRadius: 999, ...glassCard(p, 999), fontFamily: FONT.text, fontSize: 38, color: p.ink, opacity: verdictT, transform: `translateY(${(1 - verdictT) * 16}px)`, whiteSpace: "nowrap" }}>{props.verdict}</div>
+        <div style={{ marginTop: 30, padding: "14px 32px", borderRadius: 999, ...glassCard(p, 999), fontFamily: FONT.text, fontSize: 36, color: p.ink, opacity: verdictT, transform: `translateY(${(1 - verdictT) * 16}px)`, whiteSpace: "nowrap" }}>{props.verdict}</div>
       ) : null}
     </div>
   );
@@ -249,9 +249,9 @@ export function Comparison({ props, palette: p, frame, fps }: TemplateComponentP
 // ---------------------------------------------------------------- PERCENT_RING
 export function PercentRing({ props, palette: p, frame, fps }: TemplateComponentProps<"PERCENT_RING">) {
   const id = sid(useId());
-  const D = 540;
-  const sw = 46;
-  const r = (D - sw) / 2 - 18;
+  const D = 400;
+  const sw = 36;
+  const r = (D - sw) / 2 - 16;
   const c = D / 2;
   const fillLen = Math.round(fps * 1.5);
   const t = prog(frame, 6, fillLen, EASE_IN_OUT);
@@ -294,11 +294,11 @@ export function PercentRing({ props, palette: p, frame, fps }: TemplateComponent
           ) : null}
         </svg>
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT.display, letterSpacing: "-0.04em" }}>
-          <span style={{ fontSize: 168, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: p.ink, textShadow: `0 6px 30px ${rgba("#000000", 0.5)}` }}>{shown}</span>
-          <span style={{ fontSize: 84, lineHeight: 1, marginLeft: 6, marginTop: 40, ...gradientText(p.primary) }}>%</span>
+          <span style={{ fontSize: 124, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: p.ink, textShadow: `0 6px 30px ${rgba("#000000", 0.5)}` }}>{shown}</span>
+          <span style={{ fontSize: 62, lineHeight: 1, marginLeft: 4, marginTop: 30, ...gradientText(p.primary) }}>%</span>
         </div>
       </div>
-      <div style={{ marginTop: 34, maxWidth: 700, textAlign: "center", fontFamily: FONT.text, fontSize: 42, lineHeight: 1.25, color: p.ink, opacity: labelT, transform: `translateY(${(1 - labelT) * 16}px)`, textShadow: `0 2px 4px ${rgba("#000000", 0.35)}, 0 8px 30px ${rgba("#000000", 0.6)}` }}>{props.label}</div>
+      <div style={{ marginTop: 20, maxWidth: 520, textAlign: "center", fontFamily: FONT.text, fontSize: 36, lineHeight: 1.25, color: p.ink, opacity: labelT, transform: `translateY(${(1 - labelT) * 16}px)`, textShadow: `0 2px 4px ${rgba("#000000", 0.35)}, 0 8px 30px ${rgba("#000000", 0.6)}` }}>{props.label}</div>
     </div>
   );
 }

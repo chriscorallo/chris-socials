@@ -18,6 +18,9 @@ import {
   DEFAULT_CAPTIONS_CONFIG,
   chooseOutputFps,
   probeMedia,
+  parseSubjectTrack,
+  resolveVisualPlacements,
+  nodeMeasureText,
   type EditTimeline,
   type SfxSound,
   type VisualOverlaySegment,
@@ -79,6 +82,27 @@ export function mapEditPlanToRenderInstructions(
           : null,
     punchIns: editPlan.punchIns,
   };
+}
+
+/**
+ * The timeline with every AUTO visual's placement re-solved by `resolveVisualPlacements` from
+ * the clips' takes' subject tracks, source dimensions and word timings (exact caption
+ * obstacles via the renderer's glyph measurement). No visuals / no AUTO visuals -> unchanged.
+ */
+export function withResolvedPlacements(
+  timeline: EditTimeline,
+  assets: Array<{ id: string; subjectTrack?: unknown; width?: number | null; height?: number | null }>,
+  wordsByAsset: Record<string, TranscriptWord[] | null | undefined>,
+): EditTimeline {
+  if (!timeline.visuals.some((v) => v.placement.mode === "AUTO")) return timeline;
+  const subjectTracks: Record<string, ReturnType<typeof parseSubjectTrack>> = {};
+  const sourceDimensions: Record<string, { width: number; height: number } | null> = {};
+  for (const a of assets) {
+    subjectTracks[a.id] = parseSubjectTrack(a.subjectTrack);
+    sourceDimensions[a.id] = a.width && a.height ? { width: a.width, height: a.height } : null;
+  }
+  const visuals = resolveVisualPlacements(timeline, { subjectTracks, sourceDimensions, wordsByAsset, measure: nodeMeasureText });
+  return { ...timeline, visuals };
 }
 
 /** The slice of @chris/motion the worker uses (injectable for tests). */
@@ -355,7 +379,10 @@ export async function renderContentItem(
     // Motion graphics + sound design (packages/motion). Graceful: a failed motion render or a
     // missing music file never fails the video — the edit renders without them and says so.
     const motionWarnings: string[] = [];
-    const motionInputs = await prepareMotion(db, storage, timeline, sources, workDir, motionWarnings, options.motion);
+    // AUTO placements are re-solved against the takes' subject tracks (same solver the editor
+    // uses), so the rendered graphics land where the editor showed them. MANUAL ones never move.
+    const placedTimeline = withResolvedPlacements(timeline, assets, sourceWords);
+    const motionInputs = await prepareMotion(db, storage, placedTimeline, sources, workDir, motionWarnings, options.motion);
 
     let renderResult: Awaited<ReturnType<typeof renderTimeline>>;
     try {

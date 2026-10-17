@@ -551,12 +551,12 @@ export function Icon3D({ props, palette: p, frame, fps, box }: TemplateComponent
     case "GRADUATION_CAP": model = <GradCap m={m} frame={frame} />; break;
   }
   const hasCap = !!props.caption;
-  const canvasH = hasCap ? 640 : 800;
+  const canvasH = hasCap ? 480 : 600;
   return (
     <div style={{ ...fill }}>
-      <div style={{ position: "absolute", left: 60, right: 60, top: canvasH * 0.18, height: canvasH * 0.64, borderRadius: 999, background: `radial-gradient(ellipse at center, ${rgba(p.primary, 0.2)} 0%, ${rgba(p.secondary, 0.08)} 45%, transparent 70%)`, filter: "blur(20px)", opacity: clamp01(s) }} />
-      <div style={{ position: "absolute", left: 0, top: 0, width: 720, height: canvasH }}>
-        <Stage width={720} height={canvasH} dpr={dpr} cameraZ={hasCap ? 6.2 : 7}>
+      <div style={{ position: "absolute", left: 30, right: 30, top: canvasH * 0.14, height: canvasH * 0.64, borderRadius: 999, background: `radial-gradient(ellipse at center, ${rgba(p.primary, 0.2)} 0%, ${rgba(p.secondary, 0.08)} 45%, transparent 70%)`, filter: "blur(20px)", opacity: clamp01(s) }} />
+      <div style={{ position: "absolute", left: 0, top: 0, width: 560, height: canvasH }}>
+        <Stage width={560} height={canvasH} dpr={dpr} cameraZ={hasCap ? 6.6 : 7}>
           <StudioEnvironment />
           <StudioLights p={p} />
           <group position={[0, f.y + floatY + (1 - s) * -0.6, 0]} rotation={[f.tiltX, rotY, 0]} scale={f.scale * (0.35 + 0.65 * s)}>
@@ -566,7 +566,7 @@ export function Icon3D({ props, palette: p, frame, fps, box }: TemplateComponent
         </Stage>
       </div>
       {hasCap ? (
-        <div style={{ position: "absolute", left: 0, right: 0, top: canvasH - 6, textAlign: "center", fontFamily: FONT.displayBold, fontSize: 52, letterSpacing: "-0.015em", color: p.ink, textShadow: TEXT_LIFT, opacity: capT, transform: `translateY(${(1 - capT) * 18}px)` }}>{props.caption}</div>
+        <div style={{ position: "absolute", left: 0, right: 0, top: canvasH + 4, textAlign: "center", fontFamily: FONT.displayBold, fontSize: 46, letterSpacing: "-0.015em", color: p.ink, textShadow: TEXT_LIFT, opacity: capT, transform: `translateY(${(1 - capT) * 18}px)` }}>{props.caption}</div>
       ) : null}
     </div>
   );
@@ -681,12 +681,12 @@ export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateCom
   const orbit = -0.42 + Math.sin(t * 0.5) * 0.08 + (1 - springAt(frame, fps, 0, SPRINGS.settle)) * -0.5;
   const amountText = `$${formatNumber(Math.round(v))}`;
   const finalText = `$${formatNumber(props.amount)}`;
-  const size = finalText.length <= 7 ? 132 : finalText.length <= 10 ? 112 : 92;
+  const size = finalText.length <= 7 ? 112 : finalText.length <= 10 ? 96 : 80;
   return (
     <div style={{ ...fill }}>
-      <div style={{ position: "absolute", left: 80, right: 80, top: 120, height: 420, background: `radial-gradient(ellipse at center, ${rgba(p.positive, 0.16)} 0%, transparent 70%)`, filter: "blur(16px)" }} />
-      <div style={{ position: "absolute", left: 0, top: 0, width: 940, height: 600 }}>
-        <Stage width={940} height={600} dpr={Math.max(1, box.scale)} cameraZ={camZ} cameraY={camZ * 0.55} fov={28}>
+      <div style={{ position: "absolute", left: 60, right: 60, top: 80, height: 340, background: `radial-gradient(ellipse at center, ${rgba(p.positive, 0.16)} 0%, transparent 70%)`, filter: "blur(16px)" }} />
+      <div style={{ position: "absolute", left: 0, top: 0, width: 720, height: 470 }}>
+        <Stage width={720} height={470} dpr={Math.max(1, box.scale)} cameraZ={camZ} cameraY={camZ * 0.55} fov={28}>
           <StudioEnvironment />
           <StudioLights p={p} />
           <CameraLookAt y={0.35} />
@@ -703,12 +703,12 @@ export function MoneyStack3D({ props, palette: p, frame, fps, box }: TemplateCom
           </group>
         </Stage>
       </div>
-      <div style={{ position: "absolute", left: 0, right: 0, top: 590, display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: 470, display: "flex", flexDirection: "column", alignItems: "center" }}>
         <div style={{ position: "relative", fontFamily: FONT.display, fontSize: size, lineHeight: 1, letterSpacing: "-0.035em", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
           <span style={{ visibility: "hidden" }}>{finalText}</span>
           <span style={{ position: "absolute", inset: 0, textAlign: "center", ...gradientText(p.positive === "#FFFFFF" ? p.primary : mix(p.positive, p.primary, 0.15)), filter: `drop-shadow(0 0 24px ${rgba(p.positive, 0.4)}) drop-shadow(0 8px 22px ${rgba("#000000", 0.5)})` }}>{amountText}</span>
         </div>
-        {props.label ? <div style={{ marginTop: 18, fontFamily: FONT.text, fontSize: 42, letterSpacing: "0.1em", textTransform: "uppercase", color: p.ink, opacity: labelT * 0.92, textShadow: TEXT_LIFT }}>{props.label}</div> : null}
+        {props.label ? <div style={{ marginTop: 14, fontFamily: FONT.text, fontSize: 38, letterSpacing: "0.1em", textTransform: "uppercase", color: p.ink, opacity: labelT * 0.92, textShadow: TEXT_LIFT }}>{props.label}</div> : null}
       </div>
     </div>
   );
@@ -766,8 +766,8 @@ function CameraFrom({ cam }: { cam: THREE.PerspectiveCamera }) {
 }
 
 export function BarChart3D({ props, palette: p, frame, fps, box }: TemplateComponentProps<"BAR_CHART">) {
-  const W = 828;
-  const H = props.title ? 640 : 724;
+  const W = 796;
+  const H = props.title ? 596 : 672;
   const n = props.bars.length;
   const lay = useMemo(() => barLayout(n, W, H), [n, W, H]);
   const m = useMaterials(p);

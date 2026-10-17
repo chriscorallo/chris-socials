@@ -29,7 +29,7 @@ export function KineticText({ props, palette: p, frame, fps, durationInFrames }:
   const words = props.text.split(/\s+/).filter(Boolean);
   const emph = new Set(props.emphasis.map(cleanWord));
   const chars = props.text.length;
-  const size = chars <= 18 ? 124 : chars <= 34 ? 100 : chars <= 60 ? 84 : chars <= 90 ? 72 : 62;
+  const size = chars <= 18 ? 120 : chars <= 34 ? 96 : chars <= 60 ? 80 : chars <= 90 ? 66 : 56;
   // Build over at most ~45% of the visual (and never slower than a natural read).
   const stagger = Math.max(2, Math.min(5, Math.floor((durationInFrames * 0.45) / Math.max(1, words.length))));
 
@@ -40,7 +40,7 @@ export function KineticText({ props, palette: p, frame, fps, durationInFrames }:
     const caretOn = Math.floor(frame / (fps * 0.5)) % 2 === 0 || shown < chars;
     return (
       <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontFamily: FONT.display, fontSize: size, lineHeight: 1.08, letterSpacing: "-0.02em", color: p.ink, textAlign: "center", textShadow: TEXT_LIFT, maxWidth: 900 }}>
+        <div style={{ fontFamily: FONT.display, fontSize: size, lineHeight: 1.08, letterSpacing: "-0.02em", color: p.ink, textAlign: "center", textShadow: TEXT_LIFT, maxWidth: 880 }}>
           {words.map((w, i) => {
             const start = idx;
             idx += w.length + 1;
@@ -62,7 +62,7 @@ export function KineticText({ props, palette: p, frame, fps, durationInFrames }:
 
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "baseline", columnGap: size * 0.26, rowGap: size * 0.06, maxWidth: 920, fontFamily: FONT.display, fontSize: size, lineHeight: 1.06, letterSpacing: "-0.025em" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "baseline", columnGap: size * 0.26, rowGap: size * 0.06, maxWidth: 880, fontFamily: FONT.display, fontSize: size, lineHeight: 1.06, letterSpacing: "-0.025em" }}>
         {words.map((w, i) => {
           const isE = emph.has(cleanWord(w));
           const d = 2 + i * stagger;
@@ -105,7 +105,7 @@ export function NumberCounter({ props, palette: p, frame, fps, durationInFrames 
   const finalText = `${props.prefix}${formatNumber(props.value, props.decimals)}${props.suffix}`;
   const text = `${props.prefix}${formatNumber(v, props.decimals)}${props.suffix}`;
   const L = finalText.length;
-  const size = L <= 4 ? 250 : L <= 6 ? 214 : L <= 8 ? 178 : L <= 10 ? 150 : 124;
+  const size = L <= 4 ? 176 : L <= 6 ? 160 : L <= 8 ? 136 : L <= 10 ? 114 : 96;
   const land = 3 + countLen;
   const pulse = 1 + 0.035 * Math.sin(Math.PI * prog(frame, land - 2, 10, EASE_IN_OUT));
   const labelT = prog(frame, Math.round(land * 0.55), 18, EASE_OUT);
@@ -113,15 +113,15 @@ export function NumberCounter({ props, palette: p, frame, fps, durationInFrames 
   const breathe = 0.85 + 0.15 * Math.sin((frame / fps) * 2.2);
   return (
     <div style={{ ...fill, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "absolute", left: "50%", top: "44%", width: 760, height: 380, transform: "translate(-50%,-50%)", background: `radial-gradient(ellipse at center, ${rgba(p.primary, 0.22 * breathe)} 0%, ${rgba(p.primary, 0.07)} 42%, transparent 70%)`, filter: "blur(10px)" }} />
+      <div style={{ position: "absolute", left: "50%", top: "44%", width: 680, height: 300, transform: "translate(-50%,-50%)", background: `radial-gradient(ellipse at center, ${rgba(p.primary, 0.22 * breathe)} 0%, ${rgba(p.primary, 0.07)} 42%, transparent 70%)`, filter: "blur(10px)" }} />
       <div style={{ position: "relative", fontFamily: FONT.display, fontSize: size, lineHeight: 1, letterSpacing: "-0.035em", fontVariantNumeric: "tabular-nums", transform: `scale(${pulse})`, whiteSpace: "nowrap" }}>
         {/* invisible final value reserves the width so the layout never jitters while counting */}
         <span style={{ visibility: "hidden" }}>{finalText}</span>
         <span style={{ position: "absolute", inset: 0, textAlign: "center", ...gradientText(p.primary), filter: `drop-shadow(0 0 26px ${rgba(p.primary, 0.45)}) drop-shadow(0 10px 26px ${rgba("#000000", 0.5)})` }}>{text}</span>
       </div>
-      <div style={{ width: 150, height: 5, borderRadius: 9, marginTop: 30, background: `linear-gradient(90deg, transparent, ${p.primary}, transparent)`, transform: `scaleX(${lineT})`, opacity: lineT }} />
+      <div style={{ width: 140, height: 5, borderRadius: 9, marginTop: 16, background: `linear-gradient(90deg, transparent, ${p.primary}, transparent)`, transform: `scaleX(${lineT})`, opacity: lineT }} />
       {props.label ? (
-        <div style={{ marginTop: 26, fontFamily: FONT.text, fontSize: 44, letterSpacing: "0.14em", textTransform: "uppercase", color: p.ink, opacity: labelT * 0.92, transform: `translateY(${(1 - labelT) * 18}px)`, textShadow: TEXT_LIFT, textAlign: "center", maxWidth: 880 }}>
+        <div style={{ marginTop: 16, fontFamily: FONT.text, fontSize: 38, letterSpacing: "0.12em", textTransform: "uppercase", color: p.ink, opacity: labelT * 0.92, transform: `translateY(${(1 - labelT) * 18}px)`, textShadow: TEXT_LIFT, textAlign: "center", maxWidth: 740 }}>
           {props.label}
         </div>
       ) : null}
@@ -147,23 +147,23 @@ export function StatCard({ props, palette: p, frame, fps }: TemplateComponentPro
   const sheen = prog(frame, 12, 34, EASE_IN_OUT);
   const tColor = props.trend === "UP" ? p.positive : props.trend === "DOWN" ? p.negative : p.muted;
   const L = props.value.length;
-  const size = L <= 4 ? 168 : L <= 7 ? 140 : L <= 10 ? 112 : 88;
+  const size = L <= 4 ? 150 : L <= 7 ? 124 : L <= 10 ? 100 : 80;
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 840, minHeight: 400, padding: "54px 60px 54px 76px", boxSizing: "border-box", overflow: "hidden", ...glassCard(p) }}>
+      <div style={{ position: "relative", width: 720, minHeight: 360, padding: "46px 52px 46px 66px", boxSizing: "border-box", overflow: "hidden", ...glassCard(p) }}>
         <div style={{ position: "absolute", left: 0, top: 46, bottom: 46, width: 8, borderRadius: "0 8px 8px 0", background: `linear-gradient(180deg, ${p.primary}, ${p.secondary})`, transform: `scaleY(${barT})`, transformOrigin: "top", boxShadow: `0 0 24px ${rgba(p.primary, 0.5)}` }} />
         <div style={{ position: "absolute", top: -200, bottom: -200, width: 180, left: -260 + sheen * 1400, transform: "rotate(18deg)", background: `linear-gradient(90deg, transparent, ${rgba("#FFFFFF", 0.09)}, transparent)` }} />
-        <div style={{ fontFamily: FONT.text, fontSize: 40, letterSpacing: "0.1em", textTransform: "uppercase", color: p.muted, opacity: labelT, transform: `translateY(${(1 - labelT) * 14}px)` }}>{props.label}</div>
+        <div style={{ fontFamily: FONT.text, fontSize: 36, letterSpacing: "0.1em", textTransform: "uppercase", color: p.muted, opacity: labelT, transform: `translateY(${(1 - labelT) * 14}px)` }}>{props.label}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 30, marginTop: 14 }}>
           <div style={{ fontFamily: FONT.display, fontSize: size, lineHeight: 1.02, letterSpacing: "-0.035em", ...gradientText(p.primary), filter: `drop-shadow(0 0 24px ${rgba(p.primary, 0.35)})`, opacity: clamp01(valT * 1.4), transform: `translateY(${(1 - valT) * 40}px)`, whiteSpace: "nowrap" }}>{props.value}</div>
           {props.trend !== "NONE" ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 92, height: 92, borderRadius: 999, background: rgba(tColor, 0.16), boxShadow: `inset 0 0 0 2px ${rgba(tColor, 0.4)}, 0 0 30px ${rgba(tColor, 0.25)}`, transform: `scale(${chipT})`, opacity: clamp01(chipT) }}>
-              <TrendArrow up={props.trend === "UP"} color={tColor} size={50} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 84, height: 84, borderRadius: 999, background: rgba(tColor, 0.16), boxShadow: `inset 0 0 0 2px ${rgba(tColor, 0.4)}, 0 0 30px ${rgba(tColor, 0.25)}`, transform: `scale(${chipT})`, opacity: clamp01(chipT) }}>
+              <TrendArrow up={props.trend === "UP"} color={tColor} size={46} />
             </div>
           ) : null}
         </div>
         {props.sublabel ? (
-          <div style={{ marginTop: 18, fontFamily: FONT.text, fontSize: 36, color: rgba(p.muted, 0.9), opacity: subT, transform: `translateY(${(1 - subT) * 12}px)` }}>{props.sublabel}</div>
+          <div style={{ marginTop: 14, fontFamily: FONT.text, fontSize: 34, color: rgba(p.muted, 0.9), opacity: subT, transform: `translateY(${(1 - subT) * 12}px)` }}>{props.sublabel}</div>
         ) : null}
       </div>
     </div>
@@ -176,14 +176,14 @@ export function Definition({ props, palette: p, frame }: TemplateComponentProps<
   const termT = prog(frame, 5, 20, EASE_OUT);
   const rule = prog(frame, 12, 26, EASE_OUT);
   const words = props.definition.split(/\s+/);
-  const tSize = props.term.length <= 14 ? 104 : props.term.length <= 24 ? 84 : 66;
+  const tSize = props.term.length <= 14 ? 88 : props.term.length <= 24 ? 74 : 60;
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 900, padding: "58px 64px 62px", boxSizing: "border-box", ...glassCard(p) }}>
+      <div style={{ position: "relative", width: 880, padding: "44px 56px 48px", boxSizing: "border-box", ...glassCard(p) }}>
         <div style={{ fontFamily: FONT.text, fontSize: 34, letterSpacing: "0.28em", color: p.primary, opacity: over, textTransform: "uppercase" }}>Definition</div>
-        <div style={{ marginTop: 16, fontFamily: FONT.serif, fontSize: tSize, lineHeight: 1.04, color: p.ink, opacity: termT, transform: `translateY(${(1 - termT) * 20}px)`, letterSpacing: "-0.01em" }}>{props.term}</div>
-        <div style={{ height: 3, marginTop: 30, marginBottom: 30, borderRadius: 3, background: `linear-gradient(90deg, ${p.primary}, ${rgba(p.primary, 0.25)} 55%, transparent)`, transform: `scaleX(${rule})`, transformOrigin: "left" }} />
-        <div style={{ fontFamily: FONT.text, fontSize: 44, lineHeight: 1.36, color: rgba("#ECECF2", 1) }}>
+        <div style={{ marginTop: 10, fontFamily: FONT.serif, fontSize: tSize, lineHeight: 1.04, color: p.ink, opacity: termT, transform: `translateY(${(1 - termT) * 20}px)`, letterSpacing: "-0.01em" }}>{props.term}</div>
+        <div style={{ height: 3, marginTop: 22, marginBottom: 22, borderRadius: 3, background: `linear-gradient(90deg, ${p.primary}, ${rgba(p.primary, 0.25)} 55%, transparent)`, transform: `scaleX(${rule})`, transformOrigin: "left" }} />
+        <div style={{ fontFamily: FONT.text, fontSize: 38, lineHeight: 1.32, color: rgba("#ECECF2", 1) }}>
           {words.map((w, i) => {
             const t = prog(frame, 18 + i * 1.2, 10, EASE_OUT);
             return (
@@ -243,9 +243,9 @@ export function Callout({ props, palette: p, frame, fps }: TemplateComponentProp
   const dot = 0.6 + 0.4 * Math.sin(frame / 5);
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "26px 40px 26px 30px", borderRadius: 999, ...glassCard(p, 999), transform: `scale(${0.9 + 0.1 * s})` }}>
-        <div style={{ width: 22, height: 22, borderRadius: 99, background: p.primary, boxShadow: `0 0 ${16 + 10 * dot}px ${rgba(p.primary, 0.8)}` }} />
-        <div style={{ fontFamily: FONT.displayBold, fontSize: 46, color: p.ink, whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{props.text}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 18, maxWidth: 520, boxSizing: "border-box", padding: "22px 34px 22px 26px", borderRadius: 48, ...glassCard(p, 48), transform: `scale(${0.9 + 0.1 * s})` }}>
+        <div style={{ flex: "none", width: 20, height: 20, borderRadius: 99, background: p.primary, boxShadow: `0 0 ${16 + 10 * dot}px ${rgba(p.primary, 0.8)}` }} />
+        <div style={{ fontFamily: FONT.displayBold, fontSize: props.text.length > 22 ? 36 : 42, lineHeight: 1.15, color: p.ink, letterSpacing: "-0.01em" }}>{props.text}</div>
       </div>
     </div>
   );

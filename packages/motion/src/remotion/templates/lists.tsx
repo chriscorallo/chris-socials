@@ -12,14 +12,14 @@ export function ListSteps({ props, palette: p, frame, fps, durationInFrames }: T
   const base = props.title ? 10 : 4;
   // Spread item entrances over at most ~45% of the visual.
   const stagger = Math.max(5, Math.min(Math.round(fps * 0.4), Math.floor((durationInFrames * 0.45) / n)));
-  const rowH = n <= 3 ? 132 : n === 4 ? 116 : 104;
-  const badge = 74;
+  const rowH = n <= 3 ? 128 : n === 4 ? 112 : 94;
+  const badge = 68;
   const lineT = prog(frame, base + 4, stagger * (n - 1) + 10, EASE_IN_OUT);
   return (
     <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 900, boxSizing: "border-box", padding: "52px 56px 46px", ...glassCard(p) }}>
+      <div style={{ position: "relative", width: 860, boxSizing: "border-box", padding: "44px 52px 40px", ...glassCard(p) }}>
         {props.title ? (
-          <div style={{ fontFamily: FONT.displayBold, fontSize: 54, lineHeight: 1.1, letterSpacing: "-0.015em", color: p.ink, marginBottom: 26, opacity: titleT, transform: `translateY(${(1 - titleT) * 14}px)` }}>{props.title}</div>
+          <div style={{ fontFamily: FONT.displayBold, fontSize: 48, lineHeight: 1.1, letterSpacing: "-0.015em", color: p.ink, marginBottom: 16, opacity: titleT, transform: `translateY(${(1 - titleT) * 14}px)` }}>{props.title}</div>
         ) : null}
         <div style={{ position: "relative" }}>
           <div style={{ position: "absolute", left: badge / 2 - 1.5, top: rowH / 2, height: (n - 1) * rowH * lineT, width: 3, borderRadius: 3, background: `linear-gradient(180deg, ${rgba(p.primary, 0.7)}, ${rgba(p.secondary, 0.5)})` }} />
@@ -37,10 +37,10 @@ export function ListSteps({ props, palette: p, frame, fps, durationInFrames }: T
                       <path d="M5 12.5 L10 17.5 L19 7" fill="none" stroke="#14110A" strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" pathLength={1} strokeDasharray="1 1" strokeDashoffset={1 - check} />
                     </svg>
                   ) : (
-                    <span style={{ fontFamily: FONT.display, fontSize: 40, color: "#14110A", letterSpacing: "-0.02em" }}>{i + 1}</span>
+                    <span style={{ fontFamily: FONT.display, fontSize: 36, color: "#14110A", letterSpacing: "-0.02em" }}>{i + 1}</span>
                   )}
                 </div>
-                <div style={{ fontFamily: FONT.text, fontSize: item.length > 30 ? 40 : 46, lineHeight: 1.18, color: p.ink }}>{item}</div>
+                <div style={{ fontFamily: FONT.text, fontSize: item.length > 30 ? 38 : 42, lineHeight: 1.18, color: p.ink }}>{item}</div>
               </div>
             );
           })}
@@ -54,11 +54,11 @@ export function ListSteps({ props, palette: p, frame, fps, durationInFrames }: T
 export function TimelineTemplate({ props, palette: p, frame, fps, durationInFrames }: TemplateComponentProps<"TIMELINE">) {
   const ev = props.events;
   const n = ev.length;
-  const H = 840;
-  const top = 70;
-  const bottom = 70;
+  const H = 800;
+  const top = 64;
+  const bottom = 90;
   const step = (H - top - bottom) / (n - 1);
-  const x = 96;
+  const x = 70;
   const travel = Math.max(Math.round(fps * 0.9), Math.min(Math.round(fps * 2.2), Math.round(durationInFrames * 0.5)));
   const lineT = prog(frame, 6, travel, EASE_IN_OUT);
   const reach = top + lineT * (H - top - bottom);
@@ -78,9 +78,9 @@ export function TimelineTemplate({ props, palette: p, frame, fps, durationInFram
           <div key={i}>
             {last && frame > hitFrame ? <div style={{ position: "absolute", left: x - 30 - 30 * ring, top: y - 30 - 30 * ring, width: 60 + 60 * ring, height: 60 + 60 * ring, borderRadius: 999, border: `3px solid ${rgba(p.primary, (1 - ring) * 0.7)}` }} /> : null}
             <div style={{ position: "absolute", left: x - 22, top: y - 22, width: 44, height: 44, borderRadius: 999, background: `radial-gradient(circle at 35% 30%, ${mix(col, "#FFFFFF", 0.45)}, ${col} 60%)`, boxShadow: `0 0 0 8px ${rgba("#0B0B10", 0.8)}, 0 0 30px ${rgba(col, 0.6)}`, transform: `scale(${s})` }} />
-            <div style={{ position: "absolute", left: x + 64, top: y - 46, width: 860 - x - 64, opacity: tT, transform: `translateX(${(1 - tT) * 30}px)` }}>
-              <div style={{ fontFamily: FONT.display, fontSize: 56, lineHeight: 1.05, letterSpacing: "-0.02em", color: last ? p.primary : p.ink, textShadow: `0 2px 4px ${rgba("#000000", 0.4)}, 0 8px 30px ${rgba("#000000", 0.55)}${last ? `, 0 0 30px ${rgba(p.primary, 0.35)}` : ""}` }}>{e.label}</div>
-              {e.sub ? <div style={{ marginTop: 6, fontFamily: FONT.text, fontSize: 36, lineHeight: 1.2, color: p.ink, opacity: 0.86, textShadow: `0 2px 4px ${rgba("#000000", 0.45)}, 0 6px 24px ${rgba("#000000", 0.6)}` }}>{e.sub}</div> : null}
+            <div style={{ position: "absolute", left: x + 58, top: y - 40, width: 760 - x - 58, opacity: tT, transform: `translateX(${(1 - tT) * 30}px)` }}>
+              <div style={{ fontFamily: FONT.display, fontSize: 52, lineHeight: 1.05, letterSpacing: "-0.02em", color: last ? p.primary : p.ink, textShadow: `0 2px 4px ${rgba("#000000", 0.4)}, 0 8px 30px ${rgba("#000000", 0.55)}${last ? `, 0 0 30px ${rgba(p.primary, 0.35)}` : ""}` }}>{e.label}</div>
+              {e.sub ? <div style={{ marginTop: 6, fontFamily: FONT.text, fontSize: 34, lineHeight: 1.2, color: p.ink, opacity: 0.86, textShadow: `0 2px 4px ${rgba("#000000", 0.45)}, 0 6px 24px ${rgba("#000000", 0.6)}` }}>{e.sub}</div> : null}
             </div>
           </div>
         );
