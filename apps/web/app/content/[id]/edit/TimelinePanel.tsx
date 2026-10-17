@@ -36,7 +36,7 @@ const TEXT_COLOR = "linear-gradient(180deg, #7d63f0, #6448d8)";
 const ZOOM_COLOR = "linear-gradient(180deg, #d99a3c, #b97d22)";
 
 /** Greedy lane assignment so overlapping texts stack instead of hiding each other. */
-function assignLanes(items: TimelineText[]): Map<string, number> {
+export function assignLanes(items: TimelineText[]): Map<string, number> {
   const lanes: number[] = [];
   const out = new Map<string, number>();
   for (const t of [...items].sort((a, b) => a.start - b.start)) {
@@ -586,10 +586,10 @@ const ClipView = memo(function ClipView({
   );
 });
 
-function Frames({ asset, clip, width, pps }: { asset: EditorAsset | undefined; clip: TimelineClip; width: number; pps: number }) {
+export function Frames({ asset, clip, width, pps, height = VIDEO_H }: { asset: EditorAsset | undefined; clip: TimelineClip; width: number; pps: number; height?: number }) {
   const strip = useFilmstrip(asset);
   if (!strip) return null;
-  const frameW = Math.max(24, (VIDEO_H - 10) * strip.aspect);
+  const frameW = Math.max(24, (height - 10) * strip.aspect);
   const n = Math.min(80, Math.ceil(width / frameW));
   return (
     <div className="ed-clip-frames">

@@ -12,42 +12,27 @@ import {
   type TimelineZoom,
 } from "@chris/media/timeline";
 import type { EditorAsset, EditorDoc } from "../../../../lib/editor/types";
+import { assignPlayers } from "../../../../lib/editor/player-pool";
+
+export { assignPlayers, PLAYER_POOL } from "../../../../lib/editor/player-pool";
 
 /**
  * The preview's playback engine — one requestAnimationFrame clock for the whole editor.
  *
- * Every clip is played by a real <video> element of its source take. Consecutive uses of the
- * same take alternate between two elements ("slots"), so while one clip plays, the element for
- * the next clip is already paused on its first frame — the cut is a visibility swap, not a
- * seek. While playing, the ACTIVE video is the master clock (no audio/video drift); when it's
- * stalled or not ready, a wall clock carries time forward.
+ * Every clip is played by one of a FIXED POOL OF TWO <video> elements: clip i plays on element
+ * i % 2, and the engine points that element at the clip's take (swapping `src` only when the
+ * take changes). While one clip plays, the other element is already paused on the next clip's
+ * first frame — the cut is a visibility swap, not a seek. Two elements regardless of how many
+ * takes or clips: iOS Safari limits concurrent hardware decoders and only lets an element play
+ * with sound once play() was called on it inside a user gesture, so the pool stays tiny and
+ * both elements are unlocked from the play tap (see unlockFromGesture). While playing, the
+ * ACTIVE video is the master clock (no audio/video drift); when it's stalled or not ready, a
+ * wall clock carries time forward. No requestVideoFrameCallback dependency.
  *
  * The engine writes per-frame visuals (which element is visible, the crop and punch-in
  * transforms) straight to the DOM and notifies subscribers with the time — React only
  * re-renders for structural changes, never per frame.
  */
-
-export interface PlayerSlot {
-  key: string;
-  asset: EditorAsset;
-}
-
-/** Which player element plays each clip, and the set of elements the preview must mount. */
-export function assignPlayers(doc: EditorDoc, assets: Map<string, EditorAsset>): { clipPlayer: string[]; slots: PlayerSlot[] } {
-  const lastSlot = new Map<string, number>();
-  const clipPlayer: string[] = [];
-  const keys = new Map<string, PlayerSlot>();
-  doc.clips.forEach((c) => {
-    const prev = lastSlot.get(c.mediaAssetId);
-    const slot = prev === undefined ? 0 : 1 - prev;
-    lastSlot.set(c.mediaAssetId, slot);
-    const key = `${c.mediaAssetId}#${slot}`;
-    clipPlayer.push(key);
-    const asset = assets.get(c.mediaAssetId);
-    if (asset && !keys.has(key)) keys.set(key, { key, asset });
-  });
-  return { clipPlayer, slots: [...keys.values()] };
-}
 
 type Listener = () => void;
 
@@ -72,6 +57,8 @@ export class PlaybackEngine {
   private activeIndex = -1;
   /** While set, the visible frame shows this clip at this source time (trim preview). */
   private previewOverride: { clipIndex: number; sourceTime: number } | null = null;
+  /** Seek to apply once an element that just got a new `src` has its metadata. */
+  private pendingSeek = new Map<HTMLVideoElement, number>();
 
   constructor(doc: EditorDoc, assets: Map<string, EditorAsset>) {
     this.doc = doc;
@@ -107,12 +94,22 @@ export class PlaybackEngine {
       if (this.wired.has(el)) return;
       this.wired.add(el);
       el.playsInline = true;
+      el.preload = "auto";
+      el.addEventListener("loadedmetadata", () => {
+        const t = this.pendingSeek.get(el);
+        if (t !== undefined) {
+          this.pendingSeek.delete(el);
+          el.currentTime = t;
+        }
+        this.applyVisuals();
+      });
       const onReady = () => {
         if (!this.playing) this.syncPaused();
         this.applyVisuals();
       };
       el.addEventListener("loadeddata", onReady);
       el.addEventListener("seeked", onReady);
+      if (!this.playing) this.syncPaused();
     } else {
       const old = this.players.get(key);
       old?.pause();
@@ -149,7 +146,7 @@ export class PlaybackEngine {
   }
 
   private recompute() {
-    const { clipPlayer } = assignPlayers(this.doc, this.assets);
+    const { clipPlayer } = assignPlayers(this.doc.clips.length);
     this.clipPlayer = clipPlayer;
     this.starts = clipStartTimes(this.doc);
     this.duration = timelineDuration(this.doc);
@@ -158,6 +155,7 @@ export class PlaybackEngine {
 
   // --- transport ----------------------------------------------------------------------
 
+  /** Call from the play tap/click itself (iOS needs the user gesture for sound). */
   play() {
     if (this.playing) return;
     if (this.time >= this.duration - 0.02) this.time = 0;
@@ -165,6 +163,7 @@ export class PlaybackEngine {
     this.playing = true;
     this.lastTs = performance.now();
     this.startActive(true);
+    this.unlockFromGesture();
     this.raf = requestAnimationFrame(this.tick);
     this.emit();
   }
@@ -202,7 +201,7 @@ export class PlaybackEngine {
       this.previewOverride = { clipIndex, sourceTime };
       const key = this.clipPlayer[clipIndex];
       const el = key ? this.players.get(key) : undefined;
-      if (el && Math.abs(el.currentTime - sourceTime) > 0.01) el.currentTime = sourceTime;
+      if (el) this.bind(el, clipIndex, sourceTime, 0.01);
       this.activeKey = key ?? null;
       this.activeIndex = clipIndex;
     }
@@ -243,31 +242,82 @@ export class PlaybackEngine {
     return loc ?? { clipIndex: 0, sourceTime: this.doc.clips[0]?.sourceStart ?? 0 };
   }
 
-  /** Paused: active element shows the exact frame; every other element waits on its next clip's first frame. */
+  /** Paused: the active element shows the exact frame; the other waits on the next clip's first frame. */
   private syncPaused() {
     if (this.previewOverride) return;
     const { clipIndex, sourceTime } = this.clipAt(this.time);
     this.activeIndex = clipIndex;
     this.activeKey = this.clipPlayer[clipIndex] ?? null;
     const el = this.activeKey ? this.players.get(this.activeKey) : undefined;
-    if (el && el.readyState >= 1 && Math.abs(el.currentTime - sourceTime) > 0.015) el.currentTime = sourceTime;
+    if (el) this.bind(el, clipIndex, sourceTime, 0.015);
     this.prerollNext(clipIndex);
   }
 
-  /** Points every non-active element at the first frame of the next clip it will play. */
-  private prerollNext(fromIndex: number) {
-    const seen = new Set<string>([this.clipPlayer[fromIndex] ?? ""]);
-    for (let i = fromIndex + 1; i < this.doc.clips.length; i++) {
-      const key = this.clipPlayer[i]!;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const el = this.players.get(key);
-      const c = this.doc.clips[i]!;
-      if (el && el.readyState >= 1 && Math.abs(el.currentTime - c.sourceStart) > 0.04) {
-        if (!el.paused) el.pause();
-        el.currentTime = c.sourceStart;
-      }
+  /**
+   * Points a pool element at clip `clipIndex`'s take and source time. Switching takes sets a
+   * new `src`; the seek is applied once its metadata arrives.
+   */
+  private bind(el: HTMLVideoElement, clipIndex: number, sourceTime: number, tolerance: number) {
+    const clip = this.doc.clips[clipIndex];
+    const asset = clip ? this.assets.get(clip.mediaAssetId) : undefined;
+    if (!clip || !asset) return;
+    if (el.dataset.assetId !== asset.id) {
+      if (!el.paused) el.pause();
+      el.dataset.assetId = asset.id;
+      this.pendingSeek.set(el, sourceTime);
+      el.src = asset.url;
+      return;
     }
+    if (el.readyState >= 1) {
+      if (Math.abs(el.currentTime - sourceTime) > tolerance) el.currentTime = sourceTime;
+    } else {
+      this.pendingSeek.set(el, sourceTime);
+    }
+  }
+
+  /**
+   * iOS only lets an element play with sound if play() was first called on it inside a user
+   * gesture. play() runs from the play tap, so start (muted) and immediately pause the OTHER
+   * pool element in that same gesture — the cut to the next clip can then start it with sound.
+   */
+  private unlockFromGesture() {
+    for (const [key, el] of this.players) {
+      if (key === this.activeKey || !el.getAttribute("src") || el.dataset.unlocked) continue;
+      const wasMuted = el.muted;
+      el.muted = true;
+      el.dataset.unlocked = "1";
+      let p: Promise<void> | undefined;
+      try {
+        p = el.play();
+      } catch {
+        p = undefined;
+      }
+      void p
+        ?.then(() => {
+          el.muted = wasMuted;
+          if (this.activeKey !== key || !this.playing) {
+            el.pause();
+            if (!this.playing) this.syncPaused();
+            else this.prerollNext(this.activeIndex);
+          }
+        })
+        .catch(() => {
+          el.muted = wasMuted;
+          delete el.dataset.unlocked;
+        });
+    }
+  }
+
+  /** Points the other pool element at the first frame of the next clip (it plays next). */
+  private prerollNext(fromIndex: number) {
+    const i = fromIndex + 1;
+    const key = this.clipPlayer[i];
+    const c = this.doc.clips[i];
+    if (!key || !c || key === this.clipPlayer[fromIndex]) return;
+    const el = this.players.get(key);
+    if (!el) return;
+    if (!el.paused) el.pause();
+    this.bind(el, i, c.sourceStart, 0.04);
   }
 
   private startActive(seekExact: boolean) {
@@ -278,12 +328,17 @@ export class PlaybackEngine {
     this.activeKey = key;
     const el = key ? this.players.get(key) : undefined;
     if (el) {
-      if (seekExact && Math.abs(el.currentTime - sourceTime) > 0.05) el.currentTime = sourceTime;
+      this.bind(el, clipIndex, sourceTime, seekExact ? 0.05 : 0.3);
+      // iOS ignores `volume` (always 1) — mute still works; the render applies the real level.
       el.volume = Math.min(1, Math.max(0, this.doc.clips[clipIndex]!.volume));
       el.muted = this.doc.clips[clipIndex]!.volume === 0;
-      void el.play().catch(() => {
-        /* autoplay policies / not yet loaded — wall clock carries on */
-      });
+      try {
+        void el.play().catch(() => {
+          /* autoplay policies / not yet loaded — wall clock carries on */
+        });
+      } catch {
+        /* very old engines return undefined / throw synchronously */
+      }
     }
     this.prerollNext(clipIndex);
     this.applyVisuals();
@@ -303,11 +358,12 @@ export class PlaybackEngine {
     const clipStart = this.starts[i]!;
     const clipEnd = clipStart + clipDuration(clip);
     let t = this.time + dt;
-    if (el && el.readyState >= 2 && !el.seeking && !el.paused) {
+    const onTake = el?.dataset.assetId === clip.mediaAssetId;
+    if (el && onTake && el.readyState >= 2 && !el.seeking && !el.paused) {
       const fromVideo = clipStart + (el.currentTime - clip.sourceStart);
       // Trust the video clock unless it's clearly stale (e.g. right after a switch).
       if (fromVideo >= clipStart - 0.05 && fromVideo <= clipEnd + 0.25) t = fromVideo;
-    } else if (el && (el.seeking || el.readyState < 2)) {
+    } else if (el && (el.seeking || el.readyState < 2 || !onTake)) {
       t = this.time; // buffering: hold the frame rather than letting picture and clock diverge
     }
 
@@ -319,11 +375,8 @@ export class PlaybackEngine {
         return;
       }
       this.time = clipEnd;
+      // the next element was pre-rolled to its first frame
       this.startActive(false);
-      // the next element was pre-rolled to its first frame; make sure it's exact
-      const nextEl = this.activeKey ? this.players.get(this.activeKey) : undefined;
-      const next = this.doc.clips[this.activeIndex]!;
-      if (nextEl && Math.abs(nextEl.currentTime - next.sourceStart) > 0.08) nextEl.currentTime = next.sourceStart;
     } else {
       this.time = Math.max(this.time, t);
       this.applyVisuals();
@@ -344,8 +397,9 @@ export class PlaybackEngine {
       el.style.opacity = visible ? "1" : "0";
       if (visible && clip) {
         const asset = this.assets.get(clip.mediaAssetId);
-        const srcW = el.videoWidth || asset?.width || 1080;
-        const srcH = el.videoHeight || asset?.height || 1920;
+        const loaded = el.dataset.assetId === clip.mediaAssetId && el.videoWidth > 0;
+        const srcW = (loaded ? el.videoWidth : 0) || asset?.width || 1080;
+        const srcH = (loaded ? el.videoHeight : 0) || asset?.height || 1920;
         // Same geometry as the renderer (cropGeometry), at preview scale.
         const g = cropGeometry({ width: srcW, height: srcH }, { width: w, height: h }, clip.crop);
         el.style.width = `${g.scaledWidth}px`;

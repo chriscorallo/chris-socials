@@ -72,8 +72,8 @@ export function Inspector() {
   );
 }
 
-function SelectionPanel() {
-  const { state, doc } = useEditor();
+export function SelectionPanel() {
+  const { state, doc, touch } = useEditor();
   const sel = state.selection;
   if (sel?.kind === "clip") {
     const clip = doc.clips.find((c) => c.id === sel.id);
@@ -94,7 +94,7 @@ function SelectionPanel() {
       </div>
       <p className="text-[13px] font-medium">Select something to edit it</p>
       <p className="text-[12px] leading-relaxed text-[var(--color-text-faint)]">
-        Click a clip, text or zoom on the timeline — or click text right on the video. Use the Look tab to color the whole video.
+        {touch ? "Tap a clip, text or zoom on the timeline — or tap text right on the video." : "Click a clip, text or zoom on the timeline — or click text right on the video. Use the Look tab to color the whole video."}
       </p>
     </div>
   );
@@ -142,10 +142,10 @@ function Slider({
   return (
     <div>
       <div className="mb-0.5 flex items-center justify-between">
-        <span className="text-[11.5px] text-[var(--color-text-muted)]">{label}</span>
+        <span className="ed-slider-label text-[11.5px] text-[var(--color-text-muted)]">{label}</span>
         <button
           type="button"
-          className="rounded px-1 text-[11.5px] tabular-nums text-[var(--color-text)] hover:bg-white/[0.06]"
+          className="ed-slider-value rounded px-1 text-[11.5px] tabular-nums text-[var(--color-text)] hover:bg-white/[0.06]"
           title={resetTo !== undefined ? "Reset" : undefined}
           onClick={() => resetTo !== undefined && onChange(resetTo, true)}
         >
@@ -173,7 +173,7 @@ function Slider({
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <label className="flex cursor-pointer items-center justify-between gap-3">
-      <span className="text-[12.5px]">{label}</span>
+      <span className="ed-toggle-label text-[12.5px]">{label}</span>
       <button type="button" role="switch" aria-checked={checked} aria-label={label} className="ed-toggle" onClick={() => onChange(!checked)} />
     </label>
   );
@@ -246,7 +246,7 @@ function FontPicker({ value, onChange }: { value: string; onChange: (id: string)
   return (
     <div>
       <span className="ed-label">Font</span>
-      <div className="grid max-h-[212px] grid-cols-2 gap-1 overflow-y-auto pr-0.5">
+      <div className="ed-fontgrid grid max-h-[212px] grid-cols-2 gap-1 overflow-y-auto pr-0.5">
         {FONT_REGISTRY.map((f) => (
           <button
             key={f.id}
@@ -300,14 +300,37 @@ function OptionalColor({
 // Clip
 // ---------------------------------------------------------------------------------------
 
-function ClipPanel({ clip }: { clip: TimelineClip }) {
-  const { apply, assets, assetMap, ui, setUi, engine, doc } = useEditor();
+export function ClipPanel({ clip, only }: { clip: TimelineClip; only?: "sound" }) {
+  const { apply, assets, assetMap, ui, setUi, engine, doc, touch } = useEditor();
   const asset = assetMap.get(clip.mediaAssetId);
   const dur = asset?.duration || undefined;
   const set = (patch: Partial<TimelineClip>, key?: string) => apply((d) => updateClip(d, clip.id, patch), key ? { coalesce: `${key}:${clip.id}` } : undefined);
   const crop = clip.crop;
   const idx = doc.clips.findIndex((c) => c.id === clip.id);
   const start = clipStartTimes(doc)[idx] ?? 0;
+  const sound = (
+    <Section title="Sound">
+      <Slider
+        label="Volume"
+        value={clip.volume}
+        min={0}
+        max={2}
+        format={(v) => (v === 0 ? "Muted" : `${Math.round(v * 100)}%`)}
+        resetTo={1}
+        onChange={(v) => set({ volume: Math.round(v * 100) / 100 }, "vol")}
+      />
+      <div className="grid grid-cols-3 gap-1.5">
+        {[0, 1, 1.5].map((v) => (
+          <button key={v} type="button" className="ed-card px-2 py-1.5 text-center text-[12px]" aria-pressed={clip.volume === v} onClick={() => set({ volume: v })}>
+            {v === 0 ? "Mute" : `${Math.round(v * 100)}%`}
+          </button>
+        ))}
+      </div>
+      {clip.volume > 1 && <p className="text-[11px] text-[var(--color-text-faint)]">The preview plays at 100%; the boost is applied in the final render.</p>}
+      {touch && clip.volume > 0 && clip.volume < 1 && <p className="text-[11px] text-[var(--color-text-faint)]">iPhone previews always play at full volume — the level is applied in the final render.</p>}
+    </Section>
+  );
+  if (only === "sound") return sound;
   return (
     <>
       <Section title="Take">
@@ -332,7 +355,9 @@ function ClipPanel({ clip }: { clip: TimelineClip }) {
           <NumField label="Starts at (in take)" value={clip.sourceStart} min={0} max={clip.sourceEnd - 0.1} onChange={(v) => apply((d) => trimClip(d, clip.id, "start", v, dur))} />
           <NumField label="Ends at (in take)" value={clip.sourceEnd} min={clip.sourceStart + 0.1} max={dur} onChange={(v) => apply((d) => trimClip(d, clip.id, "end", v, dur))} />
         </div>
-        <p className="text-[11px] leading-relaxed text-[var(--color-text-faint)]">Or drag the clip&apos;s edges on the timeline — the picture follows as you trim.</p>
+        <p className="text-[11px] leading-relaxed text-[var(--color-text-faint)]">
+          {touch ? "Or drag the white handles on the clip in the timeline" : "Or drag the clip's edges on the timeline"} — the picture follows as you trim.
+        </p>
       </Section>
       <Section
         title="Framing"
@@ -348,27 +373,16 @@ function ClipPanel({ clip }: { clip: TimelineClip }) {
           onClick={() => {
             const loc = locateOutputTime(doc, engine.time);
             if (loc?.clipIndex !== idx) engine.seek(start + 0.01);
-            setUi({ reframe: !ui.reframe });
+            setUi(touch ? { reframe: !ui.reframe, sheet: null } : { reframe: !ui.reframe });
           }}
         >
-          <Icon name="crop" size={14} /> {ui.reframe ? "Done reframing" : "Reframe on the video"}
+          <Icon name="crop" size={14} /> {ui.reframe ? "Done reframing" : touch ? "Reframe with your fingers" : "Reframe on the video"}
         </button>
         <Slider label="Zoom" value={crop.zoom} min={1} max={4} format={(v) => `${v.toFixed(2)}×`} resetTo={1} onChange={(v) => set({ crop: { ...crop, zoom: v } }, "cz")} />
         <Slider label="Left ↔ right" value={crop.panX} min={-1} max={1} format={(v) => (v === 0 ? "Center" : v.toFixed(2))} resetTo={0} onChange={(v) => set({ crop: { ...crop, panX: v } }, "cx")} />
         <Slider label="Up ↕ down" value={crop.panY} min={-1} max={1} format={(v) => (v === 0 ? "Center" : v.toFixed(2))} resetTo={0} onChange={(v) => set({ crop: { ...crop, panY: v } }, "cy")} />
       </Section>
-      <Section title="Sound">
-        <Slider
-          label="Volume"
-          value={clip.volume}
-          min={0}
-          max={2}
-          format={(v) => (v === 0 ? "Muted" : `${Math.round(v * 100)}%`)}
-          resetTo={1}
-          onChange={(v) => set({ volume: Math.round(v * 100) / 100 }, "vol")}
-        />
-        {clip.volume > 1 && <p className="text-[11px] text-[var(--color-text-faint)]">The preview plays at 100%; the boost is applied in the final render.</p>}
-      </Section>
+      {sound}
     </>
   );
 }
@@ -384,14 +398,22 @@ const TEXT_LOOKS: Array<{ id: TimelineText["preset"]; label: string; patch: Part
   { id: "CAPTION", label: "Subtitle", patch: { preset: "CAPTION", fontId: "inter-semibold", fontSize: 56, color: "#FFFFFF", backgroundColor: null, strokeColor: "#000000" } },
 ];
 
-function TextPanel({ t }: { t: TimelineText }) {
-  const { apply, doc } = useEditor();
+export function TextPanel({ t }: { t: TimelineText }) {
+  const { apply, doc, touch, setUi } = useEditor();
   const D = timelineDuration(doc);
   const set = (patch: Partial<TimelineText>, key?: string) => apply((d) => updateText(d, t.id, patch), key ? { coalesce: `${key}:${t.id}` } : undefined);
   return (
     <>
       <Section title="Text">
-        <textarea className="ed-input" rows={3} value={t.text} maxLength={500} onChange={(e) => e.target.value.trim() && set({ text: e.target.value }, "txt")} aria-label="Text content" />
+        {touch ? (
+          // On a phone, typing happens in a bar docked above the keyboard (always visible).
+          <button type="button" className="ed-card ed-textbtn" onClick={() => setUi({ editingTextId: t.id })}>
+            <span className="flex-1 truncate">{t.text}</span>
+            <Icon name="text" size={16} />
+          </button>
+        ) : (
+          <textarea className="ed-input" rows={3} value={t.text} maxLength={500} onChange={(e) => e.target.value.trim() && set({ text: e.target.value }, "txt")} aria-label="Text content" />
+        )}
         <div className="grid grid-cols-2 gap-1.5">
           {TEXT_LOOKS.map((l) => (
             <button key={l.id} type="button" className="ed-card px-2 py-1.5 text-[12px]" aria-pressed={t.preset === l.id} onClick={() => set(l.patch)}>
@@ -443,8 +465,8 @@ function TextPanel({ t }: { t: TimelineText }) {
 // Zoom
 // ---------------------------------------------------------------------------------------
 
-function ZoomPanel({ z }: { z: TimelineZoom }) {
-  const { apply, doc } = useEditor();
+export function ZoomPanel({ z }: { z: TimelineZoom }) {
+  const { apply, doc, touch } = useEditor();
   const D = timelineDuration(doc);
   const set = (patch: Partial<TimelineZoom>, key?: string) => apply((d) => updateZoom(d, z.id, patch), key ? { coalesce: `${key}:${z.id}` } : undefined);
   return (
@@ -477,7 +499,7 @@ function ZoomPanel({ z }: { z: TimelineZoom }) {
       >
         <p className="text-[12px] leading-relaxed text-[var(--color-text-muted)]">
           <Icon name="target" size={13} className="mr-1 inline" />
-          Click on the video to choose what the zoom pushes into (usually the face).
+          {touch ? "Tap" : "Click"} on the video to choose what the zoom pushes into (usually the face).
         </p>
       </Section>
       <Section title="Timing">
@@ -535,7 +557,7 @@ function CaptionSample({ c, preset }: { c: TimelineCaptions; preset: (typeof CAP
   );
 }
 
-function CaptionsPanel() {
+export function CaptionsPanel() {
   const { doc, apply, wordsByAsset, engine } = useEditor();
   const c = doc.captions;
   const set = (patch: Partial<TimelineCaptions>, key?: string) => apply((d) => updateCaptions(d, patch), key ? { coalesce: `cap:${key}` } : undefined);
@@ -590,7 +612,7 @@ function WordFixes({ onSeek }: { onSeek: (t: number) => void }) {
   return (
     <Section title="Fix words" right={<span className="text-[11px] text-[var(--color-text-faint)]">{Object.keys(edits).length} fixed</span>}>
       <input className="ed-input" placeholder="Find a word…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find a caption word" />
-      <ul className="flex max-h-[320px] flex-col gap-0.5 overflow-y-auto pr-1">
+      <ul className="ed-wordlist flex max-h-[320px] flex-col gap-0.5 overflow-y-auto pr-1">
         {filtered.slice(0, 400).map((w) => {
           const edited = edits[w.key];
           const hidden = edited === "";
@@ -635,11 +657,11 @@ function WordRow({
   const { commit } = useEditor();
   return (
     <li className="flex items-center gap-1.5">
-      <button type="button" className="w-[44px] shrink-0 rounded px-1 py-1 text-left text-[10.5px] tabular-nums text-[var(--color-text-faint)] hover:bg-white/[0.06] hover:text-[var(--color-text)]" onClick={onSeek} title="Jump here">
+      <button type="button" className="ed-word-time w-[44px] shrink-0 rounded px-1 py-1 text-left text-[10.5px] tabular-nums text-[var(--color-text-faint)] hover:bg-white/[0.06] hover:text-[var(--color-text)]" onClick={onSeek} title="Jump here">
         {formatTime(time, true).slice(0, -1)}
       </button>
       <input
-        className="ed-input !h-[26px] flex-1"
+        className="ed-input ed-word-input flex-1"
         value={hidden ? original : value}
         disabled={hidden}
         onChange={(e) => e.target.value.trim() && onChange(e.target.value)}
@@ -647,7 +669,7 @@ function WordRow({
         style={{ textDecoration: hidden ? "line-through" : undefined, opacity: hidden ? 0.45 : 1, borderColor: changed ? "color-mix(in srgb, var(--color-gold-500) 50%, transparent)" : undefined }}
         aria-label={`Caption word ${original}`}
       />
-      <button type="button" className="ed-iconbtn !h-[26px] !w-[26px]" aria-pressed={hidden} onClick={onToggleHidden} title={hidden ? "Show this word" : "Hide this word (e.g. “um”)"} aria-label={hidden ? "Show word" : "Hide word"}>
+      <button type="button" className="ed-iconbtn ed-word-btn" aria-pressed={hidden} onClick={onToggleHidden} title={hidden ? "Show this word" : "Hide this word (e.g. “um”)"} aria-label={hidden ? "Show word" : "Hide word"}>
         <Icon name={hidden ? "plus" : "close"} size={12} />
       </button>
     </li>
@@ -668,8 +690,8 @@ const GRADE_LABELS: Record<(typeof GRADE_PRESETS)[number], string> = {
   CINEMATIC: "Cinematic",
 };
 
-function LookPanel() {
-  const { doc, apply, engine } = useEditor();
+export function LookPanel() {
+  const { doc, apply, engine, touch } = useEditor();
   const g = resolveGrade(doc.grade);
   const custom = doc.grade.preset === "NONE" && !isNeutralGrade(g);
   const [frame, setFrame] = useState<string | null>(null);
@@ -690,7 +712,7 @@ function LookPanel() {
           </button>
         }
       >
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="ed-lookgrid grid grid-cols-4 gap-1.5">
           {GRADE_PRESETS.map((p) => {
             const filter = p === "NONE" ? undefined : `url(#ed-grade-${p})`;
             const vig = vignetteGradient(GRADE_PRESET_VALUES[p].vignette);
@@ -713,7 +735,7 @@ function LookPanel() {
         <Slider label="Saturation" value={g.saturation} min={0} max={2} format={(v) => signed(v - 1)} resetTo={1} onChange={(v) => set({ saturation: r2(v) }, "s")} />
         <Slider label="Temperature" value={g.temperature} min={-1} max={1} format={(v) => (v === 0 ? "0" : v > 0 ? `Warm ${Math.round(v * 100)}` : `Cool ${Math.round(-v * 100)}`)} resetTo={0} onChange={(v) => set({ temperature: r2(v) }, "t")} />
         <Slider label="Vignette" value={g.vignette} min={0} max={1} format={(v) => `${Math.round(v * 100)}`} resetTo={0} onChange={(v) => set({ vignette: r2(v) }, "v")} />
-        <p className="text-[11px] leading-relaxed text-[var(--color-text-faint)]">Applies to the whole video. Double-click a slider to reset it.</p>
+        <p className="text-[11px] leading-relaxed text-[var(--color-text-faint)]">Applies to the whole video. {touch ? "Tap a number to reset it." : "Double-click a slider to reset it."}</p>
       </Section>
     </>
   );
@@ -731,7 +753,7 @@ function signed(v: number) {
 // Cover
 // ---------------------------------------------------------------------------------------
 
-function CoverPanel() {
+export function CoverPanel() {
   const { doc, apply, engine, assetMap } = useEditor();
   const cover = doc.coverFrameSeconds ?? null;
   const loc = cover != null ? locateOutputTime(doc, cover) : null;

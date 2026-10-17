@@ -36,8 +36,8 @@ export function MediaBin() {
   );
 }
 
-function TakeCard({ asset, index, inUse }: { asset: EditorAsset; index: number; inUse: boolean }) {
-  const { apply, engine, toast, doc } = useEditor();
+export function TakeCard({ asset, index, inUse }: { asset: EditorAsset; index: number; inUse: boolean }) {
+  const { apply, engine, toast, doc, touch, setUi } = useEditor();
   const videoRef = useRef<HTMLVideoElement>(null);
   const snippet = asset.transcript?.trim() || (asset.words?.length ? asset.words.map((w) => w.word).join(" ") : "");
 
@@ -47,13 +47,14 @@ function TakeCard({ asset, index, inUse }: { asset: EditorAsset; index: number; 
     apply((d) => insertClip(d, index, { mediaAssetId: asset.id, sourceStart: 0, sourceEnd: asset.duration || 5 }, id).doc, {
       select: { kind: "clip", id },
     });
-    toast(`Added “${asset.name}” — trim it on the timeline`);
+    if (touch) setUi({ sheet: null });
+    toast(touch ? `Added “${asset.name}” at the playhead — drag its white handles to trim` : `Added “${asset.name}” — trim it on the timeline`);
   };
 
   return (
     <div
-      className="ed-take"
-      draggable
+      className={`ed-take ${touch ? "ed-take-touch" : ""}`}
+      draggable={!touch}
       onDragStart={(e) => {
         e.dataTransfer.setData(TAKE_DRAG_MIME, asset.id);
         e.dataTransfer.effectAllowed = "copy";
@@ -65,6 +66,8 @@ function TakeCard({ asset, index, inUse }: { asset: EditorAsset; index: number; 
         onPointerMove={(e) => {
           const v = videoRef.current;
           if (!v || !asset.duration) return;
+          // mouse: hover scrubs; touch: press and slide across the thumbnail
+          if (e.pointerType !== "mouse" && !e.buttons) return;
           const r = e.currentTarget.getBoundingClientRect();
           v.currentTime = Math.max(0, Math.min(asset.duration - 0.05, ((e.clientX - r.left) / r.width) * asset.duration));
         }}
@@ -79,7 +82,7 @@ function TakeCard({ asset, index, inUse }: { asset: EditorAsset; index: number; 
           {formatTime(asset.duration, true)}
         </span>
         <button type="button" className="ed-take-add" onClick={add} aria-label={`Add ${asset.name} to the timeline`}>
-          <Icon name="plus" size={13} /> Add
+          <Icon name="plus" size={touch ? 16 : 13} /> {touch ? "Add at playhead" : "Add"}
         </button>
       </div>
       <div className="px-2.5 pb-2.5 pt-2">
