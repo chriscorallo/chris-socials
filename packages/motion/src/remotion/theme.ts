@@ -2,7 +2,8 @@ import type { CSSProperties } from "react";
 import { MOTION_PALETTES, type TimelineVisual } from "@chris/media/timeline";
 
 export type PaletteName = TimelineVisual["palette"];
-export type Palette = (typeof MOTION_PALETTES)[PaletteName];
+export type { Palette } from "../style";
+import type { Palette } from "../style";
 
 export function paletteFor(name: PaletteName | undefined): Palette {
   return MOTION_PALETTES[name ?? "BRAND"] ?? MOTION_PALETTES.BRAND;
