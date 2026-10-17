@@ -86,12 +86,12 @@ export function TimeGrid({
   return (
     <div
       ref={scrollRef}
-      className="relative overflow-auto overscroll-contain rounded-2xl border border-[var(--color-border)] bg-[#0b0b0e] [--gw:44px] [--dayw:calc((100cqw_-_44px)/3)] [container-type:inline-size] [scroll-snap-type:x_proximity] lg:[--gw:56px] lg:[--dayw:calc((100cqw_-_56px)/7)]"
+      className="relative overflow-auto overscroll-contain rounded-2xl border border-[var(--color-border)] bg-[#0b0b0e] [--gw:44px] [--dayw:calc((100cqw_-_44px)/3)] [container-type:inline-size] [scroll-snap-type:x_proximity] [scroll-padding-left:var(--gw)] lg:[--gw:56px] lg:[--dayw:calc((100cqw_-_56px)/7)]"
       style={{ height: "min(72dvh, 760px)", minHeight: 420 }}
     >
       <div style={{ width: `calc(var(--gw) + ${days.length} * ${colW})` }}>
         {/* Header */}
-        <div className="sticky top-0 z-20 flex border-b border-[var(--color-border)] bg-[#0b0b0e]/95 backdrop-blur">
+        <div className={`sticky top-0 z-20 border-b ${variant === "day" ? "hidden" : "flex"} border-[var(--color-border)] bg-[#0b0b0e]/95 backdrop-blur`}>
           <div data-gutter className="sticky left-0 z-30 shrink-0 bg-[#0b0b0e]" style={{ width: "var(--gw)" }} />
           {days.map((d) => {
             const isToday = d === p.today;
@@ -437,13 +437,13 @@ export function DayHeader({ ymd, today, count, sticky = false }: { ymd: string; 
   );
 }
 
-export function DayList({ ymd, events, ...p }: ViewProps & { ymd: string; events: CalEvent[] }) {
+export function DayList({ ymd, events, showAdd = true, ...p }: ViewProps & { ymd: string; events: CalEvent[]; showAdd?: boolean }) {
   return (
-    <ul className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white/[0.02]">
+    <ul data-daylist className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white/[0.02]">
       {events.map((e) => (
         <li key={e.id} className="border-b border-[var(--color-border)] last:border-b-0">
           <button type="button" onClick={() => p.onOpen(e)} className="flex min-h-[60px] w-full items-center gap-3 px-3.5 py-2.5 text-left active:bg-white/[0.05]">
-            <span className="w-[54px] shrink-0 text-[13px] font-medium tabular-nums text-[var(--color-text-muted)]">{formatMinutes(e.startMin)}</span>
+            <span className="w-[62px] shrink-0 whitespace-nowrap text-[13px] font-medium tabular-nums text-[var(--color-text-muted)]">{formatMinutes(e.startMin)}</span>
             <span
               className="w-[3px] shrink-0 self-stretch rounded-full"
               style={e.kind === "slot" ? { borderLeft: `2px dashed ${STATUS_COLOR.slot}` } : { background: STATUS_COLOR[e.status] }}
@@ -452,9 +452,9 @@ export function DayList({ ymd, events, ...p }: ViewProps & { ymd: string; events
               <span className={`block truncate text-[15px] font-medium ${e.kind === "slot" ? "text-[var(--color-text-muted)]" : ""}`}>
                 {e.kind === "slot" ? `Open slot · ${e.platforms.map((x) => PLATFORM_NAME[x]).join(" + ")}` : e.title}
               </span>
-              <span className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-[var(--color-text-faint)]">
+              <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-[var(--color-text-faint)]">
                 <PlatformDots platforms={e.platforms} />
-                <span style={{ color: e.kind === "slot" ? undefined : STATUS_COLOR[e.status] }}>
+                <span className="truncate" style={{ color: e.kind === "slot" ? undefined : STATUS_COLOR[e.status] }}>
                   {e.kind === "slot" ? (e.suggestion ? `Fill with “${e.suggestion.title}”` : "Nothing ready to fill it") : STATUS_LABEL[e.status]}
                 </span>
               </span>
@@ -465,7 +465,7 @@ export function DayList({ ymd, events, ...p }: ViewProps & { ymd: string; events
           </button>
         </li>
       ))}
-      <li>
+      {showAdd && <li>
         <button
           type="button"
           onClick={() => p.onAdd(ymd, 18 * 60)}
@@ -473,7 +473,7 @@ export function DayList({ ymd, events, ...p }: ViewProps & { ymd: string; events
         >
           <span className="text-[18px] leading-none">+</span> Add a video to {ymd === p.today ? "today" : `${weekdayName(ymd, true)} ${Number(ymd.slice(8, 10))}`}
         </button>
-      </li>
+      </li>}
     </ul>
   );
 }
@@ -489,7 +489,7 @@ export function Agenda({ days, ...p }: ViewProps & { days: string[] }): ReactNod
       {shown.map((d) => (
         <section key={d}>
           <DayHeader ymd={d} today={p.today} count={(byDay.get(d) ?? []).filter((e) => e.kind === "post").length} sticky />
-          <DayList {...p} ymd={d} events={byDay.get(d) ?? []} />
+          <DayList {...p} ymd={d} events={byDay.get(d) ?? []} showAdd={(byDay.get(d)?.length ?? 0) === 0} />
         </section>
       ))}
     </div>

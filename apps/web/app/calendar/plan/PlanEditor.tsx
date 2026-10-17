@@ -54,7 +54,7 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
       onClick={() => onChange(!on)}
       className={`relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors ${on ? "bg-[var(--color-emerald-500)]" : "bg-white/15"}`}
     >
-      <span className={`absolute top-[2px] h-[27px] w-[27px] rounded-full bg-white shadow transition-transform ${on ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
+      <span className={`absolute left-0 top-[2px] h-[27px] w-[27px] rounded-full bg-white shadow transition-transform ${on ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
     </button>
   );
 }

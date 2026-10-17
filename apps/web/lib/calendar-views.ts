@@ -92,6 +92,14 @@ export function viewTitle(view: CalendarView, anchor: string): string {
   return `${monthDayLabel(start)} – ${sameMonth ? Number(last.slice(8, 10)) : monthDayLabel(last)}${last.slice(0, 4) === y ? `, ${y}` : `, ${last.slice(0, 4)}`}`;
 }
 
+/** Phone-width title: no year when it's the current year, short weekday on Day view. */
+export function shortViewTitle(view: CalendarView, anchor: string, todayYmd: string): string {
+  if (view === "month") return viewTitle(view, anchor);
+  if (view === "day") return `${weekdayName(anchor, true)}, ${monthDayLabel(anchor)}`;
+  const t = viewTitle(view, anchor);
+  return t.endsWith(`, ${todayYmd.slice(0, 4)}`) ? t.slice(0, -6) : t;
+}
+
 /** "6:30 PM" style from minutes-of-day; compact drops ":00" and uses lowercase a/p ("6:30p"). */
 export function formatMinutes(min: number, compact = false): string {
   const h = Math.floor(min / 60);

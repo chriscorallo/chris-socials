@@ -65,31 +65,45 @@ export default async function CalendarPage({
           </Panel>
         )}
 
-        {/* Stay on course — status + this/next week coverage + the top next steps. Open by
-            default when something needs attention; one line when on track. */}
-        <details open={course.status !== "ON_TRACK"} className="panel mb-5 min-w-0">
-          <summary className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 active:bg-white/[0.03] sm:px-5">
-            <CourseStatusPill status={course.status} />
-            <p className="min-w-0 flex-1 truncate text-[14px] text-[var(--color-text-muted)]">
-              <span className="font-semibold text-[var(--color-text)]">Stay on course</span>
-              <span className="hidden sm:inline"> · {course.headline}</span>
-            </p>
-            {course.streakWeeks > 0 && <span className="hidden shrink-0 text-[12.5px] text-[var(--color-emerald-400)] sm:inline">{course.streakWeeks}-week streak</span>}
+        {/* Stay on course — a two-line summary (status + the single next step) that expands to
+            this/next week coverage and the top next steps. Collapsed by default so the calendar
+            itself is the first thing on an iPhone screen. */}
+        <details className="panel mb-5 min-w-0">
+          <summary className="flex min-h-[64px] cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 active:bg-white/[0.03] sm:px-5">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5">
+                <CourseStatusPill status={course.status} />
+                <span className="truncate text-[15px] font-semibold">Stay on course</span>
+                {course.weeks[0] && (
+                  <span className="hidden text-[13px] text-[var(--color-text-faint)] sm:inline">
+                    This week {course.weeks[0].filled}/{course.weeks[0].planned} · Next {course.weeks[1]?.filled ?? 0}/{course.weeks[1]?.planned ?? 0}
+                  </span>
+                )}
+                {course.streakWeeks > 0 && <span className="hidden text-[12.5px] text-[var(--color-emerald-400)] sm:inline">{course.streakWeeks}-week streak</span>}
+              </div>
+              <p className="mt-1 line-clamp-1 text-[13.5px] text-[var(--color-text-muted)]">
+                {todo.nudges[0] ? (
+                  <>
+                    <span className="text-[var(--color-text)]">Next:</span> {todo.nudges[0].title}
+                    {todo.nudges.length > 1 && <span className="text-[var(--color-text-faint)]"> · +{todo.nudges.length - 1} more</span>}
+                  </>
+                ) : (
+                  course.headline
+                )}
+              </p>
+            </div>
             <svg width="14" height="9" viewBox="0 0 14 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="chevron shrink-0 text-[var(--color-text-faint)]" aria-hidden>
               <path d="m1 1.5 6 6 6-6" />
             </svg>
           </summary>
           <div className="grid gap-5 px-4 pb-4 sm:px-5 sm:pb-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <div className="min-w-0">
-              <p className="text-[14.5px] leading-snug text-[var(--color-text)] sm:hidden">{course.headline}</p>
+              <p className="text-[14.5px] leading-snug text-[var(--color-text)] sm:text-[13.5px]">{course.headline}</p>
               {course.weeks.length > 0 ? (
-                <div className="mt-3 flex flex-col gap-4 sm:mt-0">
+                <div className="mt-4 flex flex-col gap-4">
                   {course.weeks.map((w) => (
                     <CoverageBars key={w.weekStart} week={w} />
                   ))}
-                  {course.pipeline && course.pipeline.needed > 0 && (
-                    <p className="hidden text-[13px] leading-snug text-[var(--color-text-muted)] sm:block">{course.pipeline.summary}</p>
-                  )}
                 </div>
               ) : (
                 <p className="mt-2 text-[14px] text-[var(--color-text-muted)]">Set how often you post on each platform and the calendar will show open slots and keep you on pace.</p>

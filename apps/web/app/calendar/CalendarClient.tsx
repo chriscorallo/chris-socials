@@ -10,6 +10,7 @@ import {
   VIEW_COOKIE,
   isSameMonth,
   shiftAnchor,
+  shortViewTitle,
   viewTitle,
   weekDays,
   type CalendarView,
@@ -123,7 +124,10 @@ export function CalendarClient(props: CalendarClientProps) {
             <Link href={href(view, prev)} aria-label="Previous" className="flex h-11 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-gold-400)] active:bg-white/10 lg:w-10">
               <Chevron dir="left" />
             </Link>
-            <h1 className="min-w-0 truncate text-[22px] font-semibold tracking-tight sm:text-[24px]">{title}</h1>
+            <h1 className="min-w-0 truncate text-[22px] font-semibold tracking-tight sm:text-[24px]">
+              <span className="sm:hidden">{shortViewTitle(view, anchor, today)}</span>
+              <span className="hidden sm:inline">{title}</span>
+            </h1>
             <Link href={href(view, next)} aria-label="Next" className="flex h-11 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-gold-400)] active:bg-white/10 lg:w-10">
               <Chevron dir="right" />
             </Link>

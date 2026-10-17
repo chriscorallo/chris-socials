@@ -478,7 +478,10 @@ function planPipeline(
     supply.toFilm ? `${supply.toFilm} to film` : null,
     supply.writing ? `${supply.writing} being written` : null,
   ].filter(Boolean);
-  const nextAction = steps.find((s) => s.stage !== "ready");
+  // The most urgent thing to do next = the earliest deadline among the non-"schedule it" steps.
+  const nextAction = steps
+    .filter((s) => s.stage !== "ready")
+    .sort((a, b) => a.deadline.getTime() - b.deadline.getTime())[0];
   const summary =
     `To fill ${plural(groups.length, "open slot")} through ${fmtDay(startOfDayInTz(horizonEndYmd, tz), tz)} you need ` +
     `${plural(groups.length, "video")} ready, the first by ${fmtDay(earliestReadyBy, tz)}. You have ${haveParts.join(", ")}` +
@@ -585,7 +588,9 @@ function stuckNudges(stuck: StuckItem[], tz: string): Nudge[] {
     priority: s.severity === "critical" ? (s.kind === "MISSED" || s.kind === "PUBLISH_FAILED" ? 1 : 3) : 25,
     title: STUCK_TITLE[s.kind](s.title),
     detail: s.detail,
-    due: s.since,
+    // Only time-bound problems get a "due"; for stuck-in-state items the age is in the detail (an
+    // "overdue" label on "filmed 4 days ago" would read as a missed deadline).
+    due: s.kind === "MISSED" || s.kind === "PUBLISH_FAILED" || s.kind === "RESERVED_NOT_READY" ? s.since : null,
     action: STUCK_ACTION[s.kind](s.contentItemId, ymdInTz(s.since, tz)),
   }));
 }

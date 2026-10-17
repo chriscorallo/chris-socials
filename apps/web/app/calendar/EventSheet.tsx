@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { CalEvent, PoolItem } from "../../lib/calendar-data";
 import { formatMinutes, monthDayLabel, weekdayName } from "../../lib/calendar-views";
 import { formatHhmm, parseHhmm } from "@chris/domain/planning";
@@ -25,8 +26,10 @@ export function Sheet({ onClose, children, label }: { onClose: () => void; child
       document.body.style.overflow = prev;
     };
   }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center lg:items-center" role="dialog" aria-modal aria-label={label}>
+  // Portaled to <body>: PageShell's <main> is its own stacking context (z-10), which would
+  // otherwise trap the sheet under the fixed tab bar.
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-end justify-center lg:items-center" role="dialog" aria-modal aria-label={label}>
       <button type="button" aria-label="Close" className="backdrop-enter absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <div
         className="sheet-enter relative max-h-[88dvh] w-full overflow-y-auto overscroll-contain rounded-t-[22px] border border-[var(--color-border-strong)] bg-[#141418] shadow-2xl lg:max-w-[460px] lg:rounded-[22px]"
@@ -37,7 +40,8 @@ export function Sheet({ onClose, children, label }: { onClose: () => void; child
         </div>
         <div className="px-5 pb-2 pt-2 lg:pt-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -206,9 +210,8 @@ function PostDetail({ e, onDone }: { e: CalEvent; onDone: (msg?: string) => void
           </button>
           <ErrorLine error={error} />
           <p className="mt-3 text-[12.5px] leading-snug text-[var(--color-text-faint)]">
-            Tip: on a computer you can drag it to a new time; on iPhone, press and hold it in Week or Day view. To take it off the
-            calendar entirely, edit the video (it goes back through render + gates) or cancel it from its page — there&apos;s no
-            &ldquo;unschedule&rdquo; step in the state machine.
+            Or drag it: on a computer, drag in any view; on iPhone, press and hold in Week or Day. To take it off the calendar,
+            edit the video (it re-renders and re-checks) or cancel it on its page.
           </p>
         </div>
       ) : (
@@ -295,8 +298,10 @@ function PickVideo({
                   onClick={() => pick(item.id)}
                   className="flex min-h-[54px] w-full items-center gap-3 px-3.5 py-2 text-left active:bg-white/[0.05] disabled:opacity-60"
                 >
-                  <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{item.title}</span>
-                  {item.id === suggestionId && <span className="badge badge-gold shrink-0">Suggested</span>}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-medium">{item.title}</span>
+                    {item.id === suggestionId && <span className="text-[12px] font-semibold text-[var(--color-gold-400)]">Suggested — oldest ready video</span>}
+                  </span>
                   <span className="shrink-0 text-[14px] font-semibold text-[var(--color-gold-400)]">{busyId === item.id ? "…" : "Schedule"}</span>
                 </button>
               </li>
