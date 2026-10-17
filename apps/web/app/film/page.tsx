@@ -54,8 +54,8 @@ export default async function FilmQueuePage({
       <NavBar />
       <PageShell>
         <PageHeader
-          eyebrow="Production"
-          title="Film Queue"
+          eyebrow="Ready to shoot"
+          title="Film"
           description={
             ready.length === 0
               ? "Nothing waiting to be filmed."
@@ -63,7 +63,7 @@ export default async function FilmQueuePage({
           }
         />
 
-        {filmed && <p className="mb-4 text-[15px] text-[var(--color-emerald-400)] sm:text-sm">Marked {filmed} as filmed — upload the takes below.</p>}
+        {filmed && <p className="mb-4 text-[15px] text-[var(--color-emerald-400)] sm:text-sm">Marked {filmed} as filmed — upload the footage below.</p>}
         {error && <p className="mb-4 text-sm text-[var(--color-rose-400)]">{error}</p>}
 
         <div className="flex flex-col gap-5">
@@ -95,7 +95,7 @@ export default async function FilmQueuePage({
                               {item.creatorCard.notes && <p className="mt-1 text-[12px] text-[var(--color-text-faint)]">{item.creatorCard.notes}</p>}
                             </>
                           ) : (
-                            <p className="mt-1 text-[13px] text-[var(--color-text-faint)]">No Creator Card yet.</p>
+                            <p className="mt-1 text-[13px] text-[var(--color-text-faint)]">No shot notes yet.</p>
                           )}
                         </div>
                       </li>
@@ -111,12 +111,12 @@ export default async function FilmQueuePage({
 
           {ready.length === 0 && (
             <Panel>
-              <EmptyState>Nothing at READY_TO_FILM. Scripts become filmable once their Creator Card is issued.</EmptyState>
+              <EmptyState>Nothing is ready to film yet. A video shows up here once its script and shot notes are done.</EmptyState>
             </Panel>
           )}
 
           <Panel>
-            <SectionHeading eyebrow={`${awaitingUpload.length} video${awaitingUpload.length === 1 ? "" : "s"}`} title="Filmed — waiting for upload" />
+            <SectionHeading eyebrow={`${awaitingUpload.length} video${awaitingUpload.length === 1 ? "" : "s"}`} title="Filmed — upload footage" />
             {awaitingUpload.length === 0 ? (
               <EmptyState>Nothing waiting for upload.</EmptyState>
             ) : (
@@ -124,7 +124,7 @@ export default async function FilmQueuePage({
                 {awaitingUpload.map((item) => (
                   <li key={item.id}>
                     <Link
-                      href={`/content/${item.id}#media`}
+                      href={`/content/${item.id}#upload`}
                       className="flex min-h-[48px] items-center justify-between gap-3 rounded-lg px-2 text-[15px] active:bg-white/[0.05] sm:text-sm"
                     >
                       <span className="min-w-0">{item.title}</span>

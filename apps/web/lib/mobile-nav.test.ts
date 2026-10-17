@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAV_LINKS, TAB_LINKS, MORE_LINKS, isActive } from "../app/components/nav-links-data";
+import { NAV_LINKS, TAB_LINKS, MORE_LINKS, PRIMARY_LINKS, isActive } from "../app/components/nav-links-data";
 import manifest from "../app/manifest";
 
 // Mobile navigation (bottom tab bar + "More" sheet) — /docs/decisions-pending/mobile-app.md.
@@ -10,10 +10,18 @@ describe("mobile navigation", () => {
     expect([...mobile].sort()).toEqual(NAV_LINKS.map((l) => l.href).sort());
   });
 
-  it("keeps the tab bar to five destinations plus More, with Upload in the thumb-center", () => {
-    // Six slots at 320px is ~53px each — still >= the 44px tap-target floor.
-    expect(TAB_LINKS.map((l) => l.label)).toEqual(["Home", "Content", "Upload", "Film", "Calendar"]);
+  it("keeps the tab bar to Home, Videos, Upload (center), Calendar + More", () => {
+    expect(TAB_LINKS.map((l) => l.label)).toEqual(["Home", "Videos", "Upload", "Calendar"]);
+    // With "More" there are five slots; Upload is the middle one.
+    expect([...TAB_LINKS.map((l) => l.label), "More"].indexOf("Upload")).toBe(2);
     expect(Math.floor(320 / (TAB_LINKS.length + 1))).toBeGreaterThanOrEqual(44);
+  });
+
+  it("desktop shows the same four daily places, the rest under More, nothing lost", () => {
+    expect(PRIMARY_LINKS.map((l) => l.href)).toEqual(TAB_LINKS.map((l) => l.href));
+    const desktop = [...PRIMARY_LINKS, ...MORE_LINKS].map((l) => l.href);
+    expect(new Set(desktop).size).toBe(desktop.length);
+    expect(MORE_LINKS.map((l) => l.href)).toContain("/film");
   });
 
   it("highlights Home only on /, and sections on their sub-routes", () => {
