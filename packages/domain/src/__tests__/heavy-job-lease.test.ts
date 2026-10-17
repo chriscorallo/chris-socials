@@ -8,6 +8,7 @@ import {
   getActiveHeavyJob,
   patchHeavyJobSummary,
   heavyJobRunKind,
+  claimQueuedHeavyJob,
 } from "../job-run";
 
 const base = { jobKind: "render", args: { x: 1 }, actorId: "test-actor" };
@@ -59,7 +60,7 @@ describe("heavy job lease (one heavy job per content item, global sandbox cap)",
 
   it("caps concurrent sandbox jobs across items (inline jobs don't count) and takes over stale rows", async () => {
     // Clear any RUNNING heavy rows from earlier tests so the count is deterministic.
-    await prisma.jobRun.updateMany({ where: { kind: { startsWith: "heavy:" }, status: "RUNNING" }, data: { status: "FAILED", finishedAt: new Date() } });
+    await prisma.jobRun.updateMany({ where: { kind: { startsWith: "heavy:" }, status: { in: ["RUNNING", "QUEUED"] } }, data: { status: "FAILED", finishedAt: new Date() } });
     const t = Date.now();
     const a = await acquireHeavyJobLease(prisma, { ...base, contentItemId: `cap-${t}-1`, mode: "sandbox", maxConcurrentSandboxes: 2 });
     const b = await acquireHeavyJobLease(prisma, { ...base, contentItemId: `cap-${t}-2`, mode: "sandbox", maxConcurrentSandboxes: 2 });
@@ -78,6 +79,36 @@ describe("heavy job lease (one heavy job per content item, global sandbox cap)",
     });
     expect(later.acquired).toBe(true);
     if (a.acquired) expect((await getHeavyJob(prisma, a.jobRunId))?.status).toBe("FAILED");
+  });
+
+  it("queues beyond the cap (FIFO); a worker claims queued jobs it can run, the web app only within the cap", async () => {
+    await prisma.jobRun.updateMany({ where: { kind: { startsWith: "heavy:" }, status: { in: ["RUNNING", "QUEUED"] } }, data: { status: "FAILED", finishedAt: new Date() } });
+    const t = Date.now();
+    const q = (n: number, jobKind = "ingest") =>
+      acquireHeavyJobLease(prisma, { ...base, jobKind, contentItemId: `q-${t}-${n}`, mode: "sandbox", maxConcurrentSandboxes: 1, queueIfFull: true });
+    const first = await q(1);
+    expect(first.acquired).toBe(true);
+    const second = await q(2, "render");
+    const third = await q(3);
+    expect(second).toMatchObject({ acquired: false, reason: "QUEUED", ahead: 0 });
+    expect(third).toMatchObject({ acquired: false, reason: "QUEUED", ahead: 1 });
+    if (second.acquired || second.reason !== "QUEUED" || third.acquired || third.reason !== "QUEUED") throw new Error("expected queued");
+    // A queued item counts as busy for that item.
+    expect(await q(2)).toMatchObject({ acquired: false, reason: "BUSY", activeJobRunId: second.jobRunId });
+    expect((await getActiveHeavyJob(prisma, `q-${t}-2`))?.status).toBe("QUEUED");
+
+    // The web app can't start one while the cap is used up.
+    expect(await claimQueuedHeavyJob(prisma, { maxConcurrentSandboxes: 1 })).toBeNull();
+    // A worker without the model key reuses its VM for the oldest job it CAN run (skips the render).
+    const claimed = await claimQueuedHeavyJob(prisma, { kinds: ["ingest"], sandboxName: "heavy-worker" });
+    expect(claimed).toMatchObject({ jobRunId: third.jobRunId, jobKind: "ingest", contentItemId: `q-${t}-3` });
+    const v = await getHeavyJob(prisma, third.jobRunId);
+    expect(v?.status).toBe("RUNNING");
+    expect(v?.summary?.sandboxName).toBe("heavy-worker");
+    // Once a slot frees, the web app takes the render.
+    if (first.acquired) await finishHeavyJob(prisma, first.jobRunId, { status: "SUCCEEDED" });
+    expect(await claimQueuedHeavyJob(prisma, { maxConcurrentSandboxes: 2 })).toMatchObject({ jobRunId: second.jobRunId, jobKind: "render" });
+    expect(await claimQueuedHeavyJob(prisma, {})).toBeNull();
   });
 
   it("uses a per-item JobRun kind", () => {

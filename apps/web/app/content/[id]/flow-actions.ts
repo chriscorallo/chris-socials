@@ -5,6 +5,7 @@ import { prisma, createStarterEdit, applyManualTransition, getActiveHeavyJob } f
 import { requireSession } from "../../../lib/session";
 import { heavyJobMode, isAutoTranscriptionEnabled } from "../../../lib/render-config";
 import { progressLine } from "../../../lib/heavy-job-text";
+import { kickQueuedHeavyJobs } from "../../../lib/heavy-jobs";
 
 /**
  * The simple-flow entry points (docs/decisions-pending/flow.md). Kept out of ./actions.ts on
@@ -75,7 +76,12 @@ export async function captionStatus(
     // Live site: captions come from the cloud worker's upload job (lib/heavy-jobs.ts). Follow
     // its progress; stop waiting if no job is running (it failed, or never started) — except in
     // the few seconds between the upload finishing and the job being claimed.
-    const job = await getActiveHeavyJob(prisma, contentItemId);
+    let job = await getActiveHeavyJob(prisma, contentItemId);
+    if (job?.status === "QUEUED") {
+      // Waiting for a free cloud worker: start it if a slot has opened.
+      await kickQueuedHeavyJobs().catch(() => undefined);
+      job = await getActiveHeavyJob(prisma, contentItemId);
+    }
     const newest = Math.max(0, ...takes.map((t) => t.createdAt.getTime()));
     if (job) progress = progressLine(job.summary?.jobKind, job.summary?.progress?.message, job.summary?.progress?.pct);
     else if (Date.now() - newest > 45_000) waiting = false;

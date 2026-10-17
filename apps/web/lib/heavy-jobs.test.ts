@@ -42,7 +42,7 @@ describe("runHeavyJob (sandbox mode, fake launcher)", () => {
     process.env.ANTHROPIC_API_KEY = "sk-test-not-real";
     process.env.BLOB_READ_WRITE_TOKEN = "blob-test";
     process.env.AUTH_SECRET = "never-sent";
-    await prisma.jobRun.updateMany({ where: { kind: { startsWith: "heavy:" }, status: "RUNNING" }, data: { status: "FAILED", finishedAt: new Date() } });
+    await prisma.jobRun.updateMany({ where: { kind: { startsWith: "heavy:" }, status: { in: ["RUNNING", "QUEUED"] } }, data: { status: "FAILED", finishedAt: new Date() } });
   });
   afterEach(() => {
     setSandboxLauncherForTests(null);
@@ -79,14 +79,25 @@ describe("runHeavyJob (sandbox mode, fake launcher)", () => {
     expect(workerEnv("ingest", { contentItemId: "x" }).ANTHROPIC_API_KEY).toBeUndefined();
   });
 
-  it("caps concurrent sandboxes", async () => {
+  it("caps concurrent sandboxes: beyond the cap jobs QUEUE (batch upload) and start when a slot frees", async () => {
     const f = fakeLauncher();
     setSandboxLauncherForTests(f.l);
-    expect((await runHeavyJob("render", { contentItemId: (await item()).id }, { actorId: "c" })).status).toBe("started");
-    expect((await runHeavyJob("render", { contentItemId: (await item()).id }, { actorId: "c" })).status).toBe("started");
-    const third = await runHeavyJob("render", { contentItemId: (await item()).id }, { actorId: "c" });
-    expect(third.status).toBe("refused");
-    if (third.status === "refused") expect(third.message).toMatch(/limit is 2/);
+    const a = await runHeavyJob("ingest", { contentItemId: (await item()).id, transcribe: true, track: true, matte: true }, { actorId: "c" });
+    const b = await runHeavyJob("ingest", { contentItemId: (await item()).id, transcribe: true, track: true, matte: true }, { actorId: "c" });
+    const third = await runHeavyJob("ingest", { contentItemId: (await item()).id, transcribe: true, track: true, matte: true }, { actorId: "c" });
+    expect([a.status, b.status, third.status]).toEqual(["started", "started", "started"]);
+    expect(f.launched).toHaveLength(2);
+    if (third.status !== "started") return;
+    const queued = await getHeavyJob(prisma, third.jobRunId);
+    expect(queued?.status).toBe("QUEUED");
+    expect(queued?.summary?.progress.message).toMatch(/Waiting for a free cloud worker/);
+
+    // A slot frees: polling the queued job starts it in a new sandbox.
+    if (a.status === "started") await finishHeavyJob(prisma, a.jobRunId, { status: "SUCCEEDED" });
+    const polled = await reconcileHeavyJob(queued!);
+    expect(polled.status).toBe("RUNNING");
+    expect(f.launched).toHaveLength(3);
+    expect(f.launched[2]!.jobRunId).toBe(third.jobRunId);
   });
 
   it("a launch failure marks the job FAILED with the reason (nothing left RUNNING) and frees the item", async () => {

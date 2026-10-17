@@ -8,6 +8,8 @@ export interface JobProgressView {
   kind: string | null;
   contentItemId: string | null;
   status: "RUNNING" | "SUCCEEDED" | "FAILED";
+  /** Waiting for a free cloud worker (status reads RUNNING). */
+  queued?: boolean;
   pct: number;
   stage: string | null;
   message: string | null;

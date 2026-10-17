@@ -4,10 +4,11 @@ import {
   finishHeavyJob,
   patchHeavyJobSummary,
   getHeavyJob,
+  claimQueuedHeavyJob,
   type HeavyJobView,
 } from "@chris/domain";
 import { runHeavyJobRecorded, type HeavyJobOutcome } from "@chris/worker/heavy-jobs";
-import { heavyJobNeedsModel, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "@chris/worker/heavy-job-kinds";
+import { heavyJobNeedsModel, isHeavyJobKind, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "@chris/worker/heavy-job-kinds";
 import { storage } from "./storage";
 import { getModelProvider } from "./model-provider";
 import { cloudWorkerConfigured, getRenderFontPath, heavyJobMode } from "./render-config";
@@ -69,7 +70,8 @@ export function sandboxConfig() {
     // 1 or an even number (Vercel Sandbox rule).
     vcpus: vcpus === 1 ? 1 : vcpus - (vcpus % 2),
     timeoutMs: num(process.env.RENDER_SANDBOX_TIMEOUT_MS, 45 * 60_000, 60_000, 5 * 60 * 60_000),
-    maxSandboxes: num(process.env.HEAVY_JOB_MAX_SANDBOXES, 2, 1, 100),
+    // Default 4: a batch upload of a few clips gets its captions in parallel; more queue.
+    maxSandboxes: num(process.env.HEAVY_JOB_MAX_SANDBOXES, 4, 1, 100),
   };
 }
 
@@ -114,7 +116,7 @@ export const vercelSandboxLauncher: SandboxLauncher = {
       const selfStop = await selfStopCredentials();
       // Secrets travel as a 0600 file the runner deletes on read — never on the command line.
       await sandbox.writeFiles([
-        { path: `${dir}/env.json`, content: Buffer.from(JSON.stringify({ ...input.env, ...selfStop, SANDBOX_SELF_NAME: name })), mode: 0o600 },
+        { path: `${dir}/env.json`, content: Buffer.from(JSON.stringify({ ...input.env, ...selfStop, SANDBOX_SELF_NAME: name, SANDBOX_DEADLINE_MS: String(Date.now() + input.timeoutMs) })), mode: 0o600 },
         { path: `${dir}/args.json`, content: Buffer.from(JSON.stringify(input.args)) },
       ]);
       await sandbox.runCommand({
@@ -192,9 +194,17 @@ export async function runHeavyJob<K extends HeavyJobKind>(
     maxConcurrentSandboxes: cfg.maxSandboxes,
     // A sandbox can't outlive its timeout; a little margin for the last DB write.
     staleAfterMs: mode === "sandbox" ? cfg.timeoutMs + 5 * 60_000 : undefined,
+    // At the sandbox cap the job waits its turn instead of being refused (a batch upload of
+    // many clips): a finishing worker picks it up in its own VM, or the next poll starts it.
+    queueIfFull: mode === "sandbox",
   });
   if (!lease.acquired) {
     if (lease.reason === "BUSY") return { status: "busy", jobRunId: lease.activeJobRunId, jobKind: lease.activeJobKind, message: busyMessage(lease.activeJobKind) };
+    if (lease.reason === "QUEUED") {
+      // Capacity may have freed between the claim and now — try to start the queue right away.
+      await kickQueuedHeavyJobs().catch(() => undefined);
+      return { status: "started", jobRunId: lease.jobRunId };
+    }
     return {
       status: "refused",
       jobRunId: null,
@@ -214,6 +224,14 @@ export async function runHeavyJob<K extends HeavyJobKind>(
     return { status: "done", jobRunId, outcome };
   }
 
+  const launched = await launchClaimed(jobRunId, kind, args);
+  if (launched.ok) return { status: "started", jobRunId };
+  return { status: "refused", jobRunId, message: `Couldn't start the cloud worker (${launched.reason.slice(0, 200)}). Nothing was changed — try again in a minute.` };
+}
+
+/** Boots a sandbox for an already-claimed (RUNNING) job; on failure the job is FAILED with the reason. */
+async function launchClaimed(jobRunId: string, kind: HeavyJobKind, args: HeavyJobArgsByKind[HeavyJobKind]): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const cfg = sandboxConfig();
   try {
     const { sandboxName } = await launcher.launch({
       jobRunId,
@@ -226,13 +244,37 @@ export async function runHeavyJob<K extends HeavyJobKind>(
       contentItemId: args.contentItemId,
     });
     await patchHeavyJobSummary(prisma, jobRunId, { sandboxName });
-    return { status: "started", jobRunId };
+    return { ok: true };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.error(JSON.stringify({ level: "error", event: "sandbox_launch_failed", jobRunId, kind, message: reason }));
     await finishHeavyJob(prisma, jobRunId, { status: "FAILED", error: `Couldn't start the cloud worker: ${reason}`, message: "Couldn't start the cloud worker." });
-    return { status: "refused", jobRunId, message: `Couldn't start the cloud worker (${reason.slice(0, 200)}). Nothing was changed — try again in a minute.` };
+    return { ok: false, reason };
   }
+}
+
+/**
+ * Starts QUEUED heavy jobs while there's sandbox capacity (oldest first). Called whenever a
+ * job is polled/queued, so the queue moves even if no worker drains it. Never throws.
+ */
+export async function kickQueuedHeavyJobs(max = 4): Promise<number> {
+  if (heavyJobMode() !== "sandbox" || !cloudWorkerConfigured()) return 0;
+  const cfg = sandboxConfig();
+  let started = 0;
+  for (let i = 0; i < max; i++) {
+    const claimed = await claimQueuedHeavyJob(prisma, { maxConcurrentSandboxes: cfg.maxSandboxes, staleAfterMs: cfg.timeoutMs + 5 * 60_000 }).catch(() => null);
+    if (!claimed) break;
+    let args: HeavyJobArgsByKind[HeavyJobKind];
+    try {
+      if (!isHeavyJobKind(claimed.jobKind)) throw new Error(`unknown job kind ${claimed.jobKind}`);
+      args = parseHeavyJobArgs(claimed.jobKind, claimed.args);
+    } catch (err) {
+      await finishHeavyJob(prisma, claimed.jobRunId, { status: "FAILED", error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    if ((await launchClaimed(claimed.jobRunId, claimed.jobKind as HeavyJobKind, args)).ok) started++;
+  }
+  return started;
 }
 
 /** How long a sandbox job may go without a progress write before we ask Vercel if it's alive. */
@@ -249,6 +291,11 @@ const LAUNCH_GRACE_MS = 3 * 60_000;
 export async function reconcileHeavyJob(view: HeavyJobView, now = new Date()): Promise<HeavyJobView> {
   const s = view.summary;
   if (!s || s.mode !== "sandbox") return view;
+  if (view.status !== "RUNNING") {
+    // A queued job, or a finished one that may have freed a slot: move the queue.
+    await kickQueuedHeavyJobs().catch(() => undefined);
+    if (view.status === "QUEUED") return (await getHeavyJob(prisma, view.id)) ?? view;
+  }
   try {
     if (view.status === "RUNNING") {
       if (!s.sandboxName) {

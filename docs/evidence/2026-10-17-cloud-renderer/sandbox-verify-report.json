@@ -1,15 +1,15 @@
 {
-  "bootMs": 1937,
-  "uploadMs": 2281,
+  "bootMs": 1384,
+  "uploadMs": 1850,
   "render": {
-    "wallMs": 130880,
-    "t": "2026-10-17T15:04:05.604Z",
+    "wallMs": 82763,
+    "t": "2026-10-17T18:00:59.843Z",
     "event": "offline_done",
     "kind": "render",
-    "ms": 129912,
+    "ms": 82014,
     "result": {
       "kind": "render",
-      "ms": 129909,
+      "ms": 82013,
       "result": {
         "output": "out.mp4",
         "durationSeconds": 5.9,
@@ -39,13 +39,13 @@
           "behindSubject": 1,
           "mattedClips": 1,
           "framesRendered": 159,
-          "motionRenderMs": 93245,
+          "motionRenderMs": 57089,
           "interaction": {
             "mattesComputed": 0,
             "mattesUsed": 1,
             "sceneSampled": 2,
             "emphasisWords": 0,
-            "ms": 911
+            "ms": 639
           }
         },
         "placements": [
@@ -73,23 +73,23 @@
           }
         ],
         "timings": {
-          "matte:take": 22811,
-          "interaction": 912,
-          "motion": 93270,
-          "compose": 12802
+          "matte:take": 14970,
+          "interaction": 639,
+          "motion": 57111,
+          "compose": 9199
         }
       }
     }
   },
   "transcribe": {
-    "wallMs": 5136,
-    "t": "2026-10-17T15:04:10.482Z",
+    "wallMs": 3524,
+    "t": "2026-10-17T18:01:03.230Z",
     "event": "offline_done",
     "kind": "transcribe",
-    "ms": 4283,
+    "ms": 2714,
     "result": {
       "kind": "transcribe",
-      "ms": 4281,
+      "ms": 2713,
       "result": {
         "durationSeconds": 5.9946875,
         "model": "onnx-community/whisper-base.en_timestamped"
@@ -97,14 +97,14 @@
     }
   },
   "subjectTrack": {
-    "wallMs": 1565,
-    "t": "2026-10-17T15:04:12.335Z",
+    "wallMs": 1054,
+    "t": "2026-10-17T18:01:04.505Z",
     "event": "offline_done",
     "kind": "subject-track",
-    "ms": 953,
+    "ms": 609,
     "result": {
       "kind": "subject-track",
-      "ms": 950,
+      "ms": 598,
       "result": {
         "framesAnalyzed": 18,
         "framesWithFace": 18,
@@ -117,7 +117,8 @@
       }
     }
   },
-  "downloadMs": 25611,
-  "activeCpuMs": 812689,
-  "sessionMs": 168639
+  "downloadMs": 17562,
+  "activeCpuMs": 515852,
+  "sessionMs": 109399,
+  "snapshotId": "snap_w3kag80j7aDxYTFz8kXk7FzO3e2b"
 }

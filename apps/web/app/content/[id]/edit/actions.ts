@@ -143,7 +143,7 @@ export async function designVisualsResultAction(contentItemId: string, jobRunId:
   await requireSession();
   const job = await getHeavyJob(prisma, jobRunId);
   if (!job || job.summary?.contentItemId !== contentItemId || job.summary.jobKind !== "motion-design") return { ok: false, error: "That design job wasn't found — try again." };
-  if (job.status === "RUNNING") return { ok: false, error: "Still designing — give it a moment." };
+  if (job.status === "RUNNING" || job.status === "QUEUED") return { ok: false, error: "Still designing — give it a moment." };
   return designResultFromJob(contentItemId, job.status === "SUCCEEDED", job.summary.result, job.error);
 }
 

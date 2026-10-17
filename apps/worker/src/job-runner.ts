@@ -128,6 +128,29 @@ async function main(): Promise<number> {
     progress: (p) => log("progress", p as unknown as Record<string, unknown>),
   });
   log("job_done", { ok: outcome.ok, ms: Date.now() - started, error: outcome.error ?? null });
+
+  // Drain the queue in this VM (a batch upload queues one analysis job per clip once the
+  // sandbox cap is reached): take the oldest QUEUED job while enough of this sandbox's time is
+  // left. Without the model key only non-AI jobs are taken (the web app starts the others).
+  const self = process.env.SANDBOX_SELF_NAME ?? null;
+  const deadline = Number(process.env.SANDBOX_DEADLINE_MS) || 0;
+  const kinds = process.env.ANTHROPIC_API_KEY ? undefined : ["ingest", "transcribe", "subject-track", "person-matte"];
+  for (let n = 0; self && deadline - Date.now() > 15 * 60_000 && n < 20; n++) {
+    const { claimQueuedHeavyJob } = await import("@chris/domain");
+    const next = await claimQueuedHeavyJob(prisma, { kinds, sandboxName: self }).catch(() => null);
+    if (!next) break;
+    const t = Date.now();
+    log("queued_job_start", { kind: next.jobKind, jobRunId: next.jobRunId });
+    recordCrash = (message) => finishHeavyJob(prisma, next.jobRunId, { status: "FAILED", error: `The cloud worker crashed: ${message}` });
+    const o = await runHeavyJobRecorded(next.jobRunId, next.jobKind as Parameters<typeof runHeavyJobRecorded>[1], next.args, {
+      db: prisma,
+      storage,
+      actor: { actorId: next.actorId },
+      modelProvider,
+      progress: (p) => log("progress", p as unknown as Record<string, unknown>),
+    });
+    log("queued_job_done", { ok: o.ok, ms: Date.now() - t, error: o.error ?? null });
+  }
   await prisma.$disconnect().catch(() => undefined);
   return 0;
 }

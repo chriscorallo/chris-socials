@@ -51,8 +51,15 @@ on the existing `(kind, startedAt)` index, like the publish lease); `summary` JS
 `{ jobKind, args, mode, actorId, progress { pct, message, stage }, sandboxName, result }`.
 `acquireHeavyJobLease` (packages/domain job-run.ts) serializes claims with one advisory lock:
 **one heavy job per video** (a second tap gets BUSY and follows the running job), **at most
-`HEAVY_JOB_MAX_SANDBOXES` (default 2) sandboxes at once** (CAPACITY → "try again in a few
-minutes"), and a RUNNING row older than the sandbox timeout + 5 min is taken over as dead.
+`HEAVY_JOB_MAX_SANDBOXES` (default 4) sandboxes at once**, and a RUNNING row older than the
+sandbox timeout + 5 min is taken over as dead. Beyond the cap a job is **QUEUED** (status
+`QUEUED`, FIFO, "Waiting for a free cloud worker…", reads as running to clients with
+`queued: true`) instead of refused — a batch upload of many clips must not lose captions:
+a worker that finishes keeps its VM and **drains the queue** (`claimQueuedHeavyJob`; without the
+model key only non-AI kinds; only while ≥ 15 min of its sandbox time is left), and every poll of
+a queued/finished job (`/api/jobs/[id]`, the upload screen's caption wait) starts queued jobs in
+new sandboxes while there's capacity (`kickQueuedHeavyJobs`). A queued job nobody starts within
+2 h is FAILED.
 Progress/finish writes are single-statement `jsonb ||` merges; `finishHeavyJob` is
 first-writer-wins (a late worker can't overwrite the web app's "worker vanished" verdict).
 
@@ -77,7 +84,10 @@ unchanged, four sequential actions). Design visuals with AI follows its job, the
 saved version. Autopilot stops at a cloud step and says so (press again when it's done).
 Upload flow: the upload's one `ingest` job transcribes first; the upload screen's "Getting your
 captions ready…" wait (flow-actions `captionStatus`) now shows the job's progress line and stops
-waiting if no job is running (failed / never started).
+waiting if no job is running (failed / never started). Batch upload (`/plan/upload`): every
+clip's registration starts (or queues) its item's `ingest` job; the starter edit is a plain
+EditPlan converted at editor LOAD time, so captions are on as soon as the transcript has landed
+(an editor opened before that shows captions after a reload — the editor doesn't live-poll).
 
 **Flags.** `isAutoTranscriptionEnabled` / `isAutoSubjectTrackingEnabled` / `isAutoPersonMatteEnabled`
 default to ON on Vercel when the cloud worker is configured (still `TRANSCRIPTION|SUBJECT_TRACKING|PERSON_MATTE=on|off`
@@ -138,8 +148,8 @@ tab, so fewer tabs is faster: same 159 frames on 8 vCPU took 89 s at concurrency
 2**, 117 s at 4, 152 s at 8 (single runs, ±30 % run-to-run). 4 vCPU was much slower (render
 213 s vs 86–131 s) — 8 vCPU (Pro max) is the default.
 
-**Verified for real (2026-10-17, snapshot `snap_bAJfwcdh2pE3LoBCvqYGdASVFwIB`, runner
-`f10cbf0edae6c00e`; the same render path verified on its predecessors).**
+**Verified for real (2026-10-17, snapshot `snap_w3kag80j7aDxYTFz8kXk7FzO3e2b`, runner
+`d4ec0ab1e37ecd97`; the same render path verified on its predecessors).**
 `scripts/sandbox/verify-offline.ts`: a 6 s 1080×1920 talking-head stand-in (the public-domain
 portrait fixture with headroom, drift and a tone) with `$24,500` NUMBER_COUNTER **BEHIND_SUBJECT**
 over the head and a 3D ICON_3D (shadow, light wrap, scene match), rendered by
@@ -152,7 +162,7 @@ renders (WebGL in the VM). Report: `sandbox-verify-report.json`.
 |---|---|
 | Boot from snapshot | 1.4–2.9 s |
 | Dispatch (create + write files + start detached), as the web app does it | 2.2 s |
-| Render, 6 s clip, 2 graphics, matte computed in-job | 86–131 s (matte 15–23 s · motion 60–93 s · compose 10–13 s) |
+| Render, 6 s clip, 2 graphics, matte computed in-job | 83–131 s (matte 15–23 s · motion 57–93 s · compose 9–13 s) |
 | Whisper base.en, 6 s clip / face track | 4.4–5.5 s / 1.6–2 s |
 | Verification session (render + transcribe + track + download to laptop) | 168 s, 812 s active CPU |
 
@@ -171,10 +181,11 @@ inbound data free. Pro's $20/month credit applies first.
 - Upload analysis of a 60 s take (captions ~30 s, tracking ~10 s, matte ~3 min) ≈ 4 min →
   **≈ $0.05–0.09**.
 - 20 videos/month × (1 upload analysis + 2 renders) ≈ **$3–6/month**, inside the Pro credit.
-- Snapshots: ≈ 1.4 GB each → ~$0.11/month each. Four were created while building this
+- Snapshots: ≈ 1.4 GB each → ~$0.11/month each. Five were created while building this
   (`snap_bqmr6jQmSOpDb6olu9MiFvJ8vRFo` → `snap_XviN8nZ3XOl96YHWJWnVv1IZeo1t` →
-  `snap_sGD2s7x7nqNLVHlpKvNkCmpVPmxi` → `snap_bAJfwcdh2pE3LoBCvqYGdASVFwIB`, each built on the
-  previous); keep the active one, delete older ones once a new one is verified.
+  `snap_sGD2s7x7nqNLVHlpKvNkCmpVPmxi` → `snap_bAJfwcdh2pE3LoBCvqYGdASVFwIB` →
+  `snap_w3kag80j7aDxYTFz8kXk7FzO3e2b` (active), each built on the previous); keep the active
+  one, delete older ones (Vercel dashboard → Sandboxes → Snapshots) once a new one is verified.
 - Model calls (quality check, Motion Designer) are billed by Anthropic as before and stay under
   the daily spend cap (the worker uses the same cost-tracked provider).
 
@@ -183,14 +194,15 @@ inbound data free. Pro's $20/month credit applies first.
 ## Operator steps
 
 1. **Set on Vercel** (Production; Preview too only if previews should render):
-   - `RENDER_SANDBOX_SNAPSHOT_ID=snap_bAJfwcdh2pE3LoBCvqYGdASVFwIB`
+   - `RENDER_SANDBOX_SNAPSHOT_ID=snap_w3kag80j7aDxYTFz8kXk7FzO3e2b`
    - optional: `RENDER_SANDBOX_VCPUS` (default 8; Hobby max 4), `RENDER_SANDBOX_TIMEOUT_MS`
      (default 2 700 000 = 45 min; Hobby's session max is 45 min), `HEAVY_JOB_MAX_SANDBOXES`
-     (default 2).
+     (default 4; more jobs wait in the queue).
    - Nothing else: the sandbox SDK authenticates with the project's OIDC token automatically;
      the worker receives `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN` and (for AI steps)
      `ANTHROPIC_API_KEY` from the function's env per job. Redeploy.
-2. **Check** on the phone: upload a take → "Getting your captions ready…" shows the job's
+2. **Check** on the phone: batch-upload 4 clips via /plan/upload, wait ~1–2 min, open each
+   editor → captions on. Upload a take → "Getting your captions ready…" shows the job's
    progress and the editor opens with captions; Finish & schedule shows "Rendering your
    graphics… N%" then the check; the export has the graphics (and behind-subject depth).
    Vercel dashboard → Sandboxes: each job's sandbox is `heavy-<jobRunId>` and stops when done.
@@ -218,6 +230,7 @@ inbound data free. Pro's $20/month credit applies first.
   unknown kind.
 - The OIDC token used for self-stop is short-lived; a job that outlives it can't stop itself —
   the poll-time stop and the timeout cover it.
+- Captions for an editor that was already open when the transcript landed need a reload.
 - One heavy job per video: while an upload's analysis (matte ≈ 3 min for a 60 s take) runs,
   Render/Finish for that video answers "Analyzing your footage for this video right now…".
 - `HEAVY_JOB_MAX_SANDBOXES` counts RUNNING JobRuns, not live VMs; a VM orphaned by a crashed
