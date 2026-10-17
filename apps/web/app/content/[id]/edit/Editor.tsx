@@ -31,6 +31,8 @@ import { Preview } from "./Preview";
 import { TimelinePanel } from "./TimelinePanel";
 import { Inspector } from "./Inspector";
 import { FinishModal } from "./FinishModal";
+import { MobileShell } from "./MobileShell";
+import { useEditorLayout } from "./layout-hooks";
 import { Icon } from "./icons";
 import "./editor.css";
 
@@ -66,7 +68,9 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
   const [state, dispatch] = useReducer(editorReducer, undefined, () => initEditorState(initialDoc, durations));
   const doc = state.doc;
   const engine = usePlaybackEngine(doc, assetMap);
-  const [ui, setUiState] = useState<EditorUi>({ reframe: false, platformView: "ALL", tab: "look", pxPerSec: 60 });
+  const [ui, setUiState] = useState<EditorUi>({ reframe: false, platformView: "ALL", tab: "look", pxPerSec: 60, sheet: null, editingTextId: null });
+  const layout = useEditorLayout();
+  const touch = !layout.desktop;
   const setUi = useCallback((patch: Partial<EditorUi>) => setUiState((u) => ({ ...u, ...patch })), []);
   const [itemState, setItemState] = useState(item.state);
   const [saving, setSaving] = useState(false);
@@ -306,6 +310,7 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
           break;
         case "Escape":
           if (ui.reframe) setUi({ reframe: false });
+          else if (ui.sheet) setUi({ sheet: null });
           else dispatch({ type: "select", selection: null });
           break;
         case "?":
@@ -315,7 +320,7 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [engine, save, split, deleteSelection, duplicateSelection, ui.reframe, setUi]);
+  }, [engine, save, split, deleteSelection, duplicateSelection, ui.reframe, ui.sheet, setUi]);
 
   // Switch the inspector to whatever was just selected.
   const selKey = state.selection ? `${state.selection.kind}:${"id" in state.selection ? state.selection.id : ""}` : "";
@@ -344,9 +349,68 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     fontsVersion,
     focus,
     toast,
+    touch,
   };
 
   const duration = timelineDuration(doc);
+
+  const toastList = (
+    <div className={`ed-toasts ${touch ? "ed-toasts-m" : ""}`} aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className={`ed-toast ed-toast-${t.tone}`}>
+          {t.message}
+        </div>
+      ))}
+    </div>
+  );
+
+  const finishModal = finishOpen && (
+    <FinishModal
+      itemId={item.id}
+      itemState={itemState}
+      dirty={dirty}
+      defaultDate={schedule.date}
+      defaultPlatforms={schedule.platforms}
+      onClose={() => setFinishOpen(false)}
+      onSaved={(savedState) => {
+        dispatch({ type: "markSaved", doc: state.doc });
+        setItemState(savedState);
+        try {
+          localStorage.removeItem(draftKey);
+        } catch {
+          /* ignore */
+        }
+      }}
+      onStateChange={setItemState}
+    />
+  );
+
+  if (touch) {
+    return (
+      <EditorContext.Provider value={ctx}>
+        <style dangerouslySetInnerHTML={{ __html: FONT_FACE_CSS }} />
+        <MobileShell
+          item={item}
+          saving={saving}
+          dirty={dirty}
+          restored={restored}
+          onDiscardDraft={discardDraft}
+          onSave={() => void save()}
+          onFinish={() => {
+            engine.pause();
+            setUi({ sheet: null, editingTextId: null });
+            setFinishOpen(true);
+          }}
+          onSplit={split}
+          onDelete={deleteSelection}
+          onDuplicate={duplicateSelection}
+          landscape={layout.landscape}
+        />
+        {toastList}
+        {finishModal}
+      </EditorContext.Provider>
+    );
+  }
 
   return (
     <EditorContext.Provider value={ctx}>
@@ -408,36 +472,9 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
           <Inspector />
         </div>
         <TimelinePanel onSplit={split} onDelete={deleteSelection} onDuplicate={duplicateSelection} />
-
-        <div className="ed-toasts" aria-live="polite">
-          {toasts.map((t) => (
-            <div key={t.id} className={`ed-toast ed-toast-${t.tone}`}>
-              {t.message}
-            </div>
-          ))}
-        </div>
+        {toastList}
       </div>
-
-      {finishOpen && (
-        <FinishModal
-          itemId={item.id}
-          itemState={itemState}
-          dirty={dirty}
-          defaultDate={schedule.date}
-          defaultPlatforms={schedule.platforms}
-          onClose={() => setFinishOpen(false)}
-          onSaved={(savedState) => {
-            dispatch({ type: "markSaved", doc: state.doc });
-            setItemState(savedState);
-            try {
-              localStorage.removeItem(draftKey);
-            } catch {
-              /* ignore */
-            }
-          }}
-          onStateChange={setItemState}
-        />
-      )}
+      {finishModal}
     </EditorContext.Provider>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   findFont,
   layoutTimelineText,
@@ -15,7 +15,7 @@ import {
   type TextElementLayout,
   type TimelineCaptionLayout,
 } from "@chris/media/timeline";
-import { updateText, updateCaptions } from "../../../../lib/editor/timeline-ops";
+import { updateText } from "../../../../lib/editor/timeline-ops";
 import { gradeSvgParams, hexToRgba } from "../../../../lib/editor/preview-math";
 import { useEditor } from "./context";
 import { usePlayheadValue } from "./playback";
@@ -27,9 +27,11 @@ import { browserMeasureText } from "./measure";
  * layoutCaptionChunk) with browser glyph measurement — so line breaks, baselines, plates,
  * strokes and word positions are the ones the renderer burns in. SVG <text> gives an
  * alphabetic baseline at `y` natively, exactly like drawtext/libass.
+ *
+ * Pointer handling is NOT here: elements only carry `data-gesture` / `data-id` attributes and
+ * the preview canvas (Preview.tsx's Canvas) runs one multi-pointer gesture controller — drag,
+ * pinch-to-scale, tap-to-edit — for mouse and touch alike.
  */
-
-const SNAP_PX = 6;
 
 export function fontFamilyCss(fontId: string): string {
   const f = findFont(fontId);
@@ -102,32 +104,23 @@ function strokeProps(color: string | null, sw: number) {
 // Overlay root
 // ---------------------------------------------------------------------------------------
 
-export function OverlaySvg({ w, h, onDragging }: { w: number; h: number; onDragging: (v: boolean) => void }) {
-  const { doc, fontsVersion } = useEditor();
+export function OverlaySvg({ w, h, guides, inlineEditor }: { w: number; h: number; guides: { v: boolean; h: boolean }; inlineEditor: boolean }) {
+  const { doc, fontsVersion, ui, setUi } = useEditor();
   const W = doc.canvas.width;
   const H = doc.canvas.height;
-  const [guides, setGuides] = useState({ v: false, h: false });
-  const [editing, setEditing] = useState<string | null>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
   const k = w / W;
   // Client-only: text layout needs real (loaded) font metrics; SSR has none.
   if (fontsVersion === 0) return null;
+  const editing = ui.editingTextId;
   return (
     <>
-      <svg
-        ref={svgRef}
-        className="absolute left-0 top-0 z-[6]"
-        width={w}
-        height={h}
-        viewBox={`0 0 ${W} ${H}`}
-        style={{ pointerEvents: "none", overflow: "visible" }}
-      >
-        <CaptionLayer k={k} onDragging={onDragging} />
-        <TextLayer k={k} svgRef={svgRef} onGuides={setGuides} onDragging={onDragging} editing={editing} onEdit={setEditing} />
+      <svg className="absolute left-0 top-0 z-[6]" width={w} height={h} viewBox={`0 0 ${W} ${H}`} style={{ pointerEvents: "none", overflow: "visible" }}>
+        <CaptionLayer k={k} />
+        <TextLayer k={k} editing={editing} />
         {guides.v && <line x1={W / 2} x2={W / 2} y1={0} y2={H} stroke="#ff5fa2" strokeWidth={1.5 / k} />}
         {guides.h && <line x1={0} x2={W} y1={H / 2} y2={H / 2} stroke="#ff5fa2" strokeWidth={1.5 / k} />}
       </svg>
-      {editing && <InlineTextEditor id={editing} k={k} onDone={() => setEditing(null)} />}
+      {editing && inlineEditor && <InlineTextEditor id={editing} k={k} onDone={() => setUi({ editingTextId: null })} />}
     </>
   );
 }
@@ -136,21 +129,7 @@ export function OverlaySvg({ w, h, onDragging }: { w: number; h: number; onDragg
 // Texts
 // ---------------------------------------------------------------------------------------
 
-function TextLayer({
-  k,
-  svgRef,
-  onGuides,
-  onDragging,
-  editing,
-  onEdit,
-}: {
-  k: number;
-  svgRef: React.RefObject<SVGSVGElement | null>;
-  onGuides: (g: { v: boolean; h: boolean }) => void;
-  onDragging: (v: boolean) => void;
-  editing: string | null;
-  onEdit: (id: string) => void;
-}) {
+function TextLayer({ k, editing }: { k: number; editing: string | null }) {
   const { doc, engine, state, fontsVersion } = useEditor();
   const visibleKey = usePlayheadValue(engine, (t) =>
     doc.texts
@@ -165,124 +144,38 @@ function TextLayer({
       {doc.texts
         .filter((t) => visible.has(t.id))
         .map((t) => (
-          <TextItem
-            key={t.id}
-            t={t}
-            k={k}
-            selected={t.id === selectedId}
-            hidden={editing === t.id}
-            fontsVersion={fontsVersion}
-            svgRef={svgRef}
-            onGuides={onGuides}
-            onDragging={onDragging}
-            onEdit={() => onEdit(t.id)}
-          />
+          <TextItem key={t.id} t={t} k={k} selected={t.id === selectedId} editing={editing === t.id} fontsVersion={fontsVersion} />
         ))}
     </>
   );
 }
 
-function TextItem({
-  t,
-  k,
-  selected,
-  hidden,
-  fontsVersion,
-  svgRef,
-  onGuides,
-  onDragging,
-  onEdit,
-}: {
-  t: TimelineText;
-  k: number;
-  selected: boolean;
-  hidden: boolean;
-  fontsVersion: number;
-  svgRef: React.RefObject<SVGSVGElement | null>;
-  onGuides: (g: { v: boolean; h: boolean }) => void;
-  onDragging: (v: boolean) => void;
-  onEdit: () => void;
-}) {
-  const { apply, commit, dispatch, engine, setUi, doc } = useEditor();
-  const W = doc.canvas.width;
-  const H = doc.canvas.height;
+function TextItem({ t, k, selected, editing, fontsVersion }: { t: TimelineText; k: number; selected: boolean; editing: boolean; fontsVersion: number }) {
+  const { setUi, doc, touch } = useEditor();
+  // fontsVersion: re-measure once webfonts load
   const L = useMemo(() => layoutTimelineText(t, doc.canvas, browserMeasureText), [t, doc.canvas, fontsVersion]);
   const r = L.rect;
-
-  const onPointerDown = (e: RPointerEvent<SVGGElement>) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    engine.pause();
-    dispatch({ type: "select", selection: { kind: "text", id: t.id } });
-    setUi({ tab: "selection" });
-    const start = { x: e.clientX, y: e.clientY, tx: t.x, ty: t.y };
-    let moved = false;
-    const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - start.x) / k;
-      const dy = (ev.clientY - start.y) / k;
-      if (!moved && Math.hypot(dx * k, dy * k) < 3) return;
-      if (!moved) onDragging(true);
-      moved = true;
-      let nx = start.tx + dx / W;
-      let ny = start.ty + dy / H;
-      const snapV = Math.abs(nx - 0.5) * W * k < SNAP_PX;
-      const snapH = Math.abs(ny - 0.5) * H * k < SNAP_PX;
-      if (snapV) nx = 0.5;
-      if (snapH) ny = 0.5;
-      onGuides({ v: snapV, h: snapH });
-      nx = Math.round(Math.min(1, Math.max(0, nx)) * 1000) / 1000;
-      ny = Math.round(Math.min(1, Math.max(0, ny)) * 1000) / 1000;
-      apply((d) => updateText(d, t.id, { x: nx, y: ny }), { coalesce: `move:${t.id}` });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      onGuides({ v: false, h: false });
-      onDragging(false);
-      commit();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  const onResizeDown = (e: RPointerEvent<SVGRectElement>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const box = svgRef.current?.getBoundingClientRect();
-    if (!box) return;
-    const cx = box.left + (r.x + r.width / 2) * k;
-    const cy = box.top + (r.y + r.height / 2) * k;
-    const d0 = Math.max(8, Math.hypot(e.clientX - cx, e.clientY - cy));
-    const fs0 = t.fontSize;
-    const move = (ev: PointerEvent) => {
-      const d = Math.hypot(ev.clientX - cx, ev.clientY - cy);
-      const fontSize = Math.round(Math.min(400, Math.max(12, (fs0 * d) / d0)));
-      apply((doc) => updateText(doc, t.id, { fontSize }), { coalesce: `size:${t.id}` });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      commit();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  const hs = 12 / k;
+  // While typing on a phone the element stays visible (the keyboard bar edits it live);
+  // the desktop inline editor draws over it, so hide it there.
+  const hidden = editing && !touch;
+  const pad = (touch ? 10 : 6) / k;
+  const hs = (touch ? 22 : 12) / k;
   return (
     <g
       style={{ pointerEvents: "auto", cursor: "grab", opacity: hidden ? 0 : 1 }}
-      onPointerDown={onPointerDown}
+      data-gesture="text"
+      data-id={t.id}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        onEdit();
+        setUi({ editingTextId: t.id });
       }}
       role="textbox"
       aria-label={`Text: ${t.text}`}
       className="ed-svg-text"
     >
-      <title>{selected ? "Drag to move · double-click to edit" : t.text}</title>
-      <rect x={r.x} y={r.y} width={r.width} height={r.height} fill="transparent" />
+      <title>{selected ? (touch ? "Drag to move · pinch to resize · tap to type" : "Drag to move · click again to type") : t.text}</title>
+      {/* generous invisible hit area — fingers are wider than glyphs */}
+      <rect x={r.x - pad * 2} y={r.y - pad * 2} width={r.width + pad * 4} height={r.height + pad * 4} fill="transparent" />
       <Plate plate={L.plate} />
       {L.lines.map((line, i) => (
         <text key={i} x={line.x} y={line.baseline} fill={hexToRgba(t.color)} style={fontStyle(t.fontId, L.fontPx)} {...strokeProps(t.strokeColor, L.strokeWidth)}>
@@ -291,29 +184,29 @@ function TextItem({
       ))}
       {selected ? (
         <>
-          <rect x={r.x - 6 / k} y={r.y - 6 / k} width={r.width + 12 / k} height={r.height + 12 / k} rx={6 / k} fill="none" stroke="#f3c46a" strokeWidth={1.5 / k} />
-          <rect
-            x={r.x + r.width + 6 / k - hs / 2}
-            y={r.y + r.height + 6 / k - hs / 2}
-            width={hs}
-            height={hs}
-            rx={3 / k}
-            fill="#fff"
-            stroke="#e5a94a"
-            strokeWidth={2 / k}
-            style={{ cursor: "nwse-resize" }}
-            onPointerDown={onResizeDown}
-            aria-label="Resize text"
-          />
+          <rect x={r.x - pad} y={r.y - pad} width={r.width + 2 * pad} height={r.height + 2 * pad} rx={6 / k} fill="none" stroke="#f3c46a" strokeWidth={(touch ? 2 : 1.5) / k} />
+          <g data-gesture="text-resize" data-id={t.id} style={{ cursor: "nwse-resize" }} aria-label="Resize text">
+            <rect x={r.x + r.width + pad - hs} y={r.y + r.height + pad - hs} width={hs * 2} height={hs * 2} fill="transparent" />
+            <rect
+              x={r.x + r.width + pad - hs / 2}
+              y={r.y + r.height + pad - hs / 2}
+              width={hs}
+              height={hs}
+              rx={hs / 3}
+              fill="#fff"
+              stroke="#e5a94a"
+              strokeWidth={2 / k}
+            />
+          </g>
         </>
       ) : (
-        <rect className="ed-svg-hover" x={r.x - 6 / k} y={r.y - 6 / k} width={r.width + 12 / k} height={r.height + 12 / k} rx={6 / k} fill="none" stroke="rgba(255,255,255,.55)" strokeDasharray={`${4 / k} ${3 / k}`} strokeWidth={1 / k} />
+        <rect className="ed-svg-hover" x={r.x - pad} y={r.y - pad} width={r.width + 2 * pad} height={r.height + 2 * pad} rx={6 / k} fill="none" stroke="rgba(255,255,255,.55)" strokeDasharray={`${4 / k} ${3 / k}`} strokeWidth={1 / k} />
       )}
     </g>
   );
 }
 
-/** Double-click editing: a textarea laid over the element in the element's own face and size. */
+/** Desktop typing: a textarea laid over the element in the element's own face and size. */
 function InlineTextEditor({ id, k, onDone }: { id: string; k: number; onDone: () => void }) {
   const { doc, apply, fontsVersion } = useEditor();
   const t = doc.texts.find((x) => x.id === id);
@@ -323,6 +216,7 @@ function InlineTextEditor({ id, k, onDone }: { id: string; k: number; onDone: ()
     ref.current?.focus();
     ref.current?.select();
   }, []);
+  // fontsVersion: re-measure once webfonts load
   const L = useMemo(() => (t ? layoutTimelineText(t, doc.canvas, browserMeasureText) : null), [t, doc.canvas, fontsVersion]);
   if (!t || !L) return null;
   const finish = () => {
@@ -389,8 +283,8 @@ function activeWordIndex(chunk: TimelineCaptionChunk, t: number): number {
   return -1;
 }
 
-function CaptionLayer({ k, onDragging }: { k: number; onDragging: (v: boolean) => void }) {
-  const { doc, chunks, engine, state, dispatch, apply, commit, setUi, fontsVersion } = useEditor();
+function CaptionLayer({ k }: { k: number }) {
+  const { doc, chunks, engine, state, fontsVersion, touch } = useEditor();
   const c = doc.captions;
   const key = usePlayheadValue(engine, (t) => {
     if (!c.enabled) return "";
@@ -403,42 +297,17 @@ function CaptionLayer({ k, onDragging }: { k: number; onDragging: (v: boolean) =
   const chunk = chunks[Number(ciStr)];
   const placeholder = !chunk && selected && c.enabled;
   const shown = chunk ?? (placeholder ? PLACEHOLDER_CHUNK : null);
+  // fontsVersion: re-measure once webfonts load
   const L = useMemo(() => (shown && c.enabled ? layoutCaptionChunk(shown, c, doc.canvas, browserMeasureText) : null), [shown, c, doc.canvas, fontsVersion]);
   if (!shown || !L) return null;
   const active = c.preset === "BOLD_HIGHLIGHT" && !placeholder ? Number(wiStr) : -1;
-  const H = doc.canvas.height;
-
-  const onPointerDown = (e: RPointerEvent<SVGGElement>) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    dispatch({ type: "select", selection: { kind: "captions" } });
-    setUi({ tab: "captions" });
-    const startY = e.clientY;
-    const y0 = c.y;
-    let moved = false;
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.abs(ev.clientY - startY) < 3) return;
-      if (!moved) onDragging(true);
-      moved = true;
-      const y = Math.round(Math.min(0.95, Math.max(0.05, y0 + (ev.clientY - startY) / k / H)) * 1000) / 1000;
-      apply((d) => updateCaptions(d, { y }), { coalesce: "captions:y" });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      onDragging(false);
-      commit();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
   const r = L.rect;
   const font = fontStyle(c.fontId, L.fontPx);
+  const pad = (touch ? 10 : 6) / k;
   return (
-    <g style={{ pointerEvents: "auto", cursor: "ns-resize", opacity: placeholder ? 0.55 : 1 }} onPointerDown={onPointerDown} aria-label="Captions" className="ed-svg-text">
-      <title>Drag up or down to move captions</title>
-      <rect x={r.x} y={r.y} width={r.width} height={r.height} fill="transparent" />
+    <g style={{ pointerEvents: "auto", cursor: "ns-resize", opacity: placeholder ? 0.55 : 1 }} data-gesture="captions" aria-label="Captions" className="ed-svg-text">
+      <title>{touch ? "Drag up or down to move captions · pinch to resize" : "Drag up or down to move captions"}</title>
+      <rect x={r.x - pad * 2} y={r.y - pad * 2} width={r.width + pad * 4} height={r.height + pad * 4} fill="transparent" />
       <Plate plate={L.plate} />
       {/* CLEAN: hard drop shadow (renderer: #00000080, offset s px right & down, no blur) */}
       {c.preset === "CLEAN" &&
@@ -464,7 +333,7 @@ function CaptionLayer({ k, onDragging }: { k: number; onDragging: (v: boolean) =
             )),
         )}
       {c.preset === "KARAOKE" && !placeholder && chunk && <KaraokeFill chunk={chunk} layout={L} font={font} />}
-      {selected && <rect x={r.x - 6 / k} y={r.y - 6 / k} width={r.width + 12 / k} height={r.height + 12 / k} rx={6 / k} fill="none" stroke="#f3c46a" strokeWidth={1.5 / k} />}
+      {selected && <rect x={r.x - pad} y={r.y - pad} width={r.width + 2 * pad} height={r.height + 2 * pad} rx={6 / k} fill="none" stroke="#f3c46a" strokeWidth={(touch ? 2 : 1.5) / k} />}
     </g>
   );
 }

@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma, getLatestEditPlan, parseTranscriptWords, FINISHING_EDIT_STATES } from "@chris/domain";
@@ -10,6 +11,19 @@ import { Editor } from "./Editor";
 // "Finish & schedule" renders (ffmpeg) and runs the AI quality check synchronously from this
 // page's Server Actions — allow up to the Vercel Fluid Compute ceiling.
 export const maxDuration = 300;
+
+// The editor is a full-screen touch app on phones: draw under the notch/home indicator (the
+// shell pads itself with env(safe-area-inset-*)), and don't let a pinch zoom the PAGE — pinches
+// zoom the timeline / reframe the clip / resize text instead.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#070708",
+  colorScheme: "dark",
+};
 
 export default async function EditPage({ params }: { params: Promise<{ id: string }> }) {
   await requireSession();

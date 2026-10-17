@@ -54,7 +54,7 @@ export function FinishModal({
   onSaved: (state: string) => void;
   onStateChange: (state: string) => void;
 }) {
-  const { doc, wordsByAsset, assets, setUi, focus, fontsVersion } = useEditor();
+  const { doc, wordsByAsset, assets, setUi, focus, fontsVersion, touch } = useEditor();
   const [date, setDate] = useState(defaultDate);
   const [platforms, setPlatforms] = useState<Set<PlatformId>>(new Set(defaultPlatforms.filter((p): p is PlatformId => p in PLATFORM_PROFILES)));
   const [phase, setPhase] = useState<"form" | "running" | "done" | "stopped">("form");
@@ -182,7 +182,7 @@ export function FinishModal({
 
   return (
     <div className="ed-modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && phase !== "running" && onClose()}>
-      <div className="ed-modal" role="dialog" aria-modal="true" aria-labelledby="finish-title">
+      <div className={`ed-modal ${touch ? "ed-modal-touch" : ""}`} role="dialog" aria-modal="true" aria-labelledby="finish-title">
         <div className="flex items-start justify-between gap-4 px-6 pb-2 pt-6">
           <div>
             <p className="ed-eyebrow">Last step</p>
@@ -202,9 +202,18 @@ export function FinishModal({
             <p className="mb-5 text-[13px] leading-relaxed text-[var(--color-text-muted)]">
               We&apos;ll save your edit, render it in full quality, run the quality check, and put it on the calendar — all in one go.
             </p>
+            <div className="ed-finish-steps" aria-hidden>
+              <span>1 Save</span>
+              <i>›</i>
+              <span>2 Render</span>
+              <i>›</i>
+              <span>3 Check</span>
+              <i>›</i>
+              <span>4 Schedule</span>
+            </div>
             <label className="block">
               <span className="ed-label">When should it go out?</span>
-              <input type="datetime-local" className="ed-input !h-10 !text-[14px]" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Publish date and time" />
+              <input type="datetime-local" className="ed-input ed-date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Publish date and time" />
             </label>
             <div className="mt-5">
               <span className="ed-label">Where?</span>
@@ -213,9 +222,9 @@ export function FinishModal({
                   const warns = readiness[p];
                   const on = platforms.has(p);
                   return (
-                    <div key={p} className={`ed-card flex items-center gap-3 px-3 py-2.5 ${on ? "" : "opacity-70"}`} aria-pressed={on}>
-                      <input type="checkbox" checked={on} onChange={() => toggle(p)} id={`plat-${p}`} className="h-4 w-4 accent-[var(--color-gold-500)]" />
-                      <label htmlFor={`plat-${p}`} className="flex-1 cursor-pointer text-[13.5px] font-medium">
+                    <div key={p} className={`ed-card ed-plat-row flex items-center gap-3 px-3 py-2.5 ${on ? "" : "opacity-70"}`} aria-pressed={on}>
+                      <label htmlFor={`plat-${p}`} className="flex flex-1 cursor-pointer items-center gap-3 self-stretch text-[13.5px] font-medium">
+                        <input type="checkbox" checked={on} onChange={() => toggle(p)} id={`plat-${p}`} className="ed-plat-check h-4 w-4 accent-[var(--color-gold-500)]" />
                         {PLATFORM_SHORT_LABEL[p]}
                       </label>
                       {warns.length === 0 ? (
@@ -242,10 +251,10 @@ export function FinishModal({
                 })}
               </div>
               <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--color-text-faint)]">
-                Warnings are things the app&apos;s buttons might cover. You can still schedule — click one to see it in the editor.
+                Warnings are things the app&apos;s buttons might cover. You can still schedule — {touch ? "tap" : "click"} one to see it in the editor.
               </p>
             </div>
-            <button type="button" className="btn btn-primary mt-6 w-full !py-2.5 !text-[14px]" disabled={platforms.size === 0 || !date} onClick={() => void run()}>
+            <button type="button" className="btn btn-primary ed-finish-cta mt-6 w-full !py-2.5 !text-[14px]" disabled={platforms.size === 0 || !date} onClick={() => void run()}>
               Finish &amp; schedule
             </button>
           </div>
