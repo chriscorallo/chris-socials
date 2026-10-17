@@ -29,7 +29,9 @@ export default async function AiCreditPage() {
     ? { tone: "warn", title: "AI is off", body: "No Anthropic key is set up on the server yet." }
     : o.creditError
       ? { tone: "bad", title: "AI is out of credit", body: "Research, scripts, AI edits and fact-checks are paused. Add credit and they start working again — nothing else is affected." }
-      : { tone: "good", title: "AI is working", body: o.lastSuccessAt ? `Last used ${o.lastSuccessAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}.` : "Ready — it hasn't been used yet." };
+      : o.lastSuccessAt
+        ? { tone: "good", title: "AI is working", body: `Last used ${o.lastSuccessAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}.` }
+        : { tone: "warn", title: "AI hasn't been used yet", body: "Your balance can't be checked from here — Anthropic doesn't share it. If the first AI step fails for lack of credit, this will say so. Add credit first if your balance is empty." };
   const dot = status.tone === "good" ? "bg-[var(--color-emerald-400)]" : status.tone === "bad" ? "bg-[var(--color-rose-400)]" : "bg-[var(--color-gold-400)]";
 
   return (
