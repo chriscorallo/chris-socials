@@ -492,6 +492,7 @@ model Render {
   contentItem ContentItem @relation(fields: [contentItemId], references: [id])
   editPlan    EditPlan    @relation(fields: [editPlanId], references: [id])
   qcReports   QCReport[]
+  variants    RenderVariant[]
 
   @@index([contentItemId])
   @@index([editPlanId])
@@ -1062,4 +1063,34 @@ model JobRun {
   error      String?
 
   @@index([kind, startedAt])
+}
+
+// Spec §9 step 17 / §19 RenderVariant — "one master + lightweight variants". A per-platform
+// encode of a master Render, made to that platform's preferred upload profile (packages/media
+// platform-profiles.ts: codec/bitrate/audio/loudness/size cap/faststart) — what actually gets
+// uploaded. Keyed by profileVersion so a profile change produces a fresh variant instead of
+// silently reusing an old encode. See /docs/DECISIONS.md ("Per-platform variants").
+model RenderVariant {
+  id               String          @id @default(cuid())
+  renderId         String
+  contentItemId    String
+  platform         ContentPlatform
+  profileVersion   String
+  storageKey       String
+  coverStorageKey  String?
+  width            Int
+  height           Int
+  fps              Float
+  durationSeconds  Float
+  fileSizeBytes    Int
+  videoBitrateKbps Int?
+  audioBitrateKbps Int?
+  integratedLufs   Float?
+  truePeakDbtp     Float?
+  createdAt        DateTime        @default(now())
+
+  render Render @relation(fields: [renderId], references: [id])
+
+  @@unique([renderId, platform, profileVersion])
+  @@index([contentItemId])
 }
