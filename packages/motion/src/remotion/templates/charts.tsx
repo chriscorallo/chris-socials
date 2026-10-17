@@ -3,7 +3,7 @@ import { EASE_IN_OUT, EASE_OUT, SPRINGS, clamp01, countUp, prog, springAt } from
 import { FONT, compactNumber, glassCard, mix, rgba, withUnit } from "../theme";
 import { gradientText } from "./text";
 import type { TemplateComponentProps } from "./types";
-import { hitDelay } from "./hit-timing";
+import { barStartFrame } from "./hit-timing";
 import { BarChart3D } from "./three";
 
 const fill: CSSProperties = { position: "absolute", inset: 0 };
@@ -13,10 +13,8 @@ function sid(raw: string): string {
 }
 
 // ---------------------------------------------------------------- BAR_CHART
-export function BarChart(tpIn: TemplateComponentProps<"BAR_CHART">) {
-  const { props, palette: p, frame } = tpIn;
-  // Motion v2 timing hook: the bars build later so the key bar's value lands on the emphasis.
-  const tp = { ...tpIn, frame: Math.max(0, frame - barHitDelay(tpIn)) };
+export function BarChart(tp: TemplateComponentProps<"BAR_CHART">) {
+  const { props, palette: p, frame } = tp;
   const titleT = prog(frame, 0, 16, EASE_OUT);
   const hasTitle = !!props.title;
   return (
@@ -33,7 +31,8 @@ export function BarChart(tpIn: TemplateComponentProps<"BAR_CHART">) {
   );
 }
 
-function Bars2D({ props, palette: p, frame, fps }: TemplateComponentProps<"BAR_CHART">) {
+function Bars2D(tp: TemplateComponentProps<"BAR_CHART">) {
+  const { props, palette: p, frame, fps } = tp;
   const W = 796;
   const H = props.title ? 596 : 672;
   const labelH = 62;
@@ -51,14 +50,14 @@ function Bars2D({ props, palette: p, frame, fps }: TemplateComponentProps<"BAR_C
         <div key={g} style={{ position: "absolute", left: 0, right: 0, top: valueH + plotH * (1 - g), height: 1.5, background: rgba("#FFFFFF", 0.05) }} />
       ))}
       {props.bars.map((b, i) => {
-        const s = springAt(frame, fps, 8 + i * 5, SPRINGS.grow);
+        const s = springAt(frame, fps, barStartFrame(tp, i), SPRINGS.grow);
         const h = Math.max(6, (Math.abs(b.value) / max) * plotH) * s;
         const x = i * (bw + gap);
         const isH = hl === null || hl === i;
         const focus = hl !== null && hl === i;
         const color = isH ? p.primary : p.secondary;
-        const v = countUp(frame, 0, b.value, 8 + i * 5, Math.round(fps * 1.0));
-        const vT = prog(frame, 12 + i * 5, 12, EASE_OUT);
+        const v = countUp(frame, 0, b.value, barStartFrame(tp, i), Math.round(fps * 1.0));
+        const vT = prog(frame, barStartFrame(tp, i) + 4, 12, EASE_OUT);
         const dim = hl !== null && !focus ? 0.55 + 0.45 * (1 - prog(frame, 8 + n * 5 + 10, 16, EASE_IN_OUT)) : 1;
         return (
           <div key={i}>
@@ -76,13 +75,6 @@ function Bars2D({ props, palette: p, frame, fps }: TemplateComponentProps<"BAR_C
       })}
     </div>
   );
-}
-
-function barHitDelay({ props, fps, durationInFrames, exitFrames, hitAtFrame }: TemplateComponentProps<"BAR_CHART">): number {
-  if (hitAtFrame == null) return 0;
-  const vals = props.bars.map((b) => Math.abs(b.value));
-  const key = props.highlightIndex != null && props.highlightIndex < vals.length ? props.highlightIndex : vals.indexOf(Math.max(...vals));
-  return hitDelay(8 + key * 5 + Math.round(fps * 1.0), hitAtFrame, fps, durationInFrames, exitFrames);
 }
 
 // ---------------------------------------------------------------- LINE_CHART

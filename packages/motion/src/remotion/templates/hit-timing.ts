@@ -57,3 +57,20 @@ export function kineticWordDelays(
   const extra = Math.max(0, target - (2 + k * s2));
   return natural.map((_, i) => Math.round((2 + i * (i <= k ? s2 : 0) + (i > k ? k * s2 + (i - k) * stagger : 0) + (i >= k ? extra : 0)) * 100) / 100);
 }
+
+/**
+ * BAR_CHART: frame where bar i starts growing. Every bar keeps its designed stagger
+ * (8 + 5·i) except the KEY bar (highlighted, else the tallest), which waits so that its value
+ * finishes counting (≈ 1 s after it starts) on the hit — the reveal beat lands on the word.
+ */
+export function barStartFrame(
+  tp: { props: { bars: Array<{ value: number }>; highlightIndex: number | null }; fps: number; durationInFrames: number; exitFrames: number; hitAtFrame?: number | null },
+  i: number,
+): number {
+  const natural = 8 + i * 5;
+  if (tp.hitAtFrame == null) return natural;
+  const vals = tp.props.bars.map((b) => Math.abs(b.value));
+  const key = tp.props.highlightIndex != null && tp.props.highlightIndex < vals.length ? tp.props.highlightIndex : vals.indexOf(Math.max(...vals));
+  if (i !== key) return natural;
+  return natural + hitDelay(natural + Math.round(tp.fps * 1.0), tp.hitAtFrame, tp.fps, tp.durationInFrames, tp.exitFrames);
+}

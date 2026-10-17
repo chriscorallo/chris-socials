@@ -64,8 +64,40 @@ export interface PlacementOptions {
 
 /** Templates the auto-depth rule may put behind Chris (big, bold type only). */
 export const AUTO_DEPTH_TEMPLATES = new Set(["KINETIC_TEXT", "NUMBER_COUNTER", "TITLE_CARD"] as const);
-/** Max share of the type's glyph band the head (protected region) may cover — legibility first. */
-export const AUTO_DEPTH_MAX_COVER = 0.3;
+/**
+ * Max share of the type's glyph band Chris's head may hide — legibility first: numbers are
+ * facts (a hidden digit is a wrong number), words survive a little more occlusion.
+ */
+export const AUTO_DEPTH_MAX_COVER = { NUMBER_COUNTER: 0.2, KINETIC_TEXT: 0.34 } as const;
+
+/**
+ * The head SHAPE inside a protected head region (subject-track-core's expansion of a face box:
+ * +0.35 face widths each side, +0.6 face heights above, +0.25 below): an ellipse ~1.1 face
+ * widths wide from the top of the hair (≈ 0.25 face heights above the face) to the chin.
+ */
+export function headEllipseFromProtected(r: Rect): { cx: number; cy: number; rx: number; ry: number } {
+  const top = r.y + r.height * (0.25 / 1.85);
+  const bottom = r.y + r.height * (1.6 / 1.85);
+  return { cx: r.x + r.width / 2, cy: (top + bottom) / 2, rx: (r.width * (1.1 / 1.7)) / 2, ry: (bottom - top) / 2 };
+}
+
+/** Share of `rect` covered by an ellipse (numerical, 48×24 samples). */
+export function ellipseCoverage(rect: Rect, e: { cx: number; cy: number; rx: number; ry: number }): number {
+  if (rect.width <= 0 || rect.height <= 0) return 0;
+  const nx = 48;
+  const ny = 24;
+  let inside = 0;
+  for (let j = 0; j < ny; j++) {
+    const y = rect.y + ((j + 0.5) / ny) * rect.height;
+    for (let i = 0; i < nx; i++) {
+      const x = rect.x + ((i + 0.5) / nx) * rect.width;
+      const dx = (x - e.cx) / e.rx;
+      const dy = (y - e.cy) / e.ry;
+      if (dx * dx + dy * dy <= 1) inside++;
+    }
+  }
+  return inside / (nx * ny);
+}
 
 export type PlacementWarningCode =
   | "LOW_CONFIDENCE"
@@ -612,8 +644,9 @@ function autoDepthSpot(
   }
   const gb = glyphBand(v);
   if (!gb) return null;
-  // Top of the hair ≈ a little below the protected region's top (it includes a margin).
-  const hairTop = head.y + head.height * 0.12;
+  const ell = headEllipseFromProtected(head);
+  const hairTop = ell.cy - ell.ry;
+  const maxCover = AUTO_DEPTH_MAX_COVER[v.template as "NUMBER_COUNTER" | "KINETIC_TEXT"];
   for (const factor of [1, 0.9, 0.8]) {
     const { width: w, height: h } = footprintPx(v.template, factor, canvas);
     if (w > safe.width || h > safe.height) continue;
@@ -624,9 +657,8 @@ function autoDepthSpot(
     cy = Math.min(safe.y + safe.height - h / 2, Math.max(safe.y + h / 2, cy));
     const rect = { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), width: w, height: h };
     const band = { x: rect.x, y: rect.y + h * gb.top, width: w, height: bandH };
-    // The protected box is generous (a margin around an ellipse-ish head): ~78% of it is head.
-    const cover = (0.78 * intersectionArea(band, head)) / rectArea(band);
-    if (cover <= 0.02 || cover > AUTO_DEPTH_MAX_COVER) continue;
+    const cover = ellipseCoverage(band, ell);
+    if (cover <= 0.02 || cover > maxCover) continue;
     if (hard.some((o) => o.name !== "Chris's face" && intersectionArea(rect, inflate(o.rect, margin)) > 0)) continue;
     return { cx, cy, factor };
   }

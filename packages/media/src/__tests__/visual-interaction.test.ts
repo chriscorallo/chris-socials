@@ -112,7 +112,7 @@ describe("camera coupling", () => {
 describe("subject anchor", () => {
   const track = Array.from({ length: 31 }, (_, i) => ({ t: i / 3, box: { x: 0.3 + 0.02 * Math.sin(i), y: 0.15, w: 0.4, h: 0.25 } }));
 
-  it("follows the head + offset, smoothly (no tracker steps), clamped to the safe area", () => {
+  it("follows the head + offset, smoothly (no tracker steps), kept on the canvas", () => {
     const t = base();
     const v = visual({ anchor: { type: "SUBJECT", offsetX: 0, offsetY: 0.15 } });
     const tr = visualMotionTrack(v, t, { subjectTracks: { A: track } }, 30)!;
@@ -126,7 +126,7 @@ describe("subject anchor", () => {
     expect(maxAcc).toBeLessThan(1.5);
     // Offset pushing it off the top is clamped inside the safe area.
     const up = visualMotionTrack({ ...v, anchor: { type: "SUBJECT", offsetX: 0, offsetY: -0.5 } }, t, { subjectTracks: { A: track } }, 30)!;
-    expect(Math.min(...up.y)).toBeGreaterThan(200);
+    expect(Math.min(...up.y)).toBeGreaterThanOrEqual(36 + 200);
   });
 
   it("cuts with the picture on a cut (no glide across clips)", () => {

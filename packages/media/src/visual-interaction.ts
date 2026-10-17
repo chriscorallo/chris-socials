@@ -6,7 +6,7 @@
  *
  * - Subject anchor ("Follow me"): a per-frame centre track that follows Chris's head (subject
  *   track → clip crop → output zoom → canvas px, + offset), zero-phase smoothed per clip (it
- *   cuts with the picture on a cut, glides between tracker samples), clamped to the safe area.
+ *   cuts with the picture on a cut, glides between tracker samples), kept on the canvas.
  * - Camera coupling ("Move with camera"): the edit's punch-ins applied to the graphic around the
  *   zoom's focal point, scaled by `cameraCoupling` (1 = glued to the footage, 0.3–0.6 = parallax).
  * - Scene integration: region statistics of the footage behind a graphic (mean colour, luma,
@@ -23,7 +23,6 @@ import { subjectBoxAt } from "./subject-track-core";
 import { clipStartTimes, locateOutputTime, timelineDuration, type EditTimeline } from "./timeline";
 import { cropGeometry, normalizeZooms, zoomStateAt, type ZoomState } from "./timeline-layout";
 import { footprintPx, TEMPLATE_FOOTPRINTS } from "./visual-footprints";
-import { placementSafeArea } from "./visual-placement";
 
 type Canvas = { width: number; height: number };
 type Pt = { x: number; y: number };
@@ -166,7 +165,7 @@ const r4 = (v: number) => Math.round(v * 10000) / 10000;
  * - cameraCoupling > 0 during a zoom: scale (and, when screen-anchored, position) follow
  *   that fraction of the zoom around its focal point. A subject-anchored graphic already moves
  *   with the zoom (the head is mapped through it); only its scale is coupled.
- * - Finally clamped so the box stays inside the platform-safe area (anchored) or the canvas.
+ * - Finally clamped so the box stays on the canvas (36 px margin when anchored).
  */
 export function visualMotionTrack(
   visual: Pick<TimelineVisual, "template" | "start" | "end" | "placement" | "anchor" | "cameraCoupling">,
@@ -235,7 +234,11 @@ export function visualMotionTrack(
   }
 
   if (!fullFrame) {
-    const area = anchored ? placementSafeArea(canvas) : { x: 0, y: 0, width: canvas.width, height: canvas.height };
+    // Anchored graphics were PLACED by Chris (offset from where he dropped it): like any manual
+    // placement they may sit anywhere on the canvas (36 px margin) — clamping them to the
+    // platform-safe area would make them jump away from where he put them.
+    const m = 36 * (canvas.width / 1080);
+    const area = anchored ? { x: m, y: m, width: canvas.width - 2 * m, height: canvas.height - 2 * m } : { x: 0, y: 0, width: canvas.width, height: canvas.height };
     times.forEach((_, i) => {
       const fp = footprintPx(visual.template, visual.placement.scale * ss[i]!, canvas);
       const hw = Math.min(fp.width, area.width) / 2;
@@ -445,8 +448,15 @@ export interface EmphasisWord {
 /** Templates whose key moment (landing) can be timed to an emphasis. */
 export const EMPHASIS_TEMPLATES: ReadonlySet<MotionTemplate> = new Set(["NUMBER_COUNTER", "BAR_CHART", "KINETIC_TEXT", "MONEY_STACK_3D"]);
 
+const SPELLED: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+
 export function wordHasNumber(w: string): boolean {
-  return /\d/.test(w) || /^(hundred|thousand|million|billion|percent|half|double|triple)$/i.test(w.replace(/[^a-z]/gi, ""));
+  const a = w.replace(/[^a-z]/gi, "").toLowerCase();
+  return /\d/.test(w) || a in SPELLED || /^(hundred|thousand|million|billion|percent|half|double|triple)$/.test(a);
 }
 
 function zscores(xs: number[]): number[] {
@@ -485,7 +495,10 @@ export function outputEmphasisWords(
   return out.sort((a, b) => a.start - b.start);
 }
 
-const normWord = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+const normWord = (w: string) => {
+  const n = w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return n in SPELLED ? String(SPELLED[n]) : n;
+};
 
 /** Tokens a visual itself shows that, when spoken, make the moment (the number, the punch word). */
 export function visualKeyTokens(v: Pick<TimelineVisual, "template" | "props">): string[] {
