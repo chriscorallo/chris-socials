@@ -20,10 +20,10 @@ export type WeekRef =
   | { kind: "n"; n: number }
   | { kind: "monday"; ymd: string }
   /** "Week of Oct 20" — year resolved like any other month/day. */
-  | { kind: "of"; year: number | null; month: number; day: number };
+  | { kind: "of"; year: number | null; month: number; day: number; plusWeeks?: number };
 
 export type DateSpec =
-  | { kind: "absolute"; year: number | null; month: number; day: number; range?: boolean }
+  | { kind: "absolute"; year: number | null; month: number; day: number; range?: boolean; /** Weekday the text named ("Mon 10/20") — checked against the date. */ weekday?: number }
   | { kind: "weekday"; weekday: number; week: WeekRef | null }
   | { kind: "dayN"; n: number }
   | { kind: "weekDay"; week: number; day: number }
@@ -78,8 +78,11 @@ export interface DateMatch {
 /** Patterns tried at a given position, most specific first. Each returns a spec or null. */
 type Pattern = { re: RegExp; build: (m: RegExpExecArray) => DateSpec | null };
 
-const RANGE_TAIL_MD = `(?:${DASH}(?:${MONTH_RE}\\s*)?\\d{1,2}${ORD})?`;
-const RANGE_TAIL_NUM = `(?:${DASH}\\d{1,2}(?:[/.]\\d{1,2})?(?:[/.]\\d{2,4})?)?`;
+// A bare end day ("Oct 20 – 24") only counts when no words follow it — "Oct 20 — 5 money
+// myths" is a date and a title, not a range.
+const BARE_DAY_END = `\\d{1,2}${ORD}(?![\\d/.])(?!\\s+[A-Za-z])`;
+const RANGE_TAIL_MD = `(?:${DASH}(?:${MONTH_RE}\\s*\\d{1,2}${ORD}|${BARE_DAY_END}))?`;
+const RANGE_TAIL_NUM = `(?:${DASH}(?:\\d{1,2}[/.]\\d{1,2}(?:[/.]\\d{2,4})?|${BARE_DAY_END}))?`;
 
 const PATTERNS: Pattern[] = [
   // 2026-10-20, 2026/10/20 (optionally with a weekday in front)
@@ -161,7 +164,9 @@ export function matchDateAt(s: string): DateMatch | null {
     const m = p.re.exec(s);
     if (!m) continue;
     const spec = p.build(m);
-    if (spec) return { spec, text: m[0], index: 0 };
+    if (!spec) continue;
+    if (spec.kind === "absolute" && p.re.source.startsWith("^(?:") && m[1] && weekdayNum(m[1]) >= 0) spec.weekday = weekdayNum(m[1]);
+    return { spec, text: m[0], index: 0 };
   }
   return null;
 }
@@ -219,8 +224,11 @@ export function parseDateText(text: string): { spec: DateSpec; time: string | nu
 
 /** Most specific wins: absolute > week+day > day N > weekday (with any week ref) > relative > week. */
 export function combineSpecs(specs: DateSpec[]): DateSpec | null {
-  const abs = specs.find((s) => s.kind === "absolute");
-  if (abs) return abs;
+  const abs = specs.find((s): s is Extract<DateSpec, { kind: "absolute" }> => s.kind === "absolute");
+  if (abs) {
+    const named = specs.find((s): s is Extract<DateSpec, { kind: "weekday" }> => s.kind === "weekday");
+    return named && abs.weekday === undefined ? { ...abs, weekday: named.weekday } : abs;
+  }
   const wd = specs.find((s) => s.kind === "weekDay");
   if (wd) return wd;
   const week = specs.find((s): s is Extract<DateSpec, { kind: "week" }> => s.kind === "week");
@@ -236,7 +244,7 @@ export function nearestYear(month: number, day: number, today: string): number {
   const t = parseYmd(today)!;
   const candidate = toYmd(t.year, month, day);
   if (!parseYmd(candidate)) return parseYmd(toYmd(t.year + 1, month, day)) ? t.year + 1 : t.year;
-  return diffDaysYmd(today, candidate) > 60 ? t.year + 1 : t.year;
+  return diffDaysYmd(candidate, today) > 60 ? t.year + 1 : t.year;
 }
 
 function realYmd(year: number, month: number, day: number): string | null {
@@ -253,7 +261,7 @@ export function resolveWeekRef(week: WeekRef, ctx: DateContext): string | null {
   }
   if (week.kind === "of") {
     const ymd = resolveDateSpec({ kind: "absolute", year: week.year, month: week.month, day: week.day }, ctx);
-    return ymd ? mondayOfYmd(ymd) : null;
+    return ymd ? addDaysYmd(mondayOfYmd(ymd), 7 * (week.plusWeeks ?? 0)) : null;
   }
   return week.ymd;
 }
