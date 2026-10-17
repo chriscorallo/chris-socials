@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EditTimelineSchema, FFMPEG_PATH, type EditTimelineInput, type StorageAdapter } from "@chris/media";
 import type { PrismaClient } from "@chris/domain";
-import { prepareMotion, type MotionModule } from "../render-job";
+import { prepareMotion, withResolvedPlacements, type MotionModule } from "../render-job";
 
 /** prepareMotion with a fake motion module / db / storage: wiring + graceful degradation. */
 
@@ -60,6 +60,21 @@ describe("prepareMotion", () => {
       sfxFiles: () => ({ WHOOSH: "/kit/whoosh.wav" }),
     };
   }
+
+  it("re-solves AUTO placements (subject tracks) and never moves MANUAL ones", () => {
+    const manual = { ...visual, id: "m", placement: { mode: "MANUAL", x: 0.5, y: 0.3, scale: 1 } };
+    const onlyManual = tl({ visuals: [manual] as EditTimelineInput["visuals"] });
+    expect(withResolvedPlacements(onlyManual, [], {})).toBe(onlyManual);
+    // A face in the upper-middle of the frame for the whole take: the AUTO card must move off it.
+    const track = Array.from({ length: 13 }, (_, i) => ({ t: i * 0.25, box: { x: 0.35, y: 0.18, w: 0.3, h: 0.22 }, confidence: 0.9 }));
+    const auto = { ...visual, id: "a", placement: { mode: "AUTO", x: 0.5, y: 0.3, scale: 1 } };
+    const t = tl({ visuals: [auto, manual] as EditTimelineInput["visuals"] });
+    const out = withResolvedPlacements(t, [{ id: "A", subjectTrack: track, width: 1080, height: 1920 }], {});
+    expect(out.visuals.find((v) => v.id === "m")!.placement).toEqual(manual.placement);
+    const a = out.visuals.find((v) => v.id === "a")!.placement;
+    expect(a.mode).toBe("AUTO");
+    expect(Math.abs(a.y - 0.3) + Math.abs(a.x - 0.5)).toBeGreaterThan(0.05);
+  });
 
   it("does nothing (and never loads the engine) without visuals, SFX or music", async () => {
     let loaded = false;

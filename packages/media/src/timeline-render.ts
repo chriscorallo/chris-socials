@@ -246,7 +246,7 @@ export function buildAudioMix(opts: {
   let musicInfo: AudioMixPlan["music"] = null;
   if (music && musicPath) {
     inputArgs.push("-ss", n(music.trackStart), "-i", musicPath);
-    const k = idx++;
+    const k = idx;
     const fadeOutStart = Math.max(0, duration - music.fadeOutSeconds);
     const pre =
       `[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,` +

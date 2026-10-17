@@ -186,6 +186,58 @@ hosts without Chrome/network), `packages/media/src/__tests__/timeline-motion-mix
 (graph unit tests + real compositing/SFX/ducking measurements),
 `apps/worker/src/__tests__/render-job-motion.test.ts` (wiring + graceful degradation).
 
+## 2026-10-16 — Templates draw inside the placement engine's footprints (footprints adjusted)
+
+**Decision:** `TEMPLATE_DESIGN_SIZE` (packages/motion) is read from `TEMPLATE_FOOTPRINTS`
+(packages/media/src/visual-footprints.ts) — the box the placement engine keeps clear of
+Chris/captions/UI is exactly the box each template lays out in, centred on placement x/y,
+× `placement.scale` × canvas width/1080 (same rule as `footprintPx`). Footprints were adjusted
+to the final designs: KINETIC_TEXT 900×380 (was 320), STAT_CARD 720×400 (700×380),
+LINE_CHART 900×680 (640), COMPARISON 900×560 (940×520), LIST_STEPS 860×640 (620), ICON_3D
+560×600 (520×520), MONEY_STACK_3D 720×680 (600×600), TIMELINE 760×800 (940×420 — the
+template is a vertical milestone list: a horizontal 5-event row cannot fit 16-char labels +
+40-char subs at ≥ 34 px on a phone), DEFINITION 880×440 (420). NUMBER_COUNTER (760×300),
+PERCENT_RING (520×560), BAR_CHART, CALLOUT, TITLE_CARD unchanged (designs fitted to them). The
+placement-engine tests pass with these numbers. Designs hold up at scale 0.7–1.0 (min text
+34 px at scale 1 ⇒ ≥ 24 px at 0.7 — still legible at phone size, but 0.7 is the floor).
+
+The worker re-solves AUTO placements (`withResolvedPlacements` → `resolveVisualPlacements`
+with the takes' `subjectTrack`, source dimensions, word timings and the renderer's glyph
+measurement) right before rendering visuals, so the render matches the editor; MANUAL
+placements are never moved.
+
+---
+
+## Quality loop (2026-10-16)
+
+`packages/motion/scripts/showcase.ts` renders all 14 templates (2.6 s each, ~40 s) over a
+dark and a light "talking head" stand-in through the real pipeline (alpha clips → compositor
+with SFX + music), plus `--gallery3d` (every ICON_3D model + the extruded 3D bar chart), and
+extracts entrance / mid / exit frames into contact sheets. Iterations made after looking at
+the frames: bare type (KINETIC_TEXT, NUMBER_COUNTER) gets a soft invisible scrim so white/gold
+type holds on bright footage; TIMELINE moved onto a glass panel (white text on a light wall was
+weak); bill stacks re-textured (ACES + key light washed them to white) and made taller with a
+lower camera; integer bar values count in integers (no "$649.9" mid-count); pig/floor
+materials. Evidence: `docs/evidence/2026-10-16-motion/` (contact-sheet-{dark,light,3d}.jpg,
+frame-*.jpg, sfx-spectrograms.jpg).
+
+Known gaps: TITLE_CARD dims the background but does not blur it (a blur would have to happen
+in the ffmpeg graph, not in the alpha layer) — follow-up: a `gblur` on the base during the
+title window. Glass cards are "frosted" by gradient, not a true backdrop blur (the layer is
+rendered without the footage behind it). The stand-in background is synthetic; a pass over a
+real take is recommended once one is available.
+
+---
+
 ## Render timings
 
-(filled in below from the measured runs)
+Measured on an Apple M1 Pro (10 cores), Remotion default concurrency, 1080×1920 @ 30 fps:
+- Showcase: 14 visuals, 1,091 frames of motion over a 40 s timeline → **60 s** for the alpha
+  layer (≈ 18 frames/s, incl. 3D), bundle 1.5–2.6 s with the webpack cache warm (cold first bundle not separately measured; the whole first integration-test run incl. cold bundle + browser start took 27 s); the
+  compositing render (H.264 veryfast + SFX + music) **15 s** for 40 s.
+- 3D gallery: 11 three.js visuals, 660 frames → 35 s (≈ 19 frames/s).
+- Integration test: 3 visuals (one 3D), 111 frames + composite of a 6 s video → ~25 s total
+  including bundling and browser start.
+Typical 45 s video with ~5 visuals of ~4 s (≈ 600 motion frames): ≈ 35 s for the layer +
+the existing master render. PER_VISUAL avoids rendering the ~55 % of frames with nothing on
+screen; FULL_LAYER would render all 1,350.
