@@ -137,7 +137,7 @@ export function nextActionFor(state: ContentState): NextAction {
     case "SCRIPTED":
       return { kind: "OPEN", label: "Continue", hint: "Being planned and written.", needsYou: false };
     case "RESEARCH_BLOCKED":
-      return { kind: "FIX", label: "Fix", hint: "The fact-check stopped this one — open it to see why.", needsYou: true };
+      return { kind: "FIX", label: "Fix", hint: "The fact-check stopped this one — rethink the angle and try again.", needsYou: true };
     case "READY_TO_FILM":
       return { kind: "FILM", label: "Film it", hint: "The script is ready. Film it, then upload the footage.", needsYou: true };
     case "FILMED":
@@ -153,7 +153,7 @@ export function nextActionFor(state: ContentState): NextAction {
     case "QC_REPAIR":
       return { kind: "EDIT", label: "Edit", hint: "Being checked — open the editor to finish it.", needsYou: true };
     case "QC_BLOCKED":
-      return { kind: "FIX", label: "Fix", hint: "The final check found a problem — open it to see what.", needsYou: true };
+      return { kind: "FIX", label: "Fix", hint: "The final check found a problem — fix it in the editor.", needsYou: true };
     case "READY":
       return { kind: "SCHEDULE", label: "Schedule", hint: "Finished and checked — pick when it goes out.", needsYou: true };
     case "SCHEDULED":

@@ -230,7 +230,10 @@ export function stateLabel(state: string): string {
 
 /** A status pill in plain words. */
 export function StatusPill({ state }: { state: string }) {
-  return <Badge tone={contentStateTone(state)}>{stateLabel(state)}</Badge>;
+  // Plain words read better in sentence case than the badge's default ALL CAPS.
+  return (
+    <span className={`badge badge-${contentStateTone(state)} !text-[12px] !normal-case !tracking-normal`}>{stateLabel(state)}</span>
+  );
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {

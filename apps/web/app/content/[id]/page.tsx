@@ -196,7 +196,6 @@ export default async function ContentDetailPage({
     case "EDIT_PLANNED":
       primary = linkAct(editHref, "Edit video");
       secondary.push(secForm(runEditPlanner, "Improve with AI", "Planning…"));
-      secondary.push(secForm(runRender, "Render now", "Rendering…"));
       break;
     case "EDITING":
       primary = linkAct(editHref, "Edit video");
@@ -212,7 +211,7 @@ export default async function ContentDetailPage({
       break;
     case "QC_BLOCKED":
       primary = linkAct(editHref, "Fix in the editor");
-      secondary.push(secLink("#problems", "What's wrong?"));
+      if (latestQCReport && latestQCReport.overallStatus !== "PASS") secondary.push(secLink("#problems", "What's wrong?"));
       break;
     case "READY":
       primary = linkAct("#schedule", "Schedule");
@@ -302,8 +301,10 @@ export default async function ContentDetailPage({
         <BackLink href="/content">Videos</BackLink>
 
         {/* HERO: the video, its status, where it is, and the one next step. */}
-        <section className="mb-5 grid gap-5 md:grid-cols-[minmax(0,300px)_1fr] md:items-start">
-          <div className="mx-auto w-full max-w-[300px]">
+        <section className="mb-5 grid grid-cols-[124px_minmax(0,1fr)] items-start gap-x-4 gap-y-4 md:grid-cols-[300px_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-8">
+          {/* Phones: a small playable video beside the title, so the next step stays above the
+              fold. Desktop: a big player on the left. */}
+          <div className="w-full md:row-span-2">
             {heroKey ? (
               <video
                 key={heroKey}
@@ -317,28 +318,27 @@ export default async function ContentDetailPage({
               <VideoThumb url={null} title={item.title} className="aspect-[9/16] w-full rounded-2xl border border-[var(--color-border)]" />
             )}
             {heroKey && (
-              <p className="mt-1.5 text-center text-[12px] text-[var(--color-text-faint)]">
+              <p className="mt-1.5 text-center text-[11px] text-[var(--color-text-faint)] md:text-[12px]">
                 {goodRender ? "Latest finished version" : "Your footage"}
               </p>
             )}
           </div>
 
-          <div className="flex min-w-0 flex-col gap-4">
-            <div>
-              <h1 className="text-[26px] font-semibold leading-tight tracking-tight sm:text-[28px]">{item.title}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[14px] text-[var(--color-text-muted)]">
-                <StatusPill state={state} />
-                {when && <span>{when}</span>}
-              </div>
-              <p className="mt-2 text-[15px] leading-snug text-[var(--color-text-muted)]">{next.hint}</p>
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[28px]">{item.title}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-muted)] sm:text-[14px]">
+              <StatusPill state={state} />
+              {when && <span>{when}</span>}
             </div>
+            {!when && <p className="mt-2 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-[15px]">{next.hint}</p>}
+          </div>
 
+          <div className="col-span-2 flex min-w-0 flex-col gap-4 self-start md:col-span-1 md:col-start-2">
             <FlowProgress state={state} />
-
             {primary && (
               <div className="flex flex-col gap-2.5">
                 {primary.big}
-                {secondary.length > 0 && <div className="flex flex-col gap-2.5 sm:flex-row">{secondary.slice(0, 2)}</div>}
+                {secondary.length > 0 && <div className="flex gap-2.5">{secondary.slice(0, 2)}</div>}
               </div>
             )}
           </div>
@@ -583,7 +583,7 @@ export default async function ContentDetailPage({
                 <span className="block text-[13px] text-[var(--color-text-faint)]">AI steps, script, takes, checks, posts, feedback, history</span>
               </span>
               <svg width="14" height="9" viewBox="0 0 14 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="chevron shrink-0 text-[var(--color-text-faint)] transition-transform group-open:rotate-180" aria-hidden>
-                <path d="m1 1.5 6 6-6 6" />
+                <path d="m1 1.5 6 6 6-6" />
               </svg>
             </summary>
             <div className="mt-4 flex flex-col gap-5">
