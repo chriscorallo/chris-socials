@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EditTimelineSchema, MOTION_TEMPLATES, MotionPropsSchemas, resolveVisualPlacements, type TimelineVisual } from "@chris/media/timeline";
+import { EditTimelineSchema, MOTION_TEMPLATES, MotionPropsSchemas, resolveVisualPlacements, type TimelineVisual, VISUAL_INTERACTION_DEFAULTS } from "@chris/media/timeline";
 import { SAMPLE_PROPS } from "@chris/motion/pure";
 import {
   TEMPLATE_FIELDS,
@@ -51,6 +51,7 @@ function vis(id: string, start: number, end: number, template: TimelineVisual["t
     props: SAMPLE_PROPS[template],
     start,
     end,
+    ...VISUAL_INTERACTION_DEFAULTS,
     placement: { mode: "AUTO", x: 0.5, y: 0.3, scale: 1 },
     palette: "BRAND",
     enter: "AUTO",

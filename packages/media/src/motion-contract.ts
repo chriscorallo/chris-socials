@@ -163,6 +163,15 @@ export const TimelineVisualSchema = z.object({
 });
 export type TimelineVisual = z.infer<typeof TimelineVisualSchema>;
 
+/** Neutral v2 interaction fields — spread into hand-built visuals so they behave like v1. */
+export const VISUAL_INTERACTION_DEFAULTS = {
+  depth: "FRONT",
+  anchor: { type: "SCREEN", offsetX: 0, offsetY: -0.25 },
+  cameraCoupling: 0,
+  integration: { shadow: true, lightWrap: false, sceneMatch: true },
+  emphasisAt: null,
+} as const satisfies Pick<TimelineVisual, "depth" | "anchor" | "cameraCoupling" | "integration" | "emphasisAt">;
+
 /**
  * Per-video motion theme — chosen by the Motion Designer from the topic (debt ≠ investing ≠
  * lifestyle) so each video has a coherent look and feel instead of one house style for all.

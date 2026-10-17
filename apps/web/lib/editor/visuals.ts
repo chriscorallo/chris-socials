@@ -8,8 +8,7 @@ import {
   type TimelineMusic,
   type TimelineSfx,
   type SfxSound,
-  type TimelineVisual,
-} from "@chris/media/timeline";
+  type TimelineVisual, VISUAL_INTERACTION_DEFAULTS } from "@chris/media/timeline";
 import { SAMPLE_PLACEMENT, SAMPLE_PROPS } from "@chris/motion/pure";
 import { newId } from "./timeline-ops";
 import { PLATFORM_IDS } from "./platform-profiles";
@@ -488,6 +487,7 @@ export function addVisual(
     props,
     start: slot.start,
     end: slot.end,
+    ...VISUAL_INTERACTION_DEFAULTS,
     placement: { mode: "AUTO", x: p.x, y: p.y, scale: 1 },
     palette: "BRAND",
     enter: "AUTO",
