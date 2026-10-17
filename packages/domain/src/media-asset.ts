@@ -8,9 +8,14 @@ import { applyTransition } from "./state-machine";
  * (storageKey + metadata); Phase 3 adds the technical/transcript analysis fields on this
  * same table (see /docs/DATA_MODEL.md) and the analyzeMediaAsset function below.
  */
+/** RAW_TAKE = a filmed take (drives ingestion, transcription, take selection); MUSIC = a music
+ * bed Chris uploaded for the finishing editor (never a take: no state change, no transcript). */
+export const MEDIA_ASSET_KINDS = ["RAW_TAKE", "MUSIC"] as const;
+export type MediaAssetKindName = (typeof MEDIA_ASSET_KINDS)[number];
+
 export const CreateMediaAssetSchema = z.object({
   contentItemId: z.string().min(1),
-  kind: z.enum(["RAW_TAKE"]),
+  kind: z.enum(MEDIA_ASSET_KINDS),
   storageKey: z.string().min(1),
   originalFilename: z.string().min(1),
   mimeType: z.string().min(1),
@@ -25,6 +30,9 @@ export async function createMediaAsset(
   actor: { actorId: string },
 ) {
   const parsed = CreateMediaAssetSchema.parse(input);
+  if (parsed.kind === "MUSIC" && !/^audio\//.test(parsed.mimeType)) {
+    throw new Error(`A music track must be an audio file (got ${parsed.mimeType}).`);
+  }
   const asset = await prisma.mediaAsset.create({ data: parsed });
 
   await recordAudit(prisma, {
@@ -35,6 +43,7 @@ export async function createMediaAsset(
     entityId: parsed.contentItemId,
     after: {
       mediaAssetId: asset.id,
+      kind: asset.kind,
       originalFilename: asset.originalFilename,
       sizeBytes: asset.sizeBytes,
     },
@@ -43,12 +52,19 @@ export async function createMediaAsset(
   return asset;
 }
 
+/**
+ * A content item's media. Defaults to RAW_TAKEs only — every existing caller (take selection,
+ * transcription, the pipeline) means "the takes", and a music bed must never be picked as a
+ * take. Pass `{ kind: "MUSIC" }` for music, or `"ALL"` for everything.
+ */
 export async function listMediaAssetsForContentItem(
   prisma: PrismaClient,
   contentItemId: string,
+  options: { kind?: MediaAssetKindName | "ALL" } = {},
 ) {
+  const kind = options.kind ?? "RAW_TAKE";
   return prisma.mediaAsset.findMany({
-    where: { contentItemId },
+    where: kind === "ALL" ? { contentItemId } : { contentItemId, kind },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -106,7 +122,8 @@ export async function analyzeMediaAsset(
     after: { mediaAssetId: asset.id, durationSeconds: asset.durationSeconds },
   });
 
-  const item = await prisma.contentItem.findUnique({ where: { id: asset.contentItemId } });
+  // Only a filmed take is "ingestion" — analyzing a music bed never moves the item.
+  const item = asset.kind === "RAW_TAKE" ? await prisma.contentItem.findUnique({ where: { id: asset.contentItemId } }) : null;
   if (item?.currentState === "FILMED") {
     await applyTransition(prisma, {
       contentItemId: asset.contentItemId,

@@ -5,14 +5,29 @@ import { prisma, createMediaAsset, analyzeMediaAsset } from "@chris/domain";
 import { probeMedia } from "@chris/media";
 import { after } from "next/server";
 import { transcribeMediaAsset } from "@chris/worker/transcribe-job";
+import { trackSubjectForMediaAsset } from "@chris/worker/subject-track-job";
 import { storage } from "./storage";
-import { isAutoTranscriptionEnabled } from "./render-config";
+import { isAutoSubjectTrackingEnabled, isAutoTranscriptionEnabled } from "./render-config";
+
+/** What an upload is: a filmed take (default) or a music bed for the finishing editor. */
+export type UploadKind = "RAW_TAKE" | "MUSIC";
+
+export function parseUploadKind(value: string | null | undefined): UploadKind {
+  return value === "MUSIC" ? "MUSIC" : "RAW_TAKE";
+}
+
+/** Mime check per kind: takes are video (or audio-only takes); music must be audio. */
+export function uploadMimeAllowed(kind: UploadKind, mimeType: string): boolean {
+  return kind === "MUSIC" ? /^audio\//.test(mimeType) : /^(video|audio)\//.test(mimeType);
+}
 
 /**
  * Shared tail of every upload path (local streaming route, or a browser-direct Blob upload):
  * the file is already in storage under `storageKey`; record the MediaAsset and run
  * deterministic ffprobe analysis against a local copy. Analyzing the first take of an item
- * in FILMED is the canonical FILMED -> MEDIA_INGESTED trigger (packages/domain media-asset.ts).
+ * in FILMED is the canonical FILMED -> MEDIA_INGESTED trigger (packages/domain media-asset.ts);
+ * a MUSIC asset is analyzed too (duration for the editor) but never moves the item and is
+ * never transcribed or tracked.
  *
  * `localPath` must be a readable copy of the uploaded file (the caller already has one, or
  * downloads it) — ffprobe needs a real file path.
@@ -25,12 +40,14 @@ export async function registerUploadedRawTake(input: {
   sizeBytes: number;
   localPath: string;
   actorId: string;
+  kind?: UploadKind;
 }) {
+  const kind = input.kind ?? "RAW_TAKE";
   const asset = await createMediaAsset(
     prisma,
     {
       contentItemId: input.contentItemId,
-      kind: "RAW_TAKE",
+      kind,
       storageKey: input.storageKey,
       originalFilename: input.originalFilename,
       mimeType: input.mimeType || "application/octet-stream",
@@ -54,15 +71,28 @@ export async function registerUploadedRawTake(input: {
     },
     { actorId: input.actorId },
   );
+  if (kind === "MUSIC") return asset;
 
-  // Transcribe in the background once the response is sent (word timings feed take
-  // selection, cut snapping and burned-in captions). Failure just leaves the transcript empty
-  // — the content page offers a retry and a manual-entry box.
-  if (isAutoTranscriptionEnabled() && probed.hasAudio) {
+  // Background work once the response is sent: transcription (word timings feed take
+  // selection, cut snapping and burned-in captions), then subject tracking (where Chris is on
+  // screen — motion graphics are placed around him). Failures just leave the field empty: the
+  // content page offers a transcript retry/manual entry, and placement falls back to an
+  // assumed centred framing with a warning. Both are local-only by default (ONNX is heavy).
+  const transcribe = isAutoTranscriptionEnabled() && probed.hasAudio;
+  const track = isAutoSubjectTrackingEnabled() && probed.width != null && probed.height != null;
+  if (transcribe || track) {
     after(async () => {
-      const result = await transcribeMediaAsset(prisma, storage, asset.id, {}, { actorId: input.actorId });
-      if (result.status === "FAILED") {
-        console.error(JSON.stringify({ level: "error", event: "transcription_failed", mediaAssetId: asset.id, message: result.errorMessage }));
+      if (transcribe) {
+        const result = await transcribeMediaAsset(prisma, storage, asset.id, {}, { actorId: input.actorId });
+        if (result.status === "FAILED") {
+          console.error(JSON.stringify({ level: "error", event: "transcription_failed", mediaAssetId: asset.id, message: result.errorMessage }));
+        }
+      }
+      if (track) {
+        const result = await trackSubjectForMediaAsset(prisma, storage, asset.id, { actorId: input.actorId });
+        if (result.status === "FAILED") {
+          console.error(JSON.stringify({ level: "error", event: "subject_tracking_failed", mediaAssetId: asset.id, message: result.errorMessage }));
+        }
       }
     });
   }
@@ -80,4 +110,13 @@ export async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T
 
 export function rawTakeStorageKey(contentItemId: string, safeName: string): string {
   return `raw/${contentItemId}/${Date.now()}-${safeName}`;
+}
+
+export function musicStorageKey(contentItemId: string, safeName: string): string {
+  return `music/${contentItemId}/${Date.now()}-${safeName}`;
+}
+
+/** The storage-key prefix an upload of `kind` must live under. */
+export function uploadKeyPrefix(kind: UploadKind, contentItemId: string): string {
+  return kind === "MUSIC" ? `music/${contentItemId}/` : `raw/${contentItemId}/`;
 }

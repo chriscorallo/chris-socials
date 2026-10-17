@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { prisma } from "../prisma";
 import { createContentItem } from "../content-item";
+import { applyTransition } from "../state-machine";
 import {
+  analyzeMediaAsset,
   createMediaAsset,
   listMediaAssetsForContentItem,
   getMediaAsset,
@@ -136,5 +138,47 @@ describe("recordTranscript", () => {
   it("parseTranscriptWords tolerates absent/malformed JSON", () => {
     expect(parseTranscriptWords(null)).toBeNull();
     expect(parseTranscriptWords([{ nope: 1 }])).toBeNull();
+  });
+});
+
+describe("music assets (MediaAssetKind MUSIC)", () => {
+  async function filmedItem(title: string) {
+    const item = await createContentItem(prisma, { title }, { actorId: "test-user" });
+    for (const to of ["SELECTED", "CONTRACTED", "RESEARCHING", "RESEARCHED", "SCRIPTING", "SCRIPTED", "READY_TO_FILM", "FILMED"] as const) {
+      await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM" });
+    }
+    return item;
+  }
+  const music = (contentItemId: string, mimeType = "audio/mpeg") => ({
+    contentItemId,
+    kind: "MUSIC" as const,
+    storageKey: `music/${contentItemId}/bed.mp3`,
+    originalFilename: "bed.mp3",
+    mimeType,
+    sizeBytes: 2048,
+  });
+
+  it("records a music bed, keeps it out of the takes list, and never ingests the item", async () => {
+    const item = await filmedItem("Music bed test");
+    const asset = await createMediaAsset(prisma, music(item.id), { actorId: "chris" });
+    expect(asset.kind).toBe("MUSIC");
+
+    expect(await listMediaAssetsForContentItem(prisma, item.id)).toHaveLength(0);
+    expect((await listMediaAssetsForContentItem(prisma, item.id, { kind: "MUSIC" })).map((a) => a.id)).toEqual([asset.id]);
+    expect(await listMediaAssetsForContentItem(prisma, item.id, { kind: "ALL" })).toHaveLength(1);
+
+    await analyzeMediaAsset(
+      prisma,
+      asset.id,
+      { durationSeconds: 95, width: null, height: null, frameRate: null, hasAudio: true, videoCodec: null, audioCodec: "mp3" },
+      { actorId: "chris" },
+    );
+    const after = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(after.currentState).toBe("FILMED");
+  });
+
+  it("refuses a non-audio file as music", async () => {
+    const item = await createContentItem(prisma, { title: "Music mime test" }, { actorId: "test-user" });
+    await expect(createMediaAsset(prisma, music(item.id, "video/mp4"), { actorId: "chris" })).rejects.toThrow(/audio file/);
   });
 });

@@ -42,7 +42,14 @@ import { ingestCommentsForContentItem } from "@chris/worker/comment-ingestion-jo
 import { tryAutonomousPublish } from "@chris/worker/autonomous-publish-job";
 import { requireSession } from "../../../lib/session";
 import { storage, downloadToFile, safeFilename, getPublicVideoUrl } from "../../../lib/storage";
-import { registerUploadedRawTake, withTempDir } from "../../../lib/ingest-upload";
+import {
+  registerUploadedRawTake,
+  withTempDir,
+  parseUploadKind,
+  uploadKeyPrefix,
+  uploadMimeAllowed,
+  type UploadKind,
+} from "../../../lib/ingest-upload";
 import { getModelProvider } from "../../../lib/model-provider";
 import {
   runPipelineStep,
@@ -177,16 +184,22 @@ export async function registerBlobUpload(input: {
   originalFilename: string;
   mimeType: string;
   sizeBytes: number;
+  /** "MUSIC" registers a music bed (audio only, key under music/<item>/); default a raw take. */
+  kind?: UploadKind;
 }): Promise<{ mediaAssetId: string } | { error: string }> {
   const session = await requireSession();
   try {
-    if (!input.storageKey.startsWith(`raw/${input.contentItemId}/`)) {
+    const kind = parseUploadKind(input.kind);
+    if (!input.storageKey.startsWith(uploadKeyPrefix(kind, input.contentItemId))) {
       throw new Error("Storage key does not belong to this content item.");
+    }
+    if (!uploadMimeAllowed(kind, input.mimeType)) {
+      throw new Error(kind === "MUSIC" ? "Music must be an audio file." : `Unsupported file type: ${input.mimeType}`);
     }
     const asset = await withTempDir(async (dir) => {
       const localPath = join(dir, safeFilename(input.originalFilename));
       await downloadToFile(input.storageKey, localPath);
-      return registerUploadedRawTake({ ...input, localPath, actorId: session.user!.id! });
+      return registerUploadedRawTake({ ...input, kind, localPath, actorId: session.user!.id! });
     });
     return { mediaAssetId: asset.id };
   } catch (err) {
