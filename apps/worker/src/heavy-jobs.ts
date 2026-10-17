@@ -8,6 +8,7 @@ import { transcribeMediaAsset, transcribeContentItemTakes, type TranscribeJobRes
 import { ensureSubjectTracks, type SubjectAnalyzer, type SubjectTrackJobResult } from "./subject-track-job";
 import { ensurePersonMattes, type MatteComputer, type PersonMatteJobResult } from "./person-matte-job";
 import { designMotionForContentItem } from "./motion-design-job";
+import { analyzePendingReferenceVideos } from "./reference-analysis-job";
 import { HEAVY_JOB_LABEL, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "./heavy-job-kinds";
 
 /**
@@ -206,6 +207,35 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       };
       const ok = r.status === "SUCCESS" && !!r.editPlanId;
       return { ok, result, error: ok ? undefined : r.errorMessage ?? "unknown error", message: ok ? `Added ${plural(result.added.length, "graphic")}.` : "Couldn't design visuals." };
+    }
+
+    case "reference-analyze": {
+      const a = args as HeavyJobArgsByKind["reference-analyze"];
+      // In the sandbox, stop starting new videos well before the VM's hard timeout; the rest
+      // stay waiting and the page offers to continue.
+      const deadline = Number(process.env.SANDBOX_DEADLINE_MS) || 0;
+      const timeBudgetMs = deadline ? Math.max(60_000, deadline - Date.now() - 8 * 60_000) : undefined;
+      progress(3, "Measuring your reference videos…", "measure");
+      const r = await analyzePendingReferenceVideos(
+        db,
+        storage,
+        {
+          ids: a.referenceContentIds,
+          transcriptionProvider: ctx.transcriptionProvider,
+          timeBudgetMs,
+          onProgress: (p) => progress(3 + (95 * p.done) / Math.max(1, p.total), p.message, "measure"),
+        },
+        actor,
+      );
+      const failed = r.measured.filter((m) => !m.ok);
+      const okCount = r.measured.length - failed.length;
+      const rest = r.remaining ? ` ${r.remaining} still waiting — press Measure again to continue.` : "";
+      return {
+        ok: failed.length === 0,
+        result: { measured: r.measured, remaining: r.remaining },
+        error: failed.length ? `Couldn't measure ${plural(failed.length, "video")}: ${failed.map((f) => f.error).join("; ").slice(0, 600)}` : undefined,
+        message: (r.measured.length === 0 ? "Nothing waiting to measure." : `Measured ${plural(okCount, "video")}${failed.length ? `, ${failed.length} failed` : ""}.`) + rest,
+      };
     }
   }
   throw new Error(`unknown heavy job kind: ${String(kind)}`);

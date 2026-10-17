@@ -134,7 +134,7 @@ async function main(): Promise<number> {
   // left. Without the model key only non-AI jobs are taken (the web app starts the others).
   const self = process.env.SANDBOX_SELF_NAME ?? null;
   const deadline = Number(process.env.SANDBOX_DEADLINE_MS) || 0;
-  const kinds = process.env.ANTHROPIC_API_KEY ? undefined : ["ingest", "transcribe", "subject-track", "person-matte"];
+  const kinds = process.env.ANTHROPIC_API_KEY ? undefined : ["ingest", "transcribe", "subject-track", "person-matte", "reference-analyze"];
   for (let n = 0; self && deadline - Date.now() > 15 * 60_000 && n < 20; n++) {
     const { claimQueuedHeavyJob } = await import("@chris/domain");
     const next = await claimQueuedHeavyJob(prisma, { kinds, sandboxName: self }).catch(() => null);

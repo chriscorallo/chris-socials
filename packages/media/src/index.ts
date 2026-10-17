@@ -43,3 +43,4 @@ export * from "./visual-placement";
 export * from "./visual-interaction";
 export * from "./person-matte";
 export * from "./scene-analysis";
+export * from "./style-analysis";

@@ -8,7 +8,7 @@ import {
   type HeavyJobView,
 } from "@chris/domain";
 import { runHeavyJobRecorded, type HeavyJobOutcome } from "@chris/worker/heavy-jobs";
-import { heavyJobNeedsModel, isHeavyJobKind, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "@chris/worker/heavy-job-kinds";
+import { heavyJobNeedsModel, heavyJobSubject, isHeavyJobKind, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "@chris/worker/heavy-job-kinds";
 import { storage } from "./storage";
 import { getModelProvider } from "./model-provider";
 import { cloudWorkerConfigured, getRenderFontPath, heavyJobMode } from "./render-config";
@@ -173,7 +173,10 @@ function busyMessage(jobKind: string | null): string {
 export async function runHeavyJob<K extends HeavyJobKind>(
   kind: K,
   rawArgs: HeavyJobArgsByKind[K],
-  options: { actorId: string },
+  /** `background`: in inline (local) mode, start the job in this process and return `started`
+   * at once, so the page polls progress exactly like the cloud path (long jobs such as measuring
+   * 20 reference videos). No effect in sandbox mode. */
+  options: { actorId: string; background?: boolean },
 ): Promise<RunHeavyJobResult> {
   const args = parseHeavyJobArgs(kind, rawArgs);
   const mode = heavyJobMode();
@@ -186,7 +189,8 @@ export async function runHeavyJob<K extends HeavyJobKind>(
     };
   }
   const lease = await acquireHeavyJobLease(prisma, {
-    contentItemId: args.contentItemId,
+    // The lease subject: the video for per-video jobs, the reference library for reference analysis.
+    contentItemId: heavyJobSubject(kind, args),
     jobKind: kind,
     args,
     mode,
@@ -214,14 +218,16 @@ export async function runHeavyJob<K extends HeavyJobKind>(
   const jobRunId = lease.jobRunId;
 
   if (mode === "inline") {
-    const outcome = await runHeavyJobRecorded(jobRunId, kind, args, {
+    const run = runHeavyJobRecorded(jobRunId, kind, args, {
       db: prisma,
       storage,
       actor: { actorId: options.actorId },
       modelProvider: getModelProvider,
       fontPath: getRenderFontPath(),
     });
-    return { status: "done", jobRunId, outcome };
+    // runHeavyJobRecorded never throws; it records its outcome on the JobRun the page polls.
+    if (options.background) return { status: "started", jobRunId };
+    return { status: "done", jobRunId, outcome: await run };
   }
 
   const launched = await launchClaimed(jobRunId, kind, args);
@@ -241,7 +247,7 @@ async function launchClaimed(jobRunId: string, kind: HeavyJobKind, args: HeavyJo
       snapshotId: cfg.snapshotId,
       vcpus: cfg.vcpus,
       timeoutMs: cfg.timeoutMs,
-      contentItemId: args.contentItemId,
+      contentItemId: heavyJobSubject(kind, args),
     });
     await patchHeavyJobSummary(prisma, jobRunId, { sandboxName });
     return { ok: true };

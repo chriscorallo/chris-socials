@@ -75,8 +75,14 @@ export async function runOffline(kind: string, jobPath: string, progress: Progre
       result = { ...r, outPath: basename(out) };
       break;
     }
+    case "reference-analyze": {
+      // { "file": "clip.mp4" } → the measured style metrics (verifies the snapshot can do it).
+      const { analyzeReferenceVideoFile } = await import("./reference-analysis-job");
+      result = await analyzeReferenceVideoFile(at(job.file));
+      break;
+    }
     default:
-      throw new Error(`offline mode supports render, transcribe, subject-track, person-matte (got "${kind}")`);
+      throw new Error(`offline mode supports render, transcribe, subject-track, person-matte, reference-analyze (got "${kind}")`);
   }
   const wrapped = { kind, ms: Date.now() - started, result };
   await writeFile(join(jobDir, "result.json"), JSON.stringify(wrapped, null, 2));
