@@ -166,7 +166,8 @@ export function matchClipsToPlan(files: ClipFile[], planned: PlannedTarget[], op
     if (!best) return;
     const second = scored[1];
     const clear = !second || best.total - second.total >= 0.15;
-    const high = best.name >= 0.75 && clear && (best.date > 0 || !fileYmd[i]);
+    // A strong, unambiguous name is enough on its own (people film a week+ ahead).
+    const high = best.name >= 0.75 && clear;
     out[i] = {
       fileIndex: i,
       contentItemId: best.p.id,
