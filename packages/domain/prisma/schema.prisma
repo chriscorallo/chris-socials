@@ -239,10 +239,35 @@ model ReferenceContent {
   sourceUrl              String?
   createdAt              DateTime         @default(now())
 
+  // Uploaded reference video (private analysis only — never rendered or published; see
+  // docs/DECISIONS.md "Reference videos"). All nullable: notes-only rows predate uploads.
+  // `mediaStorageKey` is cleared (and `mediaDeletedAt` set) when Chris deletes the file; the
+  // measured numbers stay.
+  mediaStorageKey  String?
+  mediaFilename    String?
+  mediaMimeType    String?
+  mediaSizeBytes   Float?
+  mediaUploadedAt  DateTime?
+  mediaDeletedAt   DateTime?
+  // Deterministic style measurement (no model calls) — `metrics` is ReferenceVideoMetrics
+  // (packages/domain/src/style-metrics.ts), validated by zod on every write.
+  analysisStatus   ReferenceAnalysisStatus?
+  analysisError    String?
+  analyzedAt       DateTime?
+  metrics          Json?
+  metricsVersion   Int?
+
   referenceCreator ReferenceCreator       @relation(fields: [referenceCreatorId], references: [id])
   observations     ReferenceObservation[]
 
   @@index([referenceCreatorId])
+  @@index([analysisStatus])
+}
+
+enum ReferenceAnalysisStatus {
+  PENDING
+  DONE
+  FAILED
 }
 
 // /prompts/agents/REFERENCE_INTELLIGENCE.md's Return shape.

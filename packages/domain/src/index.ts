@@ -132,3 +132,10 @@ export type { PostingPlan, NudgeDismissal } from "@prisma/client";
 // parsers/matcher are at `@chris/domain/plan-import`.
 export * from "./plan-import-db";
 export type { PlanImport } from "@prisma/client";
+
+// Reference videos (2026-10-17) — private, deterministic style measurement of creators Chris
+// learns from. See docs/decisions-pending/reference-videos.md. `getReferenceStyleProfile` is the
+// typed aggregate for the edit planner (not wired into any agent yet).
+export * from "./style-metrics";
+export * from "./reference-videos";
+export type { ReferenceAnalysisStatus } from "@prisma/client";

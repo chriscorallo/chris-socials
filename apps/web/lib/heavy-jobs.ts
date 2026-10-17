@@ -8,7 +8,7 @@ import {
   type HeavyJobView,
 } from "@chris/domain";
 import { runHeavyJobRecorded, type HeavyJobOutcome } from "@chris/worker/heavy-jobs";
-import { heavyJobNeedsModel, isHeavyJobKind, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "@chris/worker/heavy-job-kinds";
+import { heavyJobNeedsModel, heavyJobSubject, isHeavyJobKind, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "@chris/worker/heavy-job-kinds";
 import { storage } from "./storage";
 import { getModelProvider } from "./model-provider";
 import { cloudWorkerConfigured, getRenderFontPath, heavyJobMode } from "./render-config";
@@ -186,7 +186,8 @@ export async function runHeavyJob<K extends HeavyJobKind>(
     };
   }
   const lease = await acquireHeavyJobLease(prisma, {
-    contentItemId: args.contentItemId,
+    // The lease subject: the video for per-video jobs, the reference library for reference analysis.
+    contentItemId: heavyJobSubject(kind, args),
     jobKind: kind,
     args,
     mode,
@@ -241,7 +242,7 @@ async function launchClaimed(jobRunId: string, kind: HeavyJobKind, args: HeavyJo
       snapshotId: cfg.snapshotId,
       vcpus: cfg.vcpus,
       timeoutMs: cfg.timeoutMs,
-      contentItemId: args.contentItemId,
+      contentItemId: heavyJobSubject(kind, args),
     });
     await patchHeavyJobSummary(prisma, jobRunId, { sandboxName });
     return { ok: true };

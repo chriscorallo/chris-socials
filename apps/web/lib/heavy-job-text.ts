@@ -12,6 +12,7 @@ export const HEAVY_JOB_TITLE: Record<string, string> = {
   "person-matte": "Cutting you out for graphics behind you",
   ingest: "Analyzing your footage",
   "motion-design": "Designing visuals",
+  "reference-analyze": "Measuring your reference videos",
 };
 
 /** "Rendering your video… 40%" */

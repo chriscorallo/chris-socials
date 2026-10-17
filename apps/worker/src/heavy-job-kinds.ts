@@ -15,6 +15,7 @@ export const HEAVY_JOB_KINDS = [
   "person-matte",
   "ingest",
   "motion-design",
+  "reference-analyze",
 ] as const;
 
 export type HeavyJobKind = (typeof HEAVY_JOB_KINDS)[number];
@@ -34,6 +35,21 @@ export interface HeavyJobArgsByKind {
   ingest: { contentItemId: string; transcribe: boolean; track: boolean; matte: boolean };
   /** "Design visuals with AI" (HUMAN trigger; subject tracking runs first). */
   "motion-design": { contentItemId: string; replaceExisting?: boolean };
+  /** Measure reference videos' edit style (no model calls): every one waiting, or just `referenceContentIds`.
+   * Not tied to a video — its lease is the whole reference library (REFERENCE_LIBRARY_SUBJECT). */
+  "reference-analyze": { referenceContentIds?: string[] };
+}
+
+/** Lease subject of the reference-analysis job (one at a time for the whole library). */
+export const REFERENCE_LIBRARY_SUBJECT = "reference-library";
+
+/**
+ * What a job's lease is held on: the content item for every per-video kind, the reference
+ * library for reference analysis. One heavy job per subject at a time.
+ */
+export function heavyJobSubject(kind: HeavyJobKind, args: unknown): string {
+  if (kind === "reference-analyze") return REFERENCE_LIBRARY_SUBJECT;
+  return (args as { contentItemId: string }).contentItemId;
 }
 
 export type HeavyJobArgs<K extends HeavyJobKind = HeavyJobKind> = HeavyJobArgsByKind[K];
@@ -55,6 +71,7 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   "person-matte": "Cutting you out for graphics behind you",
   ingest: "Analyzing your footage",
   "motion-design": "Designing visuals",
+  "reference-analyze": "Measuring your reference videos",
 };
 
 export function isHeavyJobKind(v: unknown): v is HeavyJobKind {
@@ -86,6 +103,10 @@ function optIds(v: unknown, name: string): string[] | undefined {
 export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown): HeavyJobArgsByKind[K] {
   if (!raw || typeof raw !== "object") throw new Error("job args must be an object");
   const a = raw as Record<string, unknown>;
+  if (kind === "reference-analyze") {
+    const ids = optIds(a.referenceContentIds, "referenceContentIds");
+    return (ids ? { referenceContentIds: ids } : {}) as HeavyJobArgsByKind[K];
+  }
   const contentItemId = str(a.contentItemId, "contentItemId");
   let out: unknown;
   switch (kind) {
