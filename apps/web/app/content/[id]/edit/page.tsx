@@ -1,7 +1,7 @@
 import type { Viewport } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getLatestEditPlan, parseTranscriptWords, parseSubjectTrackRecord, FINISHING_EDIT_STATES, canStartEdit, friendlyStateLabel } from "@chris/domain";
+import { prisma, getLatestEditPlan, parseTranscriptWords, parseSubjectTrackRecord, FINISHING_EDIT_STATES, canStartEdit, friendlyStateLabel, readStoredStyleCut } from "@chris/domain";
 import { startEditing } from "../flow-actions";
 import { requireSession } from "../../../../lib/session";
 import { toDatetimeLocal } from "../../../../lib/calendar-week";
@@ -105,6 +105,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
     height: selected?.height ?? null,
   });
 
+  const storedStyleCut = readStoredStyleCut(plan.plan);
   const entry = item.scheduleEntry;
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -118,6 +119,12 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       assets={assets}
       music={music}
       storageMode={storageMode}
+      styleCut={{
+        hasWords: !!selected?.words?.length,
+        active: !!storedStyleCut && storedStyleCut.mediaAssetId === selectedId && !/Finishing edit by Chris(?!: Style cut)/.test(plan.revisionReason ?? ""),
+        summary: storedStyleCut?.summary ?? null,
+        profileNote: storedStyleCut?.profileNote ?? null,
+      }}
       schedule={{
         date: toDatetimeLocal(entry?.scheduledDate ?? tomorrow),
         platforms: entry ? ((entry.targetPlatforms as string[]) ?? []) : ["INSTAGRAM", "TIKTOK", "YOUTUBE"],

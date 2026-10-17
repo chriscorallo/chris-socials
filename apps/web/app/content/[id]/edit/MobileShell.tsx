@@ -15,6 +15,7 @@ import { Sheet } from "./Sheet";
 import { ClipPanel, TextPanel, ZoomPanel, CaptionsPanel, LookPanel, CoverPanel } from "./Inspector";
 import { VisualsPanel } from "./VisualsPanel";
 import { SoundPanel } from "./SoundPanel";
+import { StyleCutPanel } from "./StyleCutPanel";
 import { autoPlaceVisuals } from "../../../../lib/editor/visuals";
 import { TakeCard } from "./MediaBin";
 import { useKeyboardInset } from "./layout-hooks";
@@ -285,6 +286,7 @@ function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void
   } else {
     tools = (
       <>
+        <Tool icon="sparkle" label="Style cut" onClick={() => open("style")} active={ui.sheet === "style"} />
         <Tool icon="split" label="Split" onClick={onSplit} />
         <Tool
           icon="film"
@@ -366,6 +368,7 @@ const SHEET_TITLES: Record<SheetId, string> = {
   platforms: "Platforms",
   visuals: "Visuals",
   sound: "Sound",
+  style: "Style cut",
 };
 
 function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onSnapChange: (h: number) => void }) {
@@ -386,6 +389,7 @@ function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onS
   else if (id === "look") body = <LookPanel />;
   else if (id === "visuals") body = <VisualsPanel />;
   else if (id === "sound") body = <SoundPanel />;
+  else if (id === "style") body = <StyleCutPanel />;
   else if (id === "cover") body = <CoverPanel />;
   else if (id === "media") {
     const used = new Set(doc.clips.map((c) => c.mediaAssetId));

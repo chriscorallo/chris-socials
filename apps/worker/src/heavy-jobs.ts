@@ -9,6 +9,7 @@ import { ensureSubjectTracks, type SubjectAnalyzer, type SubjectTrackJobResult }
 import { ensurePersonMattes, type MatteComputer, type PersonMatteJobResult } from "./person-matte-job";
 import { designMotionForContentItem } from "./motion-design-job";
 import { analyzePendingReferenceVideos } from "./reference-analysis-job";
+import { maybeAutoStyleCut, type StyleCutOutcome } from "./style-cut-job";
 import { HEAVY_JOB_LABEL, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "./heavy-job-kinds";
 
 /**
@@ -165,6 +166,7 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       const results = a.mediaAssetId
         ? [await transcribeMediaAsset(db, storage, a.mediaAssetId, { provider: ctx.transcriptionProvider }, actor)]
         : await transcribeContentItemTakes(db, storage, a.contentItemId, { provider: ctx.transcriptionProvider, force: a.force }, actor);
+      if (results.some((r) => r.status === "SUCCESS")) await maybeAutoStyleCut(db, storage, a.contentItemId, actor);
       return outcomeOf("transcribe", results.map(slimTranscribe), "Transcription failed", (n) => `Transcribed ${plural(n, "take")}.`);
     }
 
@@ -360,6 +362,7 @@ async function runIngest(
   const transcribe: Array<ReturnType<typeof slimTranscribe>> = [];
   const track: SubjectTrackJobResult[] = [];
   const matte: PersonMatteJobResult[] = [];
+  const styleCut: StyleCutOutcome[] = [];
   const attempted = new Set<string>();
   for (let pass = 0; pass < 5; pass++) {
     const takes = await db.mediaAsset.findMany({ where: { contentItemId: a.contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } });
@@ -385,6 +388,9 @@ async function runIngest(
       progress(35 + (10 * i) / needK.length, `Finding you in the frame${label(i, needK.length)}…`, "track");
       track.push(...(await ensureSubjectTracks(db, storage, [t.id], actor, { analyze: ctx.analyze })));
     }
+    // Captions (and the face) are in: if the video's edit is still the untouched no-AI starter
+    // edit, make it a style cut now (no-op otherwise; never touches Chris's own edits).
+    if (needT.length || needK.length) styleCut.push(await maybeAutoStyleCut(db, storage, a.contentItemId, actor));
     const needM = todo.filter((t) => a.matte && t.width != null && !t.matteStorageKey);
     for (const [i, t] of needM.entries()) {
       progress(45 + (50 * i) / needM.length, `Cutting you out of the background${label(i, needM.length)} — the slowest step…`, "matte");
@@ -398,7 +404,7 @@ async function runIngest(
   ];
   return {
     ok: failures.length === 0,
-    result: { transcribe, track, matte },
+    result: { transcribe, track, matte, styleCut },
     error: failures.length ? `Some footage analysis failed — ${failures.join("; ")}` : undefined,
     message: failures.length ? "Footage analyzed, with some problems." : "Footage analyzed.",
   };

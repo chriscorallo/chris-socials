@@ -307,6 +307,26 @@ export interface RenderTimelineResult {
   motion: { overlays: number; sfxEvents: SfxEvent[]; music: AudioMixPlan["music"]; behindSubject: number; mattedClips: number };
 }
 
+/** Length of the de-click fade at a splice (s): long enough to remove the step, too short to hear. */
+export const SPLICE_FADE_SECONDS = 0.008;
+
+/**
+ * De-click fades for clip k's audio: a SPLICE_FADE_SECONDS fade-in where the previous clip
+ * isn't its contiguous continuation (other take, or a removed gap) and a fade-out where the
+ * next one isn't. Contiguous clips (same take, sourceEnd == next sourceStart — a framing-only
+ * cut) play straight through. The very start/end of the video are left alone. Pure; returns a
+ * filter-chain suffix ("" when no fade).
+ */
+export function clipAudioFades(clips: EditTimeline["clips"], k: number, outSeconds: number): string {
+  const contiguous = (a: EditTimeline["clips"][number] | undefined, b: EditTimeline["clips"][number] | undefined) =>
+    !!a && !!b && a.mediaAssetId === b.mediaAssetId && Math.abs(a.sourceEnd - b.sourceStart) < 1e-3;
+  const d = Math.min(SPLICE_FADE_SECONDS, outSeconds / 4);
+  let out = "";
+  if (k > 0 && !contiguous(clips[k - 1], clips[k])) out += `,afade=t=in:st=0:d=${n(d)}`;
+  if (k < clips.length - 1 && !contiguous(clips[k], clips[k + 1])) out += `,afade=t=out:st=${n(Math.max(0, outSeconds - d))}:d=${n(d)}`;
+  return out;
+}
+
 /** Master encode: mezzanine-grade so per-platform variants re-encode from a clean source. */
 export const MASTER_ENCODE = { preset: "slow", crf: 16, audioBitrateKbps: 320 } as const;
 
@@ -695,7 +715,7 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
       if (p.hasAudio) {
         parts.push(
           `[${k}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${vol},` +
-            `apad,atrim=end=${n(outSeconds)},asetpts=PTS-STARTPTS[a${k}]`,
+            `apad,atrim=end=${n(outSeconds)}${clipAudioFades(timeline.clips, k, outSeconds)},asetpts=PTS-STARTPTS[a${k}]`,
         );
       } else {
         parts.push(

@@ -15,3 +15,4 @@ export * from "./subject-track-core";
 export * from "./visual-footprints";
 export * from "./visual-placement";
 export * from "./visual-interaction";
+export * from "./style-cut";

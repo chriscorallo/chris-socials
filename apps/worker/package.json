@@ -21,7 +21,8 @@
     "./person-matte-job": "./src/person-matte-job.ts",
     "./blob-storage": "./src/blob-storage.ts",
     "./heavy-job-kinds": "./src/heavy-job-kinds.ts",
-    "./heavy-jobs": "./src/heavy-jobs.ts"
+    "./heavy-jobs": "./src/heavy-jobs.ts",
+    "./style-cut-job": "./src/style-cut-job.ts"
   },
   "scripts": {
     "start": "tsx src/index.ts"

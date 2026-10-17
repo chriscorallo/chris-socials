@@ -17,6 +17,7 @@ import {
 import { googleSheetCsvUrl, googleSheetFetchError, enabledPlatformsOf } from "@chris/domain/plan-import";
 import { runPlanImporterAgent, type PlanImporterResult } from "@chris/agents";
 import { requireSession } from "../../lib/session";
+import { autoStyleCutAfterStarter } from "../../lib/style-cut";
 import { getModelProvider } from "../../lib/model-provider";
 import { APP_TZ } from "../../lib/calendar-data";
 
@@ -126,6 +127,7 @@ export async function makeStarterEdit(contentItemId: string): Promise<{ ok: true
   const session = await requireSession();
   try {
     await createStarterEdit(prisma, contentItemId, { actorId: session.user!.id! });
+    await autoStyleCutAfterStarter(contentItemId, session.user!.id!);
     return { ok: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't open the editor" };
@@ -139,6 +141,7 @@ export async function editPlannedVideo(formData: FormData) {
   let error: string | null = null;
   try {
     await createStarterEdit(prisma, id, { actorId: session.user!.id! });
+    await autoStyleCutAfterStarter(id, session.user!.id!);
   } catch (err) {
     error = err instanceof Error ? err.message : "Couldn't open the editor";
   }

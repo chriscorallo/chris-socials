@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { prisma, createStarterEdit, applyManualTransition, getActiveHeavyJob } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
+import { autoStyleCutAfterStarter } from "../../../lib/style-cut";
 import { heavyJobMode, isAutoTranscriptionEnabled } from "../../../lib/render-config";
 import { progressLine } from "../../../lib/heavy-job-text";
 import { kickQueuedHeavyJobs } from "../../../lib/heavy-jobs";
@@ -19,6 +20,7 @@ export async function startEditing(formData: FormData) {
   let error: string | null = null;
   try {
     await createStarterEdit(prisma, contentItemId, { actorId: session.user!.id! });
+    await autoStyleCutAfterStarter(contentItemId, session.user!.id!);
   } catch (err) {
     error = err instanceof Error ? err.message : "Couldn't open the editor";
   }
@@ -31,6 +33,7 @@ export async function startEditingNow(contentItemId: string): Promise<{ ok: true
   const session = await requireSession();
   try {
     await createStarterEdit(prisma, contentItemId, { actorId: session.user!.id! });
+    await autoStyleCutAfterStarter(contentItemId, session.user!.id!);
     return { ok: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't open the editor" };
