@@ -6,12 +6,15 @@ import {
   listReferenceVideos,
   getReferenceStyleProfile,
   getActiveHeavyJob,
+  creatorStyleGroup,
+  listReferenceCreators,
 } from "@chris/domain";
 import { REFERENCE_LIBRARY_SUBJECT } from "@chris/worker/heavy-job-kinds";
 import { requireSession } from "../../../lib/session";
 import { NavBar } from "../../components/NavBar";
 import { PageShell, PageHeader, Panel, CollapsiblePanel, Button, BackLink, ButtonLink } from "../../components/ui";
 import { addContent, analyzeContent } from "./actions";
+import { setCreatorStyleGroup } from "../actions";
 import { StyleCard } from "../StyleCards";
 import { MeasureControl } from "../MeasureProgress";
 import { VideoCard } from "./VideoCard";
@@ -35,6 +38,7 @@ export default async function ReferenceCreatorPage({
 
   // Sequential, not Promise.all — see /docs/DECISIONS.md.
   const videos = await listReferenceVideos(prisma, id);
+  const allCreators = (await listReferenceCreators(prisma, { limit: 200 })).map((c) => ({ id: c.id, name: c.name }));
   const profile = await getReferenceStyleProfile(prisma, { referenceCreatorId: id });
   const active = await getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT);
   const videoIds = new Set(videos.map((v) => v.id));
@@ -58,6 +62,8 @@ export default async function ReferenceCreatorPage({
         </div>
 
         <div className="flex flex-col gap-4">
+          <StyleGroupPicker creatorId={id} group={creatorStyleGroup(creator.formats)} />
+
           {(creator.relevanceToChris || creator.doNotTransfer) && (
             <div className="flex flex-col gap-2">
               {creator.relevanceToChris && (
@@ -84,7 +90,7 @@ export default async function ReferenceCreatorPage({
           {videos.length > 0 && (
             <ul className="flex flex-col gap-3" data-testid="ref-videos">
               {videos.map((v) => (
-                <VideoCard key={v.id} v={v} back={back} />
+                <VideoCard key={v.id} v={v} back={back} creators={allCreators} creatorId={id} />
               ))}
             </ul>
           )}
@@ -172,5 +178,38 @@ export default async function ReferenceCreatorPage({
         </div>
       </PageShell>
     </>
+  );
+}
+
+const GROUP_OPTIONS = [
+  { group: "MAIN", label: "Talking videos", hint: "Counts toward your main style" },
+  { group: "FACELESS", label: "No-face motivational", hint: "Its own style — not mixed into yours" },
+] as const;
+
+function StyleGroupPicker({ creatorId, group }: { creatorId: string; group: "MAIN" | "FACELESS" }) {
+  return (
+    <div data-testid="style-group">
+      <p className="mb-2 text-[13px] text-[var(--color-text-faint)]">What kind of videos are these?</p>
+      <div className="grid grid-cols-2 gap-2">
+        {GROUP_OPTIONS.map((o) => {
+          const on = o.group === group;
+          return (
+            <form key={o.group} action={setCreatorStyleGroup}>
+              <input type="hidden" name="referenceCreatorId" value={creatorId} />
+              <input type="hidden" name="group" value={o.group} />
+              <button
+                type="submit"
+                aria-pressed={on}
+                disabled={on}
+                className={`flex min-h-[64px] w-full flex-col items-start justify-center rounded-2xl border px-3 py-2 text-left ${on ? "border-[var(--color-gold-400)] bg-[var(--color-surface-raised)]" : "border-[var(--color-border)] active:opacity-70"}`}
+              >
+                <span className={`text-[15px] font-semibold ${on ? "text-[var(--color-gold-400)]" : ""}`}>{on ? "✓ " : ""}{o.label}</span>
+                <span className="mt-0.5 text-[12px] leading-snug text-[var(--color-text-faint)]">{o.hint}</span>
+              </button>
+            </form>
+          );
+        })}
+      </div>
+    </div>
   );
 }

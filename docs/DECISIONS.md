@@ -5244,3 +5244,21 @@ No scraping or downloading from links — Chris supplies the files; the link is 
 - Blob-mode upload (production) not exercised end to end; the local streaming route was.
 - No real creator footage was available; accuracy figures are from synthetic clips.
 - Whisper `base.en` is English-only.
+
+
+## Reference upload: each batch keeps its creator; move + preview; no-face style group (2026-10-17)
+
+**Problem:** the first live use filed all 17 of Chris's reference videos (5 creators) under the
+last name he typed. The add screen chose ONE creator at upload time, while letting him change
+the name and keep picking batches — so earlier batches silently followed the last name.
+
+**Decision:** the creator is stamped on each clip at the moment it's picked (`creatorKey`), the
+list is grouped by creator, and the upload prepares one creator per group. Each reference video
+can be moved to another (or a new) creator (`moveReferenceVideo`, audited; the storage key
+keeps its original prefix — it's only validated at registration and the file never moves).
+Reference videos are now previewable (`/api/media` serves `ReferenceContent.mediaStorageKey`,
+signed-in only, preview only). Creators can be marked "No-face motivational"
+(`ReferenceCreator.formats` tag, no migration) so faceless/motivational references get their
+own style card instead of skewing the talking-video target style.
+
+**Reversibility:** high — UI + additive domain functions; no schema change.

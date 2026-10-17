@@ -5,6 +5,7 @@ import {
   countReferenceCreators,
   referenceVideoCounts,
   getReferenceStyleProfile,
+  creatorStyleGroup,
   getOwnSpeechProfile,
   compareOwnToReference,
   getActiveHeavyJob,
@@ -28,7 +29,9 @@ export default async function ReferencePage() {
   const creators = await listReferenceCreators(prisma, { limit: LIMIT });
   const total = await countReferenceCreators(prisma);
   const counts = await referenceVideoCounts(prisma);
-  const profile = await getReferenceStyleProfile(prisma);
+  const profile = await getReferenceStyleProfile(prisma, { group: "MAIN" });
+  const facelessProfile = await getReferenceStyleProfile(prisma, { group: "FACELESS" });
+  const hasFaceless = creators.some((c) => creatorStyleGroup(c.formats) === "FACELESS");
   const own = await getOwnSpeechProfile(prisma);
   const active = await getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT);
   const compare = compareOwnToReference(own, profile);
@@ -55,7 +58,8 @@ export default async function ReferencePage() {
         <div className="flex flex-col gap-4">
           <MeasureControl activeJobRunId={active?.id ?? null} pending={pending} failed={failed} />
 
-          {videoTotal > 0 && <StyleCard eyebrow="Target style" title={profile.creatorCount > 1 ? `Across all ${profile.creatorCount} creators` : "Your references"} profile={profile} />}
+          {videoTotal > 0 && <StyleCard eyebrow="Target style · talking videos" title={profile.creatorCount > 1 ? `Across ${profile.creatorCount} creators` : "Your references"} profile={profile} />}
+          {hasFaceless && <StyleCard eyebrow="No-face motivational style" title={facelessProfile.creatorCount > 1 ? `Across ${facelessProfile.creatorCount} creators` : "Kept separate from your talking style"} profile={facelessProfile} />}
           <CompareCard lines={compare} takes={own.takes} refs={profile.sampleSize} />
 
           <Panel padding="p-0">

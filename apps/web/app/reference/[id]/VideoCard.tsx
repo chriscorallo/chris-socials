@@ -1,5 +1,5 @@
 import { fmtSeconds, videoSummary, type ReferenceVideoMetrics } from "@chris/domain/style-metrics";
-import { deleteReferenceVideoFile, setReferenceVideoLink } from "../actions";
+import { deleteReferenceVideoFile, moveReferenceVideoAction, setReferenceVideoLink } from "../actions";
 import { Button, platformLabel } from "../../components/ui";
 
 export interface VideoRow {
@@ -62,11 +62,22 @@ const STATUS: Record<string, { text: string; cls: string }> = {
   FAILED: { text: "Couldn't measure", cls: "text-[var(--color-rose-400)]" },
 };
 
-export function VideoCard({ v, back }: { v: VideoRow; back: string }) {
+export function VideoCard({ v, back, creators, creatorId }: { v: VideoRow; back: string; creators: Array<{ id: string; name: string }>; creatorId: string }) {
   const m = v.parsedMetrics;
   const status = STATUS[v.analysisStatus ?? ""] ?? { text: "Notes only", cls: "text-[var(--color-text-faint)]" };
   return (
     <li className="panel flex flex-col gap-1.5 p-4" data-testid="ref-video">
+      {v.mediaStorageKey && (
+        <video
+          src={`/api/media/${v.mediaStorageKey.split("/").map(encodeURIComponent).join("/")}#t=0.5`}
+          preload="metadata"
+          muted
+          playsInline
+          controls
+          className="mb-2 aspect-[9/16] max-h-[300px] w-auto self-start rounded-xl bg-black"
+          data-testid="ref-video-preview"
+        />
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-[15px] font-medium">{v.mediaFilename ?? "Video"}</p>
@@ -95,6 +106,24 @@ export function VideoCard({ v, back }: { v: VideoRow; back: string }) {
           <Button className="shrink-0 !min-h-[40px]" pendingLabel="Saving…">
             Save
           </Button>
+        </form>
+        <form action={moveReferenceVideoAction} className="mt-3 flex flex-col gap-2" data-testid="ref-move">
+          <input type="hidden" name="referenceContentId" value={v.id} />
+          <input type="hidden" name="back" value={back} />
+          <label className="text-[13px] text-[var(--color-text-faint)]">Wrong creator? Move it to</label>
+          <div className="flex gap-2">
+            <select name="to" defaultValue="" required className="field-input !min-h-[40px] !py-2 !text-[14px]" aria-label="Move to creator">
+              <option value="" disabled>Pick a creator…</option>
+              {creators.filter((c) => c.id !== creatorId).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+              <option value="__new__">＋ Someone new (type below)</option>
+            </select>
+            <Button className="shrink-0 !min-h-[40px]" pendingLabel="Moving…">
+              Move
+            </Button>
+          </div>
+          <input name="newName" placeholder="New creator's name (only for ＋ Someone new)" className="field-input !min-h-[40px] !py-2 !text-[14px]" autoComplete="off" aria-label="New creator's name" />
         </form>
         {v.mediaStorageKey && (
           <details className="mt-3">

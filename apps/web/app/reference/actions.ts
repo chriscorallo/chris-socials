@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { prisma, createReferenceCreator, deleteReferenceVideoMedia, setReferenceVideoSourceUrl, isReferenceVideoKey } from "@chris/domain";
+import { prisma, createReferenceCreator, setReferenceCreatorStyleGroup, moveReferenceVideo, deleteReferenceVideoMedia, setReferenceVideoSourceUrl, isReferenceVideoKey } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { storage } from "../../lib/storage";
 import { prepareReferenceCreator, registerReferenceUpload, startReferenceMeasuring } from "../../lib/reference-upload";
@@ -101,6 +101,32 @@ export async function setReferenceVideoLink(formData: FormData) {
   } catch (err) {
     redirect(`${back}?linkError=${encodeURIComponent(msg(err, "Couldn't save that link."))}`);
   }
+  revalidatePath(back);
+  redirect(back);
+}
+
+export async function setCreatorStyleGroup(formData: FormData) {
+  const session = await requireSession();
+  const id = str(formData, "referenceCreatorId");
+  const group = str(formData, "group") === "FACELESS" ? "FACELESS" : "MAIN";
+  await setReferenceCreatorStyleGroup(prisma, id, group, { actorId: session.user!.id! });
+  revalidatePath("/reference");
+  revalidatePath(`/reference/${id}`);
+  redirect(`/reference/${id}`);
+}
+
+export async function moveReferenceVideoAction(formData: FormData) {
+  const session = await requireSession();
+  const id = str(formData, "referenceContentId");
+  const back = str(formData, "back") || "/reference";
+  const choice = str(formData, "to");
+  const name = str(formData, "newName");
+  try {
+    await moveReferenceVideo(prisma, id, choice === "__new__" ? { name } : { referenceCreatorId: choice }, { actorId: session.user!.id! });
+  } catch (err) {
+    redirect(`${back}?linkError=${encodeURIComponent(msg(err, "Couldn't move that video."))}`);
+  }
+  revalidatePath("/reference");
   revalidatePath(back);
   redirect(back);
 }

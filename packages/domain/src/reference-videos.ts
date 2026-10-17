@@ -305,16 +305,17 @@ export async function referenceVideoCounts(prisma: PrismaClient): Promise<Map<st
  */
 export async function getReferenceStyleProfile(
   prisma: PrismaClient,
-  options: { referenceCreatorId?: string } = {},
+  options: { referenceCreatorId?: string; group?: ReferenceStyleGroup } = {},
 ): Promise<StyleProfile> {
   const rows = await prisma.referenceContent.findMany({
     where: { analysisStatus: "DONE", metrics: { not: Prisma.AnyNull }, ...(options.referenceCreatorId ? { referenceCreatorId: options.referenceCreatorId } : {}) },
     orderBy: { analyzedAt: "desc" },
-    select: { referenceCreatorId: true, metrics: true },
+    select: { referenceCreatorId: true, metrics: true, referenceCreator: { select: { formats: true } } },
     take: 2000,
   });
   const items: Array<{ metrics: ReferenceVideoMetrics; creatorId: string }> = [];
   for (const r of rows) {
+    if (options.group && creatorStyleGroup(r.referenceCreator.formats) !== options.group) continue;
     const m = parseReferenceVideoMetrics(r.metrics);
     if (m) items.push({ metrics: m, creatorId: r.referenceCreatorId });
   }
@@ -341,4 +342,61 @@ export async function getOwnSpeechProfile(prisma: PrismaClient, options: { limit
     if (s) per.push(s);
   }
   return aggregateOwnSpeech(per);
+}
+
+/**
+ * Style groups. Chris mixes two kinds of video: talking videos (him on camera — the MAIN style
+ * his edits learn from) and no-face motivational videos (text/voice/B-roll, made without him).
+ * Blending both into one "target style" would drag his talking-video pacing toward a format he
+ * isn't filming, so a creator can be marked FACELESS and gets its own style card. Stored as a
+ * tag in ReferenceCreator.formats (an existing string[] column) — no migration.
+ */
+export type ReferenceStyleGroup = "MAIN" | "FACELESS";
+export const FACELESS_STYLE_FORMAT = "No-face motivational";
+
+export function creatorStyleGroup(formats: unknown): ReferenceStyleGroup {
+  return Array.isArray(formats) && formats.includes(FACELESS_STYLE_FORMAT) ? "FACELESS" : "MAIN";
+}
+
+export async function setReferenceCreatorStyleGroup(
+  prisma: PrismaClient,
+  id: string,
+  group: ReferenceStyleGroup,
+  actor: { actorId: string },
+) {
+  const before = await prisma.referenceCreator.findUniqueOrThrow({ where: { id }, select: { formats: true } });
+  const current = Array.isArray(before.formats) ? before.formats.filter((f): f is string => typeof f === "string") : [];
+  const rest = current.filter((f) => f !== FACELESS_STYLE_FORMAT);
+  const formats = group === "FACELESS" ? [...rest, FACELESS_STYLE_FORMAT] : rest;
+  const row = await prisma.referenceCreator.update({ where: { id }, data: { formats } });
+  await recordAudit(prisma, { actor: actor.actorId, actorType: "HUMAN", action: "REFERENCE_CREATOR_STYLE_GROUP_SET", entityType: "ReferenceCreator", entityId: id, before: { formats: current }, after: { formats } });
+  return row;
+}
+
+/**
+ * Moves a reference video to another creator (picked, or found/created by name) — for fixing
+ * a batch filed under the wrong name. The storage key keeps its original creator prefix: keys
+ * are only checked against the creator at registration time, and the file never moves, so
+ * nothing downstream depends on the prefix after that. Audited; numbers (if measured) move too.
+ */
+export async function moveReferenceVideo(
+  prisma: PrismaClient,
+  id: string,
+  target: { referenceCreatorId?: string | null; name?: string | null },
+  actor: { actorId: string },
+) {
+  const before = await prisma.referenceContent.findUniqueOrThrow({ where: { id }, select: { referenceCreatorId: true } });
+  const to = await findOrCreateReferenceCreator(prisma, target, actor);
+  if (to.id === before.referenceCreatorId) return { id, referenceCreatorId: to.id, name: to.name, moved: false };
+  await prisma.referenceContent.update({ where: { id }, data: { referenceCreatorId: to.id } });
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: "HUMAN",
+    action: "REFERENCE_VIDEO_MOVED",
+    entityType: "ReferenceContent",
+    entityId: id,
+    before: { referenceCreatorId: before.referenceCreatorId },
+    after: { referenceCreatorId: to.id, name: to.name },
+  });
+  return { id, referenceCreatorId: to.id, name: to.name, moved: true };
 }
