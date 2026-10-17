@@ -53,6 +53,9 @@ importers:
       '@chris/media':
         specifier: workspace:*
         version: link:../../packages/media
+      '@chris/motion':
+        specifier: workspace:*
+        version: link:../../packages/motion
       '@chris/platforms':
         specifier: workspace:*
         version: link:../../packages/platforms

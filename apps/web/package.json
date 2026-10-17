@@ -12,6 +12,7 @@
     "@chris/agents": "workspace:*",
     "@chris/domain": "workspace:*",
     "@chris/media": "workspace:*",
+    "@chris/motion": "workspace:*",
     "@chris/platforms": "workspace:*",
     "@chris/worker": "workspace:*",
     "@vercel/blob": "2.8.2",

@@ -1,10 +1,11 @@
 import type { Viewport } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getLatestEditPlan, parseTranscriptWords, FINISHING_EDIT_STATES } from "@chris/domain";
+import { prisma, getLatestEditPlan, parseTranscriptWords, parseSubjectTrackRecord, FINISHING_EDIT_STATES } from "@chris/domain";
 import { requireSession } from "../../../../lib/session";
 import { toDatetimeLocal } from "../../../../lib/calendar-week";
-import { TAKE_COLORS, type EditorAsset } from "../../../../lib/editor/types";
+import { storageMode } from "../../../../lib/storage";
+import { TAKE_COLORS, type EditorAsset, type EditorMusicAsset } from "../../../../lib/editor/types";
 import { initialEditorDoc } from "./lib/initial-timeline";
 import { Editor } from "./Editor";
 
@@ -55,9 +56,10 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  const [takeSelection, rawAssets] = await Promise.all([
+  const [takeSelection, rawAssets, musicRows] = await Promise.all([
     prisma.takeSelection.findUnique({ where: { id: plan.takeSelectionId }, select: { selectedMediaAssetId: true } }),
     prisma.mediaAsset.findMany({ where: { contentItemId: id, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } }),
+    prisma.mediaAsset.findMany({ where: { contentItemId: id, kind: "MUSIC" }, orderBy: { createdAt: "desc" } }),
   ]);
 
   const assets: EditorAsset[] = rawAssets.map((a, i) => ({
@@ -70,6 +72,14 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
     words: parseTranscriptWords(a.transcriptWords),
     transcript: a.transcript,
     color: TAKE_COLORS[i % TAKE_COLORS.length]!,
+    // Where Chris is in the frame (motion-graphics placement) — null until the take is tracked.
+    subjectTrack: parseSubjectTrackRecord(a.subjectTrack),
+  }));
+  const music: EditorMusicAsset[] = musicRows.map((m) => ({
+    id: m.id,
+    name: m.originalFilename.replace(/\.[^.]+$/, ""),
+    url: `/api/media/${m.storageKey}`,
+    duration: m.durationSeconds ?? 0,
   }));
 
   const selectedId = takeSelection?.selectedMediaAssetId ?? assets[0]?.id ?? "";
@@ -93,6 +103,8 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       planId={plan.id}
       initialDoc={initialDoc}
       assets={assets}
+      music={music}
+      storageMode={storageMode}
       schedule={{
         date: toDatetimeLocal(entry?.scheduledDate ?? tomorrow),
         platforms: entry ? ((entry.targetPlatforms as string[]) ?? []) : ["INSTAGRAM", "TIKTOK", "YOUTUBE"],

@@ -54,6 +54,10 @@ export default async function ContentDetailPage({
   if (!item) notFound();
 
   const isTerminal = item.currentState === "ARCHIVED" || item.currentState === "CANCELLED";
+  // Takes and music beds share the MediaAsset table; this panel is about the takes. Music is
+  // listed separately (it's added and used in the finishing editor's Sound sheet).
+  const rawTakes = item.mediaAssets.filter((a) => a.kind === "RAW_TAKE");
+  const musicAssets = item.mediaAssets.filter((a) => a.kind === "MUSIC");
   const manualTransitions = listManualTransitions(item.currentState);
   const latestResearch = item.researchPackets[0];
   const latestScript = item.scriptVersions[0];
@@ -1033,14 +1037,14 @@ export default async function ContentDetailPage({
           <Panel id="media" className={item.currentState === "FILMED" ? "panel-action" : ""}>
             <SectionHeading eyebrow="Assets" title="Media" />
             <RawTakeUploader contentItemId={item.id} mode={storageMode} />
-            {item.mediaAssets.length > 0 && !item.mediaAssets.some((a) => a.transcript) && (
+            {rawTakes.length > 0 && !rawTakes.some((a) => a.transcript) && (
               <form action={runTranscribe} className="mt-3">
                 <input type="hidden" name="contentItemId" value={item.id} />
                 <Button>Transcribe all takes</Button>
               </form>
             )}
             <ul className="mt-3 flex flex-col gap-3 text-[13px]">
-              {item.mediaAssets.map((asset) => (
+              {rawTakes.map((asset) => (
                 <li key={asset.id} className="flex flex-col gap-1.5">
                   <div>
                     <a href={`/api/media/${asset.storageKey}`} className="link-quiet break-all underline">
@@ -1079,8 +1083,13 @@ export default async function ContentDetailPage({
                   </details>
                 </li>
               ))}
-              {item.mediaAssets.length === 0 && <li className="text-[var(--color-text-faint)]">No media uploaded yet.</li>}
+              {rawTakes.length === 0 && <li className="text-[var(--color-text-faint)]">No media uploaded yet.</li>}
             </ul>
+            {musicAssets.length > 0 && (
+              <p className="mt-3 text-[13px] text-[var(--color-text-muted)]">
+                Music: {musicAssets.map((a) => a.originalFilename).join(", ")} — pick it in the editor&apos;s Sound tool.
+              </p>
+            )}
           </Panel>
 
           <Panel>

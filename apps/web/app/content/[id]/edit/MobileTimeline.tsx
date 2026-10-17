@@ -1,13 +1,14 @@
 "use client";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { clipDuration, clipStartTimes, timelineDuration, type TimelineClip, type TimelineText, type TimelineZoom } from "@chris/media/timeline";
-import { moveClip, trimClip, updateText, updateZoom, moveSpan, trimSpan } from "../../../../lib/editor/timeline-ops";
+import { clipDuration, clipStartTimes, timelineDuration, type TimelineClip, type TimelineText, type TimelineVisual, type TimelineZoom } from "@chris/media/timeline";
+import { moveClip, trimClip, moveSpan, trimSpan } from "../../../../lib/editor/timeline-ops";
+import { visualSummary, SFX_LABEL } from "../../../../lib/editor/visuals";
 import { formatTime } from "../../../../lib/editor/preview-math";
 import { fitPps, pinchPps, reorderTarget, scrollForTime, snapTo, timeAtViewportX, timeForScroll, distance } from "../../../../lib/editor/touch-math";
 import type { EditorDoc } from "../../../../lib/editor/types";
 import { useEditor } from "./context";
-import { assignLanes, Frames } from "./TimelinePanel";
+import { assignLanes, Frames, spanRecipe, useVisualWarningIds, VISUAL_COLOR } from "./TimelinePanel";
 import { haptic } from "./layout-hooks";
 import { Icon } from "./icons";
 
@@ -25,6 +26,8 @@ const VIDEO_H = 54;
 const LANE_H = 26;
 const CAPTION_H = 22;
 const ZOOM_H = 24;
+const VISUAL_H = 26;
+const SOUND_H = 22;
 const SNAP_PX = 12;
 const LONG_PRESS_MS = 380;
 
@@ -173,9 +176,10 @@ export function MobileTimeline() {
 
   const sel = state.selection;
   const deselect = () => dispatch({ type: "select", selection: null });
+  const warnIds = useVisualWarningIds();
 
   return (
-    <div className="ed-mtl" aria-label="Timeline" style={{ ["--ed-mtl-content" as string]: `${RULER_H + VIDEO_H + 8 + laneCount * LANE_H + 4 + CAPTION_H + 4 + ZOOM_H + 4 + 6}px` }}>
+    <div className="ed-mtl" aria-label="Timeline" style={{ ["--ed-mtl-content" as string]: `${RULER_H + VIDEO_H + 8 + laneCount * LANE_H + 4 + CAPTION_H + 4 + ZOOM_H + 4 + VISUAL_H + 4 + SOUND_H + 4 + 6}px` }}>
       <div className="ed-mtl-scroll" ref={scrollRef} onScroll={onScroll} onPointerDown={() => engine.playing && engine.pause()}>
         <div className="ed-mtl-content" style={{ width: contentW }} onClick={(e) => e.target === e.currentTarget && deselect()}>
           {/* ruler */}
@@ -277,6 +281,62 @@ export function MobileTimeline() {
                 background={ZOOM_COLOR}
                 onSnapLine={setSnapLine}
               />
+            ))}
+          </div>
+
+          {/* motion graphics */}
+          <div className="ed-mtl-track" style={{ height: VISUAL_H + 4 }} onClick={(e) => e.target === e.currentTarget && deselect()}>
+            {doc.visuals.length === 0 && (
+              <button type="button" className="ed-mtl-empty ed-mtl-empty-btn" style={{ left: half + 4 }} onClick={() => setUi({ sheet: "visuals" })}>
+                <Icon name="magic" size={12} /> No graphics — tap to add
+              </button>
+            )}
+            {doc.visuals.map((v) => (
+              <MSpan
+                key={v.id}
+                kind="visual"
+                item={v}
+                top={2}
+                pps={pps}
+                half={half}
+                duration={D}
+                selected={sel?.kind === "visual" && sel.id === v.id}
+                label={visualSummary(v)}
+                background={VISUAL_COLOR}
+                warn={warnIds.has(v.id)}
+                onSnapLine={setSnapLine}
+              />
+            ))}
+          </div>
+
+          {/* sound: music bed + effects */}
+          <div className="ed-mtl-track" style={{ height: SOUND_H + 4 }} onClick={(e) => e.target === e.currentTarget && deselect()}>
+            {doc.audio.music ? (
+              <button type="button" className="ed-music-bar ed-music-bar-m" style={{ left: half, width: Math.max(10, D * pps) }} onClick={() => setUi({ sheet: "sound" })}>
+                <Icon name="music" size={11} /> Music
+              </button>
+            ) : (
+              doc.sfx.length === 0 && (
+                <button type="button" className="ed-mtl-empty ed-mtl-empty-btn" style={{ left: half + 4 }} onClick={() => setUi({ sheet: "sound" })}>
+                  <Icon name="music" size={12} /> No music or sound effects
+                </button>
+              )
+            )}
+            {doc.sfx.map((x) => (
+              <button
+                type="button"
+                key={x.id}
+                className={`ed-sfx-pin ed-sfx-pin-m ${sel?.kind === "sfx" && sel.id === x.id ? "ed-sfx-pin-sel" : ""} ${doc.audio.sfxEnabled ? "" : "opacity-40"}`}
+                style={{ left: xOf(x.at) }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  focus({ kind: "sfx", id: x.id });
+                }}
+                aria-label={`Sound effect: ${SFX_LABEL[x.sound]} at ${x.at.toFixed(1)} seconds`}
+                aria-pressed={sel?.kind === "sfx" && sel.id === x.id}
+              >
+                <span>{SFX_LABEL[x.sound]}</span>
+              </button>
             ))}
           </div>
           {snapLine !== null && <div className="ed-mtl-snapline" style={{ left: xOf(snapLine) }} />}
@@ -517,10 +577,11 @@ function MSpan({
   selected,
   label,
   background,
+  warn,
   onSnapLine,
 }: {
-  kind: "text" | "zoom";
-  item: TimelineText | TimelineZoom;
+  kind: "text" | "zoom" | "visual";
+  item: TimelineText | TimelineZoom | TimelineVisual;
   top: number;
   pps: number;
   half: number;
@@ -528,10 +589,10 @@ function MSpan({
   selected: boolean;
   label: string;
   background: string;
+  warn?: boolean;
   onSnapLine: (t: number | null) => void;
 }) {
   const { apply, commit, focus, engine, doc } = useEditor();
-  const update = (d: EditorDoc, patch: { start: number; end: number }) => (kind === "text" ? updateText(d, item.id, patch) : updateZoom(d, item.id, patch));
   const moved = useRef(false);
 
   const drag = (mode: "move" | "start" | "end") => (e: RPointerEvent<HTMLDivElement>) => {
@@ -545,7 +606,7 @@ function MSpan({
     const x0 = e.clientX;
     const orig = { start: item.start, end: item.end };
     const own = [item.start, item.end];
-    const targets = [0, duration, engine.time, ...clipStartTimes(doc), ...doc.texts.flatMap((t) => (t.id === item.id ? [] : [t.start, t.end])), ...doc.zooms.flatMap((z) => (z.id === item.id ? [] : [z.start, z.end]))].filter(
+    const targets = [0, duration, engine.time, ...clipStartTimes(doc), ...doc.texts.flatMap((t) => (t.id === item.id ? [] : [t.start, t.end])), ...doc.zooms.flatMap((z) => (z.id === item.id ? [] : [z.start, z.end])), ...doc.visuals.flatMap((v) => (v.id === item.id ? [] : [v.start, v.end]))].filter(
       (t) => own.every((o) => Math.abs(o - t) > 1e-6),
     );
     let lastSnap: number | null = null;
@@ -577,7 +638,7 @@ function MSpan({
         lastSnap = snapped;
         onSnapLine(snapped);
       }
-      apply((d) => update(d, next), { coalesce: `${kind}:${mode}:${item.id}` });
+      apply(spanRecipe(kind, item.id, mode, next), { coalesce: `${kind}:${mode}:${item.id}` });
     };
     const up = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return;
@@ -607,9 +668,14 @@ function MSpan({
         if (!selected) focus({ kind, id: item.id });
       }}
       role="button"
-      aria-label={`${kind === "text" ? "Text" : "Zoom"}: ${label}`}
+      aria-label={`${kind === "text" ? "Text" : kind === "zoom" ? "Zoom" : "Graphic"}: ${label}`}
       aria-pressed={selected}
     >
+      {warn && (
+        <span className="ed-item-warn" aria-label="Placement warning">
+          <Icon name="warn" size={10} />
+        </span>
+      )}
       <span>{label}</span>
       {selected && (
         <>

@@ -38,6 +38,9 @@ export async function transcribeMediaAsset(
   actor: { actorId: string },
 ): Promise<TranscribeJobResult> {
   const asset = await db.mediaAsset.findUniqueOrThrow({ where: { id: mediaAssetId } });
+  if (asset.kind !== "RAW_TAKE") {
+    return { mediaAssetId, status: "SKIPPED", errorMessage: `Not a raw take (${asset.kind}).` };
+  }
   const workDir = await mkdtemp(join(tmpdir(), "chris-transcribe-"));
   try {
     const provider = options.provider ?? (await defaultProvider());
@@ -89,7 +92,8 @@ export async function transcribeContentItemTakes(
   actor: { actorId: string },
 ): Promise<TranscribeJobResult[]> {
   const assets = await db.mediaAsset.findMany({
-    where: { contentItemId },
+    // Takes only — a MUSIC bed has no speech to transcribe.
+    where: { contentItemId, kind: "RAW_TAKE" },
     orderBy: { createdAt: "asc" },
   });
   const provider = options.provider ?? (await defaultProvider());

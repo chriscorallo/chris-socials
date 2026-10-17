@@ -1,4 +1,5 @@
 import { EditTimelineSchema } from "@chris/media/timeline";
+import { TEMPLATE_LABEL, visualPropsProblem } from "./visuals";
 import { normalizeDoc, type AssetDurations } from "./timeline-ops";
 import type { EditorDoc, Selection } from "./types";
 
@@ -44,6 +45,8 @@ function selectionStillValid(doc: EditorDoc, sel: Selection): Selection {
   if (sel.kind === "clip") return doc.clips.some((c) => c.id === sel.id) ? sel : null;
   if (sel.kind === "text") return doc.texts.some((t) => t.id === sel.id) ? sel : null;
   if (sel.kind === "zoom") return doc.zooms.some((z) => z.id === sel.id) ? sel : null;
+  if (sel.kind === "visual") return doc.visuals.some((v) => v.id === sel.id) ? sel : null;
+  if (sel.kind === "sfx") return doc.sfx.some((x) => x.id === sel.id) ? sel : null;
   return sel;
 }
 
@@ -104,6 +107,12 @@ export function buildSavePayload(
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return { ok: false, error: first ? `${first.path.join(".") || "timeline"}: ${first.message}` : "Invalid timeline" };
+  }
+  // Visual props are a free-form record in the contract (validated per template); a graphic
+  // that wouldn't render is caught here, with its name, instead of silently vanishing.
+  for (const v of parsed.data.visuals) {
+    const problem = visualPropsProblem(v);
+    if (problem) return { ok: false, error: `the ${TEMPLATE_LABEL[v.template].toLowerCase()} at ${v.start.toFixed(1)}s: ${problem}` };
   }
   const durationSeconds = parsed.data.clips.reduce((s, c) => s + Math.max(0, c.sourceEnd - c.sourceStart), 0);
   return { ok: true, timeline: parsed.data, durationSeconds };

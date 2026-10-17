@@ -19,3 +19,16 @@ export function isAutoTranscriptionEnabled(): boolean {
   if (flag === "off") return false;
   return !process.env.VERCEL;
 }
+
+/**
+ * Subject tracking (where Chris's face is, for motion-graphics placement) runs the UltraFace
+ * ONNX detector over the take — same weight class as Whisper. Same default: on locally, off on
+ * Vercel (placement then assumes a centred framing and says so). SUBJECT_TRACKING=on|off
+ * overrides.
+ */
+export function isAutoSubjectTrackingEnabled(): boolean {
+  const flag = process.env.SUBJECT_TRACKING?.toLowerCase();
+  if (flag === "on") return true;
+  if (flag === "off") return false;
+  return !process.env.VERCEL;
+}

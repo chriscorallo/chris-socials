@@ -96,17 +96,22 @@ export function resolveSheetSnap(opts: { height: number; velocity: number; half:
   return Math.abs(height - full) < Math.abs(height - half) ? "full" : "half";
 }
 
-export type SheetKind = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms";
+export type SheetKind = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound";
 
 /**
  * The open sheet after the selection changes: sheets about ONE item (clip / volume / text /
  * zoom) follow the selection to the matching sheet — or close when nothing is selected — while
  * whole-video sheets (captions, look, add clip, cover, platforms) stay put.
  */
-export function sheetForSelection(sheet: SheetKind | null, sel: "clip" | "text" | "zoom" | "captions" | null): SheetKind | null {
+export function sheetForSelection(sheet: SheetKind | null, sel: "clip" | "text" | "zoom" | "captions" | "visual" | "sfx" | null): SheetKind | null {
+  // The Visuals sheet is the gallery when nothing is selected and the selected graphic's
+  // editor otherwise; the Sound sheet is whole-video. Both stay open across selections, but a
+  // per-item sheet follows the selection INTO them.
   if (sheet !== "clip" && sheet !== "volume" && sheet !== "text" && sheet !== "zoom") return sheet;
   if (sel === null) return null;
   if (sel === "clip") return sheet === "volume" ? "volume" : "clip";
+  if (sel === "visual") return "visuals";
+  if (sel === "sfx") return "sound";
   return sel;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { clipDuration, clipStartTimes, timelineDuration, type TimelineClip, type TimelineText, type TimelineZoom } from "@chris/media/timeline";
+import { clipDuration, clipStartTimes, timelineDuration, type TimelineClip, type TimelineText, type TimelineVisual, type TimelineZoom } from "@chris/media/timeline";
 import {
   moveClip,
   trimClip,
@@ -16,6 +16,7 @@ import {
 } from "../../../../lib/editor/timeline-ops";
 import { formatTime } from "../../../../lib/editor/preview-math";
 import { spanStartForPlayhead } from "../../../../lib/editor/touch-math";
+import { moveVisualSpan, trimVisualSpan, updateSfx, visualSummary, SFX_LABEL } from "../../../../lib/editor/visuals";
 import type { EditorAsset, EditorDoc } from "../../../../lib/editor/types";
 import { useEditor } from "./context";
 import { useFilmstrip, frameAt } from "./filmstrip";
@@ -30,11 +31,30 @@ const VIDEO_H = 58;
 const LANE_H = 24;
 const CAPTION_H = 26;
 const ZOOM_H = 28;
+const VISUAL_H = 30;
+const SOUND_H = 26;
 const MIN_PPS = 8;
 const MAX_PPS = 480;
 
 const TEXT_COLOR = "linear-gradient(180deg, #7d63f0, #6448d8)";
 const ZOOM_COLOR = "linear-gradient(180deg, #d99a3c, #b97d22)";
+/** Motion graphics: their own hue (teal) so they never read as text or zoom. */
+export const VISUAL_COLOR = "linear-gradient(180deg, #23b5c9, #1288a3)";
+
+/** Recipe for moving/trimming any span item (texts/zooms clamp to the video; graphics also
+ * stop at their neighbours — see lib/editor/visuals.ts). */
+export function spanRecipe(kind: "text" | "zoom" | "visual", id: string, mode: "move" | "start" | "end", next: { start: number; end: number }) {
+  return (d: EditorDoc): EditorDoc => {
+    if (kind === "visual") return mode === "move" ? moveVisualSpan(d, id, next.start) : trimVisualSpan(d, id, mode, mode === "start" ? next.start : next.end);
+    return kind === "text" ? updateText(d, id, next) : updateZoom(d, id, next);
+  };
+}
+
+/** Graphics with a placement problem worth a badge on the track (amber). */
+export function useVisualWarningIds(): Set<string> {
+  const { placement } = useEditor();
+  return useMemo(() => new Set(placement.warnings.filter((w) => w.severity === "WARNING").map((w) => w.visualId)), [placement.warnings]);
+}
 
 /** Greedy lane assignment so overlapping texts stack instead of hiding each other. */
 export function assignLanes(items: TimelineText[]): Map<string, number> {
@@ -138,10 +158,10 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
   /** Snap targets (output seconds): 0, end, playhead, clip boundaries, other item edges. */
   const snapTargets = useCallback(
     (excludeId?: string) => {
-      const ts = [0, D, engine.time, ...starts, ...doc.texts.flatMap((t) => (t.id === excludeId ? [] : [t.start, t.end])), ...doc.zooms.flatMap((z) => (z.id === excludeId ? [] : [z.start, z.end]))];
+      const ts = [0, D, engine.time, ...starts, ...doc.texts.flatMap((t) => (t.id === excludeId ? [] : [t.start, t.end])), ...doc.zooms.flatMap((z) => (z.id === excludeId ? [] : [z.start, z.end])), ...doc.visuals.flatMap((v) => (v.id === excludeId ? [] : [v.start, v.end]))];
       return ts;
     },
-    [D, engine, starts, doc.texts, doc.zooms],
+    [D, engine, starts, doc.texts, doc.zooms, doc.visuals],
   );
   const snapTime = useCallback(
     (t: number, targets: number[]): number | null => {
@@ -198,7 +218,8 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
   }, [pps, contentW]);
 
   const sel = state.selection;
-  const canDelete = sel?.kind === "clip" ? doc.clips.length > 1 : sel?.kind === "text" || sel?.kind === "zoom";
+  const canDelete = sel?.kind === "clip" ? doc.clips.length > 1 : sel?.kind === "text" || sel?.kind === "zoom" || sel?.kind === "visual" || sel?.kind === "sfx";
+  const warnIds = useVisualWarningIds();
   const sliderVal = Math.log(pps / MIN_PPS) / Math.log(MAX_PPS / MIN_PPS);
 
   // ---- drops from the media bin
@@ -220,7 +241,7 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
           <button type="button" className="ed-toolbtn" onClick={onDelete} disabled={!canDelete} title="Delete the selection — the gap closes (⌫)">
             <Icon name="trash" size={14} /> Delete
           </button>
-          <button type="button" className="ed-toolbtn" onClick={onDuplicate} disabled={sel?.kind !== "clip" && sel?.kind !== "text"} title="Duplicate (⌘D)">
+          <button type="button" className="ed-toolbtn" onClick={onDuplicate} disabled={sel?.kind !== "clip" && sel?.kind !== "text" && sel?.kind !== "visual"} title="Duplicate (⌘D)">
             <Icon name="duplicate" size={14} /> Duplicate
           </button>
           <span className="mx-1.5 h-4 w-px bg-[var(--color-border)]" />
@@ -258,6 +279,12 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
             title="Caption style and word fixes"
           >
             <Icon name="captions" size={14} /> Captions
+          </button>
+          <button type="button" className="ed-toolbtn" onClick={() => setUi({ tab: "visuals" })} aria-pressed={ui.tab === "visuals"} title="Motion graphics: design with AI or add from the gallery">
+            <Icon name="magic" size={14} /> Visuals
+          </button>
+          <button type="button" className="ed-toolbtn" onClick={() => setUi({ tab: "sound" })} aria-pressed={ui.tab === "sound"} title="Sound effects and music">
+            <Icon name="music" size={14} /> Sound
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -307,6 +334,12 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
           </div>
           <div className="ed-tl-head" style={{ height: ZOOM_H }}>
             <Icon name="zoom" size={13} /> Zoom
+          </div>
+          <div className="ed-tl-head" style={{ height: VISUAL_H }}>
+            <Icon name="magic" size={13} /> Visuals
+          </div>
+          <div className="ed-tl-head" style={{ height: SOUND_H }}>
+            <Icon name="music" size={13} /> Sound
           </div>
         </div>
 
@@ -433,6 +466,51 @@ export function TimelinePanel({ onSplit, onDelete, onDuplicate }: { onSplit: () 
                   snapTime={snapTime}
                   onSnapLine={setSnapLine}
                 />
+              ))}
+            </div>
+
+            {/* motion graphics */}
+            <div className="ed-track" style={{ height: VISUAL_H }} onPointerDown={onBackgroundDown}>
+              {doc.visuals.length === 0 && (
+                <button type="button" className="absolute top-1.5 text-[11px] text-[var(--color-text-faint)] hover:text-[var(--color-text)]" style={{ left: PAD }} onClick={() => setUi({ tab: "visuals" })}>
+                  No graphics — design with AI or add one
+                </button>
+              )}
+              {doc.visuals.map((v) => (
+                <SpanView
+                  key={v.id}
+                  kind="visual"
+                  item={v}
+                  top={3}
+                  pps={pps}
+                  duration={D}
+                  selected={sel?.kind === "visual" && sel.id === v.id}
+                  label={visualSummary(v)}
+                  background={VISUAL_COLOR}
+                  warn={warnIds.has(v.id)}
+                  snapTargets={snapTargets}
+                  snapTime={snapTime}
+                  onSnapLine={setSnapLine}
+                />
+              ))}
+            </div>
+
+            {/* sound: music bed + sound effects */}
+            <div className="ed-track" style={{ height: SOUND_H }} onPointerDown={onBackgroundDown}>
+              {doc.audio.music && (
+                <button
+                  type="button"
+                  className="ed-music-bar"
+                  style={{ left: xOf(0), width: Math.max(8, D * pps) }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => setUi({ tab: "sound" })}
+                  title="Music bed — open Sound"
+                >
+                  <Icon name="music" size={11} /> Music · {doc.audio.music.levelDb} dB
+                </button>
+              )}
+              {doc.sfx.map((x) => (
+                <SfxPin key={x.id} id={x.id} at={x.at} label={SFX_LABEL[x.sound]} pps={pps} duration={D} selected={sel?.kind === "sfx" && sel.id === x.id} muted={!doc.audio.sfxEnabled} />
               ))}
             </div>
 
@@ -618,25 +696,25 @@ function SpanView({
   selected,
   label,
   background,
+  warn,
   snapTargets,
   snapTime,
   onSnapLine,
 }: {
-  kind: "text" | "zoom";
-  item: TimelineText | TimelineZoom;
+  kind: "text" | "zoom" | "visual";
+  item: TimelineText | TimelineZoom | TimelineVisual;
   top: number;
   pps: number;
   duration: number;
   selected: boolean;
   label: string;
   background: string;
+  warn?: boolean;
   snapTargets: (excludeId?: string) => number[];
   snapTime: (t: number, targets: number[]) => number | null;
   onSnapLine: (t: number | null) => void;
 }) {
   const { apply, commit, focus, engine } = useEditor();
-  const update = (d: EditorDoc, patch: { start: number; end: number }) =>
-    kind === "text" ? updateText(d, item.id, patch) : updateZoom(d, item.id, patch);
 
   const drag = (mode: "move" | "start" | "end") => (e: RPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -669,7 +747,7 @@ function SpanView({
         next = trimSpan(orig, mode, v, duration);
         engine.seek(mode === "start" ? next.start : Math.max(next.start, next.end - 0.02));
       }
-      apply((d) => update(d, next), { coalesce: `${kind}:${mode}:${item.id}` });
+      apply(spanRecipe(kind, item.id, mode, next), { coalesce: `${kind}:${mode}:${item.id}` });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -687,13 +765,60 @@ function SpanView({
       style={{ left: PAD + item.start * pps, width: Math.max(8, (item.end - item.start) * pps), top, background }}
       onPointerDown={drag("move")}
       role="button"
-      aria-label={`${kind === "text" ? "Text" : "Zoom"}: ${label}`}
+      aria-label={`${kind === "text" ? "Text" : kind === "zoom" ? "Zoom" : "Graphic"}: ${label}`}
       aria-pressed={selected}
       title={label}
     >
+      {warn && (
+        <span className="ed-item-warn" aria-label="Placement warning">
+          <Icon name="warn" size={10} />
+        </span>
+      )}
       <span>{label}</span>
       <div className="ed-trim ed-trim-l" style={{ width: 8 }} onPointerDown={drag("start")} />
       <div className="ed-trim ed-trim-r" style={{ width: 8 }} onPointerDown={drag("end")} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+// Sound effect pin (drag to move; click selects)
+// ---------------------------------------------------------------------------------------
+
+function SfxPin({ id, at, label, pps, duration, selected, muted }: { id: string; at: number; label: string; pps: number; duration: number; selected: boolean; muted: boolean }) {
+  const { apply, commit, focus, engine } = useEditor();
+  const onDown = (e: RPointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    engine.pause();
+    focus({ kind: "sfx", id });
+    const x0 = e.clientX;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 3) return;
+      moved = true;
+      const t = Math.min(duration, Math.max(0, at + (ev.clientX - x0) / pps));
+      apply((d) => updateSfx(d, id, { at: t }), { coalesce: `sfx:${id}` });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      commit();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return (
+    <button
+      type="button"
+      className={`ed-sfx-pin ${selected ? "ed-sfx-pin-sel" : ""} ${muted ? "opacity-40" : ""}`}
+      style={{ left: PAD + at * pps }}
+      onPointerDown={onDown}
+      title={`${label} at ${at.toFixed(2)}s`}
+      aria-label={`Sound effect: ${label} at ${at.toFixed(1)} seconds`}
+      aria-pressed={selected}
+    >
+      <span>{label}</span>
+    </button>
   );
 }

@@ -6,6 +6,8 @@ import {
   EditTimelineSchema,
   timelineCaptionChunks,
   timelineDuration,
+  solveVisualPlacements,
+  type PlacementOptions,
   type TranscriptWord,
 } from "@chris/media/timeline";
 import { editorReducer, initEditorState, buildSavePayload } from "../../../../lib/editor/reducer";
@@ -19,11 +21,13 @@ import {
   newId,
 } from "../../../../lib/editor/timeline-ops";
 import { platformWarnings } from "../../../../lib/editor/platform-warnings";
+import { deleteSfx, deleteVisual, duplicateVisual, visualWarnings, withResolvedPlacements } from "../../../../lib/editor/visuals";
 import { PLATFORM_IDS } from "../../../../lib/editor/platform-profiles";
 import { formatTime } from "../../../../lib/editor/preview-math";
-import type { EditorAsset, EditorDoc, Selection } from "../../../../lib/editor/types";
+import type { EditorAsset, EditorDoc, EditorMusicAsset, Selection } from "../../../../lib/editor/types";
 import { EditorContext, type EditorContextValue, type EditorUi } from "./context";
 import { usePlaybackEngine } from "./playback";
+import { usePreviewAudio } from "./preview-audio";
 import { FONT_FACE_CSS, browserMeasureText, useFontsVersion } from "./measure";
 import { saveFinishingEditAction } from "./actions";
 import { MediaBin } from "./MediaBin";
@@ -41,6 +45,9 @@ export interface EditorProps {
   planId: string;
   initialDoc: EditorDoc;
   assets: EditorAsset[];
+  /** Music beds uploaded for this video (MediaAsset kind MUSIC). */
+  music: EditorMusicAsset[];
+  storageMode: "blob" | "local";
   schedule: { date: string; platforms: string[]; isScheduled: boolean };
 }
 
@@ -62,7 +69,7 @@ function isTypingTarget(t: EventTarget | null): boolean {
   return false;
 }
 
-export function Editor({ item, planId, initialDoc, assets, schedule }: EditorProps) {
+export function Editor({ item, planId, initialDoc, assets, music: initialMusic, storageMode, schedule }: EditorProps) {
   const assetMap = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const durations = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.duration])), [assets]);
   const [state, dispatch] = useReducer(editorReducer, undefined, () => initEditorState(initialDoc, durations));
@@ -88,11 +95,36 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
   const chunks = useMemo(() => timelineCaptionChunks(doc, wordsByAsset), [doc, wordsByAsset]);
   const fontsVersion = useFontsVersion([doc.captions.fontId, ...doc.texts.map((t) => t.fontId)]);
   const sourceSizes = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, { width: a.width, height: a.height }])), [assets]);
+  const [music, setMusic] = useState(initialMusic);
+  const audio = usePreviewAudio(engine, doc, wordsByAsset, music, storageMode === "local");
+
+  // ---- motion graphics placement: the SAME engine the worker runs before rendering
+  // (resolveVisualPlacements with each take's subject track, word timings and glyph widths),
+  // so AUTO graphics sit where they will render. Deterministic and a few ms per visual.
+  const placementOptions = useMemo<PlacementOptions>(() => {
+    const subjectTracks: PlacementOptions["subjectTracks"] = {};
+    const sourceDimensions: NonNullable<PlacementOptions["sourceDimensions"]> = {};
+    for (const a of assets) {
+      subjectTracks[a.id] = a.subjectTrack;
+      sourceDimensions[a.id] = a.width && a.height ? { width: a.width, height: a.height } : null;
+    }
+    // Glyph measurement only once webfonts are in (same reason as the platform warnings).
+    return { subjectTracks, sourceDimensions, wordsByAsset, measure: fontsVersion > 0 ? browserMeasureText : undefined };
+  }, [assets, wordsByAsset, fontsVersion]);
+  const placement = useMemo(
+    () => (doc.visuals.length ? solveVisualPlacements(doc, placementOptions) : { visuals: [], warnings: [], details: {} }),
+    [doc, placementOptions],
+  );
+  const solvePlacements = useCallback((d: EditorDoc) => solveVisualPlacements(d, placementOptions).visuals, [placementOptions]);
+
   const warnings = useMemo(
     // Only after fonts load on the client (fontsVersion > 0): layouts need real glyph widths,
     // and the server render must match the first client render (no warnings yet).
-    () => (fontsVersion > 0 ? platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, browserMeasureText, sourceSizes) : []),
-    [doc, ui.platformView, wordsByAsset, sourceSizes, fontsVersion],
+    () =>
+      fontsVersion > 0
+        ? [...platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, browserMeasureText, sourceSizes), ...visualWarnings(doc, placement.warnings)]
+        : [],
+    [doc, ui.platformView, wordsByAsset, sourceSizes, fontsVersion, placement],
   );
 
   const toast = useCallback((message: string, tone: Toast["tone"] = "ok") => {
@@ -111,11 +143,16 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     (sel: Selection) => {
       dispatch({ type: "select", selection: sel });
       if (!sel) return;
-      setUi({ tab: sel.kind === "captions" ? "captions" : "selection" });
+      setUi({ tab: sel.kind === "captions" ? "captions" : sel.kind === "sfx" ? "sound" : "selection" });
       const t = engine.time;
       let span: { start: number; end: number } | null = null;
       if (sel.kind === "text") span = doc.texts.find((x) => x.id === sel.id) ?? null;
       if (sel.kind === "zoom") span = doc.zooms.find((x) => x.id === sel.id) ?? null;
+      if (sel.kind === "visual") span = doc.visuals.find((x) => x.id === sel.id) ?? null;
+      if (sel.kind === "sfx") {
+        const s = doc.sfx.find((x) => x.id === sel.id);
+        span = s ? { start: s.at, end: s.at + 0.3 } : null;
+      }
       if (span && (t < span.start || t >= span.end)) engine.seek(span.start + Math.min(0.05, (span.end - span.start) / 2));
     },
     [doc, engine, setUi],
@@ -176,7 +213,9 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
   // ---------------------------------------------------------------- save
   const save = useCallback(async (): Promise<boolean> => {
     const docAtSave = state.doc;
-    const payload = buildSavePayload(docAtSave);
+    // Save AUTO graphics where the preview shows them (the worker re-solves before render
+    // anyway; this keeps the saved version honest about what Chris saw).
+    const payload = buildSavePayload(withResolvedPlacements(docAtSave, placement.visuals));
     if (!payload.ok) {
       toast(`Can't save yet — ${payload.error}`, "error");
       return false;
@@ -207,7 +246,22 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     } finally {
       setSaving(false);
     }
-  }, [state.doc, item.id, draftKey, toast]);
+  }, [state.doc, item.id, draftKey, toast, placement]);
+
+  const loadSavedVersion = useCallback(
+    (next: EditorDoc, savedState?: string) => {
+      dispatch({ type: "replace", doc: next });
+      dispatch({ type: "markSaved" });
+      if (savedState) setItemState(savedState);
+      setRestored(false);
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
+    },
+    [draftKey],
+  );
 
   // ---------------------------------------------------------------- keyboard
   const deleteSelection = useCallback(() => {
@@ -218,6 +272,8 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
       apply((d) => deleteClip(d, sel.id), { select: null });
     } else if (sel.kind === "text") apply((d) => deleteText(d, sel.id), { select: null });
     else if (sel.kind === "zoom") apply((d) => deleteZoom(d, sel.id), { select: null });
+    else if (sel.kind === "visual") apply((d) => deleteVisual(d, sel.id), { select: null });
+    else if (sel.kind === "sfx") apply((d) => deleteSfx(d, sel.id), { select: null });
   }, [state.selection, doc.clips.length, apply, toast]);
 
   const duplicateSelection = useCallback(() => {
@@ -228,8 +284,15 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     } else if (sel?.kind === "text") {
       const id = newId("text");
       apply((d) => duplicateText(d, sel.id, id).doc, { select: { kind: "text", id } });
+    } else if (sel?.kind === "visual") {
+      const id = newId("vis");
+      if (!duplicateVisual(doc, sel.id, id).id) {
+        toast("No free space after this graphic to put a copy — graphics can't overlap.", "warn");
+        return;
+      }
+      apply((d) => duplicateVisual(d, sel.id, id).doc, { select: { kind: "visual", id } });
     }
-  }, [state.selection, apply]);
+  }, [state.selection, apply, doc, toast]);
 
   const split = useCallback(() => {
     const id = newId("clip");
@@ -326,7 +389,7 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
   const selKey = state.selection ? `${state.selection.kind}:${"id" in state.selection ? state.selection.id : ""}` : "";
   useEffect(() => {
     if (!selKey) return;
-    setUi({ tab: selKey.startsWith("captions") ? "captions" : "selection" });
+    setUi({ tab: selKey.startsWith("captions") ? "captions" : selKey.startsWith("sfx") ? "sound" : "selection" });
   }, [selKey, setUi]);
   useEffect(() => {
     if (state.selection?.kind !== "clip" && ui.reframe) setUi({ reframe: false });
@@ -350,6 +413,16 @@ export function Editor({ item, planId, initialDoc, assets, schedule }: EditorPro
     focus,
     toast,
     touch,
+    itemId: item.id,
+    placement,
+    solvePlacements,
+    music,
+    setMusic,
+    audio,
+    storageMode,
+    dirty,
+    save,
+    loadSavedVersion,
   };
 
   const duration = timelineDuration(doc);

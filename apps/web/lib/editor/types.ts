@@ -1,4 +1,4 @@
-import type { EditTimeline, TranscriptWord } from "@chris/media/timeline";
+import type { EditTimeline, SubjectTrack, TranscriptWord } from "@chris/media/timeline";
 
 /** The finishing editor's document: exactly the committed EditTimeline contract
  * (including its top-level `coverFrameSeconds`). */
@@ -17,12 +17,25 @@ export interface EditorAsset {
   transcript: string | null;
   /** Stable per-take accent used on timeline clips. */
   color: string;
+  /** Where Chris is in this take over time (motion-graphics placement); null = not analysed. */
+  subjectTrack: SubjectTrack | null;
+}
+
+/** A music bed uploaded for this video (MediaAsset kind MUSIC). */
+export interface EditorMusicAsset {
+  id: string;
+  name: string;
+  /** `/api/media/<storageKey>` */
+  url: string;
+  duration: number;
 }
 
 export type Selection =
   | { kind: "clip"; id: string }
   | { kind: "text"; id: string }
   | { kind: "zoom"; id: string }
+  | { kind: "visual"; id: string }
+  | { kind: "sfx"; id: string }
   | { kind: "captions" }
   | null;
 

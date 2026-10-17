@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { auth } from "../../../auth";
 import { prisma } from "@chris/domain";
 import { getLocalStorage, safeFilename } from "../../../lib/storage";
-import { registerUploadedRawTake, withTempDir, rawTakeStorageKey } from "../../../lib/ingest-upload";
+import { registerUploadedRawTake, withTempDir, rawTakeStorageKey, musicStorageKey, parseUploadKind, uploadMimeAllowed } from "../../../lib/ingest-upload";
 
 export const maxDuration = 300;
 
@@ -38,6 +38,8 @@ export async function PUT(request: Request) {
   const contentItemId = url.searchParams.get("contentItemId") ?? "";
   const originalFilename = url.searchParams.get("filename") ?? "upload";
   const mimeType = request.headers.get("content-type") ?? "application/octet-stream";
+  // ?kind=MUSIC uploads a music bed for the finishing editor (audio only, never a take).
+  const kind = parseUploadKind(url.searchParams.get("kind"));
   if (!request.body) {
     return NextResponse.json({ error: "Empty upload." }, { status: 400 });
   }
@@ -45,12 +47,13 @@ export async function PUT(request: Request) {
   if (!item) {
     return NextResponse.json({ error: "Content item not found." }, { status: 404 });
   }
-  if (!/^(video|audio)\//.test(mimeType)) {
-    return NextResponse.json({ error: `Unsupported file type: ${mimeType}` }, { status: 415 });
+  if (!uploadMimeAllowed(kind, mimeType)) {
+    const error = kind === "MUSIC" ? `Music must be an audio file (this is ${mimeType}).` : `Unsupported file type: ${mimeType}`;
+    return NextResponse.json({ error }, { status: 415 });
   }
 
   const name = safeFilename(originalFilename);
-  const storageKey = rawTakeStorageKey(contentItemId, name);
+  const storageKey = kind === "MUSIC" ? musicStorageKey(contentItemId, name) : rawTakeStorageKey(contentItemId, name);
 
   try {
     const asset = await withTempDir(async (dir) => {
@@ -67,6 +70,7 @@ export async function PUT(request: Request) {
         sizeBytes: size,
         localPath: tempPath,
         actorId: session.user!.id!,
+        kind,
       });
     });
     return NextResponse.json({ mediaAssetId: asset.id });

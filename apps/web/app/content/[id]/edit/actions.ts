@@ -1,13 +1,15 @@
 "use server";
 
-import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, type ContentState } from "@chris/domain";
-import { EditTimelineSchema } from "@chris/media/timeline";
+import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, type ContentState } from "@chris/domain";
+import { EditTimelineSchema, type EditTimeline, type PlacementWarning } from "@chris/media/timeline";
+import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
 import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
 import { requireSession } from "../../../../lib/session";
 import { storage } from "../../../../lib/storage";
 import { getModelProvider } from "../../../../lib/model-provider";
-import { getRenderFontPath } from "../../../../lib/render-config";
+import { getRenderFontPath, isAutoSubjectTrackingEnabled } from "../../../../lib/render-config";
+import type { EditorMusicAsset } from "../../../../lib/editor/types";
 
 /**
  * Server Actions for the finishing editor. "Finish & schedule" is deliberately FOUR actions
@@ -38,6 +40,94 @@ function plainError(err: unknown, step: string): string {
     return "The AI account is out of credit, so the quality check couldn't run. Your edit is saved — add credit in the Anthropic console and press Finish again.";
   }
   return `${step} failed: ${msg}`;
+}
+
+/** Same idea for the Motion Designer ("Design visuals with AI"). */
+function plainDesignError(msg: string): string {
+  if (/SpendCap|spending limit|spend cap/i.test(msg)) {
+    return "Today's AI spending limit has been reached, so the AI couldn't design visuals. Your edit is unchanged — try again tomorrow, or add graphics by hand from the gallery below.";
+  }
+  if (/credit balance|billing|insufficient|quota/i.test(msg)) {
+    return "The AI account is out of credit, so it couldn't design visuals. Your edit is unchanged — add credit in the Anthropic console and try again, or add graphics by hand from the gallery below.";
+  }
+  if (/api[_ ]?key|authentication|x-api-key|ANTHROPIC|401/i.test(msg)) {
+    return "Designing visuals needs the AI service, which isn't set up (no Anthropic API key). Your edit is unchanged — you can still add graphics by hand from the gallery below.";
+  }
+  if (/overloaded|rate.?limit|529|503|timeout|ETIMEDOUT|ECONNRESET|fetch failed/i.test(msg)) {
+    return "The AI service is busy or unreachable right now. Your edit is unchanged — try again in a minute.";
+  }
+  if (/No edit plan/i.test(msg)) return "This video doesn't have an edit yet, so there's nothing to design visuals for.";
+  return `The AI couldn't design visuals: ${msg.replace(/\.+$/, "")}. Your edit is unchanged.`;
+}
+
+export interface DesignVisualsStepResult {
+  editPlanId: string;
+  state: ContentState;
+  /** The newly saved timeline (with the visuals) — the editor loads it as the saved version. */
+  timeline: EditTimeline;
+  added: Array<{ id: string; template: string; start: number; end: number; anchorText: string | null }>;
+  rejected: Array<{ template: string; start: number; end: number; anchorText: string; reason: string }>;
+  placementWarnings: PlacementWarning[];
+  notes: string[];
+  rationale: string;
+}
+
+/**
+ * "Design visuals with AI": runs the Motion Designer on the item's CURRENT saved edit (the
+ * client saves unsaved changes first) and saves the result as a new finishing-edit version
+ * (trigger HUMAN — saveFinishingEdit, so a rendered item rolls back to EDIT_PLANNED like any
+ * edit). Subject tracking runs first where it's allowed (local; ONNX is too heavy for a Vercel
+ * function — placement then assumes a centred framing and says so). Never throws: errors come
+ * back worded for Chris.
+ */
+export async function designVisualsAction(input: {
+  contentItemId: string;
+  replaceExisting?: boolean;
+}): Promise<StepResult<DesignVisualsStepResult>> {
+  const session = await requireSession();
+  try {
+    const result = await designMotionForContentItem(
+      prisma,
+      storage,
+      getModelProvider(),
+      input.contentItemId,
+      { actorId: session.user!.id! },
+      { trigger: "HUMAN", replaceExisting: input.replaceExisting ?? false, skipTracking: !isAutoSubjectTrackingEnabled() },
+    );
+    if (result.status !== "SUCCESS" || !result.editPlanId) {
+      return { ok: false, error: plainDesignError(result.errorMessage ?? "unknown error"), state: await stateOf(input.contentItemId).catch(() => undefined) };
+    }
+    const row = await getLatestEditPlan(prisma, input.contentItemId);
+    const parsed = EditTimelineSchema.safeParse((row?.plan as Record<string, unknown> | null)?.timeline);
+    if (!row || !parsed.success) {
+      return { ok: false, error: "The visuals were saved, but the editor couldn't read them back — reload the page." };
+    }
+    return {
+      ok: true,
+      editPlanId: row.id,
+      state: await stateOf(input.contentItemId),
+      timeline: parsed.data,
+      added: (result.added ?? []).map((v) => ({ id: v.id, template: v.template, start: v.start, end: v.end, anchorText: v.anchorText })),
+      rejected: result.rejectedVisuals ?? [],
+      placementWarnings: result.placementWarnings ?? [],
+      notes: result.warnings ?? [],
+      rationale: result.rationale ?? "",
+    };
+  } catch (err) {
+    return { ok: false, error: plainDesignError(err instanceof Error ? err.message : String(err)) };
+  }
+}
+
+/** The item's music beds (after an upload from the Sound sheet). */
+export async function listMusicAction(contentItemId: string): Promise<EditorMusicAsset[]> {
+  await requireSession();
+  const rows = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "MUSIC" }, orderBy: { createdAt: "desc" } });
+  return rows.map((m) => ({
+    id: m.id,
+    name: m.originalFilename.replace(/\.[^.]+$/, ""),
+    url: `/api/media/${m.storageKey}`,
+    duration: m.durationSeconds ?? 0,
+  }));
 }
 
 export async function saveFinishingEditAction(input: {

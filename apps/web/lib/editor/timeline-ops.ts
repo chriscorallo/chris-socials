@@ -74,15 +74,21 @@ export function normalizeDoc(doc: EditorDoc, durations: AssetDurations = {}): Ed
   const D = timelineDuration({ clips });
   const texts = doc.texts.map((t) => clampSpan(t, D));
   const zooms = doc.zooms.map((z) => clampSpan(z, D));
+  // Motion graphics and sound effects live on the output timeline too (visuals.ts).
+  const visuals = (doc.visuals ?? []).map((v) => clampSpan(v, D));
+  const sfxMax = Math.max(0, D - 0.05);
+  const sfx = (doc.sfx ?? []).map((s) => (s.at > sfxMax ? { ...s, at: r3(sfxMax) } : s));
   let cover = doc.coverFrameSeconds ?? null;
   if (cover != null) cover = r3(clamp(cover, 0, Math.max(0, D - 0.04)));
   const changed =
     clips.some((c, i) => c !== doc.clips[i]) ||
     texts.some((t, i) => t !== doc.texts[i]) ||
     zooms.some((z, i) => z !== doc.zooms[i]) ||
+    visuals.some((v, i) => v !== doc.visuals[i]) ||
+    sfx.some((s, i) => s !== doc.sfx[i]) ||
     cover !== doc.coverFrameSeconds;
   if (!changed) return doc;
-  return { ...doc, clips, texts, zooms, coverFrameSeconds: cover };
+  return { ...doc, clips, texts, zooms, visuals, sfx, coverFrameSeconds: cover };
 }
 
 // ---------------------------------------------------------------------------------------

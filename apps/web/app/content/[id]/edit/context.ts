@@ -1,18 +1,19 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { TimelineCaptionChunk, TranscriptWord } from "@chris/media/timeline";
+import type { PlacementResult, TimelineCaptionChunk, TimelineVisual, TranscriptWord } from "@chris/media/timeline";
 import type { EditorAction, EditorState } from "../../../../lib/editor/reducer";
-import type { EditorAsset, EditorDoc, Selection } from "../../../../lib/editor/types";
+import type { EditorAsset, EditorDoc, EditorMusicAsset, Selection } from "../../../../lib/editor/types";
 import type { PlatformId } from "../../../../lib/editor/platform-profiles";
 import type { PlatformWarning } from "../../../../lib/editor/platform-warnings";
 import type { PlaybackEngine } from "./playback";
+import type { PreviewAudio } from "./preview-audio";
 
-export type InspectorTab = "selection" | "captions" | "look" | "cover";
+export type InspectorTab = "selection" | "captions" | "look" | "cover" | "visuals" | "sound";
 export type PlatformView = "ALL" | PlatformId;
 
 /** Bottom sheets of the touch (phone/tablet) shell. */
-export type SheetId = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms";
+export type SheetId = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound";
 
 export interface EditorUi {
   reframe: boolean;
@@ -48,6 +49,22 @@ export interface EditorContextValue {
   toast: (message: string, tone?: "ok" | "warn" | "error") => void;
   /** True in the touch (phone/tablet) shell. */
   touch: boolean;
+
+  // ---- motion graphics + sound design
+  itemId: string;
+  /** Placement engine output for the current doc (AUTO visuals solved, warnings, footprints). */
+  placement: PlacementResult;
+  /** resolveVisualPlacements bound to this editor's subject tracks / words / glyph measure. */
+  solvePlacements: (d: EditorDoc) => TimelineVisual[];
+  music: EditorMusicAsset[];
+  setMusic: (m: EditorMusicAsset[]) => void;
+  audio: PreviewAudio;
+  storageMode: "blob" | "local";
+  dirty: boolean;
+  /** Saves the current doc as a new version (same as the Save button). */
+  save: () => Promise<boolean>;
+  /** Replaces the doc with a version the SERVER just saved (e.g. AI visuals) — undoable. */
+  loadSavedVersion: (doc: EditorDoc, state?: string) => void;
 }
 
 export const EditorContext = createContext<EditorContextValue | null>(null);

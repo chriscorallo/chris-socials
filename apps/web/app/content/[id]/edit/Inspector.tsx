@@ -40,15 +40,20 @@ import { useEditor, type InspectorTab } from "./context";
 import { fontFamilyCss, fontStyle } from "./Overlays";
 import { useFilmstrip, frameAt } from "./filmstrip";
 import { Icon } from "./icons";
+import { VisualEditor, VisualsPanel } from "./VisualsPanel";
+import { SoundPanel } from "./SoundPanel";
 
 const SWATCHES = ["#FFFFFF", "#000000", "#FFD54A", "#F3C46A", "#FF5F5F", "#6EE7B0", "#5AA9FF", "#B3A2FF"];
 
 export function Inspector() {
   const { state, ui, setUi } = useEditor();
   const sel = state.selection;
-  const selLabel = sel?.kind === "clip" ? "Clip" : sel?.kind === "text" ? "Text" : sel?.kind === "zoom" ? "Zoom" : "Selection";
+  const selLabel =
+    sel?.kind === "clip" ? "Clip" : sel?.kind === "text" ? "Text" : sel?.kind === "zoom" ? "Zoom" : sel?.kind === "visual" ? "Graphic" : "Selection";
   const tabs: Array<[InspectorTab, string]> = [
     ["selection", selLabel],
+    ["visuals", "Visuals"],
+    ["sound", "Sound"],
     ["captions", "Captions"],
     ["look", "Look"],
     ["cover", "Cover"],
@@ -64,6 +69,8 @@ export function Inspector() {
       </div>
       <div className="ed-scroll">
         {ui.tab === "selection" && <SelectionPanel />}
+        {ui.tab === "visuals" && <VisualsPanel />}
+        {ui.tab === "sound" && <SoundPanel />}
         {ui.tab === "captions" && <CaptionsPanel />}
         {ui.tab === "look" && <LookPanel />}
         {ui.tab === "cover" && <CoverPanel />}
@@ -87,6 +94,11 @@ export function SelectionPanel() {
     const z = doc.zooms.find((x) => x.id === sel.id);
     if (z) return <ZoomPanel z={z} />;
   }
+  if (sel?.kind === "visual") {
+    const v = doc.visuals.find((x) => x.id === sel.id);
+    if (v) return <VisualEditor key={v.id} v={v} />;
+  }
+  if (sel?.kind === "sfx") return <SoundPanel />;
   return (
     <div className="flex flex-col items-center gap-3 px-8 py-14 text-center">
       <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.05] text-[var(--color-text-faint)]">
@@ -104,7 +116,7 @@ export function SelectionPanel() {
 // Controls
 // ---------------------------------------------------------------------------------------
 
-function Section({ title, children, right }: { title?: string; children: ReactNode; right?: ReactNode }) {
+export function Section({ title, children, right }: { title?: string; children: ReactNode; right?: ReactNode }) {
   return (
     <div className="ed-section">
       {(title || right) && (
@@ -118,7 +130,7 @@ function Section({ title, children, right }: { title?: string; children: ReactNo
   );
 }
 
-function Slider({
+export function Slider({
   label,
   value,
   min,
@@ -170,7 +182,7 @@ function Slider({
   );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <label className="flex cursor-pointer items-center justify-between gap-3">
       <span className="ed-toggle-label text-[12.5px]">{label}</span>
@@ -179,7 +191,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   );
 }
 
-function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: Array<[T, ReactNode]>; onChange: (v: T) => void; label: string }) {
+export function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: Array<[T, ReactNode]>; onChange: (v: T) => void; label: string }) {
   return (
     <div className="ed-seg w-full" role="group" aria-label={label}>
       {options.map(([v, l]) => (
@@ -208,7 +220,7 @@ function ColorRow({ value, onChange, label }: { value: string; onChange: (v: str
   );
 }
 
-function NumField({ label, value, onChange, step = 0.1, min, max, suffix = "s" }: { label: string; value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; suffix?: string }) {
+export function NumField({ label, value, onChange, step = 0.1, min, max, suffix = "s" }: { label: string; value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; suffix?: string }) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? value.toFixed(2);
   const commitDraft = () => {

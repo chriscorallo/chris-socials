@@ -8,9 +8,18 @@
  * Assigning process.env.TZ at runtime re-points Node's Date to APP_TIMEZONE for every code
  * path at once (default America/Los_Angeles). See /docs/DECISIONS.md ("App time zone").
  */
-export function register() {
+export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     process.env.TZ = process.env.APP_TIMEZONE || "America/Los_Angeles";
+    // Motion graphics in renders started from the app (Finish, Render, auto-repair): the
+    // worker's render job loads the motion engine through this hook — a child process, so
+    // Remotion and @chris/motion's TypeScript never load inside the Next.js server. Not on
+    // Vercel (no headless Chrome there): renders degrade to "no visuals" with a warning.
+    // See docs/decisions-pending/editor-visuals.md.
+    if (!process.env.VERCEL) {
+      const { createSubprocessMotionModule } = await import("./lib/motion-subprocess");
+      (globalThis as { __chrisMotionLoader?: () => Promise<unknown> }).__chrisMotionLoader = async () => createSubprocessMotionModule();
+    }
   }
 }
 
