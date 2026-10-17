@@ -54,6 +54,49 @@ export interface PlacementOptions {
   wordsByAsset?: Record<string, TranscriptWord[] | null | undefined>;
   /** Clear gap kept around hard obstacles, px at 1080 wide (default 24). */
   marginPx?: number;
+  /**
+   * MediaAsset id -> whether a person matte exists for that take. With mattes, the AUTO
+   * solver may choose the classic depth composition for big type (see AUTO_DEPTH_TEMPLATES):
+   * the graphic sits partly BEHIND Chris's head instead of being pushed away from it.
+   */
+  mattes?: Record<string, boolean | null | undefined>;
+}
+
+/** Templates the auto-depth rule may put behind Chris (big, bold type only). */
+export const AUTO_DEPTH_TEMPLATES = new Set(["KINETIC_TEXT", "NUMBER_COUNTER", "TITLE_CARD"] as const);
+/**
+ * Max share of the type's glyph band Chris's head may hide — legibility first: numbers are
+ * facts (a hidden digit is a wrong number), words survive a little more occlusion.
+ */
+export const AUTO_DEPTH_MAX_COVER = { NUMBER_COUNTER: 0.2, KINETIC_TEXT: 0.34 } as const;
+
+/**
+ * The head SHAPE inside a protected head region (subject-track-core's expansion of a face box:
+ * +0.35 face widths each side, +0.6 face heights above, +0.25 below): an ellipse ~1.1 face
+ * widths wide from the top of the hair (≈ 0.25 face heights above the face) to the chin.
+ */
+export function headEllipseFromProtected(r: Rect): { cx: number; cy: number; rx: number; ry: number } {
+  const top = r.y + r.height * (0.25 / 1.85);
+  const bottom = r.y + r.height * (1.6 / 1.85);
+  return { cx: r.x + r.width / 2, cy: (top + bottom) / 2, rx: (r.width * (1.1 / 1.7)) / 2, ry: (bottom - top) / 2 };
+}
+
+/** Share of `rect` covered by an ellipse (numerical, 48×24 samples). */
+export function ellipseCoverage(rect: Rect, e: { cx: number; cy: number; rx: number; ry: number }): number {
+  if (rect.width <= 0 || rect.height <= 0) return 0;
+  const nx = 48;
+  const ny = 24;
+  let inside = 0;
+  for (let j = 0; j < ny; j++) {
+    const y = rect.y + ((j + 0.5) / ny) * rect.height;
+    for (let i = 0; i < nx; i++) {
+      const x = rect.x + ((i + 0.5) / nx) * rect.width;
+      const dx = (x - e.cx) / e.rx;
+      const dy = (y - e.cy) / e.ry;
+      if (dx * dx + dy * dy <= 1) inside++;
+    }
+  }
+  return inside / (nx * ny);
 }
 
 export type PlacementWarningCode =
@@ -373,7 +416,7 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
     const rect = visualRect(v, canvas);
     const { subject, hard } = windowObstacles(v);
     if (TEMPLATE_FOOTPRINTS[v.template].kind !== "FULL_FRAME") {
-      if (subject.head && intersectionArea(rect, subject.head) > 0) {
+      if (subject.head && v.depth !== "BEHIND_SUBJECT" && intersectionArea(rect, subject.head) > 0) {
         warnings.push({
           visualId: v.id,
           code: "MANUAL_COVERS_SUBJECT",
@@ -417,6 +460,20 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
         severity: "INFO",
         message: `${label(v)}: Chris's position isn't analysed for this take yet — placed assuming a centred framing.`,
       });
+    }
+
+    const classic = autoDepthSpot(v, subject, hard, safe, canvas, margin, timeline, options);
+    if (classic) {
+      const out: TimelineVisual = {
+        ...v,
+        depth: "BEHIND_SUBJECT",
+        placement: { ...v.placement, mode: "AUTO", x: round4(classic.cx / canvas.width), y: round4(classic.cy / canvas.height), scale: round3(classic.factor) },
+      };
+      const rect = visualRect(out, canvas);
+      details[v.id] = { rect, head: subject.head, body: subject.body, confidence: "HIGH" };
+      placed.push({ v: out, rect });
+      resolved.set(v.id, out);
+      continue;
     }
 
     if (fp.kind === "FULL_FRAME") {
@@ -526,6 +583,86 @@ export function resolveVisualPlacements(timeline: EditTimeline, options: Placeme
 /** Placement warnings for the editor (low confidence, shrunk, manual graphics over Chris...). */
 export function placementWarnings(timeline: EditTimeline, options: PlacementOptions): PlacementWarning[] {
   return solveVisualPlacements(timeline, options).warnings;
+}
+
+/** Every clip on screen during [start, end) has a person matte. */
+function mattesCover(timeline: EditTimeline, start: number, end: number, mattes: PlacementOptions["mattes"]): boolean {
+  if (!mattes) return false;
+  const starts = clipStartTimes(timeline);
+  let any = false;
+  for (let k = 0; k < timeline.clips.length; k++) {
+    const c = timeline.clips[k]!;
+    const s = starts[k]!;
+    const e = s + (c.sourceEnd - c.sourceStart);
+    if (e <= start || s >= end) continue;
+    any = true;
+    if (!mattes[c.mediaAssetId]) return false;
+  }
+  return any;
+}
+
+/** The type's glyph band inside a template's footprint (fractions of the footprint). */
+function glyphBand(v: TimelineVisual): { top: number; height: number } | null {
+  const p = v.props as Record<string, unknown>;
+  if (v.template === "KINETIC_TEXT") {
+    const text = typeof p.text === "string" ? p.text : "";
+    return text.length > 0 && text.length <= 28 ? { top: 0.3, height: 0.4 } : null;
+  }
+  if (v.template === "NUMBER_COUNTER") return p.label == null ? { top: 0.22, height: 0.56 } : null;
+  return null;
+}
+
+/**
+ * The auto-depth rule ("the classic look"): for big type (short KINETIC_TEXT, label-less
+ * NUMBER_COUNTER, TITLE_CARD) in AUTO placement, when every clip in the window has a person
+ * matte and the head is tracked, try the composition a seasoned editor would: the type at full
+ * size, centred over Chris, its baseline region crossing the top of his head so the head
+ * occludes only the lower part of a few glyphs (≤ AUTO_DEPTH_MAX_COVER of the glyph band).
+ * Must still be inside the safe area and clear of captions/texts/other graphics. TITLE_CARD
+ * keeps its full frame and goes behind only when Chris covers a small part of the title band.
+ * Returns the spot, or null (→ the normal solve, depth unchanged).
+ */
+function autoDepthSpot(
+  v: TimelineVisual,
+  subject: SubjectWindow,
+  hard: Array<{ name: string; rect: Rect }>,
+  safe: Rect,
+  canvas: { width: number; height: number },
+  margin: number,
+  timeline: EditTimeline,
+  options: PlacementOptions,
+): { cx: number; cy: number; factor: number } | null {
+  if (!AUTO_DEPTH_TEMPLATES.has(v.template as never)) return null;
+  if (!subject.tracked || !subject.head) return null;
+  if (!mattesCover(timeline, v.start, v.end, options.mattes)) return null;
+  const head = subject.head;
+  if (v.template === "TITLE_CARD") {
+    const band = { x: canvas.width * 0.08, y: canvas.height * 0.42, width: canvas.width * 0.84, height: canvas.height * 0.16 };
+    const person = subject.body ? unionRect(head, subject.body) : head;
+    const cover = intersectionArea(band, person) / rectArea(band);
+    return cover > 0.02 && cover <= 0.25 ? { cx: canvas.width / 2, cy: canvas.height / 2, factor: 1 } : null;
+  }
+  const gb = glyphBand(v);
+  if (!gb) return null;
+  const ell = headEllipseFromProtected(head);
+  const hairTop = ell.cy - ell.ry;
+  const maxCover = AUTO_DEPTH_MAX_COVER[v.template as "NUMBER_COUNTER" | "KINETIC_TEXT"];
+  for (const factor of [1, 0.9, 0.8]) {
+    const { width: w, height: h } = footprintPx(v.template, factor, canvas);
+    if (w > safe.width || h > safe.height) continue;
+    const bandH = h * gb.height;
+    let cy = hairTop - 0.62 * bandH - h * gb.top + h / 2;
+    let cx = head.x + head.width / 2;
+    cx = Math.min(safe.x + safe.width - w / 2, Math.max(safe.x + w / 2, cx));
+    cy = Math.min(safe.y + safe.height - h / 2, Math.max(safe.y + h / 2, cy));
+    const rect = { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), width: w, height: h };
+    const band = { x: rect.x, y: rect.y + h * gb.top, width: w, height: bandH };
+    const cover = ellipseCoverage(band, ell);
+    if (cover <= 0.02 || cover > maxCover) continue;
+    if (hard.some((o) => o.name !== "Chris's face" && intersectionArea(rect, inflate(o.rect, margin)) > 0)) continue;
+    return { cx, cy, factor };
+  }
+  return null;
 }
 
 function gridCentres(lo: number, hi: number, step: number, extra: number | null): number[] {

@@ -14,3 +14,4 @@ export * from "./motion-contract";
 export * from "./subject-track-core";
 export * from "./visual-footprints";
 export * from "./visual-placement";
+export * from "./visual-interaction";

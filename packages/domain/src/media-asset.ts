@@ -300,3 +300,40 @@ export function parseSubjectTrackRecord(value: unknown): SubjectTrackRecord | nu
   const r = SubjectTrackRecordSchema.safeParse(value);
   return r.success ? r.data : null;
 }
+
+/** Storage keys for person mattes live under `mattes/<contentItemId>/`. */
+export function isMatteStorageKeyFor(contentItemId: string, storageKey: string): boolean {
+  return storageKey.startsWith(`mattes/${contentItemId}/`) && !storageKey.includes("..");
+}
+
+/**
+ * Records that a RAW_TAKE has a per-frame person matte at `storageKey` (Motion v2: graphics
+ * behind Chris). Audit-logged with the previous key and the matte's provenance (model, size,
+ * fps, coverage). The key must live under `mattes/<the take's contentItemId>/`. Re-computing
+ * replaces the pointer (the audit row keeps the history).
+ */
+export async function recordPersonMatte(
+  prisma: PrismaClient,
+  mediaAssetId: string,
+  storageKey: string,
+  actor: { actorId: string; actorType?: "HUMAN" | "SYSTEM" | "JOB" },
+  provenance: { model?: string; width?: number; height?: number; fps?: number; frames?: number; coverage?: number; ms?: number } = {},
+) {
+  const before = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: mediaAssetId } });
+  if (before.kind !== "RAW_TAKE") throw new Error(`Person mattes are for raw takes only (asset ${mediaAssetId} is ${before.kind}).`);
+  if (!isMatteStorageKeyFor(before.contentItemId, storageKey)) {
+    throw new Error(`Matte storage key "${storageKey}" must live under mattes/${before.contentItemId}/.`);
+  }
+  const asset = await prisma.mediaAsset.update({ where: { id: mediaAssetId }, data: { matteStorageKey: storageKey } });
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: actor.actorType ?? "JOB",
+    action: "MEDIA_ASSET_PERSON_MATTED",
+    entityType: "ContentItem",
+    entityId: asset.contentItemId,
+    before: { mediaAssetId, matteStorageKey: before.matteStorageKey },
+    after: { mediaAssetId, matteStorageKey: storageKey },
+    metadata: provenance,
+  });
+  return asset;
+}

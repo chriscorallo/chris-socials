@@ -36,6 +36,7 @@ import { useEditor } from "./context";
 import { designVisualsAction, type DesignVisualsStepResult } from "./actions";
 import { NumField, Section, Seg, Slider, Toggle } from "./Inspector";
 import { TemplateArt } from "./template-art";
+import { InShotSection, ThemePicker } from "./InteractionControls";
 import { Icon } from "./icons";
 
 /**
@@ -64,6 +65,7 @@ export function VisualsHome() {
   return (
     <>
       <AiDesignCard />
+      <ThemePicker />
       <Section title="Add a graphic">
         <TemplateGallery />
       </Section>
@@ -423,6 +425,8 @@ export function VisualEditor({ v }: { v: TimelineVisual }) {
           <Icon name="target" size={14} /> Auto-place
         </button>
       </Section>
+
+      <InShotSection v={v} />
 
       <Section title="Timing">
         <div className="grid grid-cols-2 gap-2">

@@ -3,6 +3,7 @@ import { EASE_IN_OUT, EASE_OUT, clamp01, countUp, feelEase, prog, springAt } fro
 import { FONT, compactNumber, glassCard, mix, rgba, withUnit } from "../theme";
 import { gradientText } from "./text";
 import { feelOf, iconStyleOf, type TemplateComponentProps } from "./types";
+import { barStartFrame } from "./hit-timing";
 import { BarChart3D } from "./three";
 
 const fill: CSSProperties = { position: "absolute", inset: 0 };
@@ -53,15 +54,15 @@ function Bars2D(tp: TemplateComponentProps<"BAR_CHART">) {
         <div key={g} style={{ position: "absolute", left: 0, right: 0, top: valueH + plotH * (1 - g), height: 1.5, background: rgba("#FFFFFF", 0.05) }} />
       ))}
       {props.bars.map((b, i) => {
-        const s = springAt(frame, fps, 8 + i * 5, SP.grow);
+        const s = springAt(frame, fps, barStartFrame(tp, i), SP.grow);
         // Bouncy languages overshoot; capped so the tallest value label never meets the title.
         const h = Math.max(6, (Math.abs(b.value) / max) * plotH) * Math.min(s, 1.08);
         const x = i * (bw + gap);
         const isH = hl === null || hl === i;
         const focus = hl !== null && hl === i;
         const color = isH ? p.primary : p.secondary;
-        const v = countUp(frame, 0, b.value, 8 + i * 5, Math.round(fps * 1.0));
-        const vT = prog(frame, 12 + i * 5, 12, EO);
+        const v = countUp(frame, 0, b.value, barStartFrame(tp, i), Math.round(fps * 1.0));
+        const vT = prog(frame, barStartFrame(tp, i) + 4, 12, EO);
         const dim = hl !== null && !focus ? 0.55 + 0.45 * (1 - prog(frame, 8 + n * 5 + 10, 16, EASE_IN_OUT)) : 1;
         return (
           <div key={i}>

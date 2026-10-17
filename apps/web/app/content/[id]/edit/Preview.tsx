@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from "react";
-import { layoutTimelineText, locateOutputTime, resolveGrade, timelineDuration, type TimelineCrop, type TimelineText, type TimelineVisual } from "@chris/media/timeline";
+import { anchorOffsetFor, layoutTimelineText, locateOutputTime, resolveGrade, timelineDuration, type TimelineCrop, type TimelineText, type TimelineVisual } from "@chris/media/timeline";
 import { updateClip, updateZoom, updateText, updateCaptions, setCover } from "../../../../lib/editor/timeline-ops";
 import { panAfterDrag, formatTime, vignetteGradient } from "../../../../lib/editor/preview-math";
-import { placeVisualManually } from "../../../../lib/editor/visuals";
+import { moveAnchoredVisual, placeVisualManually } from "../../../../lib/editor/visuals";
 import { movedBeyond, pinchGeometry, type Pt } from "../../../../lib/editor/touch-math";
 import { PLATFORM_PROFILES, PLATFORM_IDS, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
 import { safeRect } from "../../../../lib/editor/platform-warnings";
@@ -13,7 +13,7 @@ import { assignPlayers, useIsPlaying, usePlayheadValue } from "./playback";
 import { GradeDefs, OverlaySvg } from "./Overlays";
 import { browserMeasureText } from "./measure";
 import { Icon } from "./icons";
-import { MotionLayer, VisualHandles, visualHitRect } from "./MotionLayer";
+import { MotionLayer, VisualHandles, drawnPlacement, visualHitRect } from "./MotionLayer";
 
 export { fontFamilyCss } from "./Overlays";
 
@@ -250,7 +250,7 @@ const SNAP_PX = 6;
  * The canvas has `touch-action: none`, so the browser never scrolls or zooms the page here.
  */
 export function Canvas({ w, h }: { w: number; h: number }) {
-  const { doc, engine, assetMap, ui, setUi, state, apply, commit, dispatch, touch, placement } = useEditor();
+  const { doc, engine, assetMap, ui, setUi, state, apply, commit, dispatch, touch, placement, interactions, interactionCtx } = useEditor();
   const k = w / doc.canvas.width;
   const zoomLayerRef = useRef<HTMLDivElement>(null);
   const { slots } = useMemo(() => assignPlayers(doc.clips.length), [doc.clips.length]);
@@ -261,9 +261,9 @@ export function Canvas({ w, h }: { w: number; h: number }) {
   const [guides, setGuides] = useState({ v: false, h: false });
   const [draggingVisual, setDraggingVisual] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
-  const latest = useRef({ doc, selection: state.selection, visuals: placement.visuals });
+  const latest = useRef({ doc, selection: state.selection, visuals: placement.visuals, interactions, interactionCtx });
   useEffect(() => {
-    latest.current = { doc, selection: state.selection, visuals: placement.visuals };
+    latest.current = { doc, selection: state.selection, visuals: placement.visuals, interactions, interactionCtx };
   });
 
   useLayoutEffect(() => {
@@ -288,7 +288,10 @@ export function Canvas({ w, h }: { w: number; h: number }) {
     const clip = t.kind === "reframe" ? d.clips.find((c) => c.id === t.id) : undefined;
     // Graphics start from where they're DRAWN (an AUTO one's solved spot), so taking manual
     // control never makes it jump.
-    const visual = t.kind === "visual" || t.kind === "visual-resize" ? latest.current.visuals.find((v) => v.id === t.id) : undefined;
+    const found = t.kind === "visual" || t.kind === "visual-resize" ? latest.current.visuals.find((v) => v.id === t.id) : undefined;
+    // A graphic that follows Chris / rides the camera starts from where it's drawn NOW.
+    const drawn = found ? drawnPlacement(found, latest.current.interactions[found.id], engine.time, d.canvas) : null;
+    const visual = found && drawn ? { ...found, placement: { ...found.placement, x: drawn.x, y: drawn.y } } : found;
     gs.base = { pts, text, crop: clip?.crop, capY: d.captions.y, capSize: d.captions.fontSize, visual };
   };
 
@@ -455,6 +458,15 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       if (snapH) ny = 0.5;
       setGuides((gd) => (gd.v === snapV && gd.h === snapH ? gd : { v: snapV, h: snapH }));
       const patch = two ? { x: nx, y: ny, scale: pl.scale * pinch.scale } : { x: nx, y: ny };
+      if (b.visual.anchor.type === "SUBJECT") {
+        // Following Chris: dragging sets where it sits relative to him (offset at the playhead).
+        const tNow = Math.min(b.visual.end - 0.05, Math.max(b.visual.start, engine.time));
+        const off = anchorOffsetFor({ placement: { ...pl, x: nx, y: ny } }, latest.current.doc, tNow, latest.current.interactionCtx);
+        if (off) {
+          apply((d) => moveAnchoredVisual(d, t.id, off, { x: nx, y: ny }, patch.scale), { coalesce: `vmove:${t.id}` });
+          return;
+        }
+      }
       apply((d) => placeVisualManually(d, t.id, patch), { coalesce: `vmove:${t.id}` });
     } else if (t.kind === "visual-resize" && b.visual && b.center && b.resizeD0) {
       const d1 = Math.hypot(p.x - b.center.x, p.y - b.center.y);

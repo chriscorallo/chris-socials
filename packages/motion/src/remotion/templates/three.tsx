@@ -9,6 +9,7 @@ import { gradientText } from "./text";
 import { feelOf, iconStyleOf, type TemplateComponentProps } from "./types";
 import type { IconStyle } from "../../style";
 import { LineIcon, LineMoneyStack } from "./line-icons";
+import { barStartFrame, hitBuildLength } from "./hit-timing";
 import { stackCountFor } from "../../timing";
 
 /**
@@ -763,7 +764,7 @@ function MoneyStack({ height, tex, band, style = "GOLD_METAL" }: { height: numbe
 }
 
 export function MoneyStack3D(tp: TemplateComponentProps<"MONEY_STACK_3D">) {
-  const { props, palette: p, frame, fps, box } = tp;
+  const { props, palette: p, frame, fps, box, durationInFrames, exitFrames, hitAtFrame } = tp;
   const feel = feelOf(tp);
   const style = iconStyleOf(tp);
   const n = stackCountFor(props.amount);
@@ -776,7 +777,8 @@ export function MoneyStack3D(tp: TemplateComponentProps<"MONEY_STACK_3D">) {
     [p, style],
   );
   const t = frame / fps;
-  const growLen = Math.round(fps * 1.4);
+  // Motion v2 timing hook: the stacks finish growing (and the amount lands) on the emphasis.
+  const growLen = hitBuildLength(Math.round(fps * 1.4), 4, hitAtFrame, fps, durationInFrames, exitFrames);
   // Layout: rows of up to 3, back rows first; pyramid-ish heights.
   const slots = useMemo(() => {
     const out: Array<{ x: number; z: number; h: number; delay: number }> = [];
@@ -911,22 +913,22 @@ export function BarChart3D(tp: TemplateComponentProps<"BAR_CHART">) {
         </mesh>
         <ContactShadow y={0.002} scale={[floorW, 1.4]} opacity={0.6} />
         {props.bars.map((b, i) => {
-          const s = springAt(frame, fps, 8 + i * 5, feel.springs.grow);
+          const s = springAt(frame, fps, barStartFrame(tp, i), feel.springs.grow);
           const h = Math.max(0.04, (Math.abs(b.value) / max) * lay.plotH) * Math.min(s, 1.08);
           const mat = hl === null || hl === i ? m.gold : m.accent;
           return <Bar3D key={i} x={lay.xs[i]!} h={h} w={w} mat={mat} />;
         })}
       </Stage>
       {props.bars.map((b, i) => {
-        const s = springAt(frame, fps, 8 + i * 5, feel.springs.grow);
+        const s = springAt(frame, fps, barStartFrame(tp, i), feel.springs.grow);
         const h = Math.max(0.04, (Math.abs(b.value) / max) * lay.plotH) * Math.min(s, 1.08);
         const top = lay.project(lay.xs[i]!, h + 0.12, 0);
         const base = lay.project(lay.xs[i]!, 0, 0.8);
         const focus = hl === i;
-        const v = countUp(frame, 0, b.value, 8 + i * 5, Math.round(fps * 1.0));
+        const v = countUp(frame, 0, b.value, barStartFrame(tp, i), Math.round(fps * 1.0));
         return (
           <div key={i}>
-            <div style={{ position: "absolute", left: top.x - 110, width: 220, top: Math.max(6, top.y - 58), textAlign: "center", fontFamily: FONT.display, fontSize: n >= 6 ? 36 : 42, letterSpacing: "-0.02em", color: focus ? p.primary : p.ink, opacity: prog(frame, 12 + i * 5, 12, EASE_OUT), textShadow: focus ? `0 0 24px ${rgba(p.primary, 0.5)}` : TEXT_LIFT, whiteSpace: "nowrap" }}>{withUnit(compactNumber(Number.isInteger(b.value) ? Math.round(v) : Math.round(v * 10) / 10), props.unit)}</div>
+            <div style={{ position: "absolute", left: top.x - 110, width: 220, top: Math.max(6, top.y - 58), textAlign: "center", fontFamily: FONT.display, fontSize: n >= 6 ? 36 : 42, letterSpacing: "-0.02em", color: focus ? p.primary : p.ink, opacity: prog(frame, barStartFrame(tp, i) + 4, 12, EASE_OUT), textShadow: focus ? `0 0 24px ${rgba(p.primary, 0.5)}` : TEXT_LIFT, whiteSpace: "nowrap" }}>{withUnit(compactNumber(Number.isInteger(b.value) ? Math.round(v) : Math.round(v * 10) / 10), props.unit)}</div>
             <div style={{ position: "absolute", left: base.x - 110, width: 220, top: base.y + 10, textAlign: "center", fontFamily: FONT.text, fontSize: n >= 6 ? 34 : 38, color: focus ? p.ink : p.muted, opacity: prog(frame, 6 + i * 4, 14, EASE_OUT), whiteSpace: "nowrap" }}>{b.label}</div>
           </div>
         );

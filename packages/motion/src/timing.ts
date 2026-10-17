@@ -6,6 +6,7 @@ import {
   type MotionProps,
   type MotionTemplate,
   type TimelineVisual,
+  type VisualInteraction,
 } from "@chris/media/timeline";
 
 /**
@@ -185,3 +186,11 @@ export function stackCountFor(amount: number): number {
 }
 
 export { MOTION_TEMPLATES };
+
+/** A visual's tracked centre/scale at a local frame (Motion v2 follow/camera), or null when static. */
+export function trackAt(ix: Pick<VisualInteraction, "track"> | null | undefined, frame: number): { x: number; y: number; s: number } | null {
+  const tr = ix?.track;
+  if (!tr || tr.x.length === 0) return null;
+  const i = Math.max(0, Math.min(tr.x.length - 1, Math.round(frame)));
+  return { x: tr.x[i]!, y: tr.y[i]!, s: tr.s[i] ?? 1 };
+}

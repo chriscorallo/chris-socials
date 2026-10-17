@@ -1,8 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
-import { TEMPLATE_FOOTPRINTS, visualRect, type TimelineVisual } from "@chris/media/timeline";
+import { useMemo, useState } from "react";
+import { TEMPLATE_FOOTPRINTS, resolveGrade, visualRect, type TimelineVisual, type VisualInteraction } from "@chris/media/timeline";
+import { trackAt } from "@chris/motion/pure";
+import { PREVIEW_FPS } from "./preview-fps";
+import { PersonCutout } from "./PersonCutout";
 import { TEMPLATE_LABEL } from "../../../../lib/editor/visuals";
 import { useEditor } from "./context";
 import { useIsPlaying, usePlayheadValue } from "./playback";
@@ -21,21 +24,68 @@ const VisualsPreview = dynamic(() => import("@chris/motion/player").then((m) => 
   loading: () => null,
 });
 
-export const PREVIEW_FPS = 30;
+export { PREVIEW_FPS } from "./preview-fps";
 
+/**
+ * Depth in the preview (Motion v2): with behind-subject graphics and a person matte, the layer
+ * splits into behind graphics → Chris cut out with his matte (PersonCutout, WebGL) → front
+ * graphics — the renderer's order. Two Players only while that's needed; if the device can't
+ * (no WebGL / cross-origin media / too slow) everything draws in front with a small note.
+ */
 export function MotionLayer({ w, h }: { w: number; h: number }) {
-  const { doc, placement, engine } = useEditor();
+  const { doc, placement, engine, interactions, assets } = useEditor();
   const playing = useIsPlaying(engine);
   // Frame-quantised: the Player seeks exactly while paused and only re-syncs on drift while
   // playing, so whole frames are all it needs (and React re-renders at most once per frame).
   const t = usePlayheadValue(engine, (x) => Math.round(x * PREVIEW_FPS) / PREVIEW_FPS);
-  const timeline = useMemo(() => ({ visuals: placement.visuals, canvas: doc.canvas, clips: doc.clips }), [placement.visuals, doc.canvas, doc.clips]);
-  if (!doc.visuals.length) return null;
-  return (
-    <div className="ed-layer pointer-events-none z-[1]" aria-hidden>
-      <VisualsPreview timeline={timeline} currentTime={t} playing={playing} width={w} height={h} fps={PREVIEW_FPS} fontBaseUrl="/api/fonts" />
-    </div>
+  const timeline = useMemo(
+    () => ({ visuals: placement.visuals, canvas: doc.canvas, clips: doc.clips, motionTheme: doc.motionTheme }),
+    [placement.visuals, doc.canvas, doc.clips, doc.motionTheme],
   );
+  const [depthFailed, setDepthFailed] = useState<string | null>(null);
+  const behindWindows = useMemo(
+    () => placement.visuals.filter((v) => v.depth === "BEHIND_SUBJECT").map((v) => ({ start: v.start, end: v.end })),
+    [placement.visuals],
+  );
+  const anyMatte = assets.some((a) => !!a.matteUrl);
+  const g = resolveGrade(doc.grade);
+  const gradeOn = g.brightness !== 0 || g.contrast !== 1 || g.saturation !== 1 || g.temperature !== 0;
+  if (!doc.visuals.length) return null;
+  const common = { timeline, currentTime: t, playing, width: w, height: h, fps: PREVIEW_FPS, fontBaseUrl: "/api/fonts", interactions };
+  const split = behindWindows.length > 0 && anyMatte && !depthFailed;
+  const behindNow = behindWindows.some((x) => t >= x.start && t < x.end);
+  if (!split) {
+    return (
+      <>
+        <div className="ed-layer pointer-events-none z-[1]" aria-hidden>
+          <VisualsPreview {...common} />
+        </div>
+        {behindNow && (
+          <p className="ed-depth-note pointer-events-none" role="note">
+            {anyMatte ? "Depth shows in the export" : "Behind-you needs your outline — it's being prepared (shows in the export)"}
+          </p>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="ed-layer pointer-events-none z-[1]" aria-hidden>
+        <VisualsPreview {...common} depthFilter="BEHIND_SUBJECT" />
+      </div>
+      <PersonCutout w={w} h={h} behindWindows={behindWindows} gradeOn={gradeOn} onUnsupported={(why) => setDepthFailed(why)} />
+      <div className="ed-layer pointer-events-none z-[1]" aria-hidden>
+        <VisualsPreview {...common} depthFilter="FRONT" />
+      </div>
+    </>
+  );
+}
+
+/** Where a visual is DRAWN at output time t: its tracked centre (follow/camera) or its placement. */
+export function drawnPlacement(v: TimelineVisual, ix: VisualInteraction | undefined, t: number, canvas: { width: number; height: number }): TimelineVisual["placement"] & { s: number } {
+  const frame = Math.round(t * PREVIEW_FPS) - Math.max(0, Math.round(v.start * PREVIEW_FPS));
+  const p = trackAt(ix, frame);
+  return p ? { ...v.placement, x: p.x / canvas.width, y: p.y / canvas.height, s: p.s } : { ...v.placement, s: 1 };
 }
 
 /** Hit area (canvas px) for a visual on the preview: its footprint; a full-frame title card
@@ -54,8 +104,10 @@ export function visualHitRect(v: Pick<TimelineVisual, "template" | "placement">,
  * them, and taps them. Sits under the text/caption SVG so texts keep priority.
  */
 export function VisualHandles({ w, dragging }: { w: number; dragging: string | null }) {
-  const { doc, placement, engine, state, touch } = useEditor();
+  const { doc, placement, engine, state, touch, interactions } = useEditor();
   const k = w / doc.canvas.width;
+  // Graphics that follow Chris / ride the camera: hit areas follow them while paused.
+  const tq = usePlayheadValue(engine, (x) => Math.round(x * PREVIEW_FPS) / PREVIEW_FPS);
   const key = usePlayheadValue(engine, (t) =>
     placement.visuals
       .filter((v) => t >= v.start && t < v.end)
@@ -70,7 +122,8 @@ export function VisualHandles({ w, dragging }: { w: number; dragging: string | n
       {placement.visuals
         .filter((v) => active.has(v.id) || v.id === dragging)
         .map((v) => {
-          const r = visualHitRect(v, doc.canvas);
+          const d = drawnPlacement(v, interactions[v.id], tq, doc.canvas);
+          const r = visualHitRect({ ...v, placement: { ...v.placement, x: d.x, y: d.y, scale: v.placement.scale * d.s } }, doc.canvas);
           const selected = v.id === selectedId;
           const detail = placement.details[v.id];
           return (

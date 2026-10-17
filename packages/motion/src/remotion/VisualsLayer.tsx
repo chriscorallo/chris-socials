@@ -1,11 +1,11 @@
 import type { ComponentType, ReactNode } from "react";
 import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
-import type { MotionTemplate, TimelineVisual } from "@chris/media/timeline";
-import type { MotionTheme } from "@chris/media/timeline";
+import type { MotionTemplate, MotionTheme, TimelineVisual, VisualInteraction } from "@chris/media/timeline";
 import { TEMPLATE_DESIGN_SIZE, parseVisuals, placementBox, visualFrameWindow, type ParsedVisual } from "../timing";
 import { MotionAssetsContext, useMotionFonts } from "./fonts";
 import { enterExitStyle } from "./motion";
 import { MotionThemeProvider, useVisualMotionStyle } from "./motion-theme-context";
+import { SceneIntegration, TrackedMotion } from "./integration";
 import { BarChart, Comparison, LineChart, PercentRing } from "./templates/charts";
 import { ListSteps, TimelineTemplate } from "./templates/lists";
 import { Callout, CalloutLeader, Definition, KineticText, NumberCounter, StatCard, TitleCard } from "./templates/text";
@@ -43,12 +43,28 @@ export interface VisualsLayerProps extends Record<string, unknown> {
   /** Render metadata (calculateMetadata): output fps and length in frames. */
   fps?: number;
   durationInFrames?: number;
+  /**
+   * Motion v2: per-visual interaction data (subject-anchor / camera-coupling track, emphasis
+   * hit frame, scene look) from @chris/media's `buildVisualInteractions` — the worker and the
+   * editor preview compute it with the same pure functions. Absent → v1 behaviour.
+   */
+  interactions?: Record<string, VisualInteraction> | null;
   /** Motion theme (EditTimeline.motionTheme) — palette overrides, motion language, icon style. */
   motionTheme?: MotionTheme | null;
+  /** Which visuals to draw (the editor preview splits behind/front layers around the person cutout). */
+  depthFilter?: "ALL" | "FRONT" | "BEHIND_SUBJECT";
 }
 
 /** One visual, local frame 0 = its first frame. */
-export function VisualItem({ pv, canvas }: { pv: ParsedVisual; canvas: { width: number; height: number } }) {
+export function VisualItem({
+  pv,
+  canvas,
+  interaction = null,
+}: {
+  pv: ParsedVisual;
+  canvas: { width: number; height: number };
+  interaction?: VisualInteraction | null;
+}) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const v = pv.visual;
@@ -71,23 +87,32 @@ export function VisualItem({ pv, canvas }: { pv: ParsedVisual; canvas: { width: 
     exitFrames: win.exitFrames,
     box,
     canvas,
+    hitAtFrame: interaction?.hitAtFrame ?? null,
+    scene: interaction?.scene ?? null,
   };
   const design = TEMPLATE_DESIGN_SIZE[pv.template];
+  const look = interaction?.look;
   if (pv.template === "TITLE_CARD") {
     return (
       <AbsoluteFill style={{ opacity: style.opacity, filter: style.filter === "none" ? undefined : style.filter }}>
-        <Comp {...tp} />
+        <SceneIntegration id={v.id} template={pv.template} integration={{ ...v.integration, shadow: false }} look={look}>
+          <Comp {...tp} />
+        </SceneIntegration>
       </AbsoluteFill>
     );
   }
   return (
     <AbsoluteFill>
-      {pv.template === "CALLOUT" ? <CalloutLeader {...(tp as TemplateComponentProps<"CALLOUT">)} /> : null}
-      <div style={{ position: "absolute", left: box.left, top: box.top, width: design.width, height: design.height, transform: `scale(${box.scale})`, transformOrigin: "0 0" }}>
-        <div style={{ position: "absolute", inset: 0, opacity: style.opacity, transform: style.transform, filter: style.filter === "none" ? undefined : style.filter, transformOrigin: "50% 50%" }}>
-          <Comp {...tp} />
+      <TrackedMotion ix={interaction} frame={frame} box={box}>
+        {pv.template === "CALLOUT" ? <CalloutLeader {...(tp as TemplateComponentProps<"CALLOUT">)} /> : null}
+        <div style={{ position: "absolute", left: box.left, top: box.top, width: design.width, height: design.height, transform: `scale(${box.scale})`, transformOrigin: "0 0" }}>
+          <div style={{ position: "absolute", inset: 0, opacity: style.opacity, transform: style.transform, filter: style.filter === "none" ? undefined : style.filter, transformOrigin: "50% 50%" }}>
+            <SceneIntegration id={v.id} template={pv.template} integration={v.integration} look={look}>
+              <Comp {...tp} />
+            </SceneIntegration>
+          </div>
         </div>
-      </div>
+      </TrackedMotion>
     </AbsoluteFill>
   );
 }
@@ -98,9 +123,10 @@ function FontGate({ children }: { children: ReactNode }) {
 }
 
 /** Every visual of a timeline at its time and placement, on a transparent canvas. */
-export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = false, motionTheme = null }: VisualsLayerProps) {
+export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = false, interactions = null, motionTheme = null, depthFilter = "ALL" }: VisualsLayerProps) {
   const { fps } = useVideoConfig();
-  const { parsed } = parseVisuals(visuals);
+  const { parsed: all } = parseVisuals(visuals);
+  const parsed = depthFilter === "ALL" ? all : all.filter((pv) => (pv.visual.depth ?? "FRONT") === depthFilter);
   return (
     <MotionThemeProvider theme={motionTheme}>
     <MotionAssetsContext.Provider value={{ fontBaseUrl }}>
@@ -110,7 +136,7 @@ export function VisualsLayer({ visuals, canvas, fontBaseUrl = null, clipMode = f
             const win = visualFrameWindow(pv.visual, fps);
             return (
               <Sequence key={pv.visual.id} from={clipMode ? 0 : win.from} durationInFrames={win.durationInFrames} layout="none">
-                <VisualItem pv={pv} canvas={canvas} />
+                <VisualItem pv={pv} canvas={canvas} interaction={interactions?.[pv.visual.id] ?? null} />
               </Sequence>
             );
           })}

@@ -21,6 +21,13 @@ import {
   parseSubjectTrack,
   resolveVisualPlacements,
   nodeMeasureText,
+  buildVisualInteractions,
+  outputEmphasisWords,
+  EMPHASIS_TEMPLATES,
+  type BuildInteractionsInput,
+  type VisualInteraction,
+  type WordLoudness,
+  type SceneStats,
   type EditTimeline,
   type SfxSound,
   type VisualOverlaySegment,
@@ -91,25 +98,29 @@ export function mapEditPlanToRenderInstructions(
  */
 export function withResolvedPlacements(
   timeline: EditTimeline,
-  assets: Array<{ id: string; subjectTrack?: unknown; width?: number | null; height?: number | null }>,
+  assets: Array<{ id: string; subjectTrack?: unknown; width?: number | null; height?: number | null; matteStorageKey?: string | null }>,
   wordsByAsset: Record<string, TranscriptWord[] | null | undefined>,
 ): EditTimeline {
   if (!timeline.visuals.some((v) => v.placement.mode === "AUTO")) return timeline;
   const subjectTracks: Record<string, ReturnType<typeof parseSubjectTrack>> = {};
   const sourceDimensions: Record<string, { width: number; height: number } | null> = {};
+  const mattes: Record<string, boolean> = {};
   for (const a of assets) {
     subjectTracks[a.id] = parseSubjectTrack(a.subjectTrack);
     sourceDimensions[a.id] = a.width && a.height ? { width: a.width, height: a.height } : null;
+    mattes[a.id] = !!a.matteStorageKey;
   }
-  const visuals = resolveVisualPlacements(timeline, { subjectTracks, sourceDimensions, wordsByAsset, measure: nodeMeasureText });
+  // Same solver (incl. the auto-depth rule, which needs to know which takes have a matte) as the editor.
+  const visuals = resolveVisualPlacements(timeline, { subjectTracks, sourceDimensions, wordsByAsset, measure: nodeMeasureText, mattes });
   return { ...timeline, visuals };
 }
 
 /** The slice of @chris/motion the worker uses (injectable for tests). */
 export interface MotionModule {
   renderVisualsLayer(input: {
-    timeline: Pick<EditTimeline, "visuals" | "canvas">;
+    timeline: Pick<EditTimeline, "visuals" | "canvas"> & Partial<Pick<EditTimeline, "motionTheme">>;
     fps: number;
+    interactions?: Record<string, VisualInteraction> | null;
     durationSeconds: number;
     outputPath: string;
     concurrency?: number | null;
@@ -123,6 +134,10 @@ export interface MotionOptions {
   concurrency?: number | null;
   /** Feature flag: false renders without the motion layer (SFX/music still mix). Default true. */
   visualsEnabled?: boolean;
+  /** Feature flag: false skips Motion v2 footage interaction (anchor/camera/scene/emphasis/depth). Default true. */
+  interactionEnabled?: boolean;
+  /** Computes a missing person matte at render time (tests inject a fake). Default: the real job. */
+  computeMatte?: import("./person-matte-job").MatteComputer;
 }
 
 /**
@@ -163,6 +178,7 @@ export async function prepareMotion(
   workDir: string,
   warnings: string[],
   options: MotionOptions = {},
+  interactionInput: BuildInteractionsInput | null = null,
 ): Promise<PreparedMotion> {
   const out: PreparedMotion = { visualsLayer: null, musicPath: null, sfxFiles: null, framesRendered: 0, renderMs: 0 };
   const wantsVisuals = timeline.visuals.length > 0 && options.visualsEnabled !== false;
@@ -194,9 +210,18 @@ export async function prepareMotion(
         ),
       );
       const fps = chooseOutputFps(probes);
+      let interactions: Record<string, VisualInteraction> | null = null;
+      if (interactionInput) {
+        try {
+          interactions = buildVisualInteractions(timeline, interactionInput, fps);
+        } catch (err) {
+          warnings.push(`Footage interaction skipped (${err instanceof Error ? err.message : String(err)}) — graphics rendered static.`);
+        }
+      }
       const res = await motion.renderVisualsLayer({
-        timeline,
+        timeline: { visuals: timeline.visuals, canvas: timeline.canvas, motionTheme: timeline.motionTheme ?? null },
         fps,
+        interactions,
         durationSeconds: timelineDuration(timeline),
         outputPath: join(workDir, "motion"),
         concurrency: options.concurrency ?? null,
@@ -223,6 +248,107 @@ export async function prepareMotion(
     }
   }
   return out;
+}
+
+export interface PreparedInteraction {
+  /** mediaAssetId -> local matte file (only when some visual is behind Chris). */
+  mattes: Record<string, string>;
+  input: BuildInteractionsInput;
+  report: { mattesComputed: number; mattesUsed: number; sceneSampled: number; emphasisWords: number; ms: number };
+}
+
+/**
+ * Motion v2 inputs measured from the footage before the motion layer renders. Never throws —
+ * every part degrades to "graphic behaves like v1" with a warning:
+ * - person mattes (only if a visual is BEHIND_SUBJECT): downloaded, or computed now when a take
+ *   has none (render-time fallback; the upload path normally computes them);
+ * - per-word vocal emphasis (only if an emphasis template / emphasisAt exists);
+ * - scene stats behind each graphic (integration look).
+ */
+export async function prepareInteraction(
+  db: PrismaClient,
+  storage: StorageAdapter,
+  timeline: EditTimeline,
+  assets: Array<{ id: string; storageKey: string; subjectTrack?: unknown; matteStorageKey?: string | null; width?: number | null; height?: number | null; hasAudio?: boolean | null }>,
+  sources: Record<string, string>,
+  sourceWords: Record<string, TranscriptWord[] | null>,
+  workDir: string,
+  warnings: string[],
+  options: MotionOptions = {},
+): Promise<PreparedInteraction> {
+  const started = Date.now();
+  const media = await import("@chris/media");
+  const report = { mattesComputed: 0, mattesUsed: 0, sceneSampled: 0, emphasisWords: 0, ms: 0 };
+  const subjectTracks: BuildInteractionsInput["subjectTracks"] = {};
+  const sourceDimensions: Record<string, { width: number; height: number } | null> = {};
+  for (const a of assets) {
+    subjectTracks[a.id] = parseSubjectTrack(a.subjectTrack);
+    try {
+      sourceDimensions[a.id] = sources[a.id] ? await media.displayDimensions(sources[a.id]!) : null;
+    } catch {
+      sourceDimensions[a.id] = a.width && a.height ? { width: a.width, height: a.height } : null;
+    }
+  }
+  const mattes: Record<string, string> = {};
+
+  // Depth: mattes for every take under a behind-subject graphic.
+  const behind = timeline.visuals.filter((v) => v.depth === "BEHIND_SUBJECT");
+  if (behind.length > 0) {
+    for (const a of assets) {
+      let key = a.matteStorageKey ?? null;
+      if (!key) {
+        try {
+          const { computePersonMatteForMediaAsset } = await import("./person-matte-job");
+          const r = await computePersonMatteForMediaAsset(db, storage, a.id, { actorId: "render-job" }, { compute: options.computeMatte });
+          if (r.status === "SUCCESS" && r.storageKey) {
+            key = r.storageKey;
+            report.mattesComputed++;
+          } else warnings.push(`Person matte for take ${a.id} unavailable (${r.errorMessage ?? r.status}) — its behind-subject graphics render in front.`);
+        } catch (err) {
+          warnings.push(`Person matte for take ${a.id} failed (${err instanceof Error ? err.message : String(err)}) — its behind-subject graphics render in front.`);
+        }
+      }
+      if (!key) continue;
+      try {
+        const p = join(workDir, `matte-${a.id}.mp4`);
+        await writeFile(p, await storage.get(key));
+        mattes[a.id] = p;
+        report.mattesUsed++;
+      } catch (err) {
+        warnings.push(`Person matte for take ${a.id} could not be read (${err instanceof Error ? err.message : String(err)}) — rendered in front.`);
+      }
+    }
+  }
+
+  // Emphasis timing.
+  let emphasisWords: BuildInteractionsInput["emphasisWords"] = null;
+  if (timeline.visuals.some((v) => EMPHASIS_TEMPLATES.has(v.template) || (v.emphasisAt ?? 0) > 0)) {
+    const loud: Record<string, WordLoudness[] | null> = {};
+    for (const a of assets) {
+      const words = sourceWords[a.id];
+      if (!words?.length || !sources[a.id] || a.hasAudio === false) continue;
+      try {
+        loud[a.id] = await media.measureWordLoudness(sources[a.id]!, words);
+      } catch (err) {
+        warnings.push(`Vocal emphasis for take ${a.id} not measured (${err instanceof Error ? err.message : String(err)}) — numbers-only emphasis.`);
+      }
+    }
+    emphasisWords = outputEmphasisWords(timeline, loud, sourceWords);
+    report.emphasisWords = emphasisWords.length;
+  }
+
+  // Scene stats.
+  let sceneStats: Record<string, SceneStats | null> = {};
+  if (timeline.visuals.some((v) => v.integration.sceneMatch || v.integration.lightWrap || v.integration.shadow)) {
+    try {
+      sceneStats = await media.sampleSceneStatsForVisuals(timeline, sources, sourceDimensions);
+      report.sceneSampled = Object.values(sceneStats).filter(Boolean).length;
+    } catch (err) {
+      warnings.push(`Scene matching skipped (${err instanceof Error ? err.message : String(err)}) — neutral look.`);
+    }
+  }
+  report.ms = Date.now() - started;
+  return { mattes, input: { subjectTracks, sourceDimensions, sceneStats, emphasisWords }, report };
 }
 
 export interface RenderJobResult {
@@ -388,7 +514,12 @@ export async function renderContentItem(
     // AUTO placements are re-solved against the takes' subject tracks (same solver the editor
     // uses), so the rendered graphics land where the editor showed them. MANUAL ones never move.
     const placedTimeline = withResolvedPlacements(timeline, assets, sourceWords);
-    const motionInputs = await prepareMotion(db, storage, placedTimeline, sources, workDir, motionWarnings, options.motion);
+    // Motion v2: how graphics interact with the footage (depth, follow, camera, scene, emphasis).
+    const interaction =
+      placedTimeline.visuals.length > 0 && options.motion?.interactionEnabled !== false && options.motion?.visualsEnabled !== false
+        ? await prepareInteraction(db, storage, placedTimeline, assets, sources, sourceWords, workDir, motionWarnings, options.motion)
+        : null;
+    const motionInputs = await prepareMotion(db, storage, placedTimeline, sources, workDir, motionWarnings, options.motion, interaction?.input ?? null);
 
     let renderResult: Awaited<ReturnType<typeof renderTimeline>>;
     try {
@@ -401,6 +532,7 @@ export async function renderContentItem(
         visualsLayer: motionInputs.visualsLayer,
         musicPath: motionInputs.musicPath,
         sfxFiles: motionInputs.sfxFiles,
+        mattes: interaction?.mattes ?? null,
       });
     } catch (err) {
       return fail(err);
@@ -440,6 +572,9 @@ export async function renderContentItem(
         motionRenderMs: motionInputs.renderMs,
         sfxEvents: renderResult.motion.sfxEvents.length,
         music: renderResult.motion.music ? { mode: renderResult.motion.music.mode, speechRegions: renderResult.motion.music.regions } : null,
+        interaction: interaction
+          ? { ...interaction.report, behindSubject: renderResult.motion.behindSubject, mattedClips: renderResult.motion.mattedClips }
+          : null,
       },
     };
 

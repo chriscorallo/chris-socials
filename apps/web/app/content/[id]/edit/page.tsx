@@ -74,6 +74,8 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
     color: TAKE_COLORS[i % TAKE_COLORS.length]!,
     // Where Chris is in the frame (motion-graphics placement) — null until the take is tracked.
     subjectTrack: parseSubjectTrackRecord(a.subjectTrack),
+    // Person matte (graphics behind Chris) — null until computed.
+    matteUrl: a.matteStorageKey ? `/api/media/${a.matteStorageKey}` : null,
   }));
   const music: EditorMusicAsset[] = musicRows.map((m) => ({
     id: m.id,

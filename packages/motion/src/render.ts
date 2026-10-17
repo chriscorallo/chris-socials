@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { resolveBundledFontsDir, type EditTimeline, type TimelineVisual, type VisualOverlaySegment } from "@chris/media";
+import { resolveBundledFontsDir, type EditTimeline, type TimelineVisual, type VisualInteraction, type VisualOverlaySegment } from "@chris/media";
 import { resolveRemotionEntry } from "./assets";
 import { parseVisuals, visualFrameWindow } from "./timing";
 
@@ -20,8 +20,10 @@ import { parseVisuals, visualFrameWindow } from "./timing";
  */
 
 export interface RenderVisualsLayerInput {
-  timeline: Pick<EditTimeline, "visuals" | "canvas"> & { motionTheme?: EditTimeline["motionTheme"] };
+  timeline: Pick<EditTimeline, "visuals" | "canvas"> & Partial<Pick<EditTimeline, "motionTheme">>;
   fps: number;
+  /** Motion v2 interaction data per visual (@chris/media buildVisualInteractions at this fps). */
+  interactions?: Record<string, VisualInteraction> | null;
   durationSeconds: number;
   /** PER_VISUAL: a directory for the clips. FULL_LAYER: the .mov file path. */
   outputPath: string;
@@ -140,7 +142,7 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
   try {
     if (strategy === "FULL_LAYER") {
       await mkdir(dirname(input.outputPath), { recursive: true });
-      const inputProps = { visuals: active.map((pv) => pv.visual), canvas, fontBaseUrl: null, clipMode: false, fps: input.fps, durationInFrames: totalFrames, motionTheme: input.timeline.motionTheme ?? null };
+      const inputProps = { visuals: active.map((pv) => pv.visual), canvas, fontBaseUrl: null, clipMode: false, fps: input.fps, durationInFrames: totalFrames, interactions: input.interactions ?? null, motionTheme: input.timeline.motionTheme ?? null };
       const composition = await selectComposition({ serveUrl, id: "VisualsLayer", inputProps, puppeteerInstance: browser, chromiumOptions: { gl: "angle" }, logLevel: "error" });
       await renderMedia({ ...common, composition, inputProps, outputLocation: input.outputPath, onProgress: ({ progress }) => input.onProgress?.(progress) });
       framesRendered = totalFrames;
@@ -152,7 +154,8 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
       for (const [i, pv] of active.entries()) {
         const win = visualFrameWindow(pv.visual, input.fps);
         const frames = Math.min(win.durationInFrames, totalFrames - win.from);
-        const inputProps = { visuals: [pv.visual], canvas, fontBaseUrl: null, clipMode: true, fps: input.fps, durationInFrames: frames, motionTheme: input.timeline.motionTheme ?? null };
+        const ix = input.interactions?.[pv.visual.id];
+        const inputProps = { visuals: [pv.visual], canvas, fontBaseUrl: null, clipMode: true, fps: input.fps, durationInFrames: frames, interactions: ix ? { [pv.visual.id]: ix } : null, motionTheme: input.timeline.motionTheme ?? null };
         const composition = await selectComposition({ serveUrl, id: "VisualClip", inputProps, puppeteerInstance: browser, chromiumOptions: { gl: "angle" }, logLevel: "error" });
         const out = clipFile(input.outputPath, pv.visual, i);
         await renderMedia({
@@ -164,7 +167,7 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
         });
         done += frames;
         framesRendered += frames;
-        segments.push({ path: out, start: win.from / input.fps, end: (win.from + frames) / input.fps, id: pv.visual.id });
+        segments.push({ path: out, start: win.from / input.fps, end: (win.from + frames) / input.fps, id: pv.visual.id, depth: pv.visual.depth ?? "FRONT" });
       }
     }
   } finally {

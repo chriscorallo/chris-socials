@@ -22,11 +22,15 @@
  */
 import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
-import type { EditTimeline } from "@chris/media/timeline";
+import type { EditTimeline, VisualInteraction } from "@chris/media/timeline";
 import { VisualsLayer, type VisualsLayerProps } from "./remotion/VisualsLayer";
 
 export interface VisualsPreviewProps {
-  timeline: Pick<EditTimeline, "visuals" | "canvas" | "clips">;
+  timeline: Pick<EditTimeline, "visuals" | "canvas" | "clips"> & Partial<Pick<EditTimeline, "motionTheme">>;
+  /** Motion v2: interaction data (same `buildVisualInteractions` the worker uses, at `fps`). */
+  interactions?: Record<string, VisualInteraction> | null;
+  /** Draw only the behind-subject or front visuals (the editor layers a person cutout between). */
+  depthFilter?: "ALL" | "FRONT" | "BEHIND_SUBJECT";
   /** Seconds on the OUTPUT timeline. */
   currentTime: number;
   playing: boolean;
@@ -45,13 +49,13 @@ export function previewDurationFrames(timeline: Pick<EditTimeline, "visuals" | "
   return Math.max(1, Math.ceil(Math.max(clipsEnd, visEnd) * fps));
 }
 
-export function VisualsPreview({ timeline, currentTime, playing, width, height, fps = 30, fontBaseUrl = "/api/fonts", style }: VisualsPreviewProps) {
+export function VisualsPreview({ timeline, currentTime, playing, width, height, fps = 30, fontBaseUrl = "/api/fonts", style, interactions = null, depthFilter = "ALL" }: VisualsPreviewProps) {
   const ref = useRef<PlayerRef>(null);
   const canvas = timeline.canvas ?? { width: 1080, height: 1920 };
   const durationInFrames = previewDurationFrames(timeline, fps);
   const inputProps = useMemo<VisualsLayerProps>(
-    () => ({ visuals: timeline.visuals, canvas, fontBaseUrl, clipMode: false }),
-    [timeline.visuals, canvas, fontBaseUrl],
+    () => ({ visuals: timeline.visuals, canvas, fontBaseUrl, clipMode: false, interactions, motionTheme: timeline.motionTheme ?? null, depthFilter }),
+    [timeline.visuals, canvas, fontBaseUrl, interactions, timeline.motionTheme, depthFilter],
   );
   const target = Math.max(0, Math.min(durationInFrames - 1, Math.round(currentTime * fps)));
 

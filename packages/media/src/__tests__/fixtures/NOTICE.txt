@@ -4,3 +4,9 @@ Official Portrait of President Reagan, 1981 (White House photograph), 500x625 re
 Source: https://commons.wikimedia.org/wiki/File:Official_Portrait_of_President_Reagan_1981.jpg
 License: Public domain — work of an employee of the US federal government (17 U.S.C. 105).
 Used only as a test fixture for the face/subject tracker (a real face, composited moving across a synthetic frame).
+
+Motion v2 quality loop (docs/evidence/2026-10-17-motion-v2/): the same public-domain portrait at
+1280x1601 (https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/Official_Portrait_of_President_Reagan_1981.jpg/1280px-Official_Portrait_of_President_Reagan_1981.jpg),
+extended with headroom and animated with a slow handheld drift + a macOS `say` voice into an 11 s
+1080x1920 talking-head stand-in (not committed; regenerate with the steps in
+docs/decisions-pending/motion-v2-interaction.md). Public domain (17 U.S.C. 105).

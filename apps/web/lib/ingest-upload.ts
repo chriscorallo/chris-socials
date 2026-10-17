@@ -6,8 +6,9 @@ import { probeMedia } from "@chris/media";
 import { after } from "next/server";
 import { transcribeMediaAsset } from "@chris/worker/transcribe-job";
 import { trackSubjectForMediaAsset } from "@chris/worker/subject-track-job";
+import { computePersonMatteForMediaAsset } from "@chris/worker/person-matte-job";
 import { storage } from "./storage";
-import { isAutoSubjectTrackingEnabled, isAutoTranscriptionEnabled } from "./render-config";
+import { isAutoPersonMatteEnabled, isAutoSubjectTrackingEnabled, isAutoTranscriptionEnabled } from "./render-config";
 
 /** What an upload is: a filmed take (default) or a music bed for the finishing editor. */
 export type UploadKind = "RAW_TAKE" | "MUSIC";
@@ -80,7 +81,8 @@ export async function registerUploadedRawTake(input: {
   // assumed centred framing with a warning. Both are local-only by default (ONNX is heavy).
   const transcribe = isAutoTranscriptionEnabled() && probed.hasAudio;
   const track = isAutoSubjectTrackingEnabled() && probed.width != null && probed.height != null;
-  if (transcribe || track) {
+  const matte = isAutoPersonMatteEnabled() && probed.width != null && probed.height != null;
+  if (transcribe || track || matte) {
     after(async () => {
       if (transcribe) {
         const result = await transcribeMediaAsset(prisma, storage, asset.id, {}, { actorId: input.actorId });
@@ -92,6 +94,13 @@ export async function registerUploadedRawTake(input: {
         const result = await trackSubjectForMediaAsset(prisma, storage, asset.id, { actorId: input.actorId });
         if (result.status === "FAILED") {
           console.error(JSON.stringify({ level: "error", event: "subject_tracking_failed", mediaAssetId: asset.id, message: result.errorMessage }));
+        }
+      }
+      // Person matte (graphics behind Chris) — after tracking; the slowest step (~8 matte fps).
+      if (matte) {
+        const result = await computePersonMatteForMediaAsset(prisma, storage, asset.id, { actorId: input.actorId });
+        if (result.status === "FAILED") {
+          console.error(JSON.stringify({ level: "error", event: "person_matte_failed", mediaAssetId: asset.id, message: result.errorMessage }));
         }
       }
     });

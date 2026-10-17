@@ -68,6 +68,13 @@ export interface RenderTimelineInput {
   musicPath?: string | null;
   /** SFX id -> WAV path (packages/motion `sfxFiles()`). Sounds without a file are skipped with a warning. */
   sfxFiles?: Partial<Record<SfxSound, string>> | null;
+  /**
+   * mediaAssetId -> local path of that take's person matte (computePersonMatte). Needed for
+   * BEHIND_SUBJECT overlay segments: footage → behind graphics → Chris cut out with the matte
+   * (through each clip's exact trim/crop and the zooms) → front graphics → texts/captions.
+   * Clips without a matte get an empty matte (their behind graphics simply read as FRONT).
+   */
+  mattes?: Record<string, string | null | undefined> | null;
 }
 
 /** One alpha clip of the motion layer, placed on the OUTPUT timeline [start, end). */
@@ -76,6 +83,8 @@ export interface VisualOverlaySegment {
   start: number;
   end: number;
   id?: string;
+  /** "BEHIND_SUBJECT" = composited under the person cutout (needs `mattes`). Default FRONT. */
+  depth?: "FRONT" | "BEHIND_SUBJECT";
 }
 
 /** House mix level for sound design: SFX sit ~6 dB under their nominal volume. */
@@ -295,7 +304,7 @@ export interface RenderTimelineResult {
   ffmpegArgs: string[];
   renderMs: number;
   /** What the motion/sound-design pass did (overlay clips, SFX hits, music bed). */
-  motion: { overlays: number; sfxEvents: SfxEvent[]; music: AudioMixPlan["music"] };
+  motion: { overlays: number; sfxEvents: SfxEvent[]; music: AudioMixPlan["music"]; behindSubject: number; mattedClips: number };
 }
 
 /** Master encode: mezzanine-grade so per-platform variants re-encode from a clean source. */
@@ -486,6 +495,39 @@ export function buildCaptionsAss(
   return [...assHeader(timeline.canvas), ...events, ""].join("\n");
 }
 
+/**
+ * One clip's picture chain on the OUTPUT canvas: fps, cover-scale × crop zoom, pan crop, then
+ * padded/trimmed to exactly `frameCount` frames. Defined relative to the input's own size
+ * (iw/ih), so a person matte with the take's aspect at a lower resolution goes through the
+ * IDENTICAL geometry and lands pixel-aligned with the footage.
+ */
+export function clipFrameChain(
+  clip: EditTimeline["clips"][number],
+  canvas: { width: number; height: number },
+  fps: number,
+  frameCount: number,
+  pixFmt: "yuv420p" | "gray",
+  flags: "lanczos" | "bicubic",
+): string {
+  const W = canvas.width;
+  const H = canvas.height;
+  const cover = `max(${W}/iw,${H}/ih)*${n(clip.crop.zoom)}`;
+  return (
+    `setpts=PTS-STARTPTS,fps=${fps},` +
+    `scale=w='max(${W},2*round(iw*${cover}/2))':h='max(${H},2*round(ih*${cover}/2))':flags=${flags},` +
+    `crop=${W}:${H}:x='(iw-ow)*${n((clip.crop.panX + 1) / 2)}':y='(ih-oh)*${n((clip.crop.panY + 1) / 2)}',` +
+    `setsar=1,format=${pixFmt},tpad=stop_mode=clone:stop_duration=1,trim=end_frame=${frameCount},setpts=PTS-STARTPTS`
+  );
+}
+
+/**
+ * Matte edge treatment for the person cutout (gray → gray): a tiny blur (feathers the
+ * upscaled 512-px matte's stair-steps) followed by a gentle contrast curve centred slightly
+ * ABOVE 50% — it pulls the edge a hair inward, so background pixels around Chris never get
+ * pasted over a behind-graphic (the "halo" you'd otherwise see as a ghost outline).
+ */
+export const MATTE_EDGE_FILTER = "gblur=sigma=1.1,lut=y='clip((val-150)*1.6+150,0,255)'";
+
 /** The zoom (perspective) filter for normalized zooms, or null when there are none. */
 export function zoomFilter(
   zooms: EditTimeline["zooms"],
@@ -648,13 +690,7 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
       // from any point of any take in any order, and a shared input would make ffmpeg buffer
       // every decoded frame a later clip needs while concat is still consuming earlier ones.
       args.push("-ss", n(clip.sourceStart), "-t", n(clipDuration(clip) + 0.5), "-i", path);
-      const cover = `max(${W}/iw,${H}/ih)*${n(clip.crop.zoom)}`;
-      parts.push(
-        `[${k}:v]setpts=PTS-STARTPTS,fps=${fps},` +
-          `scale=w='max(${W},2*round(iw*${cover}/2))':h='max(${H},2*round(ih*${cover}/2))':flags=lanczos,` +
-          `crop=${W}:${H}:x='(iw-ow)*${n((clip.crop.panX + 1) / 2)}':y='(ih-oh)*${n((clip.crop.panY + 1) / 2)}',` +
-          `setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=1,trim=end_frame=${frames[k]},setpts=PTS-STARTPTS[v${k}]`,
-      );
+      parts.push(`[${k}:v]${clipFrameChain(clip, canvas, fps, frames[k]!, "yuv420p", "lanczos")}[v${k}]`);
       const vol = clip.volume !== 1 ? `,volume=${n(clip.volume)}` : "";
       if (p.hasAudio) {
         parts.push(
@@ -724,22 +760,81 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
     for (const sg of overlays) {
       if (!existsSync(sg.path)) throw new Error(`Motion layer clip ${sg.id ?? sg.path} not found at ${sg.path}.`);
     }
+    // Depth: BEHIND_SUBJECT graphics need a person matte for at least one clip they overlap.
+    const mattePaths = timeline.clips.map((c) => {
+      const p = input.mattes?.[c.mediaAssetId];
+      return p && existsSync(p) ? p : null;
+    });
+    const clipStarts: number[] = [];
+    {
+      let acc = 0;
+      for (let k = 0; k < frames.length; k++) {
+        clipStarts.push(acc / fps);
+        acc += frames[k]!;
+      }
+    }
+    const mattedOver = (sg: VisualOverlaySegment) =>
+      timeline.clips.some((_, k) => mattePaths[k] && clipStarts[k]! < sg.end && clipStarts[k]! + frames[k]! / fps > sg.start);
+    const behind: VisualOverlaySegment[] = [];
+    const front: VisualOverlaySegment[] = [];
+    for (const sg of overlays) {
+      if (sg.depth === "BEHIND_SUBJECT") {
+        if (mattedOver(sg)) behind.push(sg);
+        else {
+          warnings.push(`visual ${sg.id ?? sg.path}: behind-subject needs a person matte for its take — rendered in front.`);
+          front.push(sg);
+        }
+      } else front.push(sg);
+    }
+    let mattedClips = 0;
+
+    const overlayChain = (from: string, list: VisualOverlaySegment[], tag: string): string => {
+      let cur = from;
+      list.forEach((sg, i) => {
+        args.push("-i", sg.path);
+        const k = nextInput++;
+        const s0 = n(sg.start);
+        parts.push(`[${k}:v]setpts=PTS-STARTPTS+${s0}/TB[${tag}l${i}]`);
+        const next = `[${tag}${i + 1}]`;
+        parts.push(`${cur}[${tag}l${i}]overlay=x=0:y=0:eof_action=pass:format=auto:enable='gte(t,${s0})*lt(t,${n(sg.end)})'${next}`);
+        cur = next;
+      });
+      return cur;
+    };
+
     if (overlays.length === 0) {
       parts.push(`[vcat]${vChain.join(",")}[vout]`);
     } else {
       const pre = vChain.slice(0, preOverlayCount);
       const post = vChain.slice(preOverlayCount);
-      parts.push(`[vcat]${pre.length ? pre.join(",") : "null"}[vov0]`);
-      overlays.forEach((sg, i) => {
-        args.push("-i", sg.path);
-        const k = nextInput++;
-        const s0 = n(sg.start);
-        parts.push(`[${k}:v]setpts=PTS-STARTPTS+${s0}/TB[ovl${i}]`);
-        parts.push(
-          `[vov${i}][ovl${i}]overlay=x=0:y=0:eof_action=pass:format=auto:enable='gte(t,${s0})*lt(t,${n(sg.end)})'[vov${i + 1}]`,
-        );
-      });
-      parts.push(`[vov${overlays.length}]${post.join(",")}[vout]`);
+      if (behind.length === 0) {
+        parts.push(`[vcat]${pre.length ? pre.join(",") : "null"}[vov0]`);
+        const last = overlayChain("[vov0]", front, "vov");
+        parts.push(`${last}${post.join(",")}[vout]`);
+      } else {
+        // Graded footage → behind graphics → Chris (footage × matte) → front graphics.
+        parts.push(`[vcat]${pre.length ? pre.join(",") : "null"},split=2[vbg0][vfg]`);
+        const mLabels: string[] = [];
+        timeline.clips.forEach((clip, k) => {
+          const mp = mattePaths[k];
+          if (mp) {
+            mattedClips++;
+            args.push("-ss", n(clip.sourceStart), "-t", n(clipDuration(clip) + 0.5), "-i", mp);
+            const idx = nextInput++;
+            parts.push(`[${idx}:v]${clipFrameChain(clip, canvas, fps, frames[k]!, "gray", "bicubic")}[mt${k}]`);
+          } else {
+            parts.push(`color=c=black:s=${W}x${H}:r=${fps},format=gray,trim=end_frame=${frames[k]},setpts=PTS-STARTPTS[mt${k}]`);
+          }
+          mLabels.push(`[mt${k}]`);
+        });
+        const zoomOnly = zf ? `,${zf}` : "";
+        parts.push(`${mLabels.join("")}concat=n=${mLabels.length}:v=1:a=0,format=gray${zoomOnly},${MATTE_EDGE_FILTER}[matte]`);
+        parts.push(`[vfg][matte]alphamerge[person]`);
+        const afterBehind = overlayChain("[vbg0]", behind, "vbg");
+        parts.push(`${afterBehind}[person]overlay=x=0:y=0:format=auto[vov0]`);
+        const last = overlayChain("[vov0]", front, "vov");
+        parts.push(`${last}${post.join(",")}[vout]`);
+      }
     }
 
     // loudnorm can't normalise pure digital silence (every clip from audio-less takes).
@@ -793,7 +888,7 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
       captionLayouts,
       ffmpegArgs: args,
       renderMs: Date.now() - started,
-      motion: { overlays: overlays.length, sfxEvents: mix.sfxEvents, music: mix.music },
+      motion: { overlays: overlays.length, sfxEvents: mix.sfxEvents, music: mix.music, behindSubject: behind.length, mattedClips },
     };
   } finally {
     await rm(workDir, { recursive: true, force: true });
