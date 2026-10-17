@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from "react";
-import { layoutTimelineText, locateOutputTime, resolveGrade, timelineDuration, type TimelineCrop, type TimelineText } from "@chris/media/timeline";
+import { layoutTimelineText, locateOutputTime, resolveGrade, timelineDuration, type TimelineCrop, type TimelineText, type TimelineVisual } from "@chris/media/timeline";
 import { updateClip, updateZoom, updateText, updateCaptions, setCover } from "../../../../lib/editor/timeline-ops";
 import { panAfterDrag, formatTime, vignetteGradient } from "../../../../lib/editor/preview-math";
+import { placeVisualManually } from "../../../../lib/editor/visuals";
 import { movedBeyond, pinchGeometry, type Pt } from "../../../../lib/editor/touch-math";
 import { PLATFORM_PROFILES, PLATFORM_IDS, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
 import { safeRect } from "../../../../lib/editor/platform-warnings";
@@ -12,6 +13,7 @@ import { assignPlayers, useIsPlaying, usePlayheadValue } from "./playback";
 import { GradeDefs, OverlaySvg } from "./Overlays";
 import { browserMeasureText } from "./measure";
 import { Icon } from "./icons";
+import { MotionLayer, VisualHandles, visualHitRect } from "./MotionLayer";
 
 export { fontFamilyCss } from "./Overlays";
 
@@ -222,6 +224,8 @@ type Target =
   | { kind: "captions" }
   | { kind: "reframe"; id: string }
   | { kind: "focal"; id: string }
+  | { kind: "visual"; id: string; wasSelected: boolean }
+  | { kind: "visual-resize"; id: string }
   | { kind: "stage" };
 
 interface Gesture {
@@ -230,7 +234,7 @@ interface Gesture {
   downAt: Pt;
   moved: boolean;
   /** Pose + values at the last change in finger count (so adding/lifting a finger never jumps). */
-  base: { pts: Pt[]; text?: TimelineText; crop?: TimelineCrop; capY: number; capSize: number; resizeD0?: number; center?: Pt };
+  base: { pts: Pt[]; text?: TimelineText; crop?: TimelineCrop; capY: number; capSize: number; resizeD0?: number; center?: Pt; visual?: TimelineVisual };
 }
 
 const SNAP_PX = 6;
@@ -246,7 +250,7 @@ const SNAP_PX = 6;
  * The canvas has `touch-action: none`, so the browser never scrolls or zooms the page here.
  */
 export function Canvas({ w, h }: { w: number; h: number }) {
-  const { doc, engine, assetMap, ui, setUi, state, apply, commit, dispatch, touch } = useEditor();
+  const { doc, engine, assetMap, ui, setUi, state, apply, commit, dispatch, touch, placement } = useEditor();
   const k = w / doc.canvas.width;
   const zoomLayerRef = useRef<HTMLDivElement>(null);
   const { slots } = useMemo(() => assignPlayers(doc.clips.length), [doc.clips.length]);
@@ -255,10 +259,11 @@ export function Canvas({ w, h }: { w: number; h: number }) {
   const vignette = vignetteGradient(g.vignette);
   const [dragging, setDragging] = useState(false);
   const [guides, setGuides] = useState({ v: false, h: false });
+  const [draggingVisual, setDraggingVisual] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
-  const latest = useRef({ doc, selection: state.selection });
+  const latest = useRef({ doc, selection: state.selection, visuals: placement.visuals });
   useEffect(() => {
-    latest.current = { doc, selection: state.selection };
+    latest.current = { doc, selection: state.selection, visuals: placement.visuals };
   });
 
   useLayoutEffect(() => {
@@ -281,7 +286,10 @@ export function Canvas({ w, h }: { w: number; h: number }) {
     const t = gs.target;
     const text = t.kind === "text" || t.kind === "text-resize" ? d.texts.find((x) => x.id === t.id) : undefined;
     const clip = t.kind === "reframe" ? d.clips.find((c) => c.id === t.id) : undefined;
-    gs.base = { pts, text, crop: clip?.crop, capY: d.captions.y, capSize: d.captions.fontSize };
+    // Graphics start from where they're DRAWN (an AUTO one's solved spot), so taking manual
+    // control never makes it jump.
+    const visual = t.kind === "visual" || t.kind === "visual-resize" ? latest.current.visuals.find((v) => v.id === t.id) : undefined;
+    gs.base = { pts, text, crop: clip?.crop, capY: d.captions.y, capSize: d.captions.fontSize, visual };
   };
 
   const canvasPt = (e: { clientX: number; clientY: number }, el: HTMLElement): Pt => {
@@ -323,6 +331,7 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       const sel = latest.current.selection;
       if (gs.target.kind === "stage" && sel?.kind === "text") gs.target = { kind: "text", id: sel.id, wasSelected: true };
       if (gs.target.kind === "stage" && sel?.kind === "captions") gs.target = { kind: "captions" };
+      if (gs.target.kind === "stage" && sel?.kind === "visual") gs.target = { kind: "visual", id: sel.id, wasSelected: true };
       gs.moved = true;
       rebase(gs);
       return;
@@ -340,6 +349,15 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       target = { kind: "text", id: hitId, wasSelected };
       engine.pause();
       if (!wasSelected) dispatch({ type: "select", selection: { kind: "text", id: hitId } });
+      if (!touch) setUi({ tab: "selection" });
+    } else if (kind === "visual-resize") {
+      target = { kind: "visual-resize", id: hitId };
+      engine.pause();
+    } else if (kind === "visual") {
+      const wasSelected = state.selection?.kind === "visual" && state.selection.id === hitId;
+      target = { kind: "visual", id: hitId, wasSelected };
+      engine.pause();
+      if (!wasSelected) dispatch({ type: "select", selection: { kind: "visual", id: hitId } });
       if (!touch) setUi({ tab: "selection" });
     } else if (kind === "captions") {
       target = { kind: "captions" };
@@ -365,6 +383,12 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       next.base.center = center;
       next.base.resizeD0 = Math.max(8, Math.hypot(p.x - center.x, p.y - center.y));
     }
+    if (target.kind === "visual-resize" && next.base.visual) {
+      const r = visualHitRect(next.base.visual, doc.canvas);
+      const center = { x: (r.x + r.width / 2) * k, y: (r.y + r.height / 2) * k };
+      next.base.center = center;
+      next.base.resizeD0 = Math.max(8, Math.hypot(p.x - center.x, p.y - center.y));
+    }
     gesture.current = next;
   };
 
@@ -380,6 +404,10 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       rebase(gs);
       gs.base.pts = [gs.downAt];
       if (gs.target.kind === "text" || gs.target.kind === "captions") setDragging(true);
+      if (gs.target.kind === "visual" || gs.target.kind === "visual-resize") {
+        setDragging(true);
+        setDraggingVisual(gs.target.id);
+      }
     }
     const t = gs.target;
     const b = gs.base;
@@ -415,6 +443,23 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       const start = { ...b.crop, zoom };
       const pan = panAfterDrag(start, { width: asset?.width ?? 1080, height: asset?.height ?? 1920 }, doc.canvas, (pinch.dx * W) / w, (pinch.dy * W) / w);
       apply((d) => updateClip(d, t.id, { crop: { ...start, ...pan } }), { coalesce: `crop:${t.id}` });
+    } else if (t.kind === "visual" && b.visual) {
+      // Dragging a graphic = Chris places it: MANUAL from here on (Auto-place hands it back).
+      const pl = b.visual.placement;
+      let nx = pl.x + pinch.dx / k / W;
+      let ny = pl.y + pinch.dy / k / H;
+      const snapPx = touch ? 10 : SNAP_PX;
+      const snapV = Math.abs(nx - 0.5) * W * k < snapPx;
+      const snapH = Math.abs(ny - 0.5) * H * k < snapPx;
+      if (snapV) nx = 0.5;
+      if (snapH) ny = 0.5;
+      setGuides((gd) => (gd.v === snapV && gd.h === snapH ? gd : { v: snapV, h: snapH }));
+      const patch = two ? { x: nx, y: ny, scale: pl.scale * pinch.scale } : { x: nx, y: ny };
+      apply((d) => placeVisualManually(d, t.id, patch), { coalesce: `vmove:${t.id}` });
+    } else if (t.kind === "visual-resize" && b.visual && b.center && b.resizeD0) {
+      const d1 = Math.hypot(p.x - b.center.x, p.y - b.center.y);
+      const pl = b.visual.placement;
+      apply((d) => placeVisualManually(d, t.id, { x: pl.x, y: pl.y, scale: (pl.scale * d1) / b.resizeD0! }), { coalesce: `vsize:${t.id}` });
     } else if (t.kind === "focal" && !two) {
       setFocal(t.id, p);
     }
@@ -431,11 +476,13 @@ export function Canvas({ w, h }: { w: number; h: number }) {
     gesture.current = null;
     setGuides({ v: false, h: false });
     setDragging(false);
+    setDraggingVisual(null);
     commit();
     if (gs.moved || e.type === "pointercancel") return;
     // ---- taps
     const t = gs.target;
     if (t.kind === "text" && t.wasSelected) setUi({ editingTextId: t.id });
+    else if (t.kind === "visual" && t.wasSelected && touch) setUi({ sheet: "visuals" });
     else if (t.kind === "stage" && touch) {
       if (state.selection && state.selection.kind !== "clip") dispatch({ type: "select", selection: null });
       else engine.toggle();
@@ -481,11 +528,14 @@ export function Canvas({ w, h }: { w: number; h: number }) {
         </div>
       </div>
       {vignette && <div className="ed-layer pointer-events-none" style={{ background: vignette }} />}
+      {/* motion graphics: over the graded picture, under texts/captions — the renderer's order */}
+      <MotionLayer w={w} h={h} />
 
       {ui.reframe && <ReframeGrid touch={touch} />}
       <SafeArea w={w} h={h} view={ui.platformView} emphasize={dragging} />
       {ui.platformView !== "ALL" && <PlatformChrome platform={ui.platformView} k={k} />}
 
+      {!ui.reframe && <VisualHandles w={w} dragging={draggingVisual} />}
       <OverlaySvg w={w} h={h} guides={guides} inlineEditor={!touch} />
 
       {selectedZoom && (

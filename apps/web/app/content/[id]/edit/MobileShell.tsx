@@ -13,6 +13,9 @@ import { Canvas, PlatformSwitch, WarningsList, enterReframe, useFitCanvas } from
 import { MobileTimeline } from "./MobileTimeline";
 import { Sheet } from "./Sheet";
 import { ClipPanel, TextPanel, ZoomPanel, CaptionsPanel, LookPanel, CoverPanel } from "./Inspector";
+import { VisualsPanel } from "./VisualsPanel";
+import { SoundPanel } from "./SoundPanel";
+import { autoPlaceVisuals } from "../../../../lib/editor/visuals";
 import { TakeCard } from "./MediaBin";
 import { useKeyboardInset } from "./layout-hooks";
 import { Icon } from "./icons";
@@ -201,7 +204,7 @@ function Tool({ icon, label, onClick, disabled, active, danger }: { icon: string
 }
 
 function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void; onDelete: () => void; onDuplicate: () => void }) {
-  const { doc, ui, setUi, state, dispatch, engine, apply, toast } = useEditor();
+  const { doc, ui, setUi, state, dispatch, engine, apply, toast, solvePlacements } = useEditor();
   const sel = state.selection;
   const open = (sheet: SheetId) => setUi({ sheet: ui.sheet === sheet ? null : sheet });
 
@@ -241,6 +244,33 @@ function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void
       <>
         <Tool icon="sparkle" label="Adjust" onClick={() => open("zoom")} active={ui.sheet === "zoom"} />
         <Tool icon="target" label="Aim" onClick={() => toast("Tap the video where the zoom should push in.")} />
+        <Tool icon="trash" label="Delete" danger onClick={onDelete} />
+      </>
+    );
+  } else if (sel?.kind === "visual") {
+    const v = doc.visuals.find((x) => x.id === sel.id);
+    title = "Graphic";
+    tools = (
+      <>
+        <Tool icon="palette" label="Edit" onClick={() => open("visuals")} active={ui.sheet === "visuals"} />
+        <Tool
+          icon="target"
+          label="Auto-place"
+          disabled={v?.placement.mode === "AUTO"}
+          onClick={() => {
+            apply((d) => autoPlaceVisuals(d, [sel.id], solvePlacements));
+            toast("Placed automatically — clear of your face and the captions.");
+          }}
+        />
+        <Tool icon="duplicate" label="Duplicate" onClick={onDuplicate} />
+        <Tool icon="trash" label="Delete" danger onClick={onDelete} />
+      </>
+    );
+  } else if (sel?.kind === "sfx") {
+    title = "Sound effect";
+    tools = (
+      <>
+        <Tool icon="volume" label="Edit" onClick={() => open("sound")} active={ui.sheet === "sound"} />
         <Tool icon="trash" label="Delete" danger onClick={onDelete} />
       </>
     );
@@ -294,6 +324,8 @@ function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void
             toast("Zoom added — tap the video where it should push in.");
           }}
         />
+        <Tool icon="magic" label="Visuals" onClick={() => open("visuals")} active={ui.sheet === "visuals"} />
+        <Tool icon="music" label="Sound" onClick={() => open("sound")} active={ui.sheet === "sound"} />
         <Tool icon="palette" label="Look" onClick={() => open("look")} active={ui.sheet === "look"} />
         <Tool icon="plus" label="Add clip" onClick={() => open("media")} active={ui.sheet === "media"} />
         <Tool icon="image" label="Cover" onClick={() => open("cover")} active={ui.sheet === "cover"} />
@@ -332,6 +364,8 @@ const SHEET_TITLES: Record<SheetId, string> = {
   media: "Add a clip",
   cover: "Cover",
   platforms: "Platforms",
+  visuals: "Visuals",
+  sound: "Sound",
 };
 
 function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onSnapChange: (h: number) => void }) {
@@ -350,6 +384,8 @@ function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onS
     body = z ? <ZoomPanel z={z} /> : <EmptyNote>Tap a zoom on the timeline first.</EmptyNote>;
   } else if (id === "captions") body = <CaptionsPanel />;
   else if (id === "look") body = <LookPanel />;
+  else if (id === "visuals") body = <VisualsPanel />;
+  else if (id === "sound") body = <SoundPanel />;
   else if (id === "cover") body = <CoverPanel />;
   else if (id === "media") {
     const used = new Set(doc.clips.map((c) => c.mediaAssetId));

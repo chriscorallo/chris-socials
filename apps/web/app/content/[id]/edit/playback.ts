@@ -127,6 +127,19 @@ export class PlaybackEngine {
     this.applyVisuals();
   }
 
+  private gestureHooks = new Set<Listener>();
+  /**
+   * Runs synchronously inside play() — i.e. inside the user's play tap — so side players (the
+   * music bed, sound effects) can start/unlock their own audio there (iOS only allows sound
+   * from a gesture).
+   */
+  onPlayGesture(fn: Listener): () => void {
+    this.gestureHooks.add(fn);
+    return () => {
+      this.gestureHooks.delete(fn);
+    };
+  }
+
   subscribe = (fn: Listener) => {
     this.listeners.add(fn);
     return () => {
@@ -164,6 +177,13 @@ export class PlaybackEngine {
     this.lastTs = performance.now();
     this.startActive(true);
     this.unlockFromGesture();
+    for (const h of this.gestureHooks) {
+      try {
+        h();
+      } catch {
+        /* a side player failing must never stop the picture */
+      }
+    }
     this.raf = requestAnimationFrame(this.tick);
     this.emit();
   }

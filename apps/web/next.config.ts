@@ -21,6 +21,11 @@ const nextConfig: NextConfig = {
     "sharp",
   ],
 
+  // @chris/motion ships TypeScript/TSX source (Remotion compositions + the editor's
+  // <VisualsPreview> player). Turbopack transpiles workspace packages on its own; listing it
+  // keeps webpack builds (and any non-workspace install) working too.
+  transpilePackages: ["@chris/motion"],
+
   // Monorepo: trace server files from the repo root so files outside apps/web can be shipped.
   outputFileTracingRoot: join(__dirname, "..", ".."),
   // Files read from disk at RUNTIME (readFileSync/readdirSync), which the static tracer can't
@@ -38,10 +43,21 @@ const nextConfig: NextConfig = {
       "../../packages/domain/.pglite*/**",
       "../../node_modules/.pnpm/ffprobe-static@*/node_modules/ffprobe-static/bin/win32/**",
       "../../node_modules/.pnpm/ffprobe-static@*/node_modules/ffprobe-static/bin/darwin/**",
+      // The editor now imports @chris/motion (pure helpers + the client-only preview player).
+      // Remotion's native compositor and the bundler's rspack binaries are only used by the
+      // worker's local render (which can't run in a Vercel Function anyway) — never ship them.
+      "../../node_modules/.pnpm/@remotion+compositor-*/**",
+      "../../node_modules/.pnpm/@rspack+binding-*/**",
     ],
   },
   outputFileTracingIncludes: {
-    "/*": ["../../prompts/**/*.md", "../../brand/**/*.md", "../../packages/media/assets/**/*"],
+    "/*": [
+      "../../prompts/**/*.md",
+      "../../brand/**/*.md",
+      "../../packages/media/assets/**/*",
+      // The procedural SFX kit, served to the editor by /api/sfx/[file] (small WAVs).
+      "../../packages/motion/assets/sfx/*.wav",
+    ],
   },
 };
 
