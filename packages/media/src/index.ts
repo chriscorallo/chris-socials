@@ -29,3 +29,7 @@ export * from "./captions";
 export * from "./timeline";
 export * from "./font-registry";
 export * from "./timeline-captions";
+export * from "./font-metrics";
+export * from "./timeline-layout";
+export * from "./timeline-render";
+export * from "./plan-to-timeline";
