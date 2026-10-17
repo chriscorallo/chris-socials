@@ -812,6 +812,9 @@ model TasteFeedback {
   rawFeedback     String
   normalizedTag   String
   productionTier  ProductionTier?
+  // Structured evidence for machine-captured signals (e.g. MOTION_GRAPHIC edit diffs:
+  // {template, topic, at, changes, ...}). Null for hand-entered feedback.
+  context         Json?
   createdAt       DateTime        @default(now())
 
   contentItem ContentItem? @relation(fields: [contentItemId], references: [id])
