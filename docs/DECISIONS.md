@@ -3521,3 +3521,21 @@ combinedSafeZone } from "@chris/media/timeline"`.
    with `trigger: "AUTO"`; it is a no-op unless `motion.auto_design` is enabled.
 8. **Tracking on ingest (recommended):** call `trackSubjectForMediaAsset` right after
    transcription for each take, so tracks exist before Chris opens the editor.
+
+## 2026-10-16 — Production database moved from Supabase (suspended) to Neon
+
+The first deploy of the usable-v1 branch failed at `prisma migrate deploy` (P1001): Vercel
+reported the project's Supabase Free database as **suspended** (Supabase pauses free projects
+after inactivity; this one had never been used). Because a failed migration fails the build,
+the previous deployment stayed live — the guard worked as designed.
+
+**Decision:** a free Neon Postgres (`chris-studio-db`, iad1) was created through the team's
+existing Neon integration and connected to the project (it provides `DATABASE_URL` pooled and
+`POSTGRES_URL_NON_POOLING` for migrations). Neon's free compute auto-suspends but wakes on the
+next connection, so it never needs a manual "restore". The Supabase store was disconnected
+from the project, not deleted (it had no app data); its stale `DATABASE_URL` env var was
+removed so Neon's could be attached. Redeploy applied all 16 migrations and seeded the owner
+login; live login verified over HTTPS.
+
+**Reversibility:** reconnect the Supabase store (after restoring it in Supabase) and swap the
+env vars back.
