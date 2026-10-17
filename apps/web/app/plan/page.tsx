@@ -46,7 +46,8 @@ export default async function PlanPage({
   const imports = await listPlanImports(prisma, 5);
 
   const weekEnd = addDaysYmd(mondayOfYmd(today), 7); // exclusive: next Monday
-  const end = range === "week" ? weekEnd : range === "month" ? addDaysYmd(today, 31) : "9999-12-31";
+  // "This week" is rolling (next 7 days) so it is never empty on a Saturday.
+  const end = range === "week" ? addDaysYmd(today, 7) : range === "month" ? addDaysYmd(today, 31) : "9999-12-31";
   const overdue = all.filter((v) => v.ymd < today && !FINISHED.has(v.state));
   const upcoming = all.filter((v) => v.ymd >= today && v.ymd < end);
   const later = all.filter((v) => v.ymd >= end).length;
@@ -146,15 +147,15 @@ export default async function PlanPage({
               <>
                 <form className="mb-3 flex items-end gap-2" action="/plan">
                   <input type="hidden" name="mode" value="film" />
-                  <label className="block flex-1">
+                  <label className="block min-w-0 flex-1">
                     <span className="field-label">Film from</span>
-                    <input type="date" name="from" defaultValue={from} className="field-input" />
+                    <input type="date" name="from" defaultValue={from} className="field-input !px-3 !text-[15px]" />
                   </label>
-                  <label className="block flex-1">
+                  <label className="block min-w-0 flex-1">
                     <span className="field-label">to</span>
-                    <input type="date" name="to" defaultValue={to} className="field-input" />
+                    <input type="date" name="to" defaultValue={to} className="field-input !px-3 !text-[15px]" />
                   </label>
-                  <button className="btn btn-ghost">Show</button>
+                  <button className="btn btn-ghost shrink-0 !px-4">Show</button>
                 </form>
                 <FilmChecklist items={checklist} mode={storageMode} />
               </>
@@ -179,7 +180,7 @@ export default async function PlanPage({
                     </h2>
                     <ul className="panel divide-y divide-[var(--color-border)]">
                       {g.items.map((v) => (
-                        <PlanRow key={v.id} v={v} today={today} />
+                        <PlanRow key={v.id} v={v} today={today} urgent={g.key === "overdue" || g.key === "today" || g.key === "week"} />
                       ))}
                     </ul>
                   </section>
@@ -239,7 +240,7 @@ function Seg({ href, on, children }: { href: string; on: boolean; children: Reac
   );
 }
 
-function PlanRow({ v, today }: { v: PlannedVideo; today: string }) {
+function PlanRow({ v, today, urgent }: { v: PlannedVideo; today: string; urgent: boolean }) {
   const st = plannedVideoStatus(v.state);
   const { hook } = splitDescription(v.description);
   return (
@@ -262,7 +263,7 @@ function PlanRow({ v, today }: { v: PlannedVideo; today: string }) {
       </div>
       <div className="shrink-0">
         {st.action.kind === "UPLOAD" ? (
-          <PlanItemUpload contentItemId={v.id} mode={storageMode} label="Upload" compact />
+          <PlanItemUpload contentItemId={v.id} mode={storageMode} label="Upload" compact quiet={!urgent} />
         ) : st.action.kind === "START_EDIT" ? (
           <form action={editPlannedVideo}>
             <input type="hidden" name="contentItemId" value={v.id} />

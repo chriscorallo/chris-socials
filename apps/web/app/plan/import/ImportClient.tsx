@@ -349,7 +349,7 @@ export function ImportClient({
         )}
 
         <ul className="flex flex-col gap-2.5" data-testid="import-rows">
-          {ordered.map((r) => (
+          {ordered.filter((r) => r.status !== "duplicate").map((r) => (
             <RowCard
               key={r.key}
               row={r}
@@ -360,6 +360,20 @@ export function ImportClient({
             />
           ))}
         </ul>
+
+        {summary.duplicates > 0 && (
+          <details className="panel min-w-0" data-testid="import-duplicates">
+            <summary className="flex min-h-[52px] cursor-pointer items-center justify-between gap-3 px-4 py-3">
+              <span className="text-[15px] font-medium">Already planned</span>
+              <span className="text-[13px] text-[var(--color-text-faint)]">{summary.duplicates} skipped · tap to see</span>
+            </summary>
+            <ul className="flex flex-col gap-2 px-3 pb-3">
+              {ordered.filter((r) => r.status === "duplicate").map((r) => (
+                <RowCard key={r.key} row={r} open={false} onToggle={() => undefined} onPatch={() => undefined} defaultTime={null} />
+              ))}
+            </ul>
+          </details>
+        )}
 
         {error && <p className="text-sm text-[var(--color-rose-400)]">{error}</p>}
 
@@ -389,6 +403,9 @@ export function ImportClient({
   // ---------- Source ----------
   return (
     <div className="flex flex-col gap-4">
+      <p className="-mt-2 text-[15px] leading-snug text-[var(--color-text-muted)]">
+        A day, a week, a month or a year — paste it, upload the spreadsheet, or share a Google Sheet. You&apos;ll check it before anything is created.
+      </p>
       <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/[0.05] p-1" role="tablist">
         {(
           [

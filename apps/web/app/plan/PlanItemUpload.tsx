@@ -11,7 +11,7 @@ import { makeStarterEdit, preparePlannedUpload } from "./actions";
  * is walked to FILMED (advancePlannedItemToFilmed) → takes upload with the shared uploader →
  * the no-AI starter edit is made → "Edit" opens the editor.
  */
-export function PlanItemUpload({ contentItemId, mode, label = "Upload footage", compact = false }: { contentItemId: string; mode: "blob" | "local"; label?: string; compact?: boolean }) {
+export function PlanItemUpload({ contentItemId, mode, label = "Upload footage", compact = false, quiet = false }: { contentItemId: string; mode: "blob" | "local"; label?: string; compact?: boolean; quiet?: boolean }) {
   const router = useRouter();
   const ref = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<{ phase: "idle" | "prep" | "up" | "done" | "error"; pct: number; i: number; n: number; msg?: string }>({ phase: "idle", pct: 0, i: 0, n: 0 });
@@ -53,7 +53,7 @@ export function PlanItemUpload({ contentItemId, mode, label = "Upload footage", 
   const busy = state.phase === "prep" || state.phase === "up";
   return (
     <div className="flex flex-col items-end gap-1">
-      <label className={`btn ${busy ? "btn-ghost" : "btn-primary"} cursor-pointer ${compact ? "!min-h-[38px] !px-3.5 !text-[13.5px]" : ""}`} aria-busy={busy}>
+      <label className={`btn ${busy || quiet ? "btn-ghost" : "btn-primary"} cursor-pointer ${compact ? "!min-h-[38px] !px-3.5 !text-[13.5px]" : ""}`} aria-busy={busy}>
         <input ref={ref} type="file" accept="video/*" multiple className="sr-only" disabled={busy} onChange={(e) => void go(e.target.files)} data-testid={`upload-${contentItemId}`} />
         {state.phase === "prep" ? "Preparing…" : state.phase === "up" ? `${state.n > 1 ? `${state.i + 1}/${state.n} · ` : ""}${state.pct}%` : label}
       </label>

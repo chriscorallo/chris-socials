@@ -197,7 +197,7 @@ export function BatchUpload({ targets, tz, mode }: { targets: UploadTarget[]; tz
               <div className="min-w-0">
                 <p className="truncate text-[14.5px] font-medium">{c.file.name}</p>
                 <p className="text-[12px] text-[var(--color-text-faint)]">
-                  {(c.file.size / 1024 / 1024).toFixed(1)} MB
+                  {c.file.size >= 1024 * 1024 ? `${(c.file.size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(c.file.size / 1024))} KB`}
                   {c.file.lastModified && Math.abs(Date.now() - c.file.lastModified) > 10 * 60_000 ? ` · ${formatYmdShort(ymdInTz(new Date(c.file.lastModified), tz))}` : ""}
                 </p>
               </div>
@@ -279,6 +279,10 @@ export function BatchUpload({ targets, tz, mode }: { targets: UploadTarget[]; tz
               <button type="button" className="btn btn-primary shrink-0" onClick={() => void run(true)}>
                 Retry failed
               </button>
+            ) : !running && toUpload === 0 ? (
+              <Link href="/plan" className="btn btn-primary shrink-0">
+                Back to plan
+              </Link>
             ) : (
               <button type="button" className="btn btn-primary shrink-0" disabled={running || toUpload === 0} onClick={() => void run(false)} data-testid="batch-upload">
                 {running ? "Uploading…" : `Upload ${toUpload} clip${toUpload === 1 ? "" : "s"}`}

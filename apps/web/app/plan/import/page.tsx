@@ -19,11 +19,7 @@ export default async function ImportPlanPage() {
       <NavBar />
       <PageShell maxWidth={680}>
         <BackLink href="/plan">Plan</BackLink>
-        <PageHeader
-          eyebrow="Plan"
-          title="Import your plan"
-          description="A day, a week, a month or a year — paste it, upload the spreadsheet, or share a Google Sheet. You'll check it before anything is created."
-        />
+        <PageHeader eyebrow="Plan" title="Import your plan" />
         <ImportClient
           today={ymdInTz(new Date(), APP_TZ)}
           existing={existing.map((e) => ({ title: e.title, ymd: e.ymd, contentItemId: e.contentItemId }))}
