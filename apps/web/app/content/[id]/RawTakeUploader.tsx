@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import { registerBlobUpload } from "./actions";
@@ -94,41 +94,83 @@ export function RawTakeUploader({ contentItemId, mode }: { contentItemId: string
     router.refresh();
   }
 
+  // While anything is still uploading, leaving the page would kill the transfer — ask first.
+  useEffect(() => {
+    if (!busy) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [busy]);
+
+  // iOS only offers the Photos library in the picker when every accepted type is image/video,
+  // so phones get "video/*" (Photos + camera + Files). Desktop (fine pointer) additionally
+  // accepts audio-only takes.
+  const [accept, setAccept] = useState("video/*");
+  useEffect(() => {
+    if (window.matchMedia("(pointer: fine)").matches) setAccept("video/*,audio/*");
+  }, []);
+
+  const doneCount = uploads.filter((u) => u.status === "done").length;
+
   return (
     <div className="flex flex-col gap-3">
-      <label className="flex flex-wrap items-center gap-3">
+      <label
+        className={`flex min-h-[64px] cursor-pointer items-center justify-center gap-3 rounded-2xl border border-dashed px-4 py-3 text-center transition-colors ${
+          busy
+            ? "cursor-not-allowed border-[var(--color-border)] opacity-60"
+            : "border-[var(--color-gold-500)]/50 bg-[var(--color-gold-500)]/[0.07] active:bg-[var(--color-gold-500)]/15 hover:bg-[var(--color-gold-500)]/10"
+        }`}
+      >
         <input
           ref={inputRef}
           type="file"
-          accept="video/*,audio/*"
+          accept={accept}
           multiple
           disabled={busy}
           onChange={(e) => void handleFiles(e.target.files)}
-          className="text-[13px] text-[var(--color-text-muted)] file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-[13px] file:text-[var(--color-text)]"
+          className="sr-only"
         />
-        <span className="text-[12px] text-[var(--color-text-faint)]">Raw takes — any size, several at once.</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--color-gold-400)]" aria-hidden>
+          <path d="M12 16V4M7 9l5-5 5 5" />
+          <path d="M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15" />
+        </svg>
+        <span className="min-w-0 text-left">
+          <span className="block text-[15px] font-semibold text-[var(--color-text)]">
+            {busy ? "Uploading…" : uploads.length > 0 ? "Add more takes" : "Add raw takes"}
+          </span>
+          <span className="block text-[12.5px] text-[var(--color-text-faint)]">
+            {busy ? "Keep this screen open until it finishes." : "From Photos, Files or the camera — any size, several at once."}
+          </span>
+        </span>
       </label>
       {uploads.length > 0 && (
-        <ul className="flex flex-col gap-2 text-[13px]">
+        <ul className="flex flex-col gap-2.5 text-[13px]" aria-live="polite">
           {uploads.map((u, i) => (
-            <li key={`${u.name}-${i}`} className="flex flex-col gap-1">
-              <div className="flex justify-between gap-3">
-                <span className="truncate">{u.name}</span>
-                <span className={u.status === "error" ? "text-[var(--color-rose-400)]" : "text-[var(--color-text-faint)]"}>
+            <li key={`${u.name}-${i}`} className="flex flex-col gap-1.5">
+              <div className="flex min-w-0 justify-between gap-3">
+                <span className="min-w-0 truncate">{u.name}</span>
+                <span className={`shrink-0 tabular-nums ${u.status === "error" ? "text-[var(--color-rose-400)]" : u.status === "done" ? "text-[var(--color-emerald-400)]" : "text-[var(--color-text-faint)]"}`}>
                   {u.status === "uploading" && `${u.percent}%`}
                   {u.status === "processing" && "Analyzing…"}
                   {u.status === "done" && "Done"}
                   {u.status === "error" && (u.error ?? "Failed")}
                 </span>
               </div>
-              <div className="h-1 overflow-hidden rounded-full bg-white/10">
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-[var(--color-gold-400)] transition-[width]"
+                  className={`h-full rounded-full transition-[width] ${u.status === "done" ? "bg-[var(--color-emerald-400)]" : "bg-[var(--color-gold-400)]"}`}
                   style={{ width: `${u.status === "error" ? 100 : u.percent}%`, opacity: u.status === "error" ? 0.3 : 1 }}
                 />
               </div>
             </li>
           ))}
+          {!busy && doneCount > 0 && (
+            <li className="text-[var(--color-text-muted)]">
+              {doneCount} take{doneCount === 1 ? "" : "s"} uploaded.
+            </li>
+          )}
         </ul>
       )}
     </div>

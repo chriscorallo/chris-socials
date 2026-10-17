@@ -1,7 +1,7 @@
 import { prisma, getCurrentWeekThesis, getWeeklyThesisWithPortfolio, listPendingIdeaProposals } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
-import { PageShell, PageHeader, Panel, SectionHeading, EmptyState, Button, Badge } from "../components/ui";
+import { PageShell, PageHeader, Panel, SectionHeading, CollapsiblePanel, EmptyState, Button, Badge } from "../components/ui";
 import {
   generateThesis,
   generatePortfolio,
@@ -69,17 +69,19 @@ export default async function StrategyPage({
           </Panel>
         )}
 
-        <Panel className="mb-5">
-          <SectionHeading eyebrow="Creative Director" title="Generate this week's thesis" />
+        <CollapsiblePanel eyebrow="Creative Director" title="Generate a weekly thesis" className="mb-5" defaultOpen={!current}>
           <p className="mb-4 text-[13px] text-[var(--color-text-muted)]">
             Runs the Creative Director agent against the current IDEA backlog and Brand
             Constitution. Requires ANTHROPIC_API_KEY.
           </p>
-          <form action={generateThesis} className="flex items-center gap-3">
-            <input type="date" name="weekStartDate" defaultValue={nextMonday()} className="field-input w-auto" />
-            <Button tone="primary">Generate thesis</Button>
+          <form action={generateThesis} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="block sm:w-auto">
+              <span className="field-label">Week starting</span>
+              <input type="date" name="weekStartDate" defaultValue={nextMonday()} className="field-input sm:w-auto" />
+            </label>
+            <Button tone="primary" className="w-full sm:w-auto" pendingLabel="Thinking…">Generate thesis</Button>
           </form>
-        </Panel>
+        </CollapsiblePanel>
 
         {withPortfolio && (
           <Panel className="mb-5">
@@ -87,9 +89,9 @@ export default async function StrategyPage({
               eyebrow="This Week"
               title={`Week of ${withPortfolio.weekStartDate.toLocaleDateString()}`}
             />
-            <p className="mb-4 text-sm leading-relaxed">{withPortfolio.thesis}</p>
+            <p className="mb-4 text-[15px] leading-relaxed sm:text-sm">{withPortfolio.thesis}</p>
 
-            <dl className="grid gap-3 text-[13px] sm:grid-cols-2">
+            <dl className="grid gap-3 text-[14px] sm:grid-cols-2 sm:text-[13px]">
               <div>
                 <dt className="font-medium text-[var(--color-text)]">Primary objectives</dt>
                 <dd className="text-[var(--color-text-muted)]">
@@ -124,7 +126,7 @@ export default async function StrategyPage({
 
             <form action={generatePortfolio} className="mt-5">
               <input type="hidden" name="weeklyThesisId" value={withPortfolio.id} />
-              <Button>Generate portfolio proposal</Button>
+              <Button className="w-full sm:w-auto" pendingLabel="Proposing…">Generate portfolio proposal</Button>
               <p className="mt-2 text-xs text-[var(--color-text-faint)]">
                 Proposes only — nothing is selected until you approve each item below.
               </p>
@@ -144,14 +146,14 @@ export default async function StrategyPage({
                     {proposal.productionTier}
                     {proposal.pillar ? ` · ${proposal.pillar}` : ""} · {proposal.format} · Fills: {proposal.gapFilled} · Why now: {proposal.whyThisWeek}
                   </p>
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
                     <form action={approveNewIdea}>
                       <input type="hidden" name="proposalId" value={proposalId} />
-                      <Button tone="primary">Add &amp; select</Button>
+                      <Button tone="primary" className="w-full">Add &amp; select</Button>
                     </form>
                     <form action={rejectNewIdea}>
                       <input type="hidden" name="proposalId" value={proposalId} />
-                      <Button tone="danger">Pass</Button>
+                      <Button tone="danger" className="w-full">Pass</Button>
                     </form>
                   </div>
                 </div>
@@ -166,13 +168,13 @@ export default async function StrategyPage({
             {recommendedCount > 0 && withPortfolio && (
               <form action={approveAllRecommended} className="mb-4">
                 <input type="hidden" name="weeklyThesisId" value={withPortfolio.id} />
-                <Button tone="primary">Approve all {recommendedCount} recommended</Button>
+                <Button tone="primary" className="w-full sm:w-auto" pendingLabel="Approving…">Approve all {recommendedCount} recommended</Button>
               </form>
             )}
             <div className="flex flex-col gap-3">
               {proposed.map((p) => (
                 <div key={p.id} className="rounded-xl border border-[var(--color-border)] bg-white/[0.03] p-4">
-                  <p className="text-sm">
+                  <p className="text-[15px] leading-snug sm:text-sm">
                     <span className="font-medium">{p.topic}</span>{" "}
                     <span className="text-[var(--color-text-muted)]">
                       ({p.productionTier}
@@ -187,14 +189,14 @@ export default async function StrategyPage({
                     Agent recommends:{" "}
                     <Badge tone={p.selected ? "emerald" : "neutral"}>{p.selected ? "select" : "do not select"}</Badge>
                   </p>
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
                     <form action={approveProposal}>
                       <input type="hidden" name="portfolioItemId" value={p.id} />
-                      <Button tone="primary">Approve</Button>
+                      <Button tone="primary" className="w-full">Approve</Button>
                     </form>
                     <form action={rejectProposal}>
                       <input type="hidden" name="portfolioItemId" value={p.id} />
-                      <Button tone="danger">Reject</Button>
+                      <Button tone="danger" className="w-full">Reject</Button>
                     </form>
                   </div>
                 </div>
@@ -208,8 +210,8 @@ export default async function StrategyPage({
             <SectionHeading eyebrow="Decided" title="Reviewed" />
             <ul className="flex flex-col gap-2">
               {reviewed.map((p) => (
-                <li key={p.id} className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{p.topic}</span>
+                <li key={p.id} className="flex items-center justify-between gap-3 text-[15px] sm:text-sm">
+                  <span className="min-w-0 font-medium">{p.topic}</span>
                   <Badge tone={p.status === "APPROVED" ? "emerald" : "rose"}>{p.status}</Badge>
                 </li>
               ))}

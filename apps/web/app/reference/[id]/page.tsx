@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma, getReferenceCreator, getReferenceContent } from "@chris/domain";
 import { requireSession } from "../../../lib/session";
 import { NavBar } from "../../components/NavBar";
-import { PageShell, PageHeader, Panel, SectionHeading, EmptyState, Button } from "../../components/ui";
+import { PageShell, PageHeader, Panel, CollapsiblePanel, EmptyState, Button, BackLink } from "../../components/ui";
 import { addContent, analyzeContent } from "./actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
@@ -32,18 +32,19 @@ export default async function ReferenceCreatorPage({
     <>
       <NavBar />
       <PageShell maxWidth={760}>
+        <BackLink href="/reference">Reference</BackLink>
         <PageHeader eyebrow="Reference Creator" title={creator.name} description={creator.brandPositioning} />
 
         {(creator.relevanceToChris || creator.doNotTransfer) && (
           <div className="mb-5 flex flex-col gap-2">
             {creator.relevanceToChris && (
-              <p className="text-[13px] text-[var(--color-text-muted)]">
+              <p className="text-[14px] text-[var(--color-text-muted)] sm:text-[13px]">
                 <span className="font-medium text-[var(--color-text)]">Relevance to Chris: </span>
                 {creator.relevanceToChris}
               </p>
             )}
             {creator.doNotTransfer && (
-              <p className="text-[13px] text-[var(--color-rose-400)]">
+              <p className="text-[14px] text-[var(--color-rose-400)] sm:text-[13px]">
                 <span className="font-medium">Do NOT transfer: </span>
                 {creator.doNotTransfer}
               </p>
@@ -60,15 +61,14 @@ export default async function ReferenceCreatorPage({
           </Panel>
         )}
 
-        <Panel className="mb-5">
-          <SectionHeading eyebrow="New" title="Add reference content" />
+        <CollapsiblePanel eyebrow="New" title="Add reference content" className="mb-5" defaultOpen={creator.content.length === 0}>
           <form action={addContent} className="flex flex-col gap-4">
             <input type="hidden" name="referenceCreatorId" value={creator.id} />
             <label className="block">
               <span className="field-label">Description / transcript / notes</span>
               <textarea name="description" required rows={4} className="field-input" />
             </label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-4 sm:grid-cols-3">
               <label className="block">
                 <span className="field-label">Platform</span>
                 <select name="platform" defaultValue="" className="field-input">
@@ -87,9 +87,9 @@ export default async function ReferenceCreatorPage({
                 <input name="topic" className="field-input" />
               </label>
             </div>
-            <Button tone="primary">Add content</Button>
+            <Button tone="primary" className="w-full sm:w-auto sm:self-start" pendingLabel="Adding…">Add content</Button>
           </form>
-        </Panel>
+        </CollapsiblePanel>
 
         <div className="flex flex-col gap-4">
           {contentWithObservations.map(
@@ -104,7 +104,7 @@ export default async function ReferenceCreatorPage({
                   <form action={analyzeContent} className="mt-4">
                     <input type="hidden" name="referenceCreatorId" value={creator.id} />
                     <input type="hidden" name="referenceContentId" value={content.id} />
-                    <Button>Run Reference Intelligence analysis</Button>
+                    <Button className="w-full sm:w-auto" pendingLabel="Analyzing…">Run Reference Intelligence analysis</Button>
                   </form>
 
                   {content.observations.length > 0 && (

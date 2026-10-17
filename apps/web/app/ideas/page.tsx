@@ -30,13 +30,13 @@ export default async function IdeasPage() {
           <form action={createIdea} className="flex flex-col gap-4">
             <label className="block">
               <span className="field-label">Title</span>
-              <input name="title" required className="field-input" />
+              <input name="title" required autoComplete="off" enterKeyHint="next" className="field-input" placeholder="What's the video?" />
             </label>
             <label className="block">
               <span className="field-label">Description</span>
               <textarea name="description" rows={2} className="field-input" />
             </label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="field-label">Pillar</span>
                 <select name="pillar" defaultValue="" className="field-input">
@@ -49,10 +49,10 @@ export default async function IdeasPage() {
               </label>
               <label className="block">
                 <span className="field-label">Format</span>
-                <input name="format" className="field-input" />
+                <input name="format" autoComplete="off" className="field-input" placeholder="e.g. Talking head" />
               </label>
             </div>
-            <Button tone="primary">Add idea</Button>
+            <Button tone="primary" className="w-full sm:w-auto sm:self-start" pendingLabel="Adding…">Add idea</Button>
           </form>
         </Panel>
 
@@ -67,10 +67,15 @@ export default async function IdeasPage() {
                 <li key={idea.id}>
                   <Link
                     href={`/content/${idea.id}`}
-                    className="flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-white/[0.03]"
+                    className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-white/[0.03] active:bg-white/[0.05] sm:px-5"
                   >
-                    <span className="text-sm font-medium">{idea.title}</span>
-                    {idea.pillar && <Badge tone="violet">{idea.pillar}</Badge>}
+                    <span className="min-w-0 text-[15px] font-medium leading-snug sm:text-sm">{idea.title}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {idea.pillar && <Badge tone="violet">{idea.pillar}</Badge>}
+                      <svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-[var(--color-text-faint)]" aria-hidden>
+                        <path d="m1 1 6 6-6 6" />
+                      </svg>
+                    </span>
                   </Link>
                 </li>
               ))}

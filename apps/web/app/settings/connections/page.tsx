@@ -75,8 +75,8 @@ export default async function ConnectionsPage({
             const missingScopes = c.connected && c.scopes.length > 0 ? OAUTH_SCOPES[c.platform].filter((s) => !granted.has(s)) : [];
             return (
               <Panel key={c.platform}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="eyebrow">{c.platform}</p>
                     <h2 className="mt-1 text-[17px] font-semibold text-[var(--color-text)]">{LABELS[c.platform]}</h2>
                   </div>
@@ -87,13 +87,13 @@ export default async function ConnectionsPage({
                   )}
                 </div>
 
-                <p className="mt-2 text-sm text-[var(--color-text-muted)]">{NOTES[c.platform]}</p>
+                <p className="mt-2 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-sm">{NOTES[c.platform]}</p>
 
                 {c.connected && (
                   <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
                     <div>
                       <dt className="field-label">Account</dt>
-                      <dd>{c.accountName ? `${c.accountName} (${c.accountId})` : c.accountId}</dd>
+                      <dd className="break-all">{c.accountName ? `${c.accountName} (${c.accountId})` : c.accountId}</dd>
                     </div>
                     <div>
                       <dt className="field-label">Token</dt>
@@ -116,10 +116,10 @@ export default async function ConnectionsPage({
                   </p>
                 )}
                 {missing.length > 0 && (
-                  <p className="mt-2 text-sm text-[var(--color-rose-400)]">Not configured on the server: set {missing.join(", ")}.</p>
+                  <p className="mt-2 break-words text-sm text-[var(--color-rose-400)]">Not configured on the server: set {missing.join(", ")}.</p>
                 )}
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
                   {missing.length === 0 && (
                     // A plain link, not a client-side Link: this leaves the app for the
                     // provider's consent screen.
@@ -130,7 +130,7 @@ export default async function ConnectionsPage({
                   {c.connected && (
                     <form action={disconnectPlatform}>
                       <input type="hidden" name="platform" value={c.platform} />
-                      <Button tone="danger">Disconnect</Button>
+                      <Button tone="danger" className="w-full sm:w-auto" pendingLabel="Disconnecting…">Disconnect</Button>
                     </form>
                   )}
                 </div>
@@ -161,11 +161,11 @@ export default async function ConnectionsPage({
           ) : (
             <ul className="flex flex-col gap-2 text-sm">
               {runs.map((run) => (
-                <li key={run.id} className="flex flex-wrap items-center gap-2">
+                <li key={run.id} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                   <Badge tone={run.status === "SUCCEEDED" ? "emerald" : run.status === "FAILED" ? "rose" : "gold"}>{run.status}</Badge>
                   <span>{run.kind}</span>
                   <span className="text-[var(--color-text-muted)]">{formatDate(run.startedAt)}</span>
-                  {run.error && <span className="text-[var(--color-rose-400)]">{run.error}</span>}
+                  {run.error && <span className="w-full break-words text-[var(--color-rose-400)]">{run.error}</span>}
                 </li>
               ))}
             </ul>
