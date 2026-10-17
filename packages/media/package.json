@@ -7,7 +7,9 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./transcription": "./src/transcription/index.ts"
+    "./transcription": "./src/transcription/index.ts",
+    "./timeline": "./src/timeline.ts",
+    "./font-registry": "./src/font-registry.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.7.5",

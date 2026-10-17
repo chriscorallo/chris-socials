@@ -1,6 +1,6 @@
 import type { PrismaClient, ContentState } from "@prisma/client";
 import { z } from "zod";
-import { writeTransition } from "./state-machine";
+import { writeTransition, applyTransition } from "./state-machine";
 import { recordAudit } from "./audit";
 
 /** Spec §9 step 12. "The LLM decides, the renderer executes." Creating an EditPlan moves
@@ -160,4 +160,71 @@ export async function getRepairChainEditPlanIds(
     chain.push(...children.map((c) => c.id));
   }
   return chain;
+}
+
+/** States from which Chris can save a finishing edit (the in-app editor). */
+export const FINISHING_EDIT_STATES = new Set<ContentState>([
+  "EDIT_PLANNED",
+  "RENDERED",
+  "QC_REPAIR",
+  "QC_BLOCKED",
+  "READY",
+  "SCHEDULED",
+]);
+
+export class FinishingEditNotAllowedError extends Error {
+  constructor(actual: ContentState) {
+    super(
+      `This video can't be edited while it's ${actual}. Finishing edits are possible once it has an edit plan and before it publishes.`,
+    );
+    this.name = "FinishingEditNotAllowedError";
+  }
+}
+
+/**
+ * Saves Chris's finishing edit (an EditTimeline from the in-app editor — validated by the
+ * caller against packages/media's EditTimelineSchema; domain stays dependency-free) as a NEW
+ * EditPlan row carrying `plan.timeline`. Append-only: every save is a version.
+ *
+ * If the item is past planning (RENDERED / QC_REPAIR / QC_BLOCKED / READY / SCHEDULED) it is
+ * rolled back to EDIT_PLANNED first — a previous render's hard-gate PASS doesn't cover the new
+ * edit, so it must render and pass the gates again before it can be scheduled. A human edit
+ * starts a fresh repair chain (revisionOfEditPlanId null).
+ */
+export async function saveFinishingEdit(
+  prisma: PrismaClient,
+  input: { contentItemId: string; timeline: unknown; durationSeconds: number; actorId: string; note?: string },
+) {
+  const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: input.contentItemId } });
+  if (!FINISHING_EDIT_STATES.has(item.currentState)) {
+    throw new FinishingEditNotAllowedError(item.currentState);
+  }
+  const base = await getLatestEditPlan(prisma, input.contentItemId);
+  if (!base) throw new Error("This item has no edit plan yet — run the Edit Planner first.");
+
+  if (item.currentState !== "EDIT_PLANNED") {
+    await applyTransition(prisma, {
+      contentItemId: input.contentItemId,
+      to: "EDIT_PLANNED",
+      actorType: "HUMAN",
+      actorId: input.actorId,
+      reason: "Finishing edit saved — re-render and re-check before scheduling",
+    });
+  }
+
+  const basePlan = (base.plan ?? {}) as Record<string, unknown>;
+  return recordReplannedEditPlan(
+    prisma,
+    {
+      contentItemId: input.contentItemId,
+      takeSelectionId: base.takeSelectionId,
+      productionTier: base.productionTier,
+      targetDurationSeconds: Math.max(0.1, input.durationSeconds),
+      doNothingElse: false,
+      plan: { ...basePlan, timeline: input.timeline },
+      revisionOfEditPlanId: null,
+      revisionReason: input.note?.trim() ? `Finishing edit by Chris: ${input.note.trim()}` : "Finishing edit by Chris",
+    },
+    { actorId: input.actorId, actorType: "HUMAN" },
+  );
 }

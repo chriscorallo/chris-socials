@@ -29,11 +29,11 @@ const TRANSITIONS: Record<ContentState, ContentState[]> = {
   TAKE_SELECTED: ["EDIT_PLANNED"],
   EDIT_PLANNED: ["EDITING"],
   EDITING: ["RENDERED"],
-  RENDERED: ["READY", "QC_REPAIR"],
-  QC_REPAIR: ["RENDERED", "QC_BLOCKED"],
+  RENDERED: ["READY", "QC_REPAIR", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
+  QC_REPAIR: ["RENDERED", "QC_BLOCKED", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
   QC_BLOCKED: ["EDIT_PLANNED"], // rollback
-  READY: ["SCHEDULED"],
-  SCHEDULED: ["PUBLISHING"],
+  READY: ["SCHEDULED", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
+  SCHEDULED: ["PUBLISHING", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
   PUBLISHING: ["PUBLISHED"],
   PUBLISHED: ["MEASURING"],
   MEASURING: ["ARCHIVED"],
@@ -46,6 +46,11 @@ const TERMINAL_STATES = new Set<ContentState>(["ARCHIVED", "CANCELLED"]);
 export const ROLLBACK_TRANSITIONS = new Set<string>([
   "QC_BLOCKED->EDIT_PLANNED",
   "RESEARCH_BLOCKED->RESEARCHING",
+  // In-app finishing editor (2026-10-16): a saved human edit re-enters render + hard gates.
+  "RENDERED->EDIT_PLANNED",
+  "QC_REPAIR->EDIT_PLANNED",
+  "READY->EDIT_PLANNED",
+  "SCHEDULED->EDIT_PLANNED",
 ]);
 
 export class InvalidTransitionError extends Error {

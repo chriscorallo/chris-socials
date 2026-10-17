@@ -10,6 +10,8 @@ import {
   getRepairChainEditPlanIds,
   getLatestEditPlan,
   ReplanNotAllowedError,
+  saveFinishingEdit,
+  FinishingEditNotAllowedError,
 } from "../edit-plan";
 import { startRendering, recordRenderAttempt, MAX_REPAIR_ATTEMPTS } from "../render-record";
 import {
@@ -219,5 +221,38 @@ describe("manual transitions are an explicit allowlist", () => {
     const { MANUAL_TRANSITIONS } = await import("../manual-transition");
     const gatedTargets = new Set(["READY", "PUBLISHED", "PUBLISHING", "RESEARCHED", "SCRIPTED", "RENDERED", "SCHEDULED", "ARCHIVED"]);
     for (const t of MANUAL_TRANSITIONS) expect(gatedTargets.has(t.to)).toBe(false);
+  });
+});
+
+describe("finishing edits from the in-app editor", () => {
+  it("rolls a READY item back to EDIT_PLANNED and stores the timeline as a new plan version", async () => {
+    const { item, editPlan } = await makeEditPlannedItem();
+    await startRendering(prisma, item.id, { actorId: "chris" });
+    await recordRenderAttempt(
+      prisma,
+      { contentItemId: item.id, editPlanId: editPlan.id, status: "SUCCESS", storageKey: `renders/${item.id}/a.mp4`, technicalQCReport: { overall: "PASS", checks: [] } },
+      { actorId: "system" },
+    );
+    await applyTransition(prisma, { contentItemId: item.id, to: "READY", actorType: "SYSTEM" });
+
+    const timeline = { version: 2, clips: [{ id: "c1", mediaAssetId: "m1", sourceStart: 0, sourceEnd: 12 }] };
+    const saved = await saveFinishingEdit(prisma, { contentItemId: item.id, timeline, durationSeconds: 12, actorId: "chris", note: "tighter open" });
+
+    expect(await stateOf(item.id)).toBe("EDIT_PLANNED");
+    const latest = await getLatestEditPlan(prisma, item.id);
+    expect(latest?.id).toBe(saved.id);
+    expect((latest?.plan as { timeline?: unknown }).timeline).toEqual(timeline);
+    expect(latest?.revisionOfEditPlanId).toBeNull();
+    expect(latest?.revisionReason).toBe("Finishing edit by Chris: tighter open");
+    expect(latest?.targetDurationSeconds).toBe(12);
+    // The original plan is kept as history.
+    expect(await prisma.editPlan.count({ where: { contentItemId: item.id } })).toBe(2);
+  });
+
+  it("refuses before there is anything to edit", async () => {
+    const item = await createContentItem(prisma, { title: "No plan yet" }, { actorId: "test-user" });
+    await expect(
+      saveFinishingEdit(prisma, { contentItemId: item.id, timeline: {}, durationSeconds: 1, actorId: "chris" }),
+    ).rejects.toBeInstanceOf(FinishingEditNotAllowedError);
   });
 });

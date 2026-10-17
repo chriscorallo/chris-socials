@@ -26,3 +26,5 @@ export * from "./safe-zones";
 export * from "./text-layout";
 export * from "./overlay-layout";
 export * from "./captions";
+export * from "./timeline";
+export * from "./font-registry";
