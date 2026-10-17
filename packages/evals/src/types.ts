@@ -67,6 +67,27 @@ export const EvalCaseSchema = z.discriminatedUnion("promptId", [
     expectMode: z.enum(["all", "any"]).default("all"),
     mockResponse: z.unknown(),
   }),
+  /** Motion Designer: theme fits the topic, learned taste respected, no invented numbers. The
+   * graded output is a summary of the real designVisualsForTimeline result (see runner). */
+  z.object({
+    id: z.string(),
+    category: z.string(),
+    description: z.string(),
+    promptId: z.literal("MOTION_DESIGNER"),
+    input: z.object({
+      title: z.string(),
+      pillar: z.string().nullable().default(null),
+      /** Spoken script; word timings are synthesized at 0.4 s/word. */
+      script: z.string(),
+      tier: z.enum(["RAW", "FAST", "MEDIUM", "HERO"]).default("MEDIUM"),
+      numericInputs: z.array(z.object({ label: z.string(), value: z.string() })).default([]),
+      tasteContext: z.string().nullable().default(null),
+      avoidTemplates: z.array(z.string()).default([]),
+      capDelta: z.number().default(0),
+    }),
+    expect: z.array(AssertionSchema).min(1),
+    mockResponse: z.unknown(),
+  }),
 ]);
 export type EvalCase = z.output<typeof EvalCaseSchema>;
 

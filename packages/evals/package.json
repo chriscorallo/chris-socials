@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@chris/agents": "workspace:*",
+    "@chris/media": "workspace:*",
     "dotenv": "^17.4.2",
     "zod": "^4.5.4"
   },

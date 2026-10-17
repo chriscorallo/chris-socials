@@ -1,0 +1,114 @@
+[
+  {
+    "id": "md-debt-theme",
+    "category": "motion_theme_fits_topic",
+    "description": "SYNTHETIC debt video. The theme must read as tension (PUNCHY or CRISP), never playful or calm.",
+    "promptId": "MOTION_DESIGNER",
+    "input": {
+      "title": "Your credit card debt is costing you $1,400 a year",
+      "pillar": "SKILL",
+      "script": "Okay so the average card balance is 6,580 dollars. At 21 percent that is about 1,400 dollars a year in interest. That is a vacation. Gone. Pay the highest rate first.",
+      "tier": "MEDIUM",
+      "numericInputs": [
+        { "label": "Average card balance", "value": "$6,580" },
+        { "label": "Typical APR", "value": "21%" },
+        { "label": "Yearly interest", "value": "$1,400" }
+      ]
+    },
+    "expect": [
+      { "path": "theme.motionLanguage", "in": ["PUNCHY", "CRISP"] },
+      { "path": "ungroundedShown", "lt": 1 }
+    ],
+    "mockResponse": {
+      "rationale": "Hit the cost hard, then the fix.",
+      "theme": { "name": "Debt pressure", "motionLanguage": "PUNCHY", "primary": "#FFB547", "secondary": "#F0505F", "iconStyle": "GOLD_METAL", "rationale": "Tension: amber to red, hard landings." },
+      "visuals": [
+        { "template": "NUMBER_COUNTER", "props": { "value": 6580, "from": 0, "prefix": "$", "suffix": "", "decimals": 0, "label": "Average card balance" }, "start": 1.6, "end": 4.4, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": "TICK", "anchorText": "average card balance is 6,580 dollars", "importance": 5, "rationale": "The number is the hook." },
+        { "template": "STAT_CARD", "props": { "value": "$1,400/yr", "label": "Interest at 21%", "sublabel": null, "trend": "DOWN" }, "start": 5.2, "end": 8.4, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": "SOFT_POP", "anchorText": "about 1,400 dollars a year in interest", "importance": 4, "rationale": "Makes the cost concrete." }
+      ]
+    }
+  },
+  {
+    "id": "md-investing-theme-fallback",
+    "category": "motion_theme_fits_topic",
+    "description": "SYNTHETIC investing video where the model returns no theme: the deterministic topic preset must be growth-toned (CINEMATIC or CALM).",
+    "promptId": "MOTION_DESIGNER",
+    "input": {
+      "title": "Compounding: why starting at 22 beats starting at 32",
+      "pillar": "SKILL",
+      "script": "Here is the unfair part of compounding. Start ten years earlier and the same monthly amount ends up worth way more. Time does the heavy lifting, not you.",
+      "tier": "MEDIUM",
+      "numericInputs": []
+    },
+    "expect": [
+      { "path": "theme.motionLanguage", "in": ["CINEMATIC", "CALM"] },
+      { "path": "ungroundedShown", "lt": 1 }
+    ],
+    "mockResponse": {
+      "rationale": "One kinetic line on the thesis.",
+      "theme": null,
+      "visuals": [
+        { "template": "KINETIC_TEXT", "props": { "text": "Time does the heavy lifting", "emphasis": ["Time"], "style": "PUNCH" }, "start": 9.2, "end": 11.6, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": null, "anchorText": "Time does the heavy lifting", "importance": 4, "rationale": "The thesis line." }
+      ]
+    }
+  },
+  {
+    "id": "md-taste-respected",
+    "category": "motion_taste_respected",
+    "description": "SYNTHETIC: Chris STRONGLY avoids bar charts (learned). With a tight FAST cap the bar chart must be the one cut, and the taste reaches the prompt.",
+    "promptId": "MOTION_DESIGNER",
+    "input": {
+      "title": "Rent vs own in 2026",
+      "pillar": "SKILL",
+      "script": "Renting costs 2,100 a month here. Owning the same place is 2,940 a month once you add tax and insurance. That gap is 840 a month. So here is how I think about it.",
+      "tier": "FAST",
+      "numericInputs": [
+        { "label": "Rent", "value": "$2,100/mo" },
+        { "label": "Own", "value": "$2,940/mo" },
+        { "label": "Gap", "value": "$840/mo" }
+      ],
+      "tasteContext": "Learned from Chris's own edits:\n- STRONG: Avoid bar charts — 5 edits across 3 videos, confidence 0.81",
+      "avoidTemplates": ["BAR_CHART"],
+      "capDelta": -1
+    },
+    "expect": [
+      { "path": "avoidedTemplateUsed", "in": [false] },
+      { "path": "addedCount", "gte": 1 },
+      { "path": "ungroundedShown", "lt": 1 }
+    ],
+    "mockResponse": {
+      "rationale": "Comparison first, the gap second.",
+      "theme": null,
+      "visuals": [
+        { "template": "BAR_CHART", "props": { "title": null, "bars": [{ "label": "Rent", "value": 2100 }, { "label": "Own", "value": 2940 }], "unit": "$", "highlightIndex": 1, "depth3d": false }, "start": 0.4, "end": 3.6, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": "SWOOSH_UP", "anchorText": "Renting costs 2,100 a month", "importance": 3, "rationale": "Two quantities." },
+        { "template": "COMPARISON", "props": { "left": { "label": "Rent", "value": "$2,100" }, "right": { "label": "Own", "value": "$2,940" }, "verdict": null, "winner": "NONE" }, "start": 4.4, "end": 7.6, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": "WHOOSH", "anchorText": "Owning the same place is 2,940", "importance": 3, "rationale": "A vs B." },
+        { "template": "STAT_CARD", "props": { "value": "$840/mo", "label": "The gap", "sublabel": null, "trend": "NONE" }, "start": 9.2, "end": 11.6, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": "SOFT_POP", "anchorText": "That gap is 840 a month", "importance": 4, "rationale": "The takeaway." }
+      ]
+    }
+  },
+  {
+    "id": "md-no-invented-numbers",
+    "category": "motion_no_invented_numbers",
+    "description": "SYNTHETIC: the model proposes an 'illustrative' 31,000 that is in neither research nor script. It must be dropped (FACTUAL) and nothing ungrounded may reach the screen.",
+    "promptId": "MOTION_DESIGNER",
+    "input": {
+      "title": "Emergency fund math",
+      "pillar": "SKILL",
+      "script": "Three months of expenses for most people here is about 9,000 dollars. Start with one month. Then automate the rest.",
+      "tier": "MEDIUM",
+      "numericInputs": [{ "label": "Three months of expenses", "value": "$9,000" }]
+    },
+    "expect": [
+      { "path": "ungroundedShown", "lt": 1 },
+      { "path": "factualRejections", "gte": 1 }
+    ],
+    "mockResponse": {
+      "rationale": "The target, then the plan.",
+      "theme": { "name": "Steady growth", "motionLanguage": "CALM", "primary": null, "secondary": "#34C796", "iconStyle": "GOLD_METAL", "rationale": "Calm consistency." },
+      "visuals": [
+        { "template": "NUMBER_COUNTER", "props": { "value": 9000, "from": 0, "prefix": "$", "suffix": "", "decimals": 0, "label": "Three months of expenses" }, "start": 0.8, "end": 3.6, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": "TICK", "anchorText": "about 9,000 dollars", "importance": 5, "rationale": "The target." },
+        { "template": "STAT_CARD", "props": { "value": "$31,000", "label": "Six months", "sublabel": null, "trend": "UP" }, "start": 5.2, "end": 7.6, "palette": "BRAND", "enter": "AUTO", "exit": "AUTO", "enterSfx": "SOFT_POP", "anchorText": "Start with one month", "importance": 3, "rationale": "Illustrative." }
+      ]
+    }
+  }
+]
