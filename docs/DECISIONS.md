@@ -2541,3 +2541,38 @@ wins (CLAUDE.md): `EDIT_PLANNER.md` → `model_class: MEDIUM`, version 1.1.1 (ro
 The planner's hard parts are now deterministic (cut snapping to word boundaries, bounds
 validation, caption layout, collision relocation), so the judgment left for the model is
 mid-tier. Reversible by flipping the frontmatter back if real evals show quality loss.
+
+---
+
+## 2026-10-16 — In-app finishing editor (explicit owner decision)
+
+**Chris's request:** after the system edits a video, he wants to finish it himself in the app —
+length, clips and their order (across takes), cuts, captions (text, font, color), grading,
+zoom, crop — "like the most premium Adobe app or CapCut", then save it to its calendar slot,
+"so you don't need to go out of house."
+
+**Conflict with the spec:** §26 lists "full Premiere replacement" under *Do not build yet*.
+Chris is the human owner (authority level 1, above the spec's defaults), and his request is
+scoped to *finishing* an AI edit, not a general-purpose NLE — so this is built, and the scope
+line is held: single-layer timeline over his own raw takes, text/caption/zoom tracks, a
+whole-video grade. Not in scope: multi-layer compositing, keyframe curves, effects
+libraries, audio mixing beyond per-clip volume, B-roll/music (still no asset library).
+
+**Architecture:** the edit stays a *document*, not pixels. `EditTimeline` v2
+(`packages/media/src/timeline.ts`) is the single source of truth for both the browser preview
+and the ffmpeg renderer; the AI's `EditPlanOutput` converts deterministically into one
+(`planToTimeline`). Saving stores the timeline on a NEW `EditPlan` row (append-only history)
+via `saveFinishingEdit`, which rolls a RENDERED/QC_REPAIR/QC_BLOCKED/READY/SCHEDULED item back
+to EDIT_PLANNED (new rollback transitions, `/docs/STATE_MACHINE.md`) — an edit changes what's
+on screen, so it must render and pass all four hard gates again before it can be scheduled;
+"Finish & schedule" chains save → render → Quality Gate → schedule and reports each step.
+Caption selection/timing/chunking is one pure module shared by preview and renderer, so the
+captions Chris sees are the captions that render.
+
+**Alternatives considered:** embedding a third-party web editor SDK (heavy, licensing, and
+its export wouldn't go through our hard gates/provenance); exporting to CapCut/Premiere
+(exactly the "going out of house" Chris wants to avoid); a destructive in-browser render
+(non-reproducible, bypasses the deterministic renderer).
+
+**Reversibility:** additive. The editor is one route; removing it leaves plans/timelines
+renderable. The rollback transitions only ever lead back into the gated path.

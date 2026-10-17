@@ -7,3 +7,6 @@ export * from "./timeline";
 export * from "./font-registry";
 export * from "./caption-chunking";
 export * from "./timeline-captions";
+export * from "./font-metrics";
+export * from "./timeline-layout";
+export * from "./platform-profiles";

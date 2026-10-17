@@ -12,6 +12,7 @@ import {
   recordTakeSelection,
   recordEditPlan,
   recordTranscript,
+  saveFinishingEdit,
 } from "@chris/domain";
 import { EditPlanOutputSchema } from "@chris/agents";
 import { mapEditPlanToRenderInstructions, listUnexecutedPlanInstructions } from "../render-job";
@@ -343,6 +344,141 @@ describe("renderContentItem (real ffmpeg, real storage, real state machine)", ()
     },
     60000,
   );
+});
+
+describe("renderContentItem with a finishing-edit timeline (multi-take)", () => {
+  let storageDir: string;
+  let storage: LocalFsStorageAdapter;
+  let takeBytes: Buffer[];
+
+  beforeAll(async () => {
+    storageDir = await mkdtemp(join(tmpdir(), "chris-worker-storage-"));
+    storage = new LocalFsStorageAdapter({ baseDir: storageDir });
+    const genDir = await mkdtemp(join(tmpdir(), "chris-worker-fixture-"));
+    const { readFile } = await import("node:fs/promises");
+    takeBytes = [];
+    // Take 1: 640x480@30 with audio. Take 2: portrait 720x1280@25, no audio.
+    await runFfmpegRaw(["-y", "-f", "lavfi", "-i", "testsrc=size=640x480:duration=6:rate=30", "-f", "lavfi", "-i", "sine=frequency=500:duration=6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", join(genDir, "t1.mp4")]);
+    await runFfmpegRaw(["-y", "-f", "lavfi", "-i", "testsrc2=size=720x1280:duration=6:rate=25", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(genDir, "t2.mp4")]);
+    takeBytes.push(await readFile(join(genDir, "t1.mp4")), await readFile(join(genDir, "t2.mp4")));
+    await rm(genDir, { recursive: true, force: true });
+  }, 30000);
+
+  afterAll(async () => {
+    await rm(storageDir, { recursive: true, force: true });
+  });
+
+  async function itemWithTwoTakes() {
+    const item = await createContentItem(prisma, { title: "Finishing edit render" }, { actorId: "test-user" });
+    for (const to of ["SELECTED", "CONTRACTED", "RESEARCHING", "RESEARCHED", "SCRIPTING", "SCRIPTED", "READY_TO_FILM", "FILMED"] as const) {
+      await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM" });
+    }
+    const assets = [];
+    for (const [i, bytes] of takeBytes.entries()) {
+      const storageKey = `raw/${item.id}/take-${i + 1}.mp4`;
+      await storage.put(storageKey, bytes);
+      assets.push(
+        await createMediaAsset(
+          prisma,
+          { contentItemId: item.id, kind: "RAW_TAKE", storageKey, originalFilename: `take-${i + 1}.mp4`, mimeType: "video/mp4", sizeBytes: bytes.byteLength },
+          { actorId: "chris" },
+        ),
+      );
+      const probed = await probeMedia(join(storageDir, storageKey));
+      await analyzeMediaAsset(
+        prisma,
+        assets[i]!.id,
+        {
+          durationSeconds: probed.durationSeconds, width: probed.width, height: probed.height, frameRate: probed.frameRate,
+          hasAudio: probed.hasAudio, videoCodec: probed.videoCodec, audioCodec: probed.audioCodec, transcript: `take ${i + 1}`,
+        },
+        { actorId: "chris" },
+      );
+    }
+    await recordTranscript(prisma, { mediaAssetId: assets[0]!.id, text: "first take words", words: [{ word: "first", start: 1.1, end: 1.5 }, { word: "take", start: 1.5, end: 1.9 }, { word: "words.", start: 1.9, end: 2.4 }], source: "LOCAL_WHISPER" }, { actorId: "job" });
+    await recordTranscript(prisma, { mediaAssetId: assets[1]!.id, text: "second take", words: [{ word: "second", start: 3.2, end: 3.6 }, { word: "take.", start: 3.6, end: 4.0 }], source: "LOCAL_WHISPER" }, { actorId: "job" });
+    const selection = await recordTakeSelection(prisma, { contentItemId: item.id, selectedMediaAssetId: assets[0]!.id, confidence: 0.9, reason: "best" }, { actorId: "chris" });
+    const editPlan = await recordEditPlan(
+      prisma,
+      {
+        contentItemId: item.id,
+        takeSelectionId: selection.id,
+        productionTier: "FAST",
+        targetDurationSeconds: 3,
+        plan: {
+          segments: [{ startSeconds: 1, endSeconds: 4 }], targetDimensions: { width: 1080, height: 1920 }, textOverlays: [], normalizeAudio: true,
+          bRollRequests: [], musicTrack: null, sfxEvents: [], transitions: [], targetDurationSeconds: 3, productionTier: "FAST", doNothingElse: false, rationale: "base",
+        },
+      },
+      { actorId: "chris" },
+    );
+    return { item, assets, editPlan };
+  }
+
+  it(
+    "renders Chris's timeline: clips from BOTH takes, his texts/grade/captions — not the AI plan",
+    async () => {
+      const { item, assets } = await itemWithTwoTakes();
+      const timeline = {
+        version: 2,
+        clips: [
+          { id: "a", mediaAssetId: assets[0]!.id, sourceStart: 1, sourceEnd: 2.5 },
+          { id: "b", mediaAssetId: assets[1]!.id, sourceStart: 3, sourceEnd: 4.5, crop: { zoom: 1.2, panX: 0.5, panY: 0 } },
+        ],
+        texts: [{ id: "t", text: "Chris's own headline", start: 0, end: 3, fontId: "bebas-neue", fontSize: 110, color: "#FFFFFF", backgroundColor: "#000000AA" }],
+        captions: { preset: "KARAOKE", fontId: "montserrat-black", fontSize: 70, color: "#FFFFFF", highlightColor: "#FFD84D" },
+        zooms: [{ id: "z", start: 2, end: 2.8, zoom: 1.3, mode: "EASE", easeSeconds: 0.4 }],
+        grade: { preset: "CINEMATIC" },
+      };
+      await saveFinishingEdit(prisma, { contentItemId: item.id, timeline, durationSeconds: 3, actorId: "chris" });
+
+      const result = await renderContentItem(prisma, storage, item.id, { encode: { preset: "ultrafast" } }, { actorId: "chris" });
+      expect(result.status).toBe("SUCCESS");
+      const report = result.technicalQCReport as { overall: string; timelineSource: string; renderEngine: string; captions: { rendered: number } };
+      expect(report.overall).toBe("PASS");
+      expect(report.timelineSource).toBe("FINISHING_EDIT");
+      expect(report.renderEngine).toBe("timeline-v2");
+      expect(report.captions.rendered).toBe(2); // one phrase per take
+      expect(result.unexecutedInstructions).toEqual([expect.stringMatching(/clip 2 \(b\): source has no audio/)]);
+      const row = await prisma.render.findFirst({ where: { contentItemId: item.id }, orderBy: { createdAt: "desc" } });
+      expect(row?.durationSeconds).toBeGreaterThan(2.9);
+      expect(row?.durationSeconds).toBeLessThan(3.1);
+      expect(row?.width).toBe(1080);
+    },
+    90000,
+  );
+
+  it("an invalid finishing-edit timeline fails the render instead of silently rendering the AI plan", async () => {
+    const { item, editPlan } = await itemWithTwoTakes();
+    await prisma.editPlan.update({
+      where: { id: editPlan.id },
+      data: { plan: { ...(editPlan.plan as Record<string, unknown>), timeline: { version: 2, clips: [] } } },
+    });
+    const result = await renderContentItem(prisma, storage, item.id, {}, { actorId: "chris" });
+    expect(result.status).toBe("FAILED");
+    expect(result.errorMessage).toMatch(/finishing-edit timeline/);
+  }, 30000);
+
+  it("refuses a timeline that pulls media from another content item", async () => {
+    const { item, editPlan } = await itemWithTwoTakes();
+    const other = await itemWithTwoTakes();
+    await prisma.editPlan.update({
+      where: { id: editPlan.id },
+      data: {
+        plan: {
+          ...(editPlan.plan as Record<string, unknown>),
+          timeline: {
+            version: 2,
+            clips: [{ id: "x", mediaAssetId: other.assets[0]!.id, sourceStart: 0, sourceEnd: 2 }],
+            captions: { fontId: "inter-display-bold", fontSize: 64, color: "#FFFFFF", highlightColor: "#FFD84D" },
+          },
+        },
+      },
+    });
+    const result = await renderContentItem(prisma, storage, item.id, {}, { actorId: "chris" });
+    expect(result.status).toBe("FAILED");
+    expect(result.errorMessage).toMatch(/don't belong to this item/);
+  }, 30000);
 });
 
 describe("mapEditPlanToRenderInstructions (pure)", () => {

@@ -5,6 +5,7 @@ export { Prisma } from "./prisma";
 export * from "./state-machine";
 export * from "./manual-transition";
 export * from "./content-stage";
+export * from "./render-variant";
 export * from "./audit";
 export * from "./decision-journal";
 export * from "./feature-flags";

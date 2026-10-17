@@ -141,6 +141,9 @@ export const EditTimelineSchema = z.object({
   zooms: z.array(TimelineZoomSchema).default([]),
   grade: TimelineGradeSchema.default({ preset: "NONE", brightness: 0, contrast: 1, saturation: 1, temperature: 0, vignette: 0 }),
   audio: z.object({ normalize: z.boolean().default(true) }).default({ normalize: true }),
+  /** Thumbnail frame (OUTPUT timeline seconds) — sent to each platform the way its API takes
+   * a cover (Instagram thumb_offset, TikTok video_cover_timestamp_ms). Null = platform default. */
+  coverFrameSeconds: z.number().nonnegative().nullable().default(null),
 });
 export type EditTimeline = z.infer<typeof EditTimelineSchema>;
 export type EditTimelineInput = z.input<typeof EditTimelineSchema>;

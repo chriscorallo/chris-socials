@@ -23,6 +23,10 @@ import {
   checkOverlayCollisions,
   checkCaptionOverlayCollisions,
   DEFAULT_CAPTIONS_CONFIG,
+  EditTimelineSchema,
+  timelineCaptionChunks,
+  findTimelineCollisions,
+  nodeMeasureText,
   type CaptionCollision,
 } from "@chris/media";
 import type { StorageAdapter } from "@chris/media";
@@ -131,32 +135,68 @@ export async function runQualityGateForContentItem(
   const brandStatus = brandGateFromScores(brandScore, voiceScore);
   const creativeStatus = creativeGateFromScore(originalityScore);
 
-  // Deterministic overlay-collision check — pure code, no model call, no I/O beyond what's
-  // already in memory (the EditPlan itself).
-  const overlayCollisions = checkOverlayCollisions(plan.textOverlays);
-  const collisionIssues: QCIssueInput[] = overlayCollisions.map((c) => ({
-    category: "CAPTION_COLLISION",
-    description: `"${c.a}" and "${c.b}" occupy the same ${c.position} region from ${c.overlapStartSeconds}s to ${c.overlapEndSeconds}s.`,
-    severity: "BLOCKING",
-    timestampSeconds: c.overlapStartSeconds,
-    recommendedRepair: "Stagger the two overlays in time, or move one to a different screen position.",
-    source: "OVERLAY_COLLISION",
-  }));
+  // A finishing edit (plan.timeline) is what rendered — check ITS texts and captions with the
+  // exact layouts the timeline renderer drew. Plain plans keep the original checks.
+  const rawTimeline = (editPlanRow.plan as Record<string, unknown> | null)?.timeline;
+  const parsedTimeline = rawTimeline != null ? EditTimelineSchema.safeParse(rawTimeline) : null;
+  const timeline = parsedTimeline?.success ? parsedTimeline.data : null;
 
-  // Word captions vs overlays — also deterministic. The renderer already relocates captions
-  // around overlays where it can; only collisions it couldn't avoid are reported here.
-  const takeSelection = await db.takeSelection.findUnique({ where: { id: editPlanRow.takeSelectionId } });
-  const sourceAsset = takeSelection
-    ? await db.mediaAsset.findUnique({ where: { id: takeSelection.selectedMediaAssetId } })
-    : null;
-  const captionCollisions = checkCaptionOverlayCollisions({
-    overlays: plan.textOverlays,
-    captions: plan.captions ?? DEFAULT_CAPTIONS_CONFIG,
-    sourceWords: parseTranscriptWords(sourceAsset?.transcriptWords) ?? [],
-    segments: plan.segments,
-    canvas: plan.targetDimensions ?? { width: 1080, height: 1920 },
-  });
-  for (const c of captionCollisions) collisionIssues.push(captionCollisionToIssue(c));
+  const collisionIssues: QCIssueInput[] = [];
+  if (timeline) {
+    // Deterministic, pure layout arithmetic — no model call.
+    const assetIds = [...new Set(timeline.clips.map((c) => c.mediaAssetId))];
+    const assets = await db.mediaAsset.findMany({ where: { id: { in: assetIds } } });
+    const wordsByAsset = Object.fromEntries(assets.map((a) => [a.id, parseTranscriptWords(a.transcriptWords)]));
+    const chunks = timelineCaptionChunks(timeline, wordsByAsset);
+    for (const c of findTimelineCollisions(timeline, chunks, nodeMeasureText)) {
+      collisionIssues.push(
+        c.kind === "TEXT_TEXT"
+          ? {
+              category: "CAPTION_COLLISION",
+              description: `"${c.a}" and "${c.b}" overlap on screen from ${c.overlapStartSeconds}s to ${c.overlapEndSeconds}s.`,
+              severity: "BLOCKING",
+              timestampSeconds: c.overlapStartSeconds,
+              recommendedRepair: "Stagger the two texts in time, or move one of them.",
+              source: "OVERLAY_COLLISION",
+            }
+          : captionCollisionToIssue({
+              captionText: c.a,
+              overlayText: c.b,
+              overlapStartSeconds: c.overlapStartSeconds,
+              overlapEndSeconds: c.overlapEndSeconds,
+            }),
+      );
+    }
+  } else {
+    // Deterministic overlay-collision check — pure code, no model call, no I/O beyond what's
+    // already in memory (the EditPlan itself).
+    const overlayCollisions = checkOverlayCollisions(plan.textOverlays);
+    for (const c of overlayCollisions) {
+      collisionIssues.push({
+        category: "CAPTION_COLLISION",
+        description: `"${c.a}" and "${c.b}" occupy the same ${c.position} region from ${c.overlapStartSeconds}s to ${c.overlapEndSeconds}s.`,
+        severity: "BLOCKING",
+        timestampSeconds: c.overlapStartSeconds,
+        recommendedRepair: "Stagger the two overlays in time, or move one to a different screen position.",
+        source: "OVERLAY_COLLISION",
+      });
+    }
+
+    // Word captions vs overlays — also deterministic. The renderer already relocates captions
+    // around overlays where it can; only collisions it couldn't avoid are reported here.
+    const takeSelection = await db.takeSelection.findUnique({ where: { id: editPlanRow.takeSelectionId } });
+    const sourceAsset = takeSelection
+      ? await db.mediaAsset.findUnique({ where: { id: takeSelection.selectedMediaAssetId } })
+      : null;
+    const captionCollisions = checkCaptionOverlayCollisions({
+      overlays: plan.textOverlays,
+      captions: plan.captions ?? DEFAULT_CAPTIONS_CONFIG,
+      sourceWords: parseTranscriptWords(sourceAsset?.transcriptWords) ?? [],
+      segments: plan.segments,
+      canvas: plan.targetDimensions ?? { width: 1080, height: 1920 },
+    });
+    for (const c of captionCollisions) collisionIssues.push(captionCollisionToIssue(c));
+  }
 
   const workDir = await mkdtemp(join(tmpdir(), "chris-quality-gate-"));
   // No initializer: either both are assigned before the try block ends, or it throws and
@@ -176,8 +216,11 @@ export async function runQualityGateForContentItem(
     );
     const frames = await extractFrames(videoPath, timestamps);
 
-    const overlaySummary =
-      plan.textOverlays.length === 0
+    const overlaySummary = timeline
+      ? timeline.texts.length === 0
+        ? "(none planned)"
+        : timeline.texts.map((t) => `- "${t.text}" at (${t.x}, ${t.y}) ${t.start}s-${t.end}s (${t.preset})`).join("\n")
+      : plan.textOverlays.length === 0
         ? "(none planned)"
         : plan.textOverlays
             .map((o) => `- "${o.text}" [${o.position}] ${o.startSeconds}s-${o.endSeconds}s (${o.style})`)
