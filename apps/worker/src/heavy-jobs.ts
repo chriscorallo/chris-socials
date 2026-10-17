@@ -397,6 +397,9 @@ async function runIngest(
       matte.push(...(await ensurePersonMattes(db, storage, { mediaAssetIds: [t.id] }, actor, { compute: ctx.computeMatte })));
     }
   }
+  // Once more at the end: the starter edit may have been made (upload screen) while this job
+  // ran, after the in-loop attempt — an untouched cut then picks up the face track. No-op otherwise.
+  if (transcribe.length || track.length) styleCut.push(await maybeAutoStyleCut(db, storage, a.contentItemId, actor));
   const failures = [
     ...transcribe.filter((r) => r.status === "FAILED").map((r) => `transcription: ${r.errorMessage}`),
     ...track.filter((r) => r.status === "FAILED").map((r) => `face tracking: ${r.errorMessage}`),
