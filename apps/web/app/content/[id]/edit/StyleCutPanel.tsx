@@ -7,7 +7,7 @@ import { Icon } from "./icons";
 
 /**
  * "Style cut": the no-AI edit paced like Chris's reference creators (pauses out, cuts on their
- * rhythm, punch-ins on his face). Shows what the current cut did and offers the two choices —
+ * pause removal, punch-ins on his face). Shows what the current cut did and offers the two choices —
  * re-apply it, or go back to the plain full take. Each choice is saved as a new version, so
  * Undo brings the previous edit back. See docs/decisions-pending/style-cut.md.
  */
@@ -61,7 +61,7 @@ export function StyleCutPanel() {
               </>
             ) : (
               <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-text-muted)]">
-                Takes out your pauses and cuts on the rhythm of the creators you follow, with punch-ins on your face. No AI, free.
+                Takes out your pauses and dead air so you flow like the creators you follow — every cut removes a pause, never a cut just for the sake of it — with punch-ins on your face to hide the jumps. No AI, free.
               </p>
             )}
           </div>

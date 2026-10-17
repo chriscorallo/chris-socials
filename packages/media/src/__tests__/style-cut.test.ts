@@ -236,10 +236,18 @@ describe("buildStyleCut — pauses and dead air", () => {
 });
 
 describe("buildStyleCut — rhythm", () => {
+  it("by default never adds a cut just to hit a cut rate: every cut removes a pause", () => {
+    const { words, duration } = speech({ sentences: 16, pauses: [0.3, 0.35], seed: 11 });
+    const r = okCut(words, duration);
+    expect(r.shots.filter((s) => s.cutBefore === "RHYTHM")).toHaveLength(0);
+    expect(r.stats.rhythmCuts).toBe(0);
+  });
+
+  // Opt-in only (rhythmCuts: true) — kept for comparison/testing.
   it("shots land in the target p25–p75 band (opening shot near the first-cut target)", () => {
     // Long sentences, few pauses → the rhythm cuts do the pacing.
     const { words, duration } = speech({ sentences: 16, pauses: [0.3, 0.35], seed: 11 });
-    const r = okCut(words, duration);
+    const r = okCut(words, duration, { options: { rhythmCuts: true } });
     const T = DEFAULT_STYLE_CUT_TARGET;
     const lens = r.timeline.clips.map(clipDuration);
     expect(lens.length).toBeGreaterThan(8);
@@ -254,7 +262,7 @@ describe("buildStyleCut — rhythm", () => {
 
   it("rhythm cuts sit on word boundaries and prefer sentence ends", () => {
     const { words, duration } = speech({ sentences: 16, pauses: [0.3, 0.35], seed: 11 });
-    const r = okCut(words, duration);
+    const r = okCut(words, duration, { options: { rhythmCuts: true } });
     const rhythm = r.shots.filter((s) => s.cutBefore === "RHYTHM");
     expect(rhythm.length).toBeGreaterThan(3);
     let atSentence = 0;
@@ -270,8 +278,8 @@ describe("buildStyleCut — rhythm", () => {
   it("follows a different target cadence", () => {
     const { words, duration } = speech({ sentences: 20, pauses: [0.3], seed: 4 });
     const slow: StyleCutTarget = { ...DEFAULT_STYLE_CUT_TARGET, shotMedianS: 4, shotP25S: 3.2, shotP75S: 5 };
-    const fast = okCut(words, duration);
-    const slower = okCut(words, duration, { target: slow });
+    const fast = okCut(words, duration, { options: { rhythmCuts: true } });
+    const slower = okCut(words, duration, { target: slow, options: { rhythmCuts: true } });
     expect(slower.timeline.clips.length).toBeLessThan(fast.timeline.clips.length);
     expect(slower.stats.shotMedianS).toBeGreaterThan(3);
   });

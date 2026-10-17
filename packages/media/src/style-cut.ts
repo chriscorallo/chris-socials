@@ -15,9 +15,13 @@ import { EditTimelineSchema, type EditTimeline, type TimelineClip } from "./time
  *     pad after the last word and before the next so consonants/breaths are never clipped.
  *     A cut is NEVER inside a word. Short pauses that would create a shot shorter than the
  *     minimum are left alone (a jump cut every half second reads as frantic, not edited).
- *  3. Rhythm: every removed pause is a visual cut. Shots longer than the target's p75 are
- *     split at word boundaries (sentence ends > commas > natural gaps) near the target median;
- *     the opening shot ends near the target first-cut / hook time.
+ *  3. Rhythm: every removed pause is a visual cut — and by default that's the ONLY reason to
+ *     cut. Chris's rule: a cut exists to make the delivery fluid (no dead pauses) and serve the
+ *     story, never just to hit a cut-rate number, so `rhythmCuts` is off. When turned on,
+ *     shots longer than the target's p75 are split at word boundaries (sentence ends > commas >
+ *     natural gaps) near the target median, the opening shot near the target first-cut time.
+ *     Story-level cuts (dropping a tangent or a repeated line) are semantic — that's the AI
+ *     edit's job, not this arithmetic.
  *  4. Framing: on a single-camera talking head a "cut" is a change of framing — the shots
  *     alternate between WIDE / MEDIUM / TIGHT punch-ins (never the same framing twice in a
  *     row), centred on the face from the subject track so the head stays in frame and clear
@@ -29,7 +33,7 @@ import { EditTimelineSchema, type EditTimeline, type TimelineClip } from "./time
  * concat never slips audio between contiguous clips.
  */
 
-export const STYLE_CUT_VERSION = 1;
+export const STYLE_CUT_VERSION = 2;
 
 /** Output frame grid (s). Multiples of 1/30 are also whole frames at 60 fps. */
 const FRAME = 1 / 30;
@@ -183,6 +187,9 @@ export interface StyleCutOptions {
   whisperLeadPadS: number;
   /** A sound island with no words that's shorter than this (a breath, a click) counts as silence. */
   maxWordlessIslandS: number;
+  /** Split long uninterrupted stretches purely to match the references' cut rate. Off: cuts
+   * only where a pause/dead air was actually removed (see header, step 3). */
+  rhythmCuts: boolean;
 }
 
 export const DEFAULT_STYLE_CUT_OPTIONS: StyleCutOptions = {
@@ -195,6 +202,7 @@ export const DEFAULT_STYLE_CUT_OPTIONS: StyleCutOptions = {
   whisperTailPadS: 0.22,
   whisperLeadPadS: 0.1,
   maxWordlessIslandS: 0.3,
+  rhythmCuts: false,
 };
 
 export interface StyleCutShot {
@@ -487,7 +495,7 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
     const bounds = boundariesIn(s);
     let cursor = s.start;
     const remaining = () => s.end - cursor;
-    for (let guard = 0; guard < 500; guard++) {
+    for (let guard = 0; opts.rhythmCuts && guard < 500; guard++) {
       const isFirstShot = shots.length === 0 && cuts.length === 0;
       const rem = remaining();
       // The opening shot aims at the target first-cut time; every other shot is split only
