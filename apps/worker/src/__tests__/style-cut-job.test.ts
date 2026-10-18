@@ -46,7 +46,10 @@ describe("style cut job", () => {
     { word: "first.", start: 7.25, end: 7.9 },
   ];
 
+  // These tests cover the Cuts-only style cut; the Full edit (the default) has its own tests.
+  const prevAuto = process.env.FULL_EDIT_AUTO;
   beforeAll(async () => {
+    process.env.FULL_EDIT_AUTO = "off";
     dir = await mkdtemp(join(tmpdir(), "chris-stylecut-job-"));
     storage = new LocalFsStorageAdapter({ baseDir: join(dir, "storage") });
     const clip = join(dir, "take.mp4");
@@ -62,6 +65,8 @@ describe("style cut job", () => {
     await storage.put("raw/stylecut/take.mp4", await readFile(clip));
   }, 60_000);
   afterAll(async () => {
+    if (prevAuto === undefined) delete process.env.FULL_EDIT_AUTO;
+    else process.env.FULL_EDIT_AUTO = prevAuto;
     await rm(dir, { recursive: true, force: true });
   });
 

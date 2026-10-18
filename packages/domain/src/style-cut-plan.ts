@@ -2,6 +2,7 @@ import type { ContentState, PrismaClient } from "@prisma/client";
 import { recordAudit } from "./audit";
 import { STARTER_EDIT_ORIGIN } from "./starter-edit";
 import { getLatestEditPlan, saveFinishingEdit } from "./edit-plan";
+import { setFlag } from "./feature-flags";
 
 /**
  * Persistence for the "Style cut" (packages/media style-cut.ts — the cut itself is pure and
@@ -46,11 +47,63 @@ export function readStoredStyleCut(plan: unknown): StoredStyleCut | null {
   return typeof s.inputsKey === "string" && typeof s.summary === "string" ? (s as StoredStyleCut) : null;
 }
 
+// ---------------------------------------------------------------------------------------
+// Full edit (free) — docs/decisions-pending/full-edit.md. Same writers, same rules: AUTO only
+// over an untouched starter edit (or an earlier AUTO cut/full edit); Chris's choices are
+// finishing edits (new versions).
+// ---------------------------------------------------------------------------------------
+
+export const FULL_EDIT_AUTO_REASON = "Full edit (automatic, no AI)";
+
+/** Feature flag: ON = new uploads get "Cuts only"; OFF/absent (default) = "Full edit". */
+export const AUTO_EDIT_CUTS_ONLY_FLAG = "auto_edit.cuts_only";
+
+export type AutoEditMode = "FULL" | "CUTS";
+
+/** What a plan row's `plan.fullEdit` holds (JSON; written by the worker). */
+export interface StoredFullEdit {
+  version: number;
+  origin: "AUTO" | "CHRIS";
+  inputsKey: string;
+  summary: string;
+  /** media full-edit FullEditReport (hook candidates, removed lines, graphics, checks…). */
+  report: Record<string, unknown>;
+  /** The choices it was built with (hook index, restored lines, removed graphics). */
+  choices: Record<string, unknown>;
+  mediaAssetId: string;
+  /** Measured silences + loudness envelope — cached so "Try another hook" needn't decode again. */
+  silences?: Array<{ start: number; end: number }> | null;
+  envelope?: { frameS: number; db: number[] } | null;
+}
+
+export function readStoredFullEdit(plan: unknown): StoredFullEdit | null {
+  const fe = (plan as { fullEdit?: unknown } | null)?.fullEdit;
+  if (!fe || typeof fe !== "object") return null;
+  const f = fe as Partial<StoredFullEdit>;
+  return typeof f.inputsKey === "string" && typeof f.summary === "string" && f.report && typeof f.report === "object" ? (f as StoredFullEdit) : null;
+}
+
+/** Which automatic edit new uploads get (Chris's setting; default Full edit). */
+export async function getAutoEditMode(prisma: PrismaClient): Promise<AutoEditMode> {
+  const flag = await prisma.featureFlag.findUnique({ where: { key: AUTO_EDIT_CUTS_ONLY_FLAG } });
+  return flag?.enabled ? "CUTS" : "FULL";
+}
+
+export async function setAutoEditMode(prisma: PrismaClient, mode: AutoEditMode, actorId: string): Promise<void> {
+  await setFlag(prisma, {
+    key: AUTO_EDIT_CUTS_ONLY_FLAG,
+    enabled: mode === "CUTS",
+    description: "New uploads get the Cuts-only style cut instead of the free Full edit (default off = Full edit).",
+    actor: actorId,
+    actorType: "HUMAN",
+  });
+}
+
 export type StyleCutEligibility =
-  | { eligible: true; latestPlanId: string; replaces: "STARTER" | "AUTO_STYLE_CUT"; currentKey: string | null }
+  | { eligible: true; latestPlanId: string; replaces: "STARTER" | "AUTO_STYLE_CUT" | "AUTO_FULL_EDIT"; currentKey: string | null }
   | { eligible: false; reason: string };
 
-/** Pure: may an AUTOMATIC style cut replace this item's latest plan? */
+/** Pure: may an AUTOMATIC style cut / full edit replace this item's latest plan? */
 export function autoStyleCutEligibility(
   state: ContentState,
   latest: { id: string; plan: unknown; revisionReason: string | null } | null,
@@ -61,6 +114,10 @@ export function autoStyleCutEligibility(
   const sc = readStoredStyleCut(plan);
   if (sc && sc.origin === "AUTO" && latest.revisionReason === STYLE_CUT_AUTO_REASON) {
     return { eligible: true, latestPlanId: latest.id, replaces: "AUTO_STYLE_CUT", currentKey: sc.inputsKey };
+  }
+  const fe = readStoredFullEdit(plan);
+  if (fe && fe.origin === "AUTO" && latest.revisionReason === FULL_EDIT_AUTO_REASON) {
+    return { eligible: true, latestPlanId: latest.id, replaces: "AUTO_FULL_EDIT", currentKey: fe.inputsKey };
   }
   if (plan.origin === STARTER_EDIT_ORIGIN && plan.timeline == null && latest.revisionReason == null) {
     return { eligible: true, latestPlanId: latest.id, replaces: "STARTER", currentKey: null };
@@ -92,13 +149,46 @@ export async function recordAutoStyleCut(
   },
   actor: { actorId: string },
 ) {
+  return recordAutoEdit(prisma, { ...input, fullEdit: null }, actor);
+}
+
+/** The AUTO full edit: same rules as the AUTO style cut (eligibility, CAS, lock, idempotency). */
+export async function recordAutoFullEdit(
+  prisma: PrismaClient,
+  input: {
+    contentItemId: string;
+    expectedLatestPlanId: string;
+    timeline: unknown;
+    durationSeconds: number;
+    fullEdit: StoredFullEdit;
+  },
+  actor: { actorId: string },
+) {
+  return recordAutoEdit(prisma, { ...input, styleCut: null }, actor);
+}
+
+async function recordAutoEdit(
+  prisma: PrismaClient,
+  input: {
+    contentItemId: string;
+    expectedLatestPlanId: string;
+    timeline: unknown;
+    durationSeconds: number;
+    styleCut: StoredStyleCut | null;
+    fullEdit: StoredFullEdit | null;
+  },
+  actor: { actorId: string },
+) {
+  const key = input.fullEdit?.inputsKey ?? input.styleCut!.inputsKey;
+  const reason = input.fullEdit ? FULL_EDIT_AUTO_REASON : STYLE_CUT_AUTO_REASON;
+  const summary = input.fullEdit?.summary ?? input.styleCut!.summary;
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`style-cut:${input.contentItemId}`}))::text AS locked`;
     const item = await tx.contentItem.findUniqueOrThrow({ where: { id: input.contentItemId }, select: { currentState: true } });
     const latest = await tx.editPlan.findFirst({ where: { contentItemId: input.contentItemId }, orderBy: { createdAt: "desc" } });
     const elig = autoStyleCutEligibility(item.currentState, latest);
     if (!elig.eligible || !latest || latest.id !== input.expectedLatestPlanId) return null;
-    if (elig.currentKey === input.styleCut.inputsKey) return null;
+    if (elig.currentKey === key) return null;
     const basePlan = (latest.plan ?? {}) as Record<string, unknown>;
     const editPlan = await tx.editPlan.create({
       data: {
@@ -107,9 +197,14 @@ export async function recordAutoStyleCut(
         productionTier: latest.productionTier,
         targetDurationSeconds: Math.max(0.1, input.durationSeconds),
         doNothingElse: false,
-        plan: { ...basePlan, timeline: input.timeline, styleCut: { ...input.styleCut, origin: "AUTO" } } as never,
+        plan: {
+          ...basePlan,
+          timeline: input.timeline,
+          styleCut: input.styleCut ? { ...input.styleCut, origin: "AUTO" } : null,
+          fullEdit: input.fullEdit ? { ...input.fullEdit, origin: "AUTO" } : null,
+        } as never,
         revisionOfEditPlanId: null,
-        revisionReason: STYLE_CUT_AUTO_REASON,
+        revisionReason: reason,
       },
     });
     await recordAudit(tx, {
@@ -119,7 +214,7 @@ export async function recordAutoStyleCut(
       entityType: "ContentItem",
       entityId: input.contentItemId,
       before: { editPlanId: latest.id },
-      after: { editPlanId: editPlan.id, revisionReason: STYLE_CUT_AUTO_REASON, styleCut: input.styleCut.summary, inputsKey: input.styleCut.inputsKey },
+      after: { editPlanId: editPlan.id, revisionReason: reason, [input.fullEdit ? "fullEdit" : "styleCut"]: summary, inputsKey: key },
     });
     return editPlan;
   });
@@ -145,8 +240,29 @@ export async function saveStyleCutChoice(
     durationSeconds: input.durationSeconds,
     actorId: input.actorId,
     note: input.styleCut ? `Style cut — ${input.styleCut.summary}` : "Plain full take (style cut off)",
-    planExtras: { styleCut: input.styleCut ? { ...input.styleCut, origin: "CHRIS" } : null },
+    planExtras: { styleCut: input.styleCut ? { ...input.styleCut, origin: "CHRIS" } : null, fullEdit: null },
   });
+}
+
+/** Chris's "Full edit" / "Try another hook" / "Restore line": a finishing edit (new version). */
+export async function saveFullEditChoice(
+  prisma: PrismaClient,
+  input: { contentItemId: string; timeline: unknown; durationSeconds: number; actorId: string; fullEdit: StoredFullEdit },
+) {
+  return saveFinishingEdit(prisma, {
+    contentItemId: input.contentItemId,
+    timeline: input.timeline,
+    durationSeconds: input.durationSeconds,
+    actorId: input.actorId,
+    note: `Full edit — ${input.fullEdit.summary}`.slice(0, 400),
+    planExtras: { fullEdit: { ...input.fullEdit, origin: "CHRIS" }, styleCut: null },
+  });
+}
+
+/** The latest plan's stored full edit (for the editor). */
+export async function getCurrentFullEdit(prisma: PrismaClient, contentItemId: string) {
+  const latest = await getLatestEditPlan(prisma, contentItemId);
+  return latest ? readStoredFullEdit(latest.plan) : null;
 }
 
 /** The latest plan's stored style cut (for the editor's summary line). */
