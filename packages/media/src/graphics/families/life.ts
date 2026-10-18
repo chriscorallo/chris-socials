@@ -1,3 +1,4 @@
+import type { GraphicProps } from "../contract";
 import { lines, spec, type FamilySizer, type Spec } from "./types";
 
 /**
@@ -103,46 +104,69 @@ export const LIFE_SPECS = {
   }, { preferY: 0.38 }),
 } satisfies Record<string, Spec>;
 
-export const lifeSize: FamilySizer = (p, v, head) => {
+/** Rows a month grid needs (2026 reference year; unknown month → 30 days from Sunday). */
+const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const MONTH_FIRST = [4, 0, 0, 3, 5, 1, 3, 6, 2, 4, 0, 2];
+function monthRows(title: string | null): number {
+  const t = (title ?? "").trim().toLowerCase();
+  const i = MONTH_KEYS.findIndex((m) => t.startsWith(m) || t.includes(` ${m}`));
+  return Math.ceil(((i >= 0 ? MONTH_FIRST[i]! : 0) + (i >= 0 ? MONTH_DAYS[i]! : 30)) / 7);
+}
+
+/** Content height of the tone-aware title block (title 52 + subtitle 34). */
+function hb(p: GraphicProps): number {
+  return p.title ? (p.subtitle ? 104 : 62) : p.subtitle ? 40 : 0;
+}
+
+export const lifeSize: FamilySizer = (p, v) => {
   const nI = p.items.length;
+  const h = hb(p);
   switch (p.component) {
     case "MAP_NAV":
       if (v === "PIN") return { width: 760, height: 760 };
+      if (v === "FLIGHT") return { width: 940, height: (p.title ? 96 : 0) + 690 };
+      if (v === "CITIES") return { width: 940, height: (h ? 40 + h + 24 : 24) + 520 + 24 };
       return { width: 940, height: 900 };
     case "WEATHER":
-      if (v === "WEEK") return { width: 900, height: head + Math.max(1, nI) * 104 + 60 };
-      return { width: 900, height: 560 + (nI > 1 ? 200 : 0) };
-    case "SCREEN_TIME":
-      if (v === "APPS") return { width: 900, height: head + Math.max(1, nI) * 118 + 60 };
-      return { width: 940, height: 200 + 380 + nI * 104 + 50 };
+      if (v === "WEEK") return { width: 900, height: 40 + (p.title ? 90 : 0) + Math.max(1, nI) * 100 + 36 };
+      return { width: 900, height: nI > 1 ? 700 : 480 };
+    case "SCREEN_TIME": {
+      const apps = Math.min(5, nI);
+      if (v === "APPS") return { width: 900, height: 44 + (h ? h + 30 : 0) + Math.max(1, apps) * 110 + 30 };
+      const bars = (p.series[0]?.values.length ?? 0) > 0;
+      return { width: 940, height: 194 + (bars ? 354 : 0) + (apps ? 20 + apps * 100 : 0) + 34 };
+    }
     case "PAYMENT":
-      if (v === "FEED") return { width: 940, height: 60 + Math.max(1, nI) * 150 + 20 };
-      if (v === "RECEIPT") return { width: 700, height: 300 + Math.max(1, nI) * 66 + (p.showTotal ? 130 : 40) };
-      if (v === "DECLINED") return { width: 820, height: 420 };
-      return { width: 820, height: 560 + lines(p.body, 30, 2) * 46 };
+      if (v === "FEED") return { width: 940, height: (h ? 40 + h + 16 : 30) + Math.max(1, Math.min(8, nI)) * 150 + 20 };
+      if (v === "RECEIPT") return { width: 700, height: 38 + (p.subtitle ? 196 : 156) + Math.max(1, Math.min(8, nI)) * 62 + (p.showTotal ? 114 : 10) + 72 };
+      if (v === "DECLINED") return { width: 820, height: 400 };
+      return { width: 820, height: p.body?.trim() ? 609 + lines(p.body, 34, 2) * 44 : 550 };
     case "TRAVEL":
-      if (v === "DELIVERY") return { width: 920, height: 240 + Math.max(2, nI) * 104 };
+      if (v === "DELIVERY") return { width: 920, height: 44 + Math.max(h, 96) + 34 + 76 + Math.max(1, Math.min(6, nI)) * 96 + 30 };
       if (v === "BOARDING") return { width: 900, height: 760 };
-      if (v === "TICKET") return { width: 900, height: 620 };
-      return { width: 940, height: 640 };
+      if (v === "TICKET") return { width: 900, height: 600 };
+      return { width: 940, height: 600 };
     case "DATE":
-      if (v === "MONTH") return { width: 860, height: 900 };
-      if (v === "YEARS") return { width: 900, height: 420 };
-      if (v === "UNTIL") return { width: 760, height: 520 };
+      if (v === "MONTH") return { width: 860, height: 44 + h + 30 + 56 + monthRows(p.title) * 96 + 30 };
+      if (v === "YEARS") return { width: 900, height: 44 + (p.title ? 70 : 0) + 18 + 195 + (p.subtitle ? 62 : 0) + 40 };
+      if (v === "UNTIL") return { width: 760, height: 412 + lines(p.title, 25, 2) * 53 };
       return { width: 620, height: 720 };
     case "TRACKER":
-      if (v === "SETS") return { width: 900, height: head + Math.max(1, nI) * 112 + 60 };
-      if (v === "MOOD") return { width: 900, height: head + 520 };
-      return { width: 940, height: head + 600 };
+      if (v === "SETS") return { width: 900, height: 44 + (h ? h + 26 : 0) + Math.max(1, Math.min(8, nI)) * 112 + 32 };
+      if (v === "MOOD") return { width: 900, height: 44 + (h ? h + 24 : 0) + 270 + 74 + 38 + 134 };
+      return { width: 940, height: 44 + h + 28 + 48 + 520 + 18 + 110 };
     case "LIST_SPLIT": {
+      const top = 40 + (p.title ? 62 + 24 : 0);
       if (v === "MYTH_FACT") {
-        const pairs = Math.ceil(nI / 2);
-        return { width: 960, height: head + pairs * 230 + 40 };
+        const myths = p.items.filter((i) => i.state === "NO").length;
+        const pairs = Math.max(1, myths, nI - myths);
+        return { width: 960, height: top + pairs * 230 + (pairs - 1) * 18 + 40 };
       }
       const left = p.items.filter((i) => i.state !== "NO").length;
       const right = nI - left;
       const rows = p.items.reduce((a, it) => Math.max(a, lines(it.text, 16, 3)), 1);
-      return { width: 1000, height: head + 110 + Math.max(left, right) * (60 + rows * 44) + 40 };
+      return { width: 1000, height: top + 112 + Math.max(1, left, right) * (24 + rows * 44) + 40 };
     }
     default:
       return null;

@@ -1,4 +1,4 @@
-import { lines, longest, spec, type FamilySizer, type Spec } from "./types";
+import { lines, spec, type FamilySizer, type Spec } from "./types";
 
 /**
  * SOCIAL POSTS family — generic, brand-safe "-style" platform UI (never a real platform's logo,
@@ -94,45 +94,54 @@ export const SOCIAL_SPECS = {
   }, { preferY: 0.45 }),
 } satisfies Record<string, Spec>;
 
-export const socialSize: FamilySizer = (p, v, head) => {
+export const socialSize: FamilySizer = (p, v) => {
   const nI = p.items.length;
+  const it0 = p.items[0];
   switch (p.component) {
     case "SOCIAL_POST": {
-      const bodyLines = lines(p.body, v === "PHOTO" ? 34 : 30, 6);
-      if (v === "PHOTO") return { width: 860, height: 140 + 760 + 110 + bodyLines * 48 + 40 };
-      if (v === "FORUM") return { width: 940, height: 150 + (p.title ? 70 * lines(p.title, 26, 2) : 0) + bodyLines * 50 + 130 };
-      return { width: 940, height: 170 + (v === "PRO" ? 20 : 0) + bodyLines * 54 + (nI ? 110 : 30) };
+      if (v === "PHOTO") {
+        const capL = p.body?.trim() ? lines(`${p.title ?? "Your Name"} ${p.body}`, 44, 5) : 0;
+        return { width: 860, height: 836 + 76 + (nI ? 48 : 0) + capL * 46 + (p.meta ? 46 : 0) + 28 };
+      }
+      if (v === "FORUM") {
+        const tL = lines(p.title, 26, 2);
+        return { width: 940, height: 104 + tL * 54 + (tL ? 14 : 0) + lines(p.body, 36, 6) * 48 + 126 };
+      }
+      if (v === "PRO") return { width: 940, height: 198 + Math.max(1, lines(p.body, 40, 7)) * 54 + (nI ? 70 : 0) + 122 };
+      return { width: 940, height: 174 + Math.max(1, lines(p.body, 36, 6)) * 56 + (nI ? 92 : 0) + 36 };
     }
     case "COMMENT":
-      if (v === "REPLY") return { width: 820, height: 150 + lines(p.items[0]?.text, 26, 4) * 52 };
-      if (v === "QUESTION") return { width: 760, height: 200 + Math.max(1, lines(p.items[0]?.text, 24, 4)) * 54 + 60 };
-      if (v === "PINNED") return { width: 920, height: 120 + lines(p.items[0]?.text, 32, 4) * 50 + 60 };
-      return { width: 940, height: head + p.items.reduce((a, it) => a + 92 + lines(it.text, 30, 4) * 46 + 20, 0) + 40 };
+      if (v === "REPLY") return { width: 820, height: 168 + Math.max(1, lines(it0?.text, 30, 4)) * 52 };
+      if (v === "QUESTION") return { width: 760, height: 262 + Math.max(1, lines(it0?.text, 28, 4)) * 51 };
+      if (v === "PINNED") return { width: 920, height: 188 + Math.max(1, lines(it0?.text, 30, 4)) * 52 };
+      return {
+        width: 940,
+        height: 80 + (p.title ? 80 : 0) + p.items.slice(0, 5).reduce((a, it) => a + 96 + Math.max(1, lines(it.text, it.side === "ME" ? 35 : 39, 4)) * 47, 0) + Math.max(0, Math.min(5, nI) - 1) * 26,
+      };
     case "TRENDING":
-      if (v === "CHIPS") return { width: 960, height: head + Math.ceil(Math.max(1, nI) / 2) * 120 + 60 };
-      if (v === "RISING") return { width: 900, height: head + 460 };
-      return { width: 920, height: head + Math.max(1, nI) * 132 + 60 };
+      if (v === "CHIPS") return { width: 960, height: 124 + Math.ceil(Math.max(1, Math.min(6, nI)) / 2) * 120 + 24 };
+      if (v === "RISING") return { width: 900, height: 252 + (it0?.sub || it0?.value != null ? 40 : 0) + 240 + 44 };
+      return { width: 920, height: 124 + Math.max(1, Math.min(6, nI)) * 146 + 22 };
     case "VIDEO_CARD":
-      if (v === "SUBSCRIBE") return { width: 940, height: 240 };
-      if (v === "VIEWS") return { width: 820, height: 340 };
-      if (v === "PLAYER") return { width: 980, height: 551 + 170 + (nI ? 70 : 0) };
-      return { width: 900, height: 506 + 60 + Math.min(2, lines(p.title, 28, 2)) * 56 + 70 };
+      if (v === "SUBSCRIBE") return { width: 940, height: 200 };
+      if (v === "VIEWS") return { width: 860, height: 228 + (p.title ? 50 : 0) + (p.subtitle || p.meta ? 46 : 0) };
+      if (v === "PLAYER") return { width: 980, height: 731 };
+      return { width: 900, height: 524 + Math.max(1, lines(p.title, 30, 2)) * 47 + 72 };
     case "STORY":
-      if (v === "SLIDER") return { width: 760, height: 360 };
-      if (v === "QUESTION") return { width: 760, height: 360 + Math.max(1, lines(p.items[0]?.text, 24, 4)) * 50 };
-      return { width: 780, height: 170 + lines(p.title, 22, 3) * 54 + Math.max(2, nI) * 112 + 30 };
+      if (v === "SLIDER") return { width: 760, height: 240 + Math.max(1, lines(p.title, 26, 2)) * 49 };
+      if (v === "QUESTION") return { width: 760, height: 206 + Math.max(1, lines(p.title, 26, 2)) * 47 + Math.max(1, lines(it0?.text, 26, 4)) * 48 };
+      if (v === "QUIZ") return { width: 780, height: 106 + Math.max(1, lines(p.title, 26, 3)) * 47 + Math.max(2, Math.min(4, nI)) * 110 };
+      return { width: 780, height: 92 + lines(p.title, 24, 3) * 51 + Math.max(2, Math.min(4, nI)) * 112 };
     case "SOCIAL_COUNTER":
-      if (v === "RAIL") return { width: 260, height: Math.max(1, nI) * 190 + 40 };
-      if (v === "PROFILE") return { width: 960, height: 440 };
-      if (v === "LIVE") return { width: 560, height: 160 };
-      return { width: 860, height: 520 };
+      if (v === "RAIL") return { width: 240, height: Math.max(1, Math.min(5, nI)) * 170 + 40 };
+      if (v === "PROFILE") return { width: 960, height: 454 };
+      if (v === "LIVE") return p.title?.trim() ? { width: 620, height: 150 } : { width: 400, height: 100 };
+      return { width: 860, height: (p.subtitle ? 120 : 84) + 382 };
     case "BURST":
       if (v === "FLOAT") return { width: 520, height: 1100 };
-      if (v === "DOUBLE_TAP") return { width: 760, height: 760 };
+      if (v === "DOUBLE_TAP") return { width: 760, height: p.title ? 900 : 760 };
       return { width: 1000, height: 1500 };
     default:
       return null;
   }
 };
-
-void longest;

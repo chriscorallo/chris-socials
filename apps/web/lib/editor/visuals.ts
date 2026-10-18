@@ -240,7 +240,7 @@ export const TEMPLATE_FIELDS: Record<MotionTemplate, FieldSpec[]> = {
     { key: "subtitle", label: "Subtitle", kind: "text", max: 60, nullable: true, placeholder: "Optional" },
   ],
   // Composable graphics have their own editor (data table, quick entry, format, animation).
-  GRAPHIC: ["component", "variant", "preset", "title", "subtitle", "body", "series", "categories", "items", "highlight", "showTotal", "range", "format", "animation", "screen"].map(
+  GRAPHIC: ["component", "variant", "preset", "title", "subtitle", "body", "series", "categories", "items", "highlight", "showTotal", "range", "format", "animation", "screen", "meta", "tone"].map(
     (key) => ({ key, label: key, kind: "custom" as const }),
   ),
 };

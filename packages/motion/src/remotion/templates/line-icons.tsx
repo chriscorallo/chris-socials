@@ -77,6 +77,78 @@ export const LINE_ICON_PATHS: Record<string, Stroke[]> = {
     { d: "M58 26v14", accent: true },
     { d: "M58 41.5a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6z", accent: true },
   ],
+  TROPHY: [
+    { d: "M20 10h24v14c0 7.2-5.4 13-12 13s-12-5.8-12-13z" },
+    { d: "M20 15h-6c0 6 3 10 7.5 11M44 15h6c0 6-3 10-7.5 11" },
+    { d: "M32 37v8M24 54h16M27 54l1.5-9h7l1.5 9" },
+    { d: "M32 16.5l1.9 3.9l4.3 0.6l-3.1 3l0.7 4.2l-3.8-2l-3.8 2l0.7-4.2l-3.1-3l4.3-0.6z", accent: true },
+  ],
+  ROCKET: [
+    { d: "M32 6c7 5.5 10 13 10 22v14H22V28c0-9 3-16.5 10-22z" },
+    { d: "M22 32l-7 7v6l7-3M42 32l7 7v6l-7-3" },
+    { d: "M32 20.5a4 4 0 1 1 0 8a4 4 0 1 1 0-8z" },
+    { d: "M27 46c0 5 2 8 5 12c3-4 5-7 5-12", accent: true },
+  ],
+  LIGHTBULB: [
+    { d: "M24.5 41c0-4-6.5-7.5-6.5-15.5a14 14 0 0 1 28 0c0 8-6.5 11.5-6.5 15.5z" },
+    { d: "M25 46h14M26.5 51h11M29 56h6" },
+    { d: "M28 34l2-8l2 4l2-4l2 8", accent: true },
+    { d: "M32 3v3M12 11l2.2 2.2M52 11l-2.2 2.2M6 25.5h3M55 25.5h3", accent: true },
+  ],
+  BRAIN: [
+    { d: "M31 12c-2.5-3-8-3-10.5 0.5c-4.5-0.5-8 3.5-7 8c-4 2-5 7.5-2 11c-2.5 4 0 9.5 4.5 10c1 4.5 6 7 10 5c2 2 5 2.5 5 2.5z" },
+    { d: "M33 12c2.5-3 8-3 10.5 0.5c4.5-0.5 8 3.5 7 8c4 2 5 7.5 2 11c2.5 4 0 9.5-4.5 10c-1 4.5-6 7-10 5c-2 2-5 2.5-5 2.5z" },
+    { d: "M32 12v37" },
+    { d: "M20 22c3 0 5 2 5 5M17 34c3-1 6 0 7 3M44 22c-3 0-5 2-5 5M47 34c-3-1-6 0-7 3", accent: true },
+  ],
+  GIFT: [
+    { d: "M12 26h40v8H12z" },
+    { d: "M15 34v20h34V34" },
+    { d: "M32 26v28" },
+    { d: "M32 26c-3-7-13-11-13-4c0 3 4 4 13 4zM32 26c3-7 13-11 13-4c0 3-4 4-13 4z", accent: true },
+  ],
+  KEY: [
+    { d: "M18 20a11 11 0 1 1 0 22a11 11 0 1 1 0-22z" },
+    { d: "M18 27.2a3.8 3.8 0 1 1 0 7.6a3.8 3.8 0 1 1 0-7.6z", accent: true },
+    { d: "M29 31h28" },
+    { d: "M45 31v7M51 31v5M57 31v8" },
+  ],
+  MAGNIFIER: [
+    { d: "M27 8a19 19 0 1 1 0 38a19 19 0 1 1 0-38z" },
+    { d: "M40.5 40.5L56 56" },
+    { d: "M17 22a11 11 0 0 1 9-7", accent: true },
+  ],
+  MEGAPHONE: [
+    { d: "M12 26h8l20-12v36L20 38h-8a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3z" },
+    { d: "M18 38l3 12h6l-3-12" },
+    { d: "M46 25c2 2 2 12 0 14M51 20c4.5 4.5 4.5 19.5 0 24", accent: true },
+  ],
+  CROWN: [
+    { d: "M10 22l9 9l13-17l13 17l9-9l-5 24H15z" },
+    { d: "M15 52h34" },
+    { d: "M28 38a4 4 0 1 1 8 0a4 4 0 1 1-8 0z", accent: true },
+    { d: "M10 19.5v0.1M32 11.5v0.1M54 19.5v0.1", accent: true },
+  ],
+  FIRE: [
+    { d: "M32 6c2 8 14 14 14 29a14 14 0 0 1-28 0c0-7 3-11 6-14c0 5 2 8 5 9c-1-9 1-17 3-24z" },
+    { d: "M32 32c3 3 6 5 6 9.5a6 6 0 0 1-12 0c0-4 3-6.5 6-9.5z", accent: true },
+  ],
+  LIGHTNING: [
+    { d: "M36 6L16 36h14l-4 22l22-32H34l2-20z" },
+    { d: "M50 10l-3 4M54 18l-4 1M12 46l4-1M14 54l3-4", accent: true },
+  ],
+  TARGET: [
+    { d: "M30 10a22 22 0 1 1 0 44a22 22 0 1 1 0-44z" },
+    { d: "M30 19a13 13 0 1 1 0 26a13 13 0 1 1 0-26z" },
+    { d: "M30 28.5a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0-7z", accent: true },
+    { d: "M30 32L50 12M50 12v-5M50 12h5", accent: true },
+  ],
+  LAPTOP: [
+    { d: "M15 14h34a3 3 0 0 1 3 3v24H12V17a3 3 0 0 1 3-3z" },
+    { d: "M6 41h52l-3 7H9z" },
+    { d: "M28 44.5h8" },
+    { d: "M18 34l7-7l5 4l9-9l6 5", accent: true },
+  ],
 };
 
 function DrawnIcon({ strokes, size, primary, secondary, frame, fps, start, tempo, glow }: { strokes: Stroke[]; size: number; primary: string; secondary: string; frame: number; fps: number; start: number; tempo: number; glow: number }) {

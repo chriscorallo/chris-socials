@@ -4,7 +4,7 @@ import { ThreeCanvas } from "@remotion/three";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { EASE_IN_OUT, EASE_OUT, SPRINGS, clamp01, countUp, prog, springAt } from "../motion";
+import { EASE_IN, EASE_IN_OUT, EASE_OUT, SPRINGS, clamp01, countUp, prog, springAt } from "../motion";
 import { FONT, TEXT_LIFT, compactNumber, formatNumber, mix, rgba, withUnit, type Palette } from "../theme";
 import { gradientText } from "./text";
 import { feelOf, iconStyleOf, type TemplateComponentProps } from "./types";
@@ -604,6 +604,757 @@ function GradCap({ m, frame }: { m: Mats; frame: number }) {
   );
 }
 
+// ------------------------------------------------------------------ library-2 objects
+// Light sources (flame, filament, screen glow, sound waves) carry their own unlit/emissive
+// materials — like the Phone screen — so they glow the same in every material family; every
+// solid surface uses the shared slots.
+
+let glowTex: THREE.Texture | null = null;
+function glowTexture(): THREE.Texture {
+  if (glowTex) return glowTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, "rgba(255,255,255,1)");
+  grd.addColorStop(0.3, "rgba(255,255,255,0.45)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
+  glowTex = new THREE.CanvasTexture(c);
+  return glowTex;
+}
+
+/** A soft camera-facing halo (normal blending: safe on the transparent layer). */
+function GlowSprite({ position, size, color, opacity }: { position: [number, number, number]; size: number; color: string; opacity: number }) {
+  const tex = useMemo(() => glowTexture(), []);
+  if (opacity <= 0.004) return null;
+  return (
+    <sprite position={position} scale={[size, size, 1]}>
+      <spriteMaterial map={tex} color={color} transparent opacity={Math.min(1, opacity)} depthWrite={false} toneMapped={false} />
+    </sprite>
+  );
+}
+
+/** Damped wobble after an impact at `at` (0 before it). */
+function wobble(frame: number, at: number, amp: number, decay = 6, freq = 1.3): number {
+  const k = frame - at;
+  return k < 0 ? 0 : amp * Math.exp(-k / decay) * Math.sin(k * freq);
+}
+
+function starShape(outer: number, inner: number, points = 5): THREE.Shape {
+  const s = new THREE.Shape();
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 ? inner : outer;
+    const a = Math.PI / 2 + (i * Math.PI) / points;
+    if (i === 0) s.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else s.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  s.closePath();
+  return s;
+}
+
+function lathe(points: Array<[number, number]>, segments = 64): THREE.LatheGeometry {
+  return new THREE.LatheGeometry(
+    points.map(([x, y]) => new THREE.Vector2(x, y)),
+    segments,
+  );
+}
+
+function Trophy({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const cup = useMemo(
+    () => lathe([[0, 0], [0.12, 0.012], [0.32, 0.09], [0.49, 0.26], [0.6, 0.5], [0.67, 0.77], [0.7, 0.98], [0.66, 0.99], [0.62, 0.8], [0.55, 0.55], [0.42, 0.33], [0.22, 0.2], [0, 0.17]], 72),
+    [],
+  );
+  const stem = useMemo(() => lathe([[0, -0.02], [0.3, -0.02], [0.32, 0.03], [0.14, 0.1], [0.08, 0.26], [0.075, 0.42], [0.11, 0.5], [0, 0.5]], 48), []);
+  const base = useMemo(() => roundedSlab(1.12, 0.36, 0.84, 0.07, 0.03), []);
+  const plaque = useMemo(() => roundedSlab(0.6, 0.15, 0.03, 0.03, 0.01), []);
+  const star = useMemo(() => {
+    const g = new THREE.ExtrudeGeometry(starShape(0.17, 0.075), { depth: 0.04, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.015, bevelSegments: 3 });
+    g.translate(0, 0, -0.02);
+    return g;
+  }, []);
+  const pop = springAt(frame, fps, Math.round(fps * 0.6), SPRINGS.punch);
+  return (
+    <group position={[0, 0.08, 0]}>
+      <mesh geometry={cup} material={m.gold} position={[0, -0.12, 0]} />
+      <mesh position={[0, 0.865, 0]} rotation={[Math.PI / 2, 0, 0]} material={m.goldBright}>
+        <torusGeometry args={[0.685, 0.028, 12, 72]} />
+      </mesh>
+      {[1, -1].map((sd) => (
+        <mesh key={sd} position={[sd * 0.6, 0.46, 0]} rotation={[0, 0, sd > 0 ? -Math.PI / 2 : Math.PI / 2]} material={m.gold}>
+          <torusGeometry args={[0.24, 0.05, 14, 32, Math.PI]} />
+        </mesh>
+      ))}
+      <mesh geometry={stem} material={m.gold} position={[0, -0.62, 0]} />
+      <mesh position={[0, -0.36, 0]} material={m.goldBright}>
+        <sphereGeometry args={[0.11, 24, 16]} />
+      </mesh>
+      <mesh geometry={base} material={m.dark} position={[0, -0.82, 0]} />
+      <mesh geometry={plaque} material={m.goldBright} position={[0, -0.82, 0.43]} />
+      <mesh geometry={star} material={m.goldBright} position={[0, 0.4, 0.62]} rotation={[-0.08, 0, 0]} scale={Math.max(0.001, pop)} />
+    </group>
+  );
+}
+
+function Rocket({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const body = useMemo(() => lathe([[0, -0.78], [0.27, -0.78], [0.33, -0.55], [0.37, -0.2], [0.37, 0.12], [0.34, 0.4], [0, 0.4]], 64), []);
+  const nose = useMemo(() => lathe([[0, 0.38], [0.342, 0.38], [0.3, 0.56], [0.22, 0.75], [0.11, 0.9], [0, 0.96]], 64), []);
+  const fin = useMemo(() => {
+    const s = new THREE.Shape();
+    s.moveTo(0, 0.05);
+    s.quadraticCurveTo(0.26, -0.18, 0.32, -0.64);
+    s.lineTo(0.06, -0.5);
+    s.lineTo(0, -0.5);
+    s.closePath();
+    const g = new THREE.ExtrudeGeometry(s, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 3 });
+    g.translate(0, 0, -0.02);
+    return g;
+  }, []);
+  const t = frame / fps;
+  const ignite = prog(frame, 2, Math.round(fps * 0.35), EASE_OUT);
+  const flick = 1 + 0.14 * Math.sin(frame * 1.7) + 0.08 * Math.sin(frame * 3.1 + 1);
+  const shake = 0.012 * ignite * Math.sin(frame * 2.3);
+  const warm = "#FFB347";
+  return (
+    <group rotation={[0, 0, -0.62]} position={[shake + 0.05, 0.12 + Math.sin(t * 2.2) * 0.03, 0]}>
+      <mesh geometry={body} material={m.ceramic} />
+      <mesh geometry={nose} material={m.accent} />
+      <mesh position={[0, 0.39, 0]} rotation={[Math.PI / 2, 0, 0]} material={m.goldBright}>
+        <torusGeometry args={[0.345, 0.024, 10, 64]} />
+      </mesh>
+      <group position={[0, 0.02, 0.35]}>
+        <mesh material={m.goldBright}>
+          <torusGeometry args={[0.13, 0.035, 14, 40]} />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} material={m.glass}>
+          <cylinderGeometry args={[0.115, 0.115, 0.04, 32]} />
+        </mesh>
+      </group>
+      {[0, 1, 2].map((k) => (
+        <group key={k} rotation={[0, (k * Math.PI * 2) / 3 + Math.PI / 6, 0]}>
+          <mesh geometry={fin} material={m.accent} position={[0.3, -0.2, 0]} />
+        </group>
+      ))}
+      <mesh position={[0, -0.85, 0]} material={m.dark}>
+        <cylinderGeometry args={[0.2, 0.25, 0.16, 32]} />
+      </mesh>
+      {/* thrust: two nested unlit cones, flickering */}
+      <group position={[0, -0.93, 0]} scale={[1, Math.max(0.001, ignite * flick), 1]}>
+        <mesh position={[0, -0.36, 0]} rotation={[Math.PI, 0, 0]}>
+          <coneGeometry args={[0.2, 0.72, 32, 1, true]} />
+          <meshBasicMaterial color={mix(warm, "#FF6A2B", 0.45)} transparent opacity={0.9} toneMapped={false} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+        <mesh position={[0, -0.22, 0]} rotation={[Math.PI, 0, 0]}>
+          <coneGeometry args={[0.11, 0.44, 24]} />
+          <meshBasicMaterial color="#FFF2C8" toneMapped={false} />
+        </mesh>
+      </group>
+      <GlowSprite position={[0, -1.2, 0]} size={1.5} color={warm} opacity={0.55 * ignite} />
+    </group>
+  );
+}
+
+function Lightbulb({ m, frame, fps, p }: { m: Mats; frame: number; fps: number; p: Palette }) {
+  const shell = useMemo(() => {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i <= 20; i++) {
+      const a = (i / 20) * Math.PI * 0.74;
+      pts.push([0.62 * Math.sin(a), 0.36 + 0.62 * Math.cos(a)]);
+    }
+    pts.push([0.36, -0.22], [0.3, -0.42], [0.29, -0.5]);
+    return lathe(pts, 56);
+  }, []);
+  const filament = useMemo(() => {
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 40; i++) {
+      const u = i / 40;
+      pts.push(new THREE.Vector3(-0.15 + 0.3 * u, 0.26 + 0.12 * Math.sin(Math.PI * u) + 0.025 * Math.sin(u * Math.PI * 12), 0.025 * Math.cos(u * Math.PI * 12)));
+    }
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 160, 0.014, 8, false);
+  }, []);
+  const flick = frame >= Math.round(fps * 0.45) && frame < Math.round(fps * 0.52) ? 0.55 : 0;
+  const on = prog(frame, Math.round(fps * 0.68), Math.round(fps * 0.3), EASE_OUT);
+  const lit = Math.max(on, flick) * (1 + 0.04 * Math.sin((frame / fps) * 5));
+  const warm = mix("#FFD27A", p.primary, 0.25);
+  const rays = springAt(frame, fps, Math.round(fps * 0.75), SPRINGS.soft);
+  return (
+    <group position={[0, -0.02, 0]}>
+      <GlowSprite position={[0, 0.36, -0.2]} size={3.2} color={warm} opacity={0.6 * lit} />
+      <mesh geometry={shell} renderOrder={2}>
+        <meshPhysicalMaterial color={mix("#FFFFFF", warm, 0.35 * lit)} metalness={0} roughness={0.06} clearcoat={1} transparent opacity={0.3 + 0.32 * lit} emissive={new THREE.Color(warm)} emissiveIntensity={0.55 * lit} side={THREE.DoubleSide} depthWrite={false} envMapIntensity={1.6} />
+      </mesh>
+      <mesh position={[0, 0.36, 0]}>
+        <sphereGeometry args={[0.36, 32, 24]} />
+        <meshBasicMaterial color={warm} transparent opacity={0.4 * lit} toneMapped={false} depthWrite={false} />
+      </mesh>
+      <mesh geometry={filament}>
+        <meshBasicMaterial color={lit > 0.05 ? mix("#7A5A34", "#FFF4D6", Math.min(1, lit)) : "#6E5A44"} toneMapped={false} />
+      </mesh>
+      {[-1, 1].map((sd) => (
+        <mesh key={sd} position={[sd * 0.15, -0.12, 0]} rotation={[0, 0, sd * -0.12]} material={m.silver}>
+          <cylinderGeometry args={[0.012, 0.012, 0.78, 8]} />
+        </mesh>
+      ))}
+      <mesh position={[0, -0.52, 0]} material={m.gold}>
+        <cylinderGeometry args={[0.3, 0.3, 0.08, 40]} />
+      </mesh>
+      <mesh position={[0, -0.74, 0]} material={m.silver}>
+        <cylinderGeometry args={[0.27, 0.27, 0.38, 40]} />
+      </mesh>
+      {[-0.62, -0.74, -0.86].map((y) => (
+        <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]} material={m.silver}>
+          <torusGeometry args={[0.275, 0.032, 10, 40]} />
+        </mesh>
+      ))}
+      <mesh position={[0, -0.98, 0]} material={m.dark}>
+        <cylinderGeometry args={[0.2, 0.09, 0.12, 32]} />
+      </mesh>
+      {/* "idea" rays */}
+      {[-56, -28, 0, 28, 56].map((deg, i) => {
+        const a = (deg * Math.PI) / 180;
+        const r = 0.96;
+        return (
+          <mesh key={i} position={[Math.sin(a) * r, 0.36 + Math.cos(a) * r, 0]} rotation={[0, 0, -a]} scale={[1, Math.max(0.001, rays), 1]}>
+            <capsuleGeometry args={[0.035, 0.16, 6, 12]} />
+            <meshBasicMaterial color={mix(warm, "#FFFFFF", 0.2)} toneMapped={false} transparent opacity={Math.min(1, rays)} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+function brainHemisphere(side: number): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, 72, 54);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const f =
+      Math.sin(v.x * 9 + Math.sin(v.y * 6 + side) * 1.8) +
+      Math.sin(v.y * 11 + Math.sin(v.z * 7) * 1.7) +
+      Math.sin(v.z * 10 + Math.sin(v.x * 5 + v.y * 3) * 1.6);
+    const groove = Math.exp(-f * f * 4);
+    const r = 1 - 0.09 * groove + 0.012 * f;
+    let x = v.x * r * 0.6;
+    let y = v.y * r * 0.72;
+    const z = v.z * r * 0.98;
+    if (side * v.x < 0) x *= 0.42; // flat medial face
+    if (v.y < 0) y *= 0.72; // flatter underside
+    if (v.z > 0 && v.y < 0) y *= 1 - 0.18 * v.z; // frontal lobe tucks up
+    pos.setXYZ(i, x + side * 0.25, y, z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function Brain({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const left = useMemo(() => brainHemisphere(-1), []);
+  const right = useMemo(() => brainHemisphere(1), []);
+  const t = frame / fps;
+  const pulse = 1 + 0.018 * Math.sin(t * 4.2);
+  return (
+    <group position={[0, 0.12, 0]} rotation={[0, 0.75, 0]} scale={[pulse, pulse, pulse]}>
+      <mesh geometry={left} material={m.pink} />
+      <mesh geometry={right} material={m.pink} />
+      <mesh position={[0, -0.5, -0.3]} rotation={[-0.35, 0, 0]} material={m.pink}>
+        <cylinderGeometry args={[0.13, 0.09, 0.5, 24]} />
+      </mesh>
+      <mesh position={[0, -0.36, -0.62]} scale={[0.48, 0.24, 0.3]} material={m.pink}>
+        <sphereGeometry args={[1, 32, 20]} />
+      </mesh>
+    </group>
+  );
+}
+
+function Gift({ m, frame, fps, p }: { m: Mats; frame: number; fps: number; p: Palette }) {
+  const box = useMemo(() => roundedSlab(1.3, 0.98, 1.3, 0.06, 0.03), []);
+  const lid = useMemo(() => roundedSlab(1.42, 0.26, 1.42, 0.06, 0.03), []);
+  const open = springAt(frame, fps, Math.round(fps * 0.7), SPRINGS.soft);
+  const lift = 0.36 * open;
+  const t = frame / fps;
+  return (
+    <group position={[0, -0.28, 0]}>
+      <mesh geometry={box} material={m.accent} position={[0, -0.32, 0]} />
+      <mesh material={m.gold} position={[0, -0.32, 0]}>
+        <boxGeometry args={[0.22, 0.99, 1.32]} />
+      </mesh>
+      <mesh material={m.gold} position={[0, -0.32, 0]}>
+        <boxGeometry args={[1.32, 0.99, 0.22]} />
+      </mesh>
+      <GlowSprite position={[0, 0.3, 0]} size={2.2} color={mix(p.primary, "#FFFFFF", 0.3)} opacity={0.55 * clamp01(open)} />
+      <group position={[0, 0.3 + lift, 0]} rotation={[0, 0, 0.16 * open]}>
+        <mesh geometry={lid} material={m.accent} />
+        <mesh material={m.gold}>
+          <boxGeometry args={[0.24, 0.27, 1.44]} />
+        </mesh>
+        <mesh material={m.gold}>
+          <boxGeometry args={[1.44, 0.27, 0.24]} />
+        </mesh>
+        <group position={[0, 0.15, 0]}>
+          {[1, -1].map((sd) => (
+            <mesh key={sd} position={[sd * 0.2, 0.15, 0]} rotation={[0, sd * 0.3, sd * -0.95]} scale={[1.15, 0.72, 0.5]} material={m.goldBright}>
+              <torusGeometry args={[0.2, 0.065, 14, 36]} />
+            </mesh>
+          ))}
+          <mesh position={[0, 0.04, 0]} scale={[1, 0.8, 0.9]} material={m.goldBright}>
+            <sphereGeometry args={[0.1, 20, 14]} />
+          </mesh>
+        </group>
+      </group>
+      {/* sparkles drifting up out of the open box */}
+      {open > 0.3
+        ? [0, 1, 2, 3, 4, 5].map((i) => {
+            const u = (t * 0.55 + i / 6) % 1;
+            const sc = Math.sin(Math.PI * u) * 0.07 * clamp01((open - 0.3) * 2);
+            const a = i * 2.4;
+            return (
+              <mesh key={i} position={[Math.cos(a) * 0.38, 0.2 + u * 1.1, Math.sin(a) * 0.38]} rotation={[0, t * 2 + i, Math.PI / 4]} scale={Math.max(0.001, sc)} material={m.goldBright}>
+                <octahedronGeometry args={[1, 0]} />
+              </mesh>
+            );
+          })
+        : null}
+    </group>
+  );
+}
+
+function Key({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const u = prog(frame, Math.round(fps * 0.75), Math.round(fps * 0.6), EASE_IN_OUT);
+  const twist = Math.sin(u * Math.PI * 2) * 0.55 * (1 - u * 0.6);
+  return (
+    <group rotation={[0, 0, -0.62]} position={[0.02, 0, 0]}>
+      <group rotation={[twist, 0, 0]}>
+        <mesh position={[-0.74, 0, 0]} material={m.gold}>
+          <torusGeometry args={[0.36, 0.12, 24, 64]} />
+        </mesh>
+        <mesh position={[-0.74, 0, 0]} material={m.goldBright}>
+          <torusGeometry args={[0.36, 0.03, 10, 64]} />
+        </mesh>
+        <mesh position={[-0.3, 0, 0]} rotation={[0, 0, Math.PI / 2]} material={m.goldBright}>
+          <cylinderGeometry args={[0.13, 0.13, 0.12, 32]} />
+        </mesh>
+        <mesh position={[0.42, 0, 0]} rotation={[0, 0, Math.PI / 2]} material={m.gold}>
+          <cylinderGeometry args={[0.085, 0.085, 1.36, 32]} />
+        </mesh>
+        <mesh position={[1.1, 0, 0]} rotation={[0, 0, -Math.PI / 2]} material={m.gold}>
+          <sphereGeometry args={[0.085, 24, 16]} />
+        </mesh>
+        {[
+          [0.66, 0.3],
+          [0.84, 0.2],
+          [1.0, 0.34],
+        ].map(([x, h]) => (
+          <mesh key={x} position={[x!, -h! / 2, 0]} material={m.gold}>
+            <boxGeometry args={[0.12, h!, 0.11]} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  );
+}
+
+function Magnifier({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const u = prog(frame, Math.round(fps * 0.45), Math.round(fps * 1.3), EASE_IN_OUT);
+  const sx = Math.sin(u * Math.PI * 2) * 0.16 * (1 - u);
+  const sy = Math.sin(u * Math.PI * 4) * 0.07 * (1 - u);
+  const d = new THREE.Vector2(Math.SQRT1_2, -Math.SQRT1_2);
+  const R = 0.6;
+  const hs = R + 0.12;
+  return (
+    <group position={[-0.12 + sx, 0.22 + sy, 0]}>
+      <mesh material={m.gold}>
+        <torusGeometry args={[R, 0.1, 24, 72]} />
+      </mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]} material={m.glass}>
+        <cylinderGeometry args={[R - 0.02, R - 0.02, 0.05, 64]} />
+      </mesh>
+      <mesh position={[0, 0, 0.035]} rotation={[0, 0, 1.75]} material={m.ceramic}>
+        <torusGeometry args={[0.42, 0.028, 8, 32, 1.0]} />
+      </mesh>
+      <mesh position={[d.x * (hs + 0.1), d.y * (hs + 0.1), 0]} rotation={[0, 0, Math.PI / 4]} material={m.goldBright}>
+        <cylinderGeometry args={[0.13, 0.13, 0.2, 32]} />
+      </mesh>
+      <mesh position={[d.x * (hs + 0.62), d.y * (hs + 0.62), 0]} rotation={[0, 0, Math.PI / 4]} material={m.dark}>
+        <capsuleGeometry args={[0.11, 0.78, 8, 24]} />
+      </mesh>
+    </group>
+  );
+}
+
+function Megaphone({ m, frame, fps, p }: { m: Mats; frame: number; fps: number; p: Palette }) {
+  const t = frame / fps;
+  const go = prog(frame, Math.round(fps * 0.5), 6, EASE_OUT);
+  const wave = mix(p.primary, "#FFFFFF", 0.2);
+  return (
+    <group position={[-0.18, 0.05, 0]} rotation={[0, 0, 0.16]}>
+      <mesh position={[0.25, 0, 0]} rotation={[0, 0, -Math.PI / 2]} material={m.accent}>
+        <cylinderGeometry args={[0.62, 0.22, 1.1, 64, 1, true]} />
+      </mesh>
+      <mesh position={[0.28, 0, 0]} rotation={[0, 0, Math.PI / 2]} material={m.dark}>
+        <coneGeometry args={[0.6, 1.0, 64, 1, true]} />
+      </mesh>
+      <mesh position={[0.8, 0, 0]} rotation={[0, Math.PI / 2, 0]} material={m.goldBright}>
+        <torusGeometry args={[0.62, 0.045, 14, 72]} />
+      </mesh>
+      <mesh position={[-0.48, 0, 0]} rotation={[0, 0, Math.PI / 2]} material={m.ceramic}>
+        <cylinderGeometry args={[0.24, 0.24, 0.44, 40]} />
+      </mesh>
+      <mesh position={[-0.73, 0, 0]} rotation={[0, 0, Math.PI / 2]} material={m.dark}>
+        <cylinderGeometry args={[0.27, 0.27, 0.08, 40]} />
+      </mesh>
+      <mesh position={[-0.42, -0.42, 0]} rotation={[0, 0, 0.22]} material={m.dark}>
+        <capsuleGeometry args={[0.09, 0.36, 8, 16]} />
+      </mesh>
+      <mesh position={[-0.3, -0.3, 0]} rotation={[0, 0, 0.22]} material={m.goldBright}>
+        <boxGeometry args={[0.06, 0.16, 0.08]} />
+      </mesh>
+      {go > 0
+        ? [0, 1, 2].map((i) => {
+            const u = (Math.max(0, t - 0.5) * 0.9 + 1 - i / 3) % 1;
+            const r = 0.3 + u * 0.75;
+            const op = Math.sin(Math.PI * u) * go;
+            return (
+              <mesh key={i} position={[0.95, 0, 0]} rotation={[0, 0, -0.45]}>
+                <torusGeometry args={[r, 0.035, 8, 32, 0.9]} />
+                <meshBasicMaterial color={wave} transparent opacity={op} toneMapped={false} depthWrite={false} />
+              </mesh>
+            );
+          })
+        : null}
+    </group>
+  );
+}
+
+function Crown({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const band = useMemo(() => lathe([[0.72, 0], [0.8, 0], [0.8, 0.4], [0.72, 0.4], [0.72, 0]], 72), []);
+  const N = 5;
+  return (
+    <group position={[0, -0.15, 0]}>
+      <mesh geometry={band} material={m.gold} position={[0, -0.42, 0]} />
+      {[-0.42, -0.02].map((y) => (
+        <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]} material={m.goldBright}>
+          <torusGeometry args={[0.8, 0.04, 12, 72]} />
+        </mesh>
+      ))}
+      <mesh position={[0, -0.3, 0]} scale={[1, 0.62, 1]} material={m.accentDeep}>
+        <sphereGeometry args={[0.73, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2]} />
+      </mesh>
+      {Array.from({ length: N }, (_, k) => {
+        const a = (k * Math.PI * 2) / N;
+        const pop = springAt(frame, fps, Math.round(fps * 0.55) + k * 3, SPRINGS.punch);
+        return (
+          <group key={k} rotation={[0, a, 0]}>
+            <mesh position={[0, 0.28, 0.76]} scale={[1, 1, 0.42]} material={m.gold}>
+              <coneGeometry args={[0.25, 0.6, 32]} />
+            </mesh>
+            <mesh position={[0, 0.63, 0.76]} material={m.goldBright}>
+              <sphereGeometry args={[0.075, 20, 14]} />
+            </mesh>
+            <mesh position={[0, -0.22, 0.81]} scale={[Math.max(0.001, pop), Math.max(0.001, pop) * 1.2, Math.max(0.001, pop) * 0.55]} material={k % 2 ? m.pink : m.accent}>
+              <sphereGeometry args={[0.1, 24, 16]} />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+function flameGeometry(bend: number, c0: string, c1: string): THREE.BufferGeometry {
+  const pts: Array<[number, number]> = [];
+  const N = 30;
+  for (let i = 0; i <= N; i++) {
+    const u = i / N;
+    const r = u < 0.28 ? 0.54 * Math.sqrt(Math.max(0, 1 - ((0.28 - u) / 0.28) ** 2)) : 0.54 * Math.pow((1 - u) / 0.72, 1.7) * (1 + 0.12 * Math.sin(((u - 0.28) / 0.72) * Math.PI));
+    pts.push([Math.max(0, r), -0.85 + 1.95 * u]);
+  }
+  pts[pts.length - 1]![0] = 0;
+  const g = lathe(pts, 40);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const colors = new Float32Array(pos.count * 3);
+  const a = new THREE.Color(c0);
+  const b = new THREE.Color(c1);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    const yy = Math.min(1, Math.max(0, (y + 0.85) / 1.95));
+    pos.setX(i, pos.getX(i) + bend * Math.pow(yy, 2.4) * 0.45);
+    c.copy(a).lerp(b, Math.min(1, Math.max(0, (yy - 0.05) / 0.8)));
+    colors.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+function Fire({ frame, fps, p }: { m: Mats; frame: number; fps: number; p: Palette }) {
+  const deep = mix("#FF4A1C", p.primary, 0.15);
+  const outer = useMemo(() => flameGeometry(-0.7, deep, mix("#FF9A2E", p.primary, 0.2)), [deep, p.primary]);
+  const mid = useMemo(() => flameGeometry(0.5, "#FF8A1E", "#FFD24A"), []);
+  const core = useMemo(() => flameGeometry(-0.2, "#FFE07A", "#FFF8E0"), []);
+  const t = frame / fps;
+  const fl = (k: number) => ({
+    sy: 1 + 0.07 * Math.sin(t * 9 + k * 2.1) + 0.04 * Math.sin(t * 17 + k),
+    sx: 1 + 0.035 * Math.sin(t * 11 + k * 1.3),
+    rz: 0.05 * Math.sin(t * 6.5 + k * 1.7),
+  });
+  const a = fl(0);
+  const b = fl(1);
+  const c = fl(2);
+  return (
+    <group position={[0, -0.05, 0]}>
+      <GlowSprite position={[0, -0.1, -0.4]} size={3.0} color={mix("#FF8A2E", p.primary, 0.2)} opacity={0.55} />
+      <group position={[0, -0.85, 0]}>
+        <mesh geometry={outer} position={[0, 0.85, 0]} scale={[a.sx, a.sy, a.sx * 0.86]} rotation={[0, 0, a.rz]}>
+          <meshPhysicalMaterial vertexColors roughness={0.35} metalness={0} clearcoat={0.6} emissive={new THREE.Color(deep)} emissiveIntensity={0.55} />
+        </mesh>
+        {[1, -1].map((sd, i) => {
+          const q = fl(3 + i);
+          return (
+            <mesh key={sd} geometry={outer} position={[sd * 0.34, 0.5, -0.05]} scale={[0.42 * q.sx, 0.5 * q.sy, 0.4]} rotation={[0, 0, sd * -0.32 + q.rz]}>
+              <meshPhysicalMaterial vertexColors roughness={0.35} metalness={0} clearcoat={0.6} emissive={new THREE.Color(deep)} emissiveIntensity={0.55} />
+            </mesh>
+          );
+        })}
+        <mesh geometry={mid} position={[0, 0.85 - 0.12, 0.08]} scale={[0.66 * b.sx, 0.7 * b.sy, 0.55]} rotation={[0, 0, b.rz]} renderOrder={3}>
+          <meshBasicMaterial vertexColors toneMapped={false} depthTest={false} transparent />
+        </mesh>
+        <mesh geometry={core} position={[0, 0.85 - 0.3, 0.12]} scale={[0.36 * c.sx, 0.4 * c.sy, 0.3]} rotation={[0, 0, c.rz]} renderOrder={4}>
+          <meshBasicMaterial vertexColors toneMapped={false} depthTest={false} transparent />
+        </mesh>
+      </group>
+      {[0, 1, 2, 3, 4].map((i) => {
+        const u = (t * 0.7 + i / 5) % 1;
+        const x = Math.sin(i * 3.7) * 0.4 + Math.sin(t * 3 + i) * 0.08;
+        return (
+          <mesh key={i} position={[x, 0.3 + u * 1.2, Math.cos(i * 2.3) * 0.2]} scale={Math.max(0.001, Math.sin(Math.PI * u) * 0.04)}>
+            <sphereGeometry args={[1, 10, 8]} />
+            <meshBasicMaterial color="#FFC15A" toneMapped={false} transparent opacity={0.9} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+function Lightning({ m, frame, fps, p }: { m: Mats; frame: number; fps: number; p: Palette }) {
+  const bolt = useMemo(() => {
+    const s = new THREE.Shape();
+    const pts: Array<[number, number]> = [[-0.08, 1.2], [0.52, 1.2], [0.14, 0.24], [0.58, 0.24], [-0.36, -1.25], [-0.06, -0.08], [-0.5, -0.08]];
+    pts.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y)));
+    s.closePath();
+    const g = new THREE.ExtrudeGeometry(s, { depth: 0.18, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.045, bevelSegments: 4 });
+    g.center();
+    return g;
+  }, []);
+  const strikeLen = Math.round(fps * 0.25);
+  const drop = prog(frame, 0, strikeLen, EASE_IN);
+  const flash = frame < strikeLen ? 0 : Math.exp(-(frame - strikeLen) / 7);
+  const cycle = Math.round(fps * 1.2);
+  const k = (frame - strikeLen) % cycle;
+  const zap = frame > strikeLen + 10 && k < 5 ? Math.sin((k / 5) * Math.PI) * 0.5 : 0;
+  const glowC = mix(p.primary, "#FFF3B0", 0.35);
+  return (
+    <group position={[0, (1 - drop) * 1.4, 0]} scale={[1, 1 + (1 - drop) * 0.25, 1]}>
+      <GlowSprite position={[0, 0, -0.3]} size={3.2} color={glowC} opacity={0.32 + 0.6 * flash + zap} />
+      <mesh geometry={bolt} material={m.goldBright} rotation={[0, 0, -0.08]} />
+      {flash > 0.02
+        ? [0, 1, 2, 3, 4].map((i) => {
+            const a = -Math.PI / 2 + (i - 2) * 0.55;
+            const r = 0.25 + (1 - flash) * 0.55;
+            return (
+              <mesh key={i} position={[-0.32 + Math.cos(a) * r, -1.1 + Math.sin(a) * r * 0.6 + 0.2, 0.1]} rotation={[0, 0, a + Math.PI / 2]}>
+                <capsuleGeometry args={[0.03, 0.18, 4, 8]} />
+                <meshBasicMaterial color={glowC} transparent opacity={flash} toneMapped={false} depthWrite={false} />
+              </mesh>
+            );
+          })
+        : null}
+    </group>
+  );
+}
+
+function Target({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const land = Math.round(fps * 0.8);
+  const fly = Math.round(fps * 0.32);
+  const end = useMemo(() => new THREE.Vector3(0.05, 0.08, 0.05), []);
+  const start = useMemo(() => new THREE.Vector3(2.8, 1.1, 1.9), []);
+  const quat = useMemo(() => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), start.clone().sub(end).normalize()), [start, end]);
+  const u = prog(frame, land - fly, fly, EASE_IN);
+  const pos = start.clone().lerp(end, u);
+  const wob = wobble(frame, land, 0.14, 7, 1.25);
+  const jolt = wobble(frame, land, 0.05, 4, 0.9);
+  const rings: Array<[number, THREE.Material]> = [
+    [0.94, m.ceramic],
+    [0.76, m.accent],
+    [0.58, m.ceramic],
+    [0.4, m.accent],
+    [0.21, m.gold],
+  ];
+  return (
+    <group position={[0, 0.02, 0]}>
+      <group position={[0, 0, -Math.abs(jolt)]} rotation={[-0.06 + jolt * 0.3, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} material={m.dark}>
+          <cylinderGeometry args={[1, 1, 0.16, 96]} />
+        </mesh>
+        <mesh position={[0, 0, 0]} material={m.gold}>
+          <torusGeometry args={[1, 0.05, 14, 96]} />
+        </mesh>
+        {rings.map(([r, mat], i) => (
+          <mesh key={r} position={[0, 0, 0.085 + i * 0.008]} rotation={[Math.PI / 2, 0, 0]} material={mat}>
+            <cylinderGeometry args={[r, r, 0.02, 80]} />
+          </mesh>
+        ))}
+      </group>
+      {u > 0 ? (
+        <group position={pos} quaternion={quat}>
+          <group rotation={[wob, wob * 0.6, 0]}>
+            <mesh position={[0, 0, 0.07]} rotation={[-Math.PI / 2, 0, 0]} material={m.silver}>
+              <coneGeometry args={[0.04, 0.14, 16]} />
+            </mesh>
+            <mesh position={[0, 0, 0.27]} rotation={[Math.PI / 2, 0, 0]} material={m.gold}>
+              <cylinderGeometry args={[0.055, 0.045, 0.28, 24]} />
+            </mesh>
+            <mesh position={[0, 0, 0.6]} rotation={[Math.PI / 2, 0, 0]} material={m.dark}>
+              <cylinderGeometry args={[0.022, 0.022, 0.4, 12]} />
+            </mesh>
+            {[0, 1, 2, 3].map((k) => (
+              <group key={k} rotation={[0, 0, (k * Math.PI) / 2]}>
+                <mesh position={[0.08, 0, 0.72]} material={m.accent}>
+                  <boxGeometry args={[0.16, 0.012, 0.26]} />
+                </mesh>
+              </group>
+            ))}
+          </group>
+        </group>
+      ) : null}
+    </group>
+  );
+}
+
+function laptopScreenTexture(p: Palette): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 320;
+  const g = c.getContext("2d")!;
+  const bg = g.createLinearGradient(0, 0, 512, 320);
+  bg.addColorStop(0, mix(p.secondary, "#0B0B14", 0.55));
+  bg.addColorStop(1, "#0B0B14");
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 512, 320);
+  g.fillStyle = "rgba(255,255,255,0.06)";
+  g.fillRect(0, 0, 92, 320);
+  g.fillStyle = "rgba(255,255,255,0.5)";
+  [44, 74, 104, 134].forEach((y, i) => {
+    g.globalAlpha = i === 0 ? 1 : 0.5;
+    g.fillRect(22, y, 48, 8);
+  });
+  g.globalAlpha = 1;
+  g.fillStyle = "rgba(255,255,255,0.88)";
+  g.fillRect(118, 36, 150, 16);
+  g.fillStyle = "rgba(255,255,255,0.35)";
+  g.fillRect(118, 62, 96, 10);
+  // KPI cards
+  [0, 1, 2].forEach((i) => {
+    g.fillStyle = "rgba(255,255,255,0.08)";
+    g.fillRect(118 + i * 128, 90, 114, 56);
+    g.fillStyle = i === 0 ? p.primary : "rgba(255,255,255,0.7)";
+    g.fillRect(130 + i * 128, 104, 60, 12);
+    g.fillStyle = "rgba(255,255,255,0.3)";
+    g.fillRect(130 + i * 128, 126, 40, 8);
+  });
+  // chart
+  const pts: Array<[number, number]> = [[124, 282], [180, 262], [232, 270], [290, 228], [350, 236], [410, 190], [480, 168]];
+  g.beginPath();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.lineTo(480, 300);
+  g.lineTo(124, 300);
+  g.closePath();
+  const area = g.createLinearGradient(0, 160, 0, 300);
+  area.addColorStop(0, rgba(p.primary, 0.35));
+  area.addColorStop(1, rgba(p.primary, 0));
+  g.fillStyle = area;
+  g.fill();
+  g.strokeStyle = p.primary;
+  g.lineWidth = 6;
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.beginPath();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.stroke();
+  g.fillStyle = p.positive;
+  g.beginPath();
+  g.arc(480, 168, 9, 0, Math.PI * 2);
+  g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+let keysTex: THREE.CanvasTexture | null = null;
+function keyboardTexture(): THREE.CanvasTexture {
+  if (keysTex) return keysTex;
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 200;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#101016";
+  g.fillRect(0, 0, 512, 200);
+  g.fillStyle = "#2A2B35";
+  const rows = 5;
+  for (let r = 0; r < rows; r++) {
+    const n = r === 4 ? 1 : 13;
+    const y = 8 + r * 38;
+    if (r === 4) {
+      g.fillRect(140, y, 232, 30);
+      continue;
+    }
+    const w = (496 - (n - 1) * 6) / n;
+    for (let k = 0; k < n; k++) g.fillRect(8 + k * (w + 6), y, w, 30);
+  }
+  keysTex = new THREE.CanvasTexture(c);
+  keysTex.colorSpace = THREE.SRGBColorSpace;
+  return keysTex;
+}
+
+function Laptop({ m, frame, fps, p }: { m: Mats; frame: number; fps: number; p: Palette }) {
+  const base = useMemo(() => roundedSlab(2.2, 1.48, 0.09, 0.09, 0.025), []);
+  const lid = useMemo(() => roundedSlab(2.2, 1.42, 0.06, 0.09, 0.02), []);
+  const pad = useMemo(() => roundedSlab(0.72, 0.42, 0.01, 0.05, 0.003), []);
+  const tex = useMemo(() => laptopScreenTexture(p), [p]);
+  const keys = useMemo(() => keyboardTexture(), []);
+  const open = prog(frame, Math.round(fps * 0.3), Math.round(fps * 0.75), EASE_IN_OUT);
+  const angle = Math.PI / 2 - open * (Math.PI / 2 + 0.24);
+  const glow = clamp01((open - 0.4) / 0.6);
+  return (
+    <group position={[0, -0.35, 0.1]}>
+      <group rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh geometry={base} material={m.silver} />
+        <mesh position={[0, 0.18, 0.046]}>
+          <planeGeometry args={[1.92, 0.75]} />
+          <meshStandardMaterial map={keys} roughness={0.7} />
+        </mesh>
+        <mesh geometry={pad} material={m.dark} position={[0, -0.47, 0.045]} />
+      </group>
+      <group position={[0, 0.08, -0.72]} rotation={[angle, 0, 0]}>
+        <group position={[0, 0.71, 0]}>
+          <mesh geometry={lid} material={m.silver} />
+          <mesh position={[0, 0, 0.031]}>
+            <planeGeometry args={[2.12, 1.34]} />
+            <meshStandardMaterial color="#07070B" roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 0.02, 0.033]}>
+            <planeGeometry args={[1.98, 1.22]} />
+            <meshStandardMaterial map={tex} emissiveMap={tex} emissive={new THREE.Color("#FFFFFF")} emissiveIntensity={0.15 + 0.8 * glow} roughness={0.15} />
+          </mesh>
+        </group>
+      </group>
+    </group>
+  );
+}
+
 const ICON_FRAMING: Record<string, { y: number; scale: number; tiltX: number }> = {
   COIN: { y: 0, scale: 1.05, tiltX: 0.12 },
   CREDIT_CARD: { y: 0, scale: 1.1, tiltX: 0.2 },
@@ -615,6 +1366,19 @@ const ICON_FRAMING: Record<string, { y: number; scale: number; tiltX: number }> 
   PHONE: { y: 0, scale: 0.95, tiltX: 0.1 },
   BRIEFCASE: { y: 0, scale: 1.0, tiltX: 0.18 },
   GRADUATION_CAP: { y: 0, scale: 1.05, tiltX: 0.45 },
+  TROPHY: { y: 0, scale: 1.0, tiltX: 0.12 },
+  ROCKET: { y: 0, scale: 0.95, tiltX: 0.1 },
+  LIGHTBULB: { y: 0, scale: 1.0, tiltX: 0.08 },
+  BRAIN: { y: 0, scale: 1.1, tiltX: 0.42 },
+  GIFT: { y: 0, scale: 1.0, tiltX: 0.3 },
+  KEY: { y: 0, scale: 0.95, tiltX: 0.15 },
+  MAGNIFIER: { y: 0, scale: 1.0, tiltX: 0.1 },
+  MEGAPHONE: { y: 0, scale: 1.0, tiltX: 0.12 },
+  CROWN: { y: 0, scale: 1.05, tiltX: 0.32 },
+  FIRE: { y: 0, scale: 1.0, tiltX: 0.05 },
+  LIGHTNING: { y: 0, scale: 0.95, tiltX: 0.1 },
+  TARGET: { y: 0, scale: 1.0, tiltX: 0.08 },
+  LAPTOP: { y: 0, scale: 0.92, tiltX: 0.32 },
 };
 
 function Stage({ width, height, dpr, children, cameraZ = 6, fov = 30, cameraY = 0 }: { width: number; height: number; dpr: number; children: ReactNode; cameraZ?: number; fov?: number; cameraY?: number }) {
@@ -662,6 +1426,19 @@ export function Icon3D(tp: TemplateComponentProps<"ICON_3D">) {
     case "PHONE": model = <Phone m={m} p={p} />; break;
     case "BRIEFCASE": model = <Briefcase m={m} />; break;
     case "GRADUATION_CAP": model = <GradCap m={m} frame={frame} />; break;
+    case "TROPHY": model = <Trophy m={m} frame={frame} fps={fps} />; break;
+    case "ROCKET": model = <Rocket m={m} frame={frame} fps={fps} />; break;
+    case "LIGHTBULB": model = <Lightbulb m={m} frame={frame} fps={fps} p={p} />; break;
+    case "BRAIN": model = <Brain m={m} frame={frame} fps={fps} />; break;
+    case "GIFT": model = <Gift m={m} frame={frame} fps={fps} p={p} />; break;
+    case "KEY": model = <Key m={m} frame={frame} fps={fps} />; break;
+    case "MAGNIFIER": model = <Magnifier m={m} frame={frame} fps={fps} />; break;
+    case "MEGAPHONE": model = <Megaphone m={m} frame={frame} fps={fps} p={p} />; break;
+    case "CROWN": model = <Crown m={m} frame={frame} fps={fps} />; break;
+    case "FIRE": model = <Fire m={m} frame={frame} fps={fps} p={p} />; break;
+    case "LIGHTNING": model = <Lightning m={m} frame={frame} fps={fps} p={p} />; break;
+    case "TARGET": model = <Target m={m} frame={frame} fps={fps} />; break;
+    case "LAPTOP": model = <Laptop m={m} frame={frame} fps={fps} p={p} />; break;
   }
   const hasCap = !!props.caption;
   const canvasH = hasCap ? 480 : 600;
