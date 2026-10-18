@@ -88,6 +88,30 @@ export const EvalCaseSchema = z.discriminatedUnion("promptId", [
     expect: z.array(AssertionSchema).min(1),
     mockResponse: z.unknown(),
   }),
+  /** Viewer Panel: given measured edit/audio facts (frames are neutral placeholders — this
+   * grades fact handling, provenance and calibration, not vision), does the viewer flag what the
+   * numbers say, cite evidence everywhere and avoid certainty language? The graded output is a
+   * summary of the real runViewerPanelAgent result (see runner). */
+  z.object({
+    id: z.string(),
+    category: z.string(),
+    description: z.string(),
+    promptId: z.literal("VIEWER_PANEL"),
+    input: z.object({
+      platform: z.enum(["TIKTOK", "INSTAGRAM", "YOUTUBE"]).default("INSTAGRAM"),
+      /** Spoken script; word timings are synthesized at `secondsPerWord`. */
+      script: z.string(),
+      secondsPerWord: z.number().default(0.36),
+      startS: z.number().default(0.3),
+      tailS: z.number().default(0.4),
+      cuts: z.array(z.object({ t: z.number(), kind: z.enum(["PAUSE_REMOVED", "FRAMING", "TAKE", "DETECTED"]), removedS: z.number().nullable().default(null) })).default([]),
+      backgroundUnderVoiceDb: z.number().nullable().default(null),
+      levelJumps: z.array(z.object({ t: z.number(), fromDb: z.number(), toDb: z.number() })).default([]),
+      graphics: z.array(z.object({ template: z.string(), start: z.number(), end: z.number(), label: z.string().nullable().default(null) })).default([]),
+    }),
+    expect: z.array(AssertionSchema).min(1),
+    mockResponse: z.unknown(),
+  }),
 ]);
 export type EvalCase = z.output<typeof EvalCaseSchema>;
 

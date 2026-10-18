@@ -19,6 +19,8 @@ import { setCreatorStyleGroup } from "../actions";
 import { StyleCard } from "../StyleCards";
 import { MeasureControl } from "../MeasureProgress";
 import { VideoCard } from "./VideoCard";
+import { getViewerChecksForReferences } from "../../../lib/viewer-check";
+import type { ViewerCheckData } from "../../../lib/viewer-check-view";
 
 // Server Actions on this page run model calls synchronously (the optional notes analysis) —
 // allow up to the Vercel Fluid Compute ceiling. See /docs/DECISIONS.md.
@@ -49,6 +51,8 @@ export default async function ReferenceCreatorPage({
   const failed = videos.filter((v) => v.analysisStatus === "FAILED" && v.mediaStorageKey).length;
   const outdated = videos.filter((v) => v.analysisStatus === "DONE" && v.mediaStorageKey && (v.metricsVersion ?? 0) < REFERENCE_METRICS_VERSION).length;
   const back = `/reference/${id}`;
+  // "What a viewer thinks" per video (Viewer Panel; AI status read once).
+  const viewerChecks = await getViewerChecksForReferences(videos.map((v) => v.id)).catch(() => new Map<string, ViewerCheckData>());
 
   return (
     <>
@@ -92,7 +96,7 @@ export default async function ReferenceCreatorPage({
           {videos.length > 0 && (
             <ul className="flex flex-col gap-3" data-testid="ref-videos">
               {videos.map((v) => (
-                <VideoCard key={v.id} v={v} back={back} creators={allCreators} creatorId={id} />
+                <VideoCard key={v.id} v={v} back={back} creators={allCreators} creatorId={id} viewer={viewerChecks.get(v.id) ?? null} />
               ))}
             </ul>
           )}

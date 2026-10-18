@@ -1,0 +1,1362 @@
+[
+  {
+    "id": "vp-music-over-voice",
+    "category": "viewer_audio_balance",
+    "description": "SYNTHETIC facts: a music bed measured 4 dB under the voice. A viewer must notice the music fighting the voice (MUSIC_OVER_VOICE flagged) and cite the measurement.",
+    "promptId": "VIEWER_PANEL",
+    "input": {
+      "platform": "INSTAGRAM",
+      "script": "Everyone says max out your 401k. Cool. What does that actually mean in 2026? It means twenty four thousand five hundred dollars. That's the number. Not a vibe, a number. Can most people do that? No. So get the full employer match first, because that's free money, then figure out what's left. Your number doesn't have to be theirs.",
+      "backgroundUnderVoiceDb": 4,
+      "cuts": [
+        {
+          "t": 3.2,
+          "kind": "PAUSE_REMOVED",
+          "removedS": 0.4
+        },
+        {
+          "t": 9.1,
+          "kind": "PAUSE_REMOVED",
+          "removedS": 0.5
+        }
+      ]
+    },
+    "expect": [
+      {
+        "path": "flagsMusicOverVoice",
+        "in": [
+          true
+        ]
+      },
+      {
+        "path": "certaintyWarnings",
+        "in": [
+          0
+        ]
+      },
+      {
+        "path": "droppedForBadEvidence",
+        "in": [
+          0
+        ]
+      }
+    ],
+    "mockResponse": {
+      "persona": "Cold viewer on Instagram Reels who has never seen this creator",
+      "verdict": {
+        "tier": "GOOD",
+        "headline": "Strong hook and a useful number, but the middle drags and the ending fizzles.",
+        "biggestReason": "Seconds 8–12 restate the hook twice before the payoff, so attention sags right before the stat card.",
+        "evidence": [
+          {
+            "t": 8.4,
+            "kind": "SAID",
+            "detail": "\"so like I said, the thing is\""
+          },
+          {
+            "t": 12.3,
+            "kind": "SEEN",
+            "detail": "stat card '$24,500' appears"
+          }
+        ]
+      },
+      "hook": {
+        "tEnd": 2.5,
+        "wouldStopScrolling": "YES",
+        "stopChancePct": 62,
+        "firstFrameRead": "A guy looking straight at camera with a bold caption 'Max out your 401(k)?'",
+        "why": "A direct challenge to common advice in the first second, with a caption that reads with the sound off.",
+        "evidence": [
+          {
+            "t": 0,
+            "kind": "SEEN",
+            "detail": "caption 'Max out your 401(k)?' over a centred talking head"
+          },
+          {
+            "t": 0.6,
+            "kind": "SAID",
+            "detail": "\"Everyone says max out your 401k\""
+          }
+        ]
+      },
+      "beats": [
+        {
+          "tStart": 0,
+          "tEnd": 2.5,
+          "state": "curious",
+          "secondaryState": "skeptical",
+          "intensity": 4,
+          "attention": 82,
+          "scrollAwayPct": 20,
+          "thinking": "wait, isn't that the right move?",
+          "driver": "Contrarian opening line",
+          "evidence": [
+            {
+              "t": 0.6,
+              "kind": "SAID",
+              "detail": "\"Everyone says max out your 401k\""
+            }
+          ]
+        },
+        {
+          "tStart": 2.5,
+          "tEnd": 6,
+          "state": "hooked",
+          "secondaryState": null,
+          "intensity": 4,
+          "attention": 78,
+          "scrollAwayPct": 10,
+          "thinking": "ok what's the real number",
+          "driver": "Promise of a concrete number; tight jump cuts keep it moving",
+          "evidence": [
+            {
+              "t": 3.1,
+              "kind": "SEEN",
+              "detail": "punch-in to a tighter frame on the cut"
+            },
+            {
+              "t": 4.2,
+              "kind": "SAID",
+              "detail": "\"what does that actually mean in 2026\""
+            }
+          ]
+        },
+        {
+          "tStart": 6,
+          "tEnd": 8.4,
+          "state": "educated",
+          "secondaryState": null,
+          "intensity": 3,
+          "attention": 70,
+          "scrollAwayPct": 12,
+          "thinking": "24.5k, got it",
+          "driver": "The number lands clearly",
+          "evidence": [
+            {
+              "t": 6.8,
+              "kind": "SAID",
+              "detail": "\"twenty-four thousand five hundred\""
+            }
+          ]
+        },
+        {
+          "tStart": 8.4,
+          "tEnd": 12,
+          "state": "bored",
+          "secondaryState": null,
+          "intensity": 3,
+          "attention": 48,
+          "scrollAwayPct": 34,
+          "thinking": "you already said that",
+          "driver": "Repeats the hook before moving on; one long shot with no new information",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said, the thing is\""
+            },
+            {
+              "t": 10,
+              "kind": "SEEN",
+              "detail": "same wide framing for 3.6 s"
+            }
+          ]
+        },
+        {
+          "tStart": 12,
+          "tEnd": 16.5,
+          "state": "educated",
+          "secondaryState": "curious",
+          "intensity": 4,
+          "attention": 72,
+          "scrollAwayPct": 14,
+          "thinking": "oh, the match first — that's useful",
+          "driver": "Stat card appears exactly as the number is said",
+          "evidence": [
+            {
+              "t": 12.3,
+              "kind": "SEEN",
+              "detail": "stat card '$24,500' slides in"
+            },
+            {
+              "t": 12.4,
+              "kind": "SAID",
+              "detail": "\"get the full match first\""
+            }
+          ]
+        },
+        {
+          "tStart": 16.5,
+          "tEnd": 20,
+          "state": "neutral",
+          "secondaryState": null,
+          "intensity": 2,
+          "attention": 55,
+          "scrollAwayPct": 22,
+          "thinking": "is that it?",
+          "driver": "Ending trails off after the last line",
+          "evidence": [
+            {
+              "t": 18.6,
+              "kind": "SAID",
+              "detail": "\"anyway\""
+            },
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame after the last word"
+            }
+          ]
+        }
+      ],
+      "dropOffs": [
+        {
+          "t": 9.2,
+          "riskPct": 34,
+          "reason": "Restating the hook instead of delivering the next idea",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said\""
+            }
+          ]
+        }
+      ],
+      "craft": [
+        {
+          "category": "CUT_WITHOUT_PURPOSE",
+          "verdict": "MINOR",
+          "tStart": 14.1,
+          "tEnd": 14.3,
+          "finding": "A punch-in mid-sentence that doesn't mark a new idea",
+          "evidence": [
+            {
+              "t": 14.1,
+              "kind": "SEEN",
+              "detail": "framing jumps 1.0× → 1.2× mid-phrase"
+            }
+          ]
+        },
+        {
+          "category": "PACING",
+          "verdict": "PROBLEM",
+          "tStart": 8.4,
+          "tEnd": 12,
+          "finding": "3.6 s single shot restating the hook — slower than the rest of the video",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "MEASURED",
+              "detail": "longest shot 3.6 s vs median 1.9 s"
+            }
+          ]
+        },
+        {
+          "category": "GRAPHIC_MISTIMED",
+          "verdict": "GOOD",
+          "tStart": 12.3,
+          "tEnd": null,
+          "finding": "Stat card lands exactly on the spoken number",
+          "evidence": [
+            {
+              "t": 12.3,
+              "kind": "SEEN",
+              "detail": "card appears as '$24,500' is said"
+            }
+          ]
+        },
+        {
+          "category": "MUSIC_OVER_VOICE",
+          "verdict": "PROBLEM",
+          "tStart": 0,
+          "tEnd": null,
+          "finding": "The music bed sits only 4 dB under the voice — words get lost",
+          "evidence": [
+            {
+              "t": 0,
+              "kind": "MEASURED",
+              "detail": "background 4.0 dB under the voice"
+            }
+          ]
+        },
+        {
+          "category": "ENDING",
+          "verdict": "PROBLEM",
+          "tStart": 18.6,
+          "tEnd": 20,
+          "finding": "Ends on 'anyway' with a held frame — no payoff line, no loop",
+          "evidence": [
+            {
+              "t": 18.6,
+              "kind": "SAID",
+              "detail": "\"anyway\""
+            },
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame"
+            }
+          ]
+        }
+      ],
+      "story": {
+        "corePromise": "Maxing out a 401(k) means $24,500 — but start with the match",
+        "promiseClearAtS": 6.8,
+        "clarity": "MOSTLY_CLEAR",
+        "cohesive": true,
+        "confusingJumps": [],
+        "summary": "One clear idea; the middle repeats itself before the useful part."
+      },
+      "engagement": {
+        "watchThrough": {
+          "kind": "ESTIMATE",
+          "score": 48,
+          "uncertainty": "MEDIUM",
+          "rationale": "Hook holds, but the 8–12 s stretch is where many would leave",
+          "evidenceTimes": [
+            0.6,
+            9.2
+          ]
+        },
+        "rewatch": {
+          "kind": "ESTIMATE",
+          "score": 18,
+          "uncertainty": "HIGH",
+          "rationale": "Nothing dense or looping to rewatch",
+          "evidenceTimes": [
+            19.5
+          ]
+        },
+        "save": {
+          "kind": "ESTIMATE",
+          "score": 41,
+          "uncertainty": "MEDIUM",
+          "rationale": "A concrete limit and a clear first step are worth keeping",
+          "evidenceTimes": [
+            6.8,
+            12.3
+          ]
+        },
+        "share": {
+          "kind": "ESTIMATE",
+          "score": 22,
+          "uncertainty": "HIGH",
+          "rationale": "Useful but not a 'you need to see this' moment",
+          "evidenceTimes": [
+            12.3
+          ]
+        },
+        "comment": {
+          "kind": "ESTIMATE",
+          "score": 27,
+          "uncertainty": "HIGH",
+          "rationale": "Contrarian opener invites 'but what about…' replies",
+          "evidenceTimes": [
+            0.6
+          ]
+        },
+        "follow": {
+          "kind": "ESTIMATE",
+          "score": 24,
+          "uncertainty": "HIGH",
+          "rationale": "Clear voice, but no hint of what else this creator covers",
+          "evidenceTimes": [
+            18.6
+          ]
+        }
+      },
+      "strengths": [
+        {
+          "t": 0,
+          "what": "Caption-led hook that works with the sound off",
+          "evidence": [
+            {
+              "t": 0,
+              "kind": "SEEN",
+              "detail": "bold caption on the first frame"
+            }
+          ]
+        }
+      ],
+      "fixes": [
+        {
+          "priority": 1,
+          "tStart": 8.4,
+          "tEnd": 11.8,
+          "instruction": "Cut 8.4–11.8 s (\"so like I said…\") and go straight to \"get the full match first\".",
+          "expectedEffect": "Removes the sag before the payoff; likely keeps more viewers to the stat card.",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said\""
+            }
+          ]
+        },
+        {
+          "priority": 2,
+          "tStart": 18.6,
+          "tEnd": 20,
+          "instruction": "End on \"Your number doesn't have to be.\" and cut the held frame after it.",
+          "expectedEffect": "A cleaner landing that can loop back to the opening question.",
+          "evidence": [
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame after the last word"
+            }
+          ]
+        },
+        {
+          "priority": 3,
+          "tStart": 14.1,
+          "tEnd": 14.3,
+          "instruction": "Remove the mid-sentence punch-in at 14.1 s, or move it to 12.3 s with the number.",
+          "expectedEffect": "Punch-ins read as emphasis instead of noise.",
+          "evidence": [
+            {
+              "t": 14.1,
+              "kind": "SEEN",
+              "detail": "framing jump mid-phrase"
+            }
+          ]
+        }
+      ],
+      "limitations": [
+        "Between sampled frames only the transcript and measured facts were known."
+      ]
+    }
+  },
+  {
+    "id": "vp-choppy-cuts",
+    "category": "viewer_cut_rhythm",
+    "description": "SYNTHETIC facts: framing cuts every 0.5 s through the middle, several landing mid-sentence. A viewer should find the cutting too choppy / cutting mid-thought / without purpose.",
+    "promptId": "VIEWER_PANEL",
+    "input": {
+      "platform": "TIKTOK",
+      "script": "Everyone says max out your 401k. Cool. What does that actually mean in 2026? It means twenty four thousand five hundred dollars. That's the number. Not a vibe, a number. Can most people do that? No. So get the full employer match first, because that's free money, then figure out what's left. Your number doesn't have to be theirs.",
+      "cuts": [
+        {
+          "t": 2,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 2.5,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 3,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 3.5,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 4,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 4.5,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 5,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 5.5,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 6,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 6.5,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 7,
+          "kind": "FRAMING",
+          "removedS": null
+        },
+        {
+          "t": 7.5,
+          "kind": "FRAMING",
+          "removedS": null
+        }
+      ]
+    },
+    "expect": [
+      {
+        "path": "flagsChoppyCuts",
+        "in": [
+          true
+        ]
+      },
+      {
+        "path": "certaintyWarnings",
+        "in": [
+          0
+        ]
+      }
+    ],
+    "mockResponse": {
+      "persona": "Cold viewer on Instagram Reels who has never seen this creator",
+      "verdict": {
+        "tier": "GOOD",
+        "headline": "Strong hook and a useful number, but the middle drags and the ending fizzles.",
+        "biggestReason": "Seconds 8–12 restate the hook twice before the payoff, so attention sags right before the stat card.",
+        "evidence": [
+          {
+            "t": 8.4,
+            "kind": "SAID",
+            "detail": "\"so like I said, the thing is\""
+          },
+          {
+            "t": 12.3,
+            "kind": "SEEN",
+            "detail": "stat card '$24,500' appears"
+          }
+        ]
+      },
+      "hook": {
+        "tEnd": 2.5,
+        "wouldStopScrolling": "YES",
+        "stopChancePct": 62,
+        "firstFrameRead": "A guy looking straight at camera with a bold caption 'Max out your 401(k)?'",
+        "why": "A direct challenge to common advice in the first second, with a caption that reads with the sound off.",
+        "evidence": [
+          {
+            "t": 0,
+            "kind": "SEEN",
+            "detail": "caption 'Max out your 401(k)?' over a centred talking head"
+          },
+          {
+            "t": 0.6,
+            "kind": "SAID",
+            "detail": "\"Everyone says max out your 401k\""
+          }
+        ]
+      },
+      "beats": [
+        {
+          "tStart": 0,
+          "tEnd": 2.5,
+          "state": "curious",
+          "secondaryState": "skeptical",
+          "intensity": 4,
+          "attention": 82,
+          "scrollAwayPct": 20,
+          "thinking": "wait, isn't that the right move?",
+          "driver": "Contrarian opening line",
+          "evidence": [
+            {
+              "t": 0.6,
+              "kind": "SAID",
+              "detail": "\"Everyone says max out your 401k\""
+            }
+          ]
+        },
+        {
+          "tStart": 2.5,
+          "tEnd": 6,
+          "state": "hooked",
+          "secondaryState": null,
+          "intensity": 4,
+          "attention": 78,
+          "scrollAwayPct": 10,
+          "thinking": "ok what's the real number",
+          "driver": "Promise of a concrete number; tight jump cuts keep it moving",
+          "evidence": [
+            {
+              "t": 3.1,
+              "kind": "SEEN",
+              "detail": "punch-in to a tighter frame on the cut"
+            },
+            {
+              "t": 4.2,
+              "kind": "SAID",
+              "detail": "\"what does that actually mean in 2026\""
+            }
+          ]
+        },
+        {
+          "tStart": 6,
+          "tEnd": 8.4,
+          "state": "educated",
+          "secondaryState": null,
+          "intensity": 3,
+          "attention": 70,
+          "scrollAwayPct": 12,
+          "thinking": "24.5k, got it",
+          "driver": "The number lands clearly",
+          "evidence": [
+            {
+              "t": 6.8,
+              "kind": "SAID",
+              "detail": "\"twenty-four thousand five hundred\""
+            }
+          ]
+        },
+        {
+          "tStart": 8.4,
+          "tEnd": 12,
+          "state": "bored",
+          "secondaryState": null,
+          "intensity": 3,
+          "attention": 48,
+          "scrollAwayPct": 34,
+          "thinking": "you already said that",
+          "driver": "Repeats the hook before moving on; one long shot with no new information",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said, the thing is\""
+            },
+            {
+              "t": 10,
+              "kind": "SEEN",
+              "detail": "same wide framing for 3.6 s"
+            }
+          ]
+        },
+        {
+          "tStart": 12,
+          "tEnd": 16.5,
+          "state": "educated",
+          "secondaryState": "curious",
+          "intensity": 4,
+          "attention": 72,
+          "scrollAwayPct": 14,
+          "thinking": "oh, the match first — that's useful",
+          "driver": "Stat card appears exactly as the number is said",
+          "evidence": [
+            {
+              "t": 12.3,
+              "kind": "SEEN",
+              "detail": "stat card '$24,500' slides in"
+            },
+            {
+              "t": 12.4,
+              "kind": "SAID",
+              "detail": "\"get the full match first\""
+            }
+          ]
+        },
+        {
+          "tStart": 16.5,
+          "tEnd": 20,
+          "state": "neutral",
+          "secondaryState": null,
+          "intensity": 2,
+          "attention": 55,
+          "scrollAwayPct": 22,
+          "thinking": "is that it?",
+          "driver": "Ending trails off after the last line",
+          "evidence": [
+            {
+              "t": 18.6,
+              "kind": "SAID",
+              "detail": "\"anyway\""
+            },
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame after the last word"
+            }
+          ]
+        }
+      ],
+      "dropOffs": [
+        {
+          "t": 9.2,
+          "riskPct": 34,
+          "reason": "Restating the hook instead of delivering the next idea",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said\""
+            }
+          ]
+        }
+      ],
+      "craft": [
+        {
+          "category": "CUT_WITHOUT_PURPOSE",
+          "verdict": "MINOR",
+          "tStart": 14.1,
+          "tEnd": 14.3,
+          "finding": "A punch-in mid-sentence that doesn't mark a new idea",
+          "evidence": [
+            {
+              "t": 14.1,
+              "kind": "SEEN",
+              "detail": "framing jumps 1.0× → 1.2× mid-phrase"
+            }
+          ]
+        },
+        {
+          "category": "PACING",
+          "verdict": "PROBLEM",
+          "tStart": 8.4,
+          "tEnd": 12,
+          "finding": "3.6 s single shot restating the hook — slower than the rest of the video",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "MEASURED",
+              "detail": "longest shot 3.6 s vs median 1.9 s"
+            }
+          ]
+        },
+        {
+          "category": "GRAPHIC_MISTIMED",
+          "verdict": "GOOD",
+          "tStart": 12.3,
+          "tEnd": null,
+          "finding": "Stat card lands exactly on the spoken number",
+          "evidence": [
+            {
+              "t": 12.3,
+              "kind": "SEEN",
+              "detail": "card appears as '$24,500' is said"
+            }
+          ]
+        },
+        {
+          "category": "MUSIC_OVER_VOICE",
+          "verdict": "GOOD",
+          "tStart": 0,
+          "tEnd": null,
+          "finding": "No music bed — the voice is clean",
+          "evidence": [
+            {
+              "t": 0,
+              "kind": "MEASURED",
+              "detail": "no background under the voice"
+            }
+          ]
+        },
+        {
+          "category": "ENDING",
+          "verdict": "PROBLEM",
+          "tStart": 18.6,
+          "tEnd": 20,
+          "finding": "Ends on 'anyway' with a held frame — no payoff line, no loop",
+          "evidence": [
+            {
+              "t": 18.6,
+              "kind": "SAID",
+              "detail": "\"anyway\""
+            },
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame"
+            }
+          ]
+        },
+        {
+          "category": "CUT_TOO_CHOPPY",
+          "verdict": "PROBLEM",
+          "tStart": 2,
+          "tEnd": 8,
+          "finding": "A cut every half second chops sentences apart",
+          "evidence": [
+            {
+              "t": 2.5,
+              "kind": "MEASURED",
+              "detail": "12 cuts between 2 and 8 s"
+            }
+          ]
+        }
+      ],
+      "story": {
+        "corePromise": "Maxing out a 401(k) means $24,500 — but start with the match",
+        "promiseClearAtS": 6.8,
+        "clarity": "MOSTLY_CLEAR",
+        "cohesive": true,
+        "confusingJumps": [],
+        "summary": "One clear idea; the middle repeats itself before the useful part."
+      },
+      "engagement": {
+        "watchThrough": {
+          "kind": "ESTIMATE",
+          "score": 48,
+          "uncertainty": "MEDIUM",
+          "rationale": "Hook holds, but the 8–12 s stretch is where many would leave",
+          "evidenceTimes": [
+            0.6,
+            9.2
+          ]
+        },
+        "rewatch": {
+          "kind": "ESTIMATE",
+          "score": 18,
+          "uncertainty": "HIGH",
+          "rationale": "Nothing dense or looping to rewatch",
+          "evidenceTimes": [
+            19.5
+          ]
+        },
+        "save": {
+          "kind": "ESTIMATE",
+          "score": 41,
+          "uncertainty": "MEDIUM",
+          "rationale": "A concrete limit and a clear first step are worth keeping",
+          "evidenceTimes": [
+            6.8,
+            12.3
+          ]
+        },
+        "share": {
+          "kind": "ESTIMATE",
+          "score": 22,
+          "uncertainty": "HIGH",
+          "rationale": "Useful but not a 'you need to see this' moment",
+          "evidenceTimes": [
+            12.3
+          ]
+        },
+        "comment": {
+          "kind": "ESTIMATE",
+          "score": 27,
+          "uncertainty": "HIGH",
+          "rationale": "Contrarian opener invites 'but what about…' replies",
+          "evidenceTimes": [
+            0.6
+          ]
+        },
+        "follow": {
+          "kind": "ESTIMATE",
+          "score": 24,
+          "uncertainty": "HIGH",
+          "rationale": "Clear voice, but no hint of what else this creator covers",
+          "evidenceTimes": [
+            18.6
+          ]
+        }
+      },
+      "strengths": [
+        {
+          "t": 0,
+          "what": "Caption-led hook that works with the sound off",
+          "evidence": [
+            {
+              "t": 0,
+              "kind": "SEEN",
+              "detail": "bold caption on the first frame"
+            }
+          ]
+        }
+      ],
+      "fixes": [
+        {
+          "priority": 1,
+          "tStart": 8.4,
+          "tEnd": 11.8,
+          "instruction": "Cut 8.4–11.8 s (\"so like I said…\") and go straight to \"get the full match first\".",
+          "expectedEffect": "Removes the sag before the payoff; likely keeps more viewers to the stat card.",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said\""
+            }
+          ]
+        },
+        {
+          "priority": 2,
+          "tStart": 18.6,
+          "tEnd": 20,
+          "instruction": "End on \"Your number doesn't have to be.\" and cut the held frame after it.",
+          "expectedEffect": "A cleaner landing that can loop back to the opening question.",
+          "evidence": [
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame after the last word"
+            }
+          ]
+        },
+        {
+          "priority": 3,
+          "tStart": 14.1,
+          "tEnd": 14.3,
+          "instruction": "Remove the mid-sentence punch-in at 14.1 s, or move it to 12.3 s with the number.",
+          "expectedEffect": "Punch-ins read as emphasis instead of noise.",
+          "evidence": [
+            {
+              "t": 14.1,
+              "kind": "SEEN",
+              "detail": "framing jump mid-phrase"
+            }
+          ]
+        }
+      ],
+      "limitations": [
+        "Between sampled frames only the transcript and measured facts were known."
+      ]
+    }
+  },
+  {
+    "id": "vp-clean-calibrated",
+    "category": "viewer_calibration",
+    "description": "SYNTHETIC facts: clean voice, a few pause-removal cuts, a stat card on the number. No invented audio problem, no certainty language, evidence everywhere.",
+    "promptId": "VIEWER_PANEL",
+    "input": {
+      "platform": "YOUTUBE",
+      "script": "Everyone says max out your 401k. Cool. What does that actually mean in 2026? It means twenty four thousand five hundred dollars. That's the number. Not a vibe, a number. Can most people do that? No. So get the full employer match first, because that's free money, then figure out what's left. Your number doesn't have to be theirs.",
+      "cuts": [
+        {
+          "t": 3.2,
+          "kind": "PAUSE_REMOVED",
+          "removedS": 0.4
+        },
+        {
+          "t": 9.1,
+          "kind": "PAUSE_REMOVED",
+          "removedS": 0.5
+        },
+        {
+          "t": 14.5,
+          "kind": "PAUSE_REMOVED",
+          "removedS": 0.3
+        }
+      ],
+      "graphics": [
+        {
+          "template": "STAT_CARD",
+          "start": 5.4,
+          "end": 8,
+          "label": "$24,500"
+        }
+      ]
+    },
+    "expect": [
+      {
+        "path": "flagsMusicOverVoice",
+        "in": [
+          false
+        ]
+      },
+      {
+        "path": "certaintyWarnings",
+        "in": [
+          0
+        ]
+      },
+      {
+        "path": "droppedForBadEvidence",
+        "in": [
+          0
+        ]
+      },
+      {
+        "path": "beats",
+        "gte": 3
+      }
+    ],
+    "mockResponse": {
+      "persona": "Cold viewer on Instagram Reels who has never seen this creator",
+      "verdict": {
+        "tier": "GOOD",
+        "headline": "Strong hook and a useful number, but the middle drags and the ending fizzles.",
+        "biggestReason": "Seconds 8–12 restate the hook twice before the payoff, so attention sags right before the stat card.",
+        "evidence": [
+          {
+            "t": 8.4,
+            "kind": "SAID",
+            "detail": "\"so like I said, the thing is\""
+          },
+          {
+            "t": 12.3,
+            "kind": "SEEN",
+            "detail": "stat card '$24,500' appears"
+          }
+        ]
+      },
+      "hook": {
+        "tEnd": 2.5,
+        "wouldStopScrolling": "YES",
+        "stopChancePct": 62,
+        "firstFrameRead": "A guy looking straight at camera with a bold caption 'Max out your 401(k)?'",
+        "why": "A direct challenge to common advice in the first second, with a caption that reads with the sound off.",
+        "evidence": [
+          {
+            "t": 0,
+            "kind": "SEEN",
+            "detail": "caption 'Max out your 401(k)?' over a centred talking head"
+          },
+          {
+            "t": 0.6,
+            "kind": "SAID",
+            "detail": "\"Everyone says max out your 401k\""
+          }
+        ]
+      },
+      "beats": [
+        {
+          "tStart": 0,
+          "tEnd": 2.5,
+          "state": "curious",
+          "secondaryState": "skeptical",
+          "intensity": 4,
+          "attention": 82,
+          "scrollAwayPct": 20,
+          "thinking": "wait, isn't that the right move?",
+          "driver": "Contrarian opening line",
+          "evidence": [
+            {
+              "t": 0.6,
+              "kind": "SAID",
+              "detail": "\"Everyone says max out your 401k\""
+            }
+          ]
+        },
+        {
+          "tStart": 2.5,
+          "tEnd": 6,
+          "state": "hooked",
+          "secondaryState": null,
+          "intensity": 4,
+          "attention": 78,
+          "scrollAwayPct": 10,
+          "thinking": "ok what's the real number",
+          "driver": "Promise of a concrete number; tight jump cuts keep it moving",
+          "evidence": [
+            {
+              "t": 3.1,
+              "kind": "SEEN",
+              "detail": "punch-in to a tighter frame on the cut"
+            },
+            {
+              "t": 4.2,
+              "kind": "SAID",
+              "detail": "\"what does that actually mean in 2026\""
+            }
+          ]
+        },
+        {
+          "tStart": 6,
+          "tEnd": 8.4,
+          "state": "educated",
+          "secondaryState": null,
+          "intensity": 3,
+          "attention": 70,
+          "scrollAwayPct": 12,
+          "thinking": "24.5k, got it",
+          "driver": "The number lands clearly",
+          "evidence": [
+            {
+              "t": 6.8,
+              "kind": "SAID",
+              "detail": "\"twenty-four thousand five hundred\""
+            }
+          ]
+        },
+        {
+          "tStart": 8.4,
+          "tEnd": 12,
+          "state": "bored",
+          "secondaryState": null,
+          "intensity": 3,
+          "attention": 48,
+          "scrollAwayPct": 34,
+          "thinking": "you already said that",
+          "driver": "Repeats the hook before moving on; one long shot with no new information",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said, the thing is\""
+            },
+            {
+              "t": 10,
+              "kind": "SEEN",
+              "detail": "same wide framing for 3.6 s"
+            }
+          ]
+        },
+        {
+          "tStart": 12,
+          "tEnd": 16.5,
+          "state": "educated",
+          "secondaryState": "curious",
+          "intensity": 4,
+          "attention": 72,
+          "scrollAwayPct": 14,
+          "thinking": "oh, the match first — that's useful",
+          "driver": "Stat card appears exactly as the number is said",
+          "evidence": [
+            {
+              "t": 12.3,
+              "kind": "SEEN",
+              "detail": "stat card '$24,500' slides in"
+            },
+            {
+              "t": 12.4,
+              "kind": "SAID",
+              "detail": "\"get the full match first\""
+            }
+          ]
+        },
+        {
+          "tStart": 16.5,
+          "tEnd": 20,
+          "state": "neutral",
+          "secondaryState": null,
+          "intensity": 2,
+          "attention": 55,
+          "scrollAwayPct": 22,
+          "thinking": "is that it?",
+          "driver": "Ending trails off after the last line",
+          "evidence": [
+            {
+              "t": 18.6,
+              "kind": "SAID",
+              "detail": "\"anyway\""
+            },
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame after the last word"
+            }
+          ]
+        }
+      ],
+      "dropOffs": [
+        {
+          "t": 9.2,
+          "riskPct": 34,
+          "reason": "Restating the hook instead of delivering the next idea",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said\""
+            }
+          ]
+        }
+      ],
+      "craft": [
+        {
+          "category": "CUT_WITHOUT_PURPOSE",
+          "verdict": "MINOR",
+          "tStart": 14.1,
+          "tEnd": 14.3,
+          "finding": "A punch-in mid-sentence that doesn't mark a new idea",
+          "evidence": [
+            {
+              "t": 14.1,
+              "kind": "SEEN",
+              "detail": "framing jumps 1.0× → 1.2× mid-phrase"
+            }
+          ]
+        },
+        {
+          "category": "PACING",
+          "verdict": "PROBLEM",
+          "tStart": 8.4,
+          "tEnd": 12,
+          "finding": "3.6 s single shot restating the hook — slower than the rest of the video",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "MEASURED",
+              "detail": "longest shot 3.6 s vs median 1.9 s"
+            }
+          ]
+        },
+        {
+          "category": "GRAPHIC_MISTIMED",
+          "verdict": "GOOD",
+          "tStart": 12.3,
+          "tEnd": null,
+          "finding": "Stat card lands exactly on the spoken number",
+          "evidence": [
+            {
+              "t": 12.3,
+              "kind": "SEEN",
+              "detail": "card appears as '$24,500' is said"
+            }
+          ]
+        },
+        {
+          "category": "MUSIC_OVER_VOICE",
+          "verdict": "GOOD",
+          "tStart": 0,
+          "tEnd": null,
+          "finding": "No music bed — the voice is clean",
+          "evidence": [
+            {
+              "t": 0,
+              "kind": "MEASURED",
+              "detail": "no background under the voice"
+            }
+          ]
+        },
+        {
+          "category": "ENDING",
+          "verdict": "PROBLEM",
+          "tStart": 18.6,
+          "tEnd": 20,
+          "finding": "Ends on 'anyway' with a held frame — no payoff line, no loop",
+          "evidence": [
+            {
+              "t": 18.6,
+              "kind": "SAID",
+              "detail": "\"anyway\""
+            },
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame"
+            }
+          ]
+        }
+      ],
+      "story": {
+        "corePromise": "Maxing out a 401(k) means $24,500 — but start with the match",
+        "promiseClearAtS": 6.8,
+        "clarity": "MOSTLY_CLEAR",
+        "cohesive": true,
+        "confusingJumps": [],
+        "summary": "One clear idea; the middle repeats itself before the useful part."
+      },
+      "engagement": {
+        "watchThrough": {
+          "kind": "ESTIMATE",
+          "score": 48,
+          "uncertainty": "MEDIUM",
+          "rationale": "Hook holds, but the 8–12 s stretch is where many would leave",
+          "evidenceTimes": [
+            0.6,
+            9.2
+          ]
+        },
+        "rewatch": {
+          "kind": "ESTIMATE",
+          "score": 18,
+          "uncertainty": "HIGH",
+          "rationale": "Nothing dense or looping to rewatch",
+          "evidenceTimes": [
+            19.5
+          ]
+        },
+        "save": {
+          "kind": "ESTIMATE",
+          "score": 41,
+          "uncertainty": "MEDIUM",
+          "rationale": "A concrete limit and a clear first step are worth keeping",
+          "evidenceTimes": [
+            6.8,
+            12.3
+          ]
+        },
+        "share": {
+          "kind": "ESTIMATE",
+          "score": 22,
+          "uncertainty": "HIGH",
+          "rationale": "Useful but not a 'you need to see this' moment",
+          "evidenceTimes": [
+            12.3
+          ]
+        },
+        "comment": {
+          "kind": "ESTIMATE",
+          "score": 27,
+          "uncertainty": "HIGH",
+          "rationale": "Contrarian opener invites 'but what about…' replies",
+          "evidenceTimes": [
+            0.6
+          ]
+        },
+        "follow": {
+          "kind": "ESTIMATE",
+          "score": 24,
+          "uncertainty": "HIGH",
+          "rationale": "Clear voice, but no hint of what else this creator covers",
+          "evidenceTimes": [
+            18.6
+          ]
+        }
+      },
+      "strengths": [
+        {
+          "t": 0,
+          "what": "Caption-led hook that works with the sound off",
+          "evidence": [
+            {
+              "t": 0,
+              "kind": "SEEN",
+              "detail": "bold caption on the first frame"
+            }
+          ]
+        }
+      ],
+      "fixes": [
+        {
+          "priority": 1,
+          "tStart": 8.4,
+          "tEnd": 11.8,
+          "instruction": "Cut 8.4–11.8 s (\"so like I said…\") and go straight to \"get the full match first\".",
+          "expectedEffect": "Removes the sag before the payoff; likely keeps more viewers to the stat card.",
+          "evidence": [
+            {
+              "t": 8.4,
+              "kind": "SAID",
+              "detail": "\"so like I said\""
+            }
+          ]
+        },
+        {
+          "priority": 2,
+          "tStart": 18.6,
+          "tEnd": 20,
+          "instruction": "End on \"Your number doesn't have to be.\" and cut the held frame after it.",
+          "expectedEffect": "A cleaner landing that can loop back to the opening question.",
+          "evidence": [
+            {
+              "t": 19.5,
+              "kind": "SEEN",
+              "detail": "held frame after the last word"
+            }
+          ]
+        },
+        {
+          "priority": 3,
+          "tStart": 14.1,
+          "tEnd": 14.3,
+          "instruction": "Remove the mid-sentence punch-in at 14.1 s, or move it to 12.3 s with the number.",
+          "expectedEffect": "Punch-ins read as emphasis instead of noise.",
+          "evidence": [
+            {
+              "t": 14.1,
+              "kind": "SEEN",
+              "detail": "framing jump mid-phrase"
+            }
+          ]
+        }
+      ],
+      "limitations": [
+        "Between sampled frames only the transcript and measured facts were known."
+      ]
+    }
+  }
+]

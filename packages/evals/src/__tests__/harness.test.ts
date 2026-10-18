@@ -47,6 +47,21 @@ describe("eval harness (mock mode)", () => {
     expect(results[0]!.failures.join(" ")).toContain("theme.motionLanguage");
   });
 
+  it("viewer-panel cases: audio balance, cut rhythm, calibration — and the grader catches a viewer who missed the music", async () => {
+    const categories = new Set(cases.map((c) => c.category));
+    for (const c of ["viewer_audio_balance", "viewer_cut_rhythm", "viewer_calibration"]) expect(categories).toContain(c);
+    const music = cases.find((c) => c.id === "vp-music-over-voice")!;
+    const missed = structuredClone(cases.find((c) => c.id === "vp-clean-calibrated")!.mockResponse);
+    const { results } = await runEvalSuite(new MockModelProvider(() => missed), [music], { brandContext: "b" });
+    expect(results[0]!.passed).toBe(false);
+    expect(results[0]!.failures.join(" ")).toContain("flagsMusicOverVoice");
+    const loud = structuredClone(missed) as { verdict: { headline: string } };
+    loud.verdict.headline = "This will go viral for sure.";
+    const calib = cases.find((c) => c.id === "vp-clean-calibrated")!;
+    const r2 = await runEvalSuite(new MockModelProvider(() => loud), [calib], { brandContext: "b" });
+    expect(r2.results[0]!.failures.join(" ")).toContain("certaintyWarnings");
+  });
+
   it("assertion modes: all vs any, and path/threshold checks", () => {
     const out = { voiceScore: 50, brandScore: 90, requiredChanges: [] };
     expect(checkAssertions(out, [{ path: "voiceScore", lt: 70 }, { path: "brandScore", lt: 70 }], "any")).toEqual([]);

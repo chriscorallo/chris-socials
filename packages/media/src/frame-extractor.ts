@@ -109,3 +109,80 @@ export async function extractFrames(
     await rm(workDir, { recursive: true, force: true });
   }
 }
+
+export interface ScaledFrame {
+  atSeconds: number;
+  base64: string;
+  mediaType: "image/jpeg";
+  width: number;
+  height: number;
+}
+
+/**
+ * Downscaled JPEG frames for a vision model watching a whole video (the Viewer Panel): each
+ * frame scaled so its long edge is `longEdge` px (never upscaled), JPEG `-q:v 3`. At 360×640 a
+ * frame costs ≈ 308 image tokens instead of ≈ 2 765 for a full-HD PNG, and burned-in captions
+ * stay legible. Input seeking (`-ss` before `-i`): fast and frame-accurate on re-encode. A
+ * timestamp ffmpeg can't produce a frame for (past the end of a VFR file) is skipped rather
+ * than failing the whole set — the caller sees which times came back.
+ */
+export async function extractScaledFrames(
+  videoPath: string,
+  atSecondsList: number[],
+  options: { longEdge?: number; onFrame?: (done: number, total: number) => void } = {},
+): Promise<ScaledFrame[]> {
+  if (atSecondsList.length === 0) return [];
+  const longEdge = Math.max(64, Math.round(options.longEdge ?? 640));
+  const workDir = await mkdtemp(join(tmpdir(), "chris-vframes-"));
+  try {
+    const out: ScaledFrame[] = [];
+    for (let i = 0; i < atSecondsList.length; i++) {
+      const atSeconds = atSecondsList[i]!;
+      const framePath = join(workDir, `f-${i}.jpg`);
+      await runFfmpeg([
+        "-y",
+        "-loglevel",
+        "error",
+        "-ss",
+        String(atSeconds),
+        "-i",
+        videoPath,
+        "-frames:v",
+        "1",
+        "-vf",
+        `scale='if(gte(iw,ih),min(${longEdge},iw),-2)':'if(gte(iw,ih),-2,min(${longEdge},ih))':flags=area`,
+        "-q:v",
+        "3",
+        framePath,
+      ]).catch(() => undefined);
+      const stats = await stat(framePath).catch(() => null);
+      options.onFrame?.(i + 1, atSecondsList.length);
+      if (!stats || stats.size === 0) continue;
+      const bytes = await readFile(framePath);
+      const size = jpegSize(bytes);
+      out.push({ atSeconds, base64: bytes.toString("base64"), mediaType: "image/jpeg", width: size?.width ?? 0, height: size?.height ?? 0 });
+    }
+    return out;
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+/** Width/height from a JPEG's SOF marker (no image library needed). */
+export function jpegSize(b: Uint8Array): { width: number; height: number } | null {
+  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
+  let i = 2;
+  while (i + 9 < b.length) {
+    if (b[i] !== 0xff) {
+      i++;
+      continue;
+    }
+    const marker = b[i + 1]!;
+    const len = (b[i + 2]! << 8) | b[i + 3]!;
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: (b[i + 5]! << 8) | b[i + 6]!, width: (b[i + 7]! << 8) | b[i + 8]! };
+    }
+    i += 2 + len;
+  }
+  return null;
+}

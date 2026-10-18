@@ -1,6 +1,9 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // apps/web's tsconfig says jsx: "preserve" (Next compiles it); tests that render a client
+  // component on the server (react-dom/server) need it compiled here.
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts", "apps/*/lib/**/*.test.ts"],
     environment: "node",

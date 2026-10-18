@@ -142,3 +142,7 @@ export type { ReferenceAnalysisStatus } from "@prisma/client";
 // Style cut (2026-10-17) — persistence of the deterministic reference-paced edit
 // (docs/decisions-pending/style-cut.md); the cut itself is packages/media style-cut.ts.
 export * from "./style-cut-plan";
+// Viewer Panel (2026-10-17) — advisory AI first-time-viewer reviews of a whole video
+// (docs/decisions-pending/viewer-panel.md). Never a hard-gate input.
+export * from "./viewer-review";
+export type { ViewerReview as ViewerReviewRow } from "@prisma/client";

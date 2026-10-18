@@ -16,6 +16,7 @@ export const HEAVY_JOB_KINDS = [
   "ingest",
   "motion-design",
   "reference-analyze",
+  "viewer-review",
 ] as const;
 
 export type HeavyJobKind = (typeof HEAVY_JOB_KINDS)[number];
@@ -38,17 +39,36 @@ export interface HeavyJobArgsByKind {
   /** Measure reference videos' edit style (no model calls): every one waiting, or just `referenceContentIds`.
    * Not tied to a video — its lease is the whole reference library (REFERENCE_LIBRARY_SUBJECT). */
   "reference-analyze": { referenceContentIds?: string[] };
+  /** "Watch it like a new viewer" (Viewer Panel, one HIGH vision call): the latest successful
+   * render of a video (`contentItemId`) OR one reference video (`referenceContentId`) — exactly
+   * one. Advisory only; writes a new ViewerReview row. */
+  "viewer-review": {
+    contentItemId?: string;
+    referenceContentId?: string;
+    platform?: "TIKTOK" | "INSTAGRAM" | "YOUTUBE";
+    persona?: "COLD" | "FOLLOWER";
+  };
 }
 
 /** Lease subject of the reference-analysis job (one at a time for the whole library). */
 export const REFERENCE_LIBRARY_SUBJECT = "reference-library";
 
+/** Lease subject of a viewer review of one reference video. */
+export function referenceVideoSubject(referenceContentId: string): string {
+  return `reference-video:${referenceContentId}`;
+}
+
 /**
  * What a job's lease is held on: the content item for every per-video kind, the reference
- * library for reference analysis. One heavy job per subject at a time.
+ * library for reference analysis, the one reference video for its viewer review. One heavy job
+ * per subject at a time.
  */
 export function heavyJobSubject(kind: HeavyJobKind, args: unknown): string {
   if (kind === "reference-analyze") return REFERENCE_LIBRARY_SUBJECT;
+  if (kind === "viewer-review") {
+    const a = args as HeavyJobArgsByKind["viewer-review"];
+    if (a.referenceContentId) return referenceVideoSubject(a.referenceContentId);
+  }
   return (args as { contentItemId: string }).contentItemId;
 }
 
@@ -56,7 +76,7 @@ export type HeavyJobArgs<K extends HeavyJobKind = HeavyJobKind> = HeavyJobArgsBy
 
 /** Kinds that call the model provider (need ANTHROPIC_API_KEY in the worker). */
 export function heavyJobNeedsModel(kind: HeavyJobKind, args: unknown): boolean {
-  if (kind === "quality-gate" || kind === "auto-repair" || kind === "motion-design") return true;
+  if (kind === "quality-gate" || kind === "auto-repair" || kind === "motion-design" || kind === "viewer-review") return true;
   if (kind === "render") return !!(args as HeavyJobArgsByKind["render"]).thenQualityGate;
   return false;
 }
@@ -72,6 +92,7 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   ingest: "Analyzing your footage",
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
+  "viewer-review": "Watching it like a new viewer",
 };
 
 export function isHeavyJobKind(v: unknown): v is HeavyJobKind {
@@ -106,6 +127,19 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
   if (kind === "reference-analyze") {
     const ids = optIds(a.referenceContentIds, "referenceContentIds");
     return (ids ? { referenceContentIds: ids } : {}) as HeavyJobArgsByKind[K];
+  }
+  if (kind === "viewer-review") {
+    const contentItemId = optStr(a.contentItemId, "contentItemId");
+    const referenceContentId = optStr(a.referenceContentId, "referenceContentId");
+    if (!!contentItemId === !!referenceContentId) throw new Error("viewer-review needs exactly one of contentItemId or referenceContentId");
+    const platform = a.platform == null ? undefined : String(a.platform);
+    if (platform !== undefined && !["TIKTOK", "INSTAGRAM", "YOUTUBE"].includes(platform)) throw new Error("platform must be TIKTOK, INSTAGRAM or YOUTUBE");
+    const persona = a.persona == null ? undefined : String(a.persona);
+    if (persona !== undefined && persona !== "COLD" && persona !== "FOLLOWER") throw new Error("persona must be COLD or FOLLOWER");
+    const out: HeavyJobArgsByKind["viewer-review"] = contentItemId ? { contentItemId } : { referenceContentId };
+    if (platform) out.platform = platform as NonNullable<HeavyJobArgsByKind["viewer-review"]["platform"]>;
+    if (persona) out.persona = persona as "COLD" | "FOLLOWER";
+    return out as HeavyJobArgsByKind[K];
   }
   const contentItemId = str(a.contentItemId, "contentItemId");
   let out: unknown;

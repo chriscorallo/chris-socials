@@ -9,6 +9,9 @@ import {
   numbersShownBy,
   runBrandGuardianAgent,
   runClaimsGateAgent,
+  runViewerPanelAgent,
+  planViewerFrames,
+  type ViewerReviewFacts,
   BilledModelCallError,
   type ModelProvider,
   type ModelUsage,
@@ -150,7 +153,69 @@ async function runMotionCase(provider: ModelProvider, c: MotionCase, brandContex
   };
 }
 
+type ViewerCase = Extract<EvalCase, { promptId: "VIEWER_PANEL" }>;
+
+/** A 16×16 mid-grey JPEG: a neutral placeholder frame (the viewer case grades facts, not pixels). */
+const PLACEHOLDER_JPEG =
+  "/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYwLjMuMTAwAP/bAEMACBAQExATFhYWFhYWGhgaGxsbGhoaGhsbGx0dHSIiIh0dHRsbHR0gICIiJSYlIyMiIyYmKCgoMDAuLjg4OkVFU//EAEoAAQAAAAAAAAAAAAAAAAAAAAABAQAAAAAAAAAAAAAAAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAQABADASIAAhEAAxEA/9oADAMBAAIRAxEAPwAAD//Z";
+
+/** Runs the real Viewer Panel on synthetic facts and returns a gradeable summary. */
+async function runViewerCase(provider: ModelProvider, c: ViewerCase, brandContext: string) {
+  const tokens = c.input.script.split(/\s+/).filter(Boolean);
+  const words = tokens.map((word, i) => ({ word, start: c.input.startS + i * c.input.secondsPerWord, end: c.input.startS + i * c.input.secondsPerWord + c.input.secondsPerWord * 0.85 }));
+  const durationS = (words.at(-1)?.end ?? 1) + c.input.tailS;
+  const facts: ViewerReviewFacts = {
+    subject: "CHRIS_RENDER",
+    title: null,
+    platform: c.input.platform,
+    persona: "COLD",
+    durationS,
+    width: 1080,
+    height: 1920,
+    words,
+    wordsSource: "synthetic eval timings",
+    talking: true,
+    cuts: c.input.cuts.map((x) => ({ t: x.t, kind: x.kind, removedS: x.removedS })),
+    cutsSource: "EDIT",
+    zooms: [],
+    captions: { enabled: true, preset: "BOLD_HIGHLIGHT", uppercase: false },
+    texts: [],
+    graphics: c.input.graphics,
+    music: c.input.backgroundUnderVoiceDb != null ? { present: true, levelDb: -6, duckDb: 0 } : { present: false, levelDb: null, duckDb: null },
+    sfxCount: 0,
+    audio: {
+      integratedLufs: -14,
+      truePeakDbtp: -1,
+      clipping: false,
+      voiceLevelDb: -18,
+      backgroundLevelDb: c.input.backgroundUnderVoiceDb != null ? -18 - c.input.backgroundUnderVoiceDb : null,
+      backgroundUnderVoiceDb: c.input.backgroundUnderVoiceDb,
+      background: c.input.backgroundUnderVoiceDb != null ? "present" : "none",
+      levelPerSecond: [],
+      levelJumps: c.input.levelJumps,
+      cutJumps: [],
+    },
+    referenceStyle: null,
+    notes: ["Eval: the frames are neutral placeholders — judge from the transcript and the measured facts, and say so in limitations."],
+  };
+  const plan = planViewerFrames({ durationS, cutTimes: facts.cuts.map((x) => x.t) }, { maxFrames: 12 });
+  const frames = plan.map((p) => ({ ...p, base64: PLACEHOLDER_JPEG, mediaType: "image/jpeg" as const }));
+  const r = await runViewerPanelAgent(provider, { facts, frames, brandContext });
+  const problems = new Set(r.review.craft.filter((x) => x.verdict !== "GOOD").map((x) => x.category));
+  return {
+    tier: r.review.verdict.tier,
+    flagsChoppyCuts: problems.has("CUT_TOO_CHOPPY") || problems.has("CUT_MID_THOUGHT") || problems.has("CUT_WITHOUT_PURPOSE"),
+    flagsMusicOverVoice: problems.has("MUSIC_OVER_VOICE"),
+    flagsLevelJump: problems.has("AUDIO_LEVEL_JUMP"),
+    flagsSlowPacing: problems.has("CUT_TOO_SLOW") || problems.has("PACING"),
+    beats: r.review.beats.length,
+    certaintyWarnings: r.warnings.filter((w) => /estimate/.test(w)).length,
+    droppedForBadEvidence: r.warnings.filter((w) => /^Dropped/.test(w)).length,
+  };
+}
+
 async function invoke(provider: ModelProvider, c: EvalCase, brandContext: string): Promise<unknown> {
+  if (c.promptId === "VIEWER_PANEL") return runViewerCase(provider, c, brandContext);
   if (c.promptId === "CLAIMS_GATE") {
     const research = toResearchPacket(c.input.research);
     return runClaimsGateAgent(provider, {

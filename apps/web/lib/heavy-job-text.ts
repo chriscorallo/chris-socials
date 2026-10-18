@@ -13,6 +13,7 @@ export const HEAVY_JOB_TITLE: Record<string, string> = {
   ingest: "Analyzing your footage",
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
+  "viewer-review": "Watching it like a new viewer",
 };
 
 /** "Rendering your video… 40%" */

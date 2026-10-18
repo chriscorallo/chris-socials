@@ -10,6 +10,7 @@ import { ensurePersonMattes, type MatteComputer, type PersonMatteJobResult } fro
 import { designMotionForContentItem } from "./motion-design-job";
 import { analyzePendingReferenceVideos } from "./reference-analysis-job";
 import { maybeAutoStyleCut, type StyleCutOutcome } from "./style-cut-job";
+import { reviewReferenceAsViewer, reviewRenderAsViewer } from "./viewer-review-job";
 import { HEAVY_JOB_LABEL, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "./heavy-job-kinds";
 
 /**
@@ -41,6 +42,8 @@ export interface HeavyJobContext {
   computeMatte?: MatteComputer;
   encode?: { preset?: string; crf?: number };
   fontPath?: string;
+  /** The JobRun this execution is recorded on (set by runHeavyJobRecorded). */
+  jobRunId?: string;
 }
 
 export interface HeavyJobOutcome {
@@ -239,6 +242,26 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
         message: (r.measured.length === 0 ? "Nothing waiting to measure." : `Measured ${plural(okCount, "video")}${failed.length ? `, ${failed.length} failed` : ""}.`) + rest,
       };
     }
+
+    case "viewer-review": {
+      const a = args as HeavyJobArgsByKind["viewer-review"];
+      const opts = {
+        platform: a.platform,
+        persona: a.persona,
+        transcriptionProvider: ctx.transcriptionProvider,
+        jobRunId: ctx.jobRunId ?? null,
+        onProgress: (pct: number, message: string) => progress(pct, message, "viewer"),
+      };
+      try {
+        const r = a.contentItemId
+          ? await reviewRenderAsViewer(db, storage, () => needModel(ctx), a.contentItemId, actor, opts)
+          : await reviewReferenceAsViewer(db, storage, () => needModel(ctx), a.referenceContentId!, actor, opts);
+        return { ok: true, result: r, message: `A new viewer would call it ${r.verdictTier.toLowerCase()}: ${r.headline}` };
+      } catch (err) {
+        // Spend cap / no key / out of credit / refusal: the errorName lets the page say it plainly.
+        return { ok: false, result: { errorName: err instanceof Error ? err.name : "Error" }, error: errMsg(err), message: "The viewer check couldn't run." };
+      }
+    }
   }
   throw new Error(`unknown heavy job kind: ${String(kind)}`);
 }
@@ -303,6 +326,7 @@ export async function runHeavyJobRecorded(
   try {
     outcome = await executeHeavyJob(kind, args, {
       ...ctx,
+      jobRunId,
       progress: (p) => {
         writer.update(p);
         ctx.progress?.(p);
