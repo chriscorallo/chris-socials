@@ -5,7 +5,7 @@ import { getVoiceSamplesText } from "@chris/agents";
 import { requireSession } from "../../../lib/session";
 import { APP_TZ } from "../../../lib/calendar-data";
 import { NavBar } from "../../components/NavBar";
-import { BackLink, PageHeader, PageShell } from "../../components/ui";
+import { BackLink, PageHeader, PageShell, QuietLink } from "../../components/ui";
 import { ScriptsClient, type ClientTarget } from "./ScriptsClient";
 
 export const maxDuration = 120;
@@ -46,6 +46,9 @@ export default async function PlanScriptsPage() {
       <PageShell maxWidth={680}>
         <BackLink href="/plan">Plan</BackLink>
         <PageHeader eyebrow="Plan" title="Scripts from ChatGPT" description="Free — it uses your ChatGPT. Copy the prompt, paste ChatGPT's answer back, check, save." />
+        <p className="mb-4 text-[14px] text-[var(--color-text-muted)]">
+          On ChatGPT Business? <QuietLink href="/settings/chatgpt">Connect ChatGPT</QuietLink> and it can save scripts itself, no pasting.
+        </p>
         <ScriptsClient today={today} targets={clientTargets} style={style} pace={pace} voiceSamples={getVoiceSamplesText()} />
       </PageShell>
     </>

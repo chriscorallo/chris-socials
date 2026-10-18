@@ -18,6 +18,7 @@ export const MORE_LINKS: { href: string; label: string; hint: string }[] = [
   { href: "/plan", label: "Plan", hint: "Your imported video plan — what to film and upload next" },
   { href: "/plan/import", label: "Import plan", hint: "Bring in a day, week, month or year of videos" },
   { href: "/plan/scripts", label: "Scripts from ChatGPT", hint: "Free scripts for your planned videos" },
+  { href: "/settings/chatgpt", label: "Connect ChatGPT", hint: "Let ChatGPT save scripts from your planning chat" },
   { href: "/film", label: "Film", hint: "What's ready to shoot, with hooks and talking points" },
   { href: "/ideas", label: "Ideas", hint: "Capture and browse ideas" },
   { href: "/todo", label: "To-do", hint: "What's missing to stay on your posting plan" },

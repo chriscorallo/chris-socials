@@ -1247,3 +1247,84 @@ model ViewerReview {
   @@index([referenceContentId, createdAt])
   @@index([renderId])
 }
+
+// ChatGPT connector (2026-10-17) — an OAuth 2.1 authorization server + MCP resource so Chris's
+// ChatGPT can read his plan and save scripts from inside his own chat. Every secret (code,
+// access token, refresh token) is stored only as a SHA-256 hash; rows are never deleted on
+// revoke (revokedAt is set) so the history stays auditable. Additive tables only. See
+// docs/decisions-pending/chatgpt-connector.md.
+
+/// A client registered through Dynamic Client Registration (RFC 7591). Public clients only
+/// (token_endpoint_auth_method "none", PKCE S256 required).
+model OAuthClient {
+  id           String    @id // the client_id handed out ("csc_…")
+  clientName   String
+  redirectUris String[]
+  /// The raw registration request (untrusted; kept for provenance).
+  metadata     Json
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  codes  OAuthAuthorizationCode[]
+  grants OAuthGrant[]
+
+  @@index([createdAt])
+}
+
+/// A one-time authorization code (RFC 6749 §4.1 + PKCE RFC 7636), valid for a few minutes.
+model OAuthAuthorizationCode {
+  id            String    @id @default(cuid())
+  codeHash      String    @unique
+  clientId      String
+  userId        String
+  redirectUri   String
+  codeChallenge String
+  scope         String
+  resource      String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  /// The grant this code was exchanged for — revoked if the code is ever replayed.
+  grantId       String?
+  createdAt     DateTime  @default(now())
+
+  client OAuthClient @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+}
+
+/// One approval ("Allow ChatGPT…") = one grant. Access/refresh tokens rotate inside it;
+/// revoking the grant (Disconnect, or refresh-token reuse) kills every token in it.
+model OAuthGrant {
+  id            String    @id @default(cuid())
+  clientId      String
+  userId        String
+  scope         String
+  resource      String
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime?
+  revokedAt     DateTime?
+  revokedReason String?
+
+  client OAuthClient  @relation(fields: [clientId], references: [id])
+  tokens OAuthToken[]
+
+  @@index([userId, revokedAt])
+}
+
+/// An access or refresh token (opaque, random, 256 bits), stored only as its SHA-256.
+model OAuthToken {
+  id        String    @id @default(cuid())
+  grantId   String
+  kind      String // "ACCESS" | "REFRESH"
+  tokenHash String    @unique
+  /// Space-separated scopes of THIS token (a refresh may narrow it below the grant's scope).
+  scope     String
+  expiresAt DateTime
+  /// Refresh tokens are single-use: set when rotated. Presenting a used one revokes the grant.
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  grant OAuthGrant @relation(fields: [grantId], references: [id])
+
+  @@index([grantId, kind])
+}

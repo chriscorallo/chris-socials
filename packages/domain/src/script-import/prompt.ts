@@ -140,6 +140,39 @@ function humanDate(ymd: string): string {
   return `${formatYmdShort(ymd)}, ${ymd.slice(0, 4)}`;
 }
 
+/** "HOW I ACTUALLY TALK" block (empty when /brand/VOICE_SAMPLES.md has no samples yet). */
+export function voiceSamplesBlock(voiceSamples?: string): string {
+  const samples = (voiceSamples ?? "").trim();
+  return samples
+    ? `\nHOW I ACTUALLY TALK (real transcripts of me. Match the voice, never copy the lines)\n${samples.length > MAX_VOICE_SAMPLE_CHARS ? `${samples.slice(0, MAX_VOICE_SAMPLE_CHARS)}…` : samples}\n`
+    : "";
+}
+
+/** The format + delivery rules for every script (single source of truth: the copy-paste prompt
+ * and the ChatGPT connector both use this text). */
+export function scriptFormatRules(style: ScriptStyle): string {
+  return `HOW EACH VIDEO WORKS (me talking to camera, vertical: TikTok, Reels, Shorts)
+- Hook in the first ~${style.hookSeconds} seconds. The first sentence has to earn the second one. No "hey guys", no intro, no "in this video".
+- Fast and dense: I talk about ${style.wpm} words a minute with no filler and no dead pauses. Every line moves it forward.
+- Length: ${style.minSeconds}–${style.maxSeconds} seconds, which is about ${style.minWords}–${style.maxWords} spoken words.
+- Tight ending: land the point and stop. One short closing line at most, no long outro.
+- Write it exactly how I'd say it out loud: short sentences, contractions, no headings or bullet points inside the script, no stage directions, no emoji, no hashtags.`;
+}
+
+/** The facts / [CHECK] rule (the FACTUAL gate still checks every claim before posting). */
+export const SCRIPT_FACTS_RULES = `FACTS
+- Only claims I can stand behind. No made-up numbers, no guaranteed returns, no personal financial advice.
+- Put [CHECK] right after every specific number, statistic, rate, limit, date or rule, like: "...and most cards charge over 20% [CHECK]". I fact-check every [CHECK] before I post. If you're not sure something is true, say it in a way that is true, or leave it out.`;
+
+/** Brand + voice + format + facts — everything a script writer needs except the video list. */
+export function scriptWritingRules(style: ScriptStyle, voiceSamples?: string): string {
+  return `${BRAND_GUIDANCE}
+${voiceSamplesBlock(voiceSamples)}
+${scriptFormatRules(style)}
+
+${SCRIPT_FACTS_RULES}`;
+}
+
 export function buildScriptPrompt(input: BuildPromptInput): string {
   const { videos, style } = input;
   const count = videos.length;
@@ -155,26 +188,11 @@ export function buildScriptPrompt(input: BuildPromptInput): string {
   const example = first
     ? `### VIDEO 1 | ${first.ymd} | ${first.title} | ${first.code}`
     : "### VIDEO 1 | 2026-10-21 | Video title | K3F9";
-  const samples = (input.voiceSamples ?? "").trim();
-  const samplesBlock = samples
-    ? `\nHOW I ACTUALLY TALK (real transcripts of me. Match the voice, never copy the lines)\n${samples.length > MAX_VOICE_SAMPLE_CHARS ? `${samples.slice(0, MAX_VOICE_SAMPLE_CHARS)}…` : samples}\n`
-    : "";
   const batchLine = input.batchCount > 1 ? ` (batch ${input.batchNumber} of ${input.batchCount})` : "";
 
   return `Write the scripts for ${count} of my short-form videos${batchLine}. If we planned these videos together earlier in this chat, use what we talked about. Everything you need is also below.
 
-${BRAND_GUIDANCE}
-${samplesBlock}
-HOW EACH VIDEO WORKS (me talking to camera, vertical: TikTok, Reels, Shorts)
-- Hook in the first ~${style.hookSeconds} seconds. The first sentence has to earn the second one. No "hey guys", no intro, no "in this video".
-- Fast and dense: I talk about ${style.wpm} words a minute with no filler and no dead pauses. Every line moves it forward.
-- Length: ${style.minSeconds}–${style.maxSeconds} seconds, which is about ${style.minWords}–${style.maxWords} spoken words.
-- Tight ending: land the point and stop. One short closing line at most, no long outro.
-- Write it exactly how I'd say it out loud: short sentences, contractions, no headings or bullet points inside the script, no stage directions, no emoji, no hashtags.
-
-FACTS
-- Only claims I can stand behind. No made-up numbers, no guaranteed returns, no personal financial advice.
-- Put [CHECK] right after every specific number, statistic, rate, limit, date or rule, like: "...and most cards charge over 20% [CHECK]". I fact-check every [CHECK] before I post. If you're not sure something is true, say it in a way that is true, or leave it out.
+${scriptWritingRules(style, input.voiceSamples)}
 
 THE VIDEOS
 ${list}

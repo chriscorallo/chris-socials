@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { use, useActionState } from "react";
 import { authenticate } from "./actions";
 
-export default function LoginPage() {
+export default function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const [errorMessage, formAction, isPending] = useActionState(authenticate, undefined);
+  // Where to go after signing in (e.g. back to "Allow ChatGPT…"); validated again on the server.
+  const { next } = use(searchParams);
 
   return (
     <>
@@ -23,6 +25,7 @@ export default function LoginPage() {
           <h1 className="mb-6 text-[26px] font-semibold tracking-tight sm:text-xl">Sign in</h1>
 
           <form action={formAction} className="flex flex-col gap-4">
+            {next && <input type="hidden" name="next" value={next} />}
             <label className="block text-sm">
               <span className="field-label">Email</span>
               <input
