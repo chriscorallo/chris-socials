@@ -6,7 +6,8 @@ import { PageShell, PageHeader, Panel, SectionHeading, Button, EmptyState } from
 import { markFilmed } from "./actions";
 import { TeleprompterLink } from "../components/TeleprompterLink";
 import { DraftBadge } from "../components/VideoCard";
-import { listPrompterDraftPicks } from "../../lib/teleprompter/data";
+import { listPrompterDraftPicks, listPrompterPicks } from "../../lib/teleprompter/data";
+import { APP_TZ } from "../../lib/calendar-data";
 
 const SETUP_LABELS: Record<string, string> = {
   DESK: "Desk",
@@ -46,6 +47,11 @@ export default async function FilmQueuePage({
 
   const drafts = await listPrompterDraftPicks(prisma);
   const draftIds = new Set(drafts.map((d) => d.id));
+  // Planned videos from the imported plan aren't READY_TO_FILM (no fact-checked script yet), but
+  // they're exactly what Chris films next — list the soonest ones so this page is never "empty"
+  // while 120 videos are waiting.
+  const readyIds = new Set(ready.map((r) => r.id));
+  const nextUp = (await listPrompterPicks(prisma, APP_TZ, 40)).filter((p) => p.ymd && !readyIds.has(p.id) && !draftIds.has(p.id)).slice(0, 12);
   const groups = new Map<string, typeof ready>();
   for (const item of ready) {
     const setup = item.creatorCard?.setup ?? "UNSPECIFIED";
@@ -63,7 +69,9 @@ export default async function FilmQueuePage({
           title="Film"
           description={
             ready.length === 0
-              ? "Nothing waiting to be filmed."
+              ? nextUp.length
+                ? "Next up from your plan — film with the teleprompter or upload what you filmed."
+                : "Nothing waiting to be filmed."
               : `${ready.length} to film across ${groups.size} setup${groups.size === 1 ? "" : "s"}${totalMinutes ? ` · ~${totalMinutes} min estimated` : ""}.`
           }
         />
@@ -89,6 +97,33 @@ export default async function FilmQueuePage({
                       <span className="mt-0.5 block text-[12.5px] text-[var(--color-text-faint)]">{d.label}</span>
                     </span>
                     <span className="shrink-0 text-[13px] font-medium text-[var(--color-gold-400)]">Continue ›</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
+
+        {nextUp.length > 0 && (
+          <Panel className="mb-5">
+            <SectionHeading eyebrow={`${nextUp.length} coming up`} title="Next up from your plan" />
+            <ul className="-mx-2 flex flex-col divide-y divide-[var(--color-border)]" data-testid="film-next-up">
+              {nextUp.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-2 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/content/${p.id}`} className="line-clamp-2 text-[15px] font-medium leading-snug active:opacity-60">
+                      {p.title}
+                    </Link>
+                    <p className="mt-0.5 text-[12.5px] text-[var(--color-text-faint)]">
+                      {p.when}
+                      {p.hasScript ? " · script ready" : " · no script yet"}
+                    </p>
+                  </div>
+                  <Link href={`/film/teleprompter?id=${p.id}&from=film`} className="btn btn-primary shrink-0 !min-h-[44px] !px-3 !text-[13.5px]">
+                    Film
+                  </Link>
+                  <Link href={`/content/${p.id}`} className="btn btn-ghost shrink-0 !min-h-[44px] !px-3 !text-[13.5px]">
+                    Upload
                   </Link>
                 </li>
               ))}
