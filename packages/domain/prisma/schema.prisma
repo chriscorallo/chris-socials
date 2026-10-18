@@ -166,6 +166,7 @@ model ContentItem {
   tasteFeedback        TasteFeedback[]
   experimentVariants   ExperimentVariant[]
   adversarialCritiques AdversarialCritique[]
+  viewerReviews        ViewerReview[]
 
   // Plan import provenance (2026-10-17): which imported plan created this item, if any.
   planImportId String?
@@ -259,6 +260,7 @@ model ReferenceContent {
 
   referenceCreator ReferenceCreator       @relation(fields: [referenceCreatorId], references: [id])
   observations     ReferenceObservation[]
+  viewerReviews    ViewerReview[]
 
   @@index([referenceCreatorId])
   @@index([analysisStatus])
@@ -528,6 +530,7 @@ model EditPlan {
   contentItem   ContentItem   @relation(fields: [contentItemId], references: [id])
   takeSelection TakeSelection @relation(fields: [takeSelectionId], references: [id])
   renders       Render[]
+  viewerReviews ViewerReview[]
 
   @@index([contentItemId])
 }
@@ -559,6 +562,7 @@ model Render {
   editPlan    EditPlan    @relation(fields: [editPlanId], references: [id])
   qcReports   QCReport[]
   variants    RenderVariant[]
+  viewerReviews ViewerReview[]
 
   @@index([contentItemId])
   @@index([editPlanId])
@@ -1197,4 +1201,49 @@ model NudgeDismissal {
   createdAt DateTime @default(now())
 
   @@unique([key, day])
+}
+
+// Viewer Panel (2026-10-17) — an AI first-time viewer's review of one whole video (prompt
+// VIEWER_PANEL): hook verdict, beat-by-beat viewer state with evidence, craft checks, story,
+// engagement ESTIMATES, verdict tier and top fixes. ADVISORY ONLY — never read by the hard-gate
+// aggregation. Append-only: every run is a new row tied to exactly what was watched (a Render +
+// the EditPlan it was rendered from, or a reference video). Failed runs live on their JobRun
+// only. See docs/decisions-pending/viewer-panel.md.
+model ViewerReview {
+  id                 String          @id @default(cuid())
+  subjectKind        String // "RENDER" | "REFERENCE_VIDEO"
+  contentItemId      String?
+  renderId           String?
+  editPlanId         String?
+  referenceContentId String?
+  /// The exact file watched (render output or reference upload).
+  mediaStorageKey    String
+  platform           ContentPlatform
+  persona            String // "COLD" | "FOLLOWER"
+  promptId           String
+  promptVersion      String
+  model              String
+  /// ViewerReview (packages/agents viewer-panel-schema.ts), after checkViewerReview.
+  review             Json
+  /// string[] — what the deterministic post-check flagged.
+  warnings           Json
+  /// What the viewer was given: frame times/reasons, word/cut counts, sources, sizes.
+  inputSummary       Json
+  verdictTier        String
+  estimatedCostUsd   Float
+  costUsd            Float?
+  inputTokens        Int?
+  outputTokens       Int?
+  jobRunId           String?
+  createdBy          String
+  createdAt          DateTime        @default(now())
+
+  contentItem      ContentItem?      @relation(fields: [contentItemId], references: [id])
+  render           Render?           @relation(fields: [renderId], references: [id])
+  editPlan         EditPlan?         @relation(fields: [editPlanId], references: [id])
+  referenceContent ReferenceContent? @relation(fields: [referenceContentId], references: [id])
+
+  @@index([contentItemId, createdAt])
+  @@index([referenceContentId, createdAt])
+  @@index([renderId])
 }

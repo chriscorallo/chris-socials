@@ -32,7 +32,8 @@ export function HeavyJobBanner({ activeJobRunId }: { activeJobRunId: string | nu
     }
   }, [view, router]);
 
-  if (!jobRunId || pathname?.endsWith("/edit") || dismissed === jobRunId) return null;
+  // The viewer check shows its own progress inside its card.
+  if (!jobRunId || pathname?.endsWith("/edit") || dismissed === jobRunId || view?.kind === "viewer-review") return null;
   if (!view && !error) return null;
 
   const title = HEAVY_JOB_TITLE[view?.kind ?? ""] ?? "Working on your video";

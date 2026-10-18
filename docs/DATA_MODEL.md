@@ -239,6 +239,15 @@ via `writeTransition` — see `/docs/DECISIONS.md` and `packages/domain/src/stat
 - `ScriptVersion` — Phase 2
 - `AdversarialCritique` — **Phase 7** (above) — not individually named in spec §19, but the
   real persisted form of the Adversarial Evaluator's advisory output
+- `ViewerReview` — **post-Phase-8 (2026-10-17)**, migration `20261017220000_viewer_reviews` —
+  the Viewer Panel's advisory first-time-viewer review of one whole video. Append-only (a
+  re-run is a new row). Key fields: `subjectKind (RENDER | REFERENCE_VIDEO), contentItemId?,
+  renderId?, editPlanId?, referenceContentId?` (exactly what was watched), `mediaStorageKey,
+  platform, persona, promptId, promptVersion, model, review (json — ViewerReview zod schema in
+  packages/agents viewer-panel-schema.ts), warnings (json), inputSummary (json — frame times +
+  reasons, word/cut counts and sources, the pre-call estimate), verdictTier, estimatedCostUsd,
+  costUsd?, inputTokens?, outputTokens?, jobRunId?, createdBy`. Never read by the hard-gate
+  aggregation. See `docs/decisions-pending/viewer-panel.md`.
 - `PromptDefinition`, `PromptVersion` — **not planned as DB tables** (see
   `/docs/DECISIONS.md` — file-based registry decision); listed here only because §19 names
   them. If a runtime rollback need later justifies a DB-backed registry, add it then.

@@ -1,6 +1,8 @@
 import { fmtSeconds, videoSummary, type ReferenceVideoMetrics } from "@chris/domain/style-metrics";
 import { deleteReferenceVideoFile, moveReferenceVideoAction, setReferenceVideoLink } from "../actions";
 import { Button, platformLabel } from "../../components/ui";
+import { ViewerCheck } from "../../components/ViewerCheck";
+import type { ViewerCheckData } from "../../../lib/viewer-check-view";
 
 export interface VideoRow {
   id: string;
@@ -67,7 +69,20 @@ const STATUS: Record<string, { text: string; cls: string }> = {
   FAILED: { text: "Couldn't measure", cls: "text-[var(--color-rose-400)]" },
 };
 
-export function VideoCard({ v, back, creators, creatorId }: { v: VideoRow; back: string; creators: Array<{ id: string; name: string }>; creatorId: string }) {
+export function VideoCard({
+  v,
+  back,
+  creators,
+  creatorId,
+  viewer,
+}: {
+  v: VideoRow;
+  back: string;
+  creators: Array<{ id: string; name: string }>;
+  creatorId: string;
+  /** "What a viewer thinks" (Viewer Panel) for this video. */
+  viewer?: ViewerCheckData | null;
+}) {
   const m = v.parsedMetrics;
   const status =
     v.analysisStatus === "PENDING" && m
@@ -107,6 +122,7 @@ export function VideoCard({ v, back, creators, creatorId }: { v: VideoRow; back:
       <details className="mt-1">
         <summary className="cursor-pointer py-1.5 text-[13.5px] text-[var(--color-gold-400)]">Details</summary>
         {m && <Details m={m} />}
+        {viewer && (v.mediaStorageKey || viewer.latest) && <ViewerCheck data={viewer} variant="reference" />}
         <form action={setReferenceVideoLink} className="mt-3 flex gap-2">
           <input type="hidden" name="referenceContentId" value={v.id} />
           <input type="hidden" name="back" value={back} />

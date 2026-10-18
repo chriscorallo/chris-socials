@@ -6,6 +6,8 @@ import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
 import { formatWhen } from "../../../lib/video-cards";
 import { RawTakeUploader } from "./RawTakeUploader";
+import { ViewerCheck } from "../../components/ViewerCheck";
+import { getViewerCheckForVideo } from "../../../lib/viewer-check";
 import { FlowProgress } from "./FlowProgress";
 import { startEditing } from "./flow-actions";
 import { FootageUpload } from "../../upload/FootageUpload";
@@ -93,6 +95,7 @@ export default async function ContentDetailPage({
   const goodRender = item.renders.find((r) => r.status === "SUCCESS" && r.storageKey);
   const heroTake = rawTakes.find((a) => a.id === latestTakeSelection?.selectedMediaAssetId) ?? rawTakes[0];
   const heroKey = goodRender?.storageKey ?? heroTake?.storageKey ?? null;
+  const viewerCheck = goodRender ? await getViewerCheckForVideo(item.id).catch(() => null) : null;
   const livePost = item.publications.find((p) => p.status === "SUCCESS" && p.url);
   const next = nextActionFor(state);
   const when =
@@ -417,6 +420,9 @@ export default async function ContentDetailPage({
           )}
             </div>
           )}
+
+          {/* Viewer Panel: an AI first-time viewer watches the latest render (advisory only). */}
+          {viewerCheck && <ViewerCheck data={viewerCheck} />}
 
           {state === "SELECTED" && (
             <div id="step" className="scroll-mt-24">

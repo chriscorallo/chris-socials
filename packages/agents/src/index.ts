@@ -38,3 +38,5 @@ export * from "./taste-refresh";
 export * from "./motion-designer-agent";
 export * from "./motion-theme";
 export * from "./plan-importer-agent";
+export * from "./viewer-panel";
+export * from "./viewer-panel-sample";

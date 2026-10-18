@@ -77,6 +77,9 @@ describe("runHeavyJob (sandbox mode, fake launcher)", () => {
   it("passes the API key only to jobs that call the model", () => {
     expect(workerEnv("render", { contentItemId: "x", thenQualityGate: true }).ANTHROPIC_API_KEY).toBe("sk-test-not-real");
     expect(workerEnv("ingest", { contentItemId: "x" }).ANTHROPIC_API_KEY).toBeUndefined();
+    // The Viewer Panel is an AI kind for both of its subjects.
+    expect(workerEnv("viewer-review", { contentItemId: "x" }).ANTHROPIC_API_KEY).toBe("sk-test-not-real");
+    expect(workerEnv("viewer-review", { referenceContentId: "r" }).ANTHROPIC_API_KEY).toBe("sk-test-not-real");
   });
 
   it("caps concurrent sandboxes: beyond the cap jobs QUEUE (batch upload) and start when a slot frees", async () => {
