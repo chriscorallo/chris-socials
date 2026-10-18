@@ -29,6 +29,7 @@ import {
   graphicPropsOf,
   moveItem,
   quickEntryInto,
+  quickHint,
   removeColumn,
   removeItem,
   removeRow,
@@ -70,6 +71,12 @@ export function GraphicEditor({ v, onNumbersTouched }: { v: TimelineVisual; onNu
         {spec.variants.length > 1 && (
           <Chips label="Layout" value={p.variant ?? spec.variants[0]![0]} options={spec.variants.map(([id, l]) => [id, l])} onChange={(variant) => set({ ...p, variant }, "variant")} />
         )}
+        {u.tone && (
+          <div>
+            <span className="ed-label">Look</span>
+            <Seg label="Look" value={p.tone} options={[["AUTO", "Auto"], ["DARK", "Dark"], ["LIGHT", "Light"]]} onChange={(tone) => set({ ...p, tone }, "tone")} />
+          </div>
+        )}
         {spec.kind !== "FULL_FRAME" && (
           <div>
             <span className="ed-label">Screen</span>
@@ -80,11 +87,12 @@ export function GraphicEditor({ v, onNumbersTouched }: { v: TimelineVisual; onNu
 
       {(u.series || u.items) && <QuickEntry key={v.id} p={p} onApply={(next) => set(next, "quick", true)} />}
 
-      {(u.title || u.subtitle || u.body) && (
+      {(u.title || u.subtitle || u.body || u.meta) && (
         <Section title="Text">
-          {u.title && <TextInput label={p.component === "KINETIC" ? "Key word(s)" : u.titleRequired ? "Title" : "Title (optional)"} value={p.title} max={GRAPHIC_LIMITS.title} onChange={(title) => set({ ...p, title }, "title", true)} />}
-          {u.subtitle && <TextInput label="Subtitle (optional)" value={p.subtitle} max={GRAPHIC_LIMITS.subtitle} onChange={(subtitle) => set({ ...p, subtitle }, "subtitle", true)} />}
-          {u.body && <TextInput label="Text" value={p.body} max={GRAPHIC_LIMITS.body} multiline onChange={(body) => set({ ...p, body }, "body", true)} />}
+          {u.title && <TextInput label={u.labels?.title ?? (p.component === "KINETIC" ? "Key word(s)" : u.titleRequired ? "Title" : "Title (optional)")} value={p.title} max={GRAPHIC_LIMITS.title} onChange={(title) => set({ ...p, title }, "title", true)} />}
+          {u.subtitle && <TextInput label={u.labels?.subtitle ?? "Subtitle (optional)"} value={p.subtitle} max={GRAPHIC_LIMITS.subtitle} onChange={(subtitle) => set({ ...p, subtitle }, "subtitle", true)} />}
+          {u.meta && <TextInput label={u.meta} value={p.meta} max={GRAPHIC_LIMITS.meta} onChange={(meta) => set({ ...p, meta }, "meta", true)} />}
+          {u.body && <TextInput label={u.labels?.body ?? "Text"} value={p.body} max={GRAPHIC_LIMITS.body} multiline onChange={(body) => set({ ...p, body }, "body", true)} />}
         </Section>
       )}
 
@@ -99,7 +107,7 @@ export function GraphicEditor({ v, onNumbersTouched }: { v: TimelineVisual; onNu
         </Section>
       )}
 
-      {(u.series || u.items?.value || p.component === "STICKER") && <FormatSection p={p} onChange={(format) => set({ ...p, format }, "format")} />}
+      {!u.ownFormat && (u.series || u.items?.value || p.component === "STICKER") && <FormatSection p={p} onChange={(format) => set({ ...p, format }, "format")} />}
       <AnimationSection p={p} onChange={(animation) => set({ ...p, animation }, "anim")} />
     </>
   );
@@ -213,7 +221,9 @@ function QuickEntry({ p, onApply }: { p: GraphicProps; onApply: (next: GraphicPr
   const [text, setText] = useState(() => toQuickEntry(p));
   const preview = useMemo(() => quickEntryInto(p, text), [p, text]);
   const parsed = useMemo(() => parseQuickEntry(text), [text]);
-  const example = GRAPHIC_COMPONENT_SPECS[p.component].uses.series ? "Employee: 4k x12 | Freelance: 2k, 6k, 0, 8k | Owner: 0, 5k, -15k, 100k" : "Rent 1800, Food 650, Car 520";
+  const dialect = GRAPHIC_COMPONENT_SPECS[p.component].uses.quick;
+  const example = quickHint(p);
+  const parsedSomething = dialect ? preview.changed : parsed.series.length > 0 || parsed.items.length > 0;
   return (
     <Section title="Quick entry">
       <textarea
@@ -227,12 +237,20 @@ function QuickEntry({ p, onApply }: { p: GraphicProps; onApply: (next: GraphicPr
         onChange={(e) => setText(e.target.value)}
       />
       <p className="gl-quick-hint">
-        {parsed.series.length || parsed.items.length ? (
+        {parsedSomething ? (
           <>
             <Icon name="check" size={12} /> {preview.summary}
           </>
         ) : (
-          <>Separate people with “|”, values with commas. “4k x12” repeats; “-15k” or “(15k)” is negative; $ and % set the format.</>
+          <>
+            {dialect === "CHAT"
+              ? "One message per “|” or line. Start with “Me:” for yours; any other name (Mom:, Alex:) is them."
+              : dialect === "LINES"
+                ? "One entry per “|” or line. A number at the end (120K) is its count; “ — ” adds a second line."
+                : dialect === "QUERY"
+                  ? "First the query / question, then one entry per “|”."
+                  : "Separate people with “|”, values with commas. “4k x12” repeats; “-15k” or “(15k)” is negative; $ and % set the format."}
+          </>
         )}
       </p>
       {preview.warnings.length > 0 && <p className="gl-quick-warn">{preview.warnings.slice(0, 2).join(" ")}</p>}
@@ -372,8 +390,9 @@ const STATE_LABEL: Record<(typeof GRAPHIC_STATES)[number], string> = { NONE: "�
 
 function ItemsList({ p, set }: { p: GraphicProps; set: (next: GraphicProps, key: string, number?: boolean) => void }) {
   const u = GRAPHIC_COMPONENT_SPECS[p.component].uses.items!;
+  const labels = GRAPHIC_COMPONENT_SPECS[p.component].uses.labels;
   return (
-    <Section title={`Entries · ${p.items.length}`} right={
+    <Section title={`${labels?.entries ?? "Entries"} · ${p.items.length}`} right={
       <button type="button" className="ed-toolbtn !text-[12px]" onClick={() => set(addItem(p), "additem")} disabled={p.items.length >= u.count[1]}>
         <Icon name="plus" size={13} /> Add
       </button>
@@ -382,11 +401,18 @@ function ItemsList({ p, set }: { p: GraphicProps; set: (next: GraphicProps, key:
         <div key={i} className="gl-item">
           <div className="gl-item-top">
             <span className="ed-row-n">{i + 1}</span>
-            <input className="ed-input" value={it.text} maxLength={GRAPHIC_LIMITS.itemText} placeholder="Label" aria-label={`Entry ${i + 1} label`} onChange={(e) => set(setItem(p, i, { text: e.target.value }), `it${i}`, /\d/.test(e.target.value))} />
+            {u.side && (
+              <select className="ed-input gl-select gl-side" value={it.side === "ME" ? "ME" : "THEM"} aria-label={`Entry ${i + 1} sender`} onChange={(e) => set(setItem(p, i, { side: e.target.value as "ME" | "THEM" }), `isd${i}`)}>
+                <option value="THEM">Them</option>
+                <option value="ME">Me</option>
+              </select>
+            )}
+            <input className="ed-input" value={it.text} maxLength={GRAPHIC_LIMITS.itemText} placeholder={labels?.text ?? "Label"} aria-label={`Entry ${i + 1} ${(labels?.text ?? "label").toLowerCase()}`} onChange={(e) => set(setItem(p, i, { text: e.target.value }), `it${i}`, /\d/.test(e.target.value))} />
             {u.value && <ValueInput className="gl-item-val" value={it.value} label={`Entry ${i + 1} value`} onCommit={(n) => set(setItem(p, i, { value: n }), `iv${i}`, true)} />}
           </div>
           <div className="gl-item-more">
-            {u.sub && <input className="ed-input" value={it.sub ?? ""} maxLength={GRAPHIC_LIMITS.itemSub} placeholder="Small line (optional)" aria-label={`Entry ${i + 1} small line`} onChange={(e) => set(setItem(p, i, { sub: e.target.value || null }), `is${i}`, /\d/.test(e.target.value))} />}
+            {u.meta && <input className="ed-input" value={it.meta ?? ""} maxLength={GRAPHIC_LIMITS.itemMeta} placeholder={u.meta} aria-label={`Entry ${i + 1} ${u.meta.toLowerCase()}`} onChange={(e) => set(setItem(p, i, { meta: e.target.value || null }), `im${i}`, /\d/.test(e.target.value))} />}
+            {u.sub && <input className="ed-input" value={it.sub ?? ""} maxLength={GRAPHIC_LIMITS.itemSub} placeholder={labels?.sub ? `${labels.sub} (optional)` : "Small line (optional)"} aria-label={`Entry ${i + 1} small line`} onChange={(e) => set(setItem(p, i, { sub: e.target.value || null }), `is${i}`, /\d/.test(e.target.value))} />}
             {u.icon && <IconSelect value={it.icon} label={`Entry ${i + 1} icon`} onChange={(icon) => set(setItem(p, i, { icon: icon as GraphicProps["items"][number]["icon"] }), `ii${i}`)} />}
             {u.op && (
               <select className="ed-input gl-select" value={it.op} aria-label={`Entry ${i + 1} operator`} onChange={(e) => set(setItem(p, i, { op: e.target.value as (typeof GRAPHIC_OPS)[number] }), `io${i}`)}>

@@ -4,6 +4,7 @@ import {
   GraphicPropsSchema,
   applyInteractionDefaults,
   applyQuickEntry,
+  applyQuickText,
   footprintOf,
   parseQuickEntry,
   timelineDuration,
@@ -78,7 +79,7 @@ export function blankSeries(label: string, n: number): GraphicSeries {
   return { label, values: Array(n).fill(0), icon: null, color: "AUTO", note: null, texts: [] };
 }
 export function blankItem(text: string, value: number | null = null): GraphicItem {
-  return { text, value, sub: null, icon: null, color: "AUTO", op: "NONE", state: "NONE" };
+  return { text, value, sub: null, icon: null, color: "AUTO", op: "NONE", state: "NONE", side: "NONE", meta: null };
 }
 
 export function setCell(p: GraphicProps, row: number, col: number, value: number): GraphicProps {
@@ -160,7 +161,10 @@ export function addItem(p: GraphicProps): GraphicProps {
   if (p.items.length >= max) return p;
   const last = p.items[p.items.length - 1];
   const op = p.component === "FORMULA" ? "PLUS" : "NONE";
-  const it: GraphicItem = { ...blankItem(`Item ${p.items.length + 1}`, u?.value ? 0 : null), op, state: last?.state ?? "NONE" };
+  // Conversations alternate sides; other entries copy the last one's state.
+  const side = u?.side ? (last?.side === "ME" ? "THEM" : "ME") : "NONE";
+  const text = u?.side ? (side === "ME" ? "New message" : "Reply") : `Item ${p.items.length + 1}`;
+  const it: GraphicItem = { ...blankItem(text, u?.value ? 0 : null), op, state: last?.state ?? "NONE", side, meta: u?.meta ? (last?.meta ?? null) : null, icon: u?.icon && !u.side ? (last?.icon ?? null) : null };
   // FORMULA: insert before the result term.
   if (p.component === "FORMULA") {
     const res = p.items.findIndex((x) => x.op === "EQUALS");
@@ -186,11 +190,26 @@ export function moveItem(p: GraphicProps, i: number, dir: -1 | 1): GraphicProps 
 
 /** Quick entry box → props (+ a one-line summary for the UI). */
 export function quickEntryInto(p: GraphicProps, text: string): { props: GraphicProps; summary: string; warnings: string[]; changed: boolean } {
+  // Library 2: conversations / ranked lines / query + entries have their own dialect.
+  if (GRAPHIC_COMPONENT_SPECS[p.component].uses.quick) {
+    const r = text.trim() ? applyQuickText(p, text) : null;
+    if (!r || (!r.props.items.length && r.props.title === p.title)) return { props: p, summary: quickHint(p), warnings: r?.warnings ?? [], changed: false };
+    return { props: r.props, summary: r.summary, warnings: r.warnings, changed: GraphicPropsSchema.safeParse(r.props).success };
+  }
   const q = parseQuickEntry(text);
   if (!q.series.length && !q.items.length) return { props: p, summary: "Type values like “Employee: 4k x12 | Freelance: 2k, 6k, 0”", warnings: q.warnings, changed: false };
   const r = applyQuickEntry(p, q);
   const ok = GraphicPropsSchema.safeParse(r.props).success;
   return { props: r.props, summary: r.summary, warnings: q.warnings, changed: ok };
+}
+
+/** Placeholder / hint for the quick-entry box, per dialect. */
+export function quickHint(p: Pick<GraphicProps, "component">): string {
+  const u = GRAPHIC_COMPONENT_SPECS[p.component].uses;
+  if (u.quick === "CHAT") return "Me: running late | Mom: again?? | Me: rent went up $300";
+  if (u.quick === "LINES") return "1. Rent prices 120K | 2. #budget — Trending in Finance 48K";
+  if (u.quick === "QUERY") return p.component === "SEARCH_BAR" ? "is a 401k worth it | is a 401k worth it for me | is a 401k a scam" : "Question? | Option A 62 | Option B 38";
+  return u.series ? "Employee: 4k x12 | Freelance: 2k, 6k, 0, 8k | Owner: 0, 5k, -15k, 100k" : "Rent 1800, Food 650, Car 520";
 }
 
 /** What a component edits (drives which sections the edit sheet shows). */

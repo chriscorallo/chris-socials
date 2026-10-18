@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { GRAPHIC_COMPONENT_SPECS, isFullScreenGraphic, type GraphicComponent } from "@chris/media/timeline";
+import { GRAPHIC_COMPONENT_SPECS, graphicTone, isFullScreenGraphic, type GraphicComponent } from "@chris/media/timeline";
 import type { TemplateComponentProps } from "../templates/types";
 import { canvasUnit } from "../../timing";
 import { makeCtx, prog, rgba, mix, type GCtx } from "./kit";
@@ -50,6 +50,20 @@ function FullScreen({ tp, ctx, Comp }: { tp: TemplateComponentProps<"GRAPHIC">; 
   const h = ctx.height * scale;
   const t = prog(tp.frame, 0, Math.round(0.5 * tp.fps), ctx.ease);
   const p = ctx.p;
+  const light = graphicTone(tp.props) === "LIGHT";
+  if (GRAPHIC_COMPONENT_SPECS[tp.props.component].backdrop === "PLAIN" || light) {
+    // Library 2: a flat stage (keynote-style black/white) or a soft light studio backdrop.
+    const plain = GRAPHIC_COMPONENT_SPECS[tp.props.component].backdrop === "PLAIN";
+    const bg = light ? (plain ? "#FFFFFF" : "linear-gradient(180deg, #F4F4F7 0%, #E9E9EE 100%)") : "#000000";
+    return (
+      <div style={{ position: "absolute", inset: 0 }}>
+        <div style={{ position: "absolute", inset: 0, opacity: t, background: bg }} />
+        <div style={{ position: "absolute", left: (canvas.width - w) / 2, top: (canvas.height - h) / 2, width: ctx.width, height: ctx.height, transform: `scale(${scale})`, transformOrigin: "0 0" }}>
+          <Comp ctx={ctx} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       <div style={{ position: "absolute", inset: 0, opacity: t, background: `linear-gradient(180deg, ${mix("#0B0B12", p.secondary, 0.06)} 0%, #09090E 48%, ${mix("#07070B", p.primary, 0.04)} 100%)` }} />

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LIBRARY2_SPECS, library2DesignSize } from "./families";
 
 /**
  * The composable graphics system (PURE — browser-safe; no Node/React/Remotion).
@@ -64,8 +65,55 @@ export const GRAPHIC_COMPONENTS = [
   "CTA",
   // Transitions / emphasis
   "TRANSITION",
+  // ---- Library 2 (2026-10-18): platform-style UI, phone/OS, web, news, hooks, FX, life ----
+  // Search & web
+  "SEARCH_BAR",
+  "BROWSER",
+  "WEB_CARD",
+  // Social posts (generic, brand-safe "-style" UIs)
+  "SOCIAL_POST",
+  "COMMENT",
+  "TRENDING",
+  "VIDEO_CARD",
+  "STORY",
+  "SOCIAL_COUNTER",
+  "BURST",
+  // Phone & apps
+  "DM_CHAT",
+  "NOTIFICATION",
+  "CALL",
+  "PHONE_APP",
+  "CLOCK_TIMER",
+  "STATUS_ALERT",
+  "APP_GRID",
+  "KEYNOTE",
+  // News & media
+  "NEWS",
+  "MEDIA_PLAYER",
+  // Life & info
+  "MAP_NAV",
+  "WEATHER",
+  "SCREEN_TIME",
+  "PAYMENT",
+  "TRAVEL",
+  "DATE",
+  "TRACKER",
+  "LIST_SPLIT",
+  // Hooks, reactions & FX
+  "VERDICT",
+  "HOOK_TEXT",
+  "COUNTDOWN",
+  "QUIZ",
+  "SCREEN_FX",
 ] as const;
 export type GraphicComponent = (typeof GRAPHIC_COMPONENTS)[number];
+/** The 28 components of the first library (their specs + sizes live in this file). */
+export type CoreGraphicComponent =
+  | "STAT_TILES" | "BIG_NUMBER" | "MONTH_GRID" | "VALUE_COLUMNS" | "FORMULA" | "VERSUS" | "ENTITY_CARDS" | "BEFORE_AFTER" | "BAR_GROUP" | "LINE_AREA"
+  | "WATERFALL" | "DONUT" | "PROGRESS" | "GAUGE" | "SCATTER" | "STEPS" | "CHECKLIST" | "RANKING" | "TABLE" | "KINETIC"
+  | "QUOTE" | "LOWER_THIRD" | "ANNOTATION" | "STICKER" | "MAP_PIN" | "ICON_BURST" | "CTA" | "TRANSITION";
+/** Library 2's components (specs + sizes in graphics/families). */
+export type Library2GraphicComponent = Exclude<GraphicComponent, CoreGraphicComponent>;
 
 /** Original line icons (packages/motion draws them; 24-unit grid). Never system emoji —
  * emoji fonts differ between the iPhone preview and the Linux render host. */
@@ -76,6 +124,12 @@ export const GRAPHIC_ICONS = [
   "TARGET", "TROPHY", "CHECK", "CROSS", "ALERT", "PERCENT", "RECEIPT", "KEY", "GLOBE", "PIN",
   "ROCKET", "SPARKLE", "THUMBS_UP", "BELL", "BOOKMARK", "CHAT", "SHARE", "PLAY", "LINK", "ARROW_UP",
   "ARROW_DOWN", "ARROW_RIGHT", "FOOD", "COFFEE", "HEALTH", "TOOLS", "BABY", "LEAF",
+  // Library 2 — app glyphs, weather, OS, reactions (all original line art)
+  "SEARCH", "MAIL", "CAMERA", "VIDEO", "MIC", "MUSIC", "HEADPHONES", "NEWS", "MAP", "WIFI",
+  "BATTERY", "SIGNAL", "SUN", "MOON", "CLOUD", "RAIN", "SNOW", "STORM", "EYE", "REPOST",
+  "SEND", "DOTS", "PLUS", "SETTINGS", "TICKET", "BAG", "BOX", "TRUCK", "BULB", "BRAIN",
+  "CROWN", "MEGAPHONE", "DUMBBELL", "BOOK", "NOTE", "HOURGLASS", "ALARM", "DROP", "TV", "PODCAST",
+  "FACE_SMILE", "FACE_LAUGH", "FACE_WOW", "FACE_SAD", "FACE_LOVE", "FACE_COOL", "FACE_MAD", "FACE_THINK", "SKULL", "HUNDRED",
 ] as const;
 export type GraphicIcon = (typeof GRAPHIC_ICONS)[number];
 
@@ -89,6 +143,10 @@ export const GRAPHIC_EMPHASES = ["NONE", "PULSE", "GLOW", "RING", "SHAKE"] as co
 export const GRAPHIC_EXITS = ["CONTAINER", "REVERSE", "DROP", "FADE_UP"] as const;
 export const GRAPHIC_OPS = ["NONE", "PLUS", "MINUS", "TIMES", "DIVIDE", "EQUALS"] as const;
 export const GRAPHIC_STATES = ["NONE", "DONE", "TODO", "NO"] as const;
+export const GRAPHIC_SIDES = ["NONE", "ME", "THEM"] as const;
+/** Light/dark look for UI-style components (AUTO = the component's own default). */
+export const GRAPHIC_TONES = ["AUTO", "DARK", "LIGHT"] as const;
+export type GraphicTone = (typeof GRAPHIC_TONES)[number];
 
 /** Text limits are sized for legibility at phone size (>= 34 px type at scale 1). */
 export const GRAPHIC_LIMITS = {
@@ -99,8 +157,10 @@ export const GRAPHIC_LIMITS = {
   seriesNote: 48,
   cellText: 24,
   category: 16,
-  itemText: 80,
+  itemText: 120,
   itemSub: 100,
+  itemMeta: 40,
+  meta: 60,
   maxSeries: 8,
   maxValues: 36,
   maxCategories: 36,
@@ -130,6 +190,10 @@ export const GraphicItemSchema = z.object({
   op: z.enum(GRAPHIC_OPS).default("NONE"),
   /** CHECKLIST: done ✓ / todo ○ / no ✕. */
   state: z.enum(GRAPHIC_STATES).default("NONE"),
+  /** Conversations (DM_CHAT, COMMENT chains): who sent it — ME (right) / THEM (left). */
+  side: z.enum(GRAPHIC_SIDES).default("NONE"),
+  /** A short extra line per entry: a URL, app name, handle, time, reaction… (component-defined). */
+  meta: z.string().max(GRAPHIC_LIMITS.itemMeta).nullable().default(null),
 });
 export type GraphicItem = z.infer<typeof GraphicItemSchema>;
 
@@ -187,19 +251,35 @@ export type GraphicCategory =
   | "CALLOUTS"
   | "OBJECTS_3D"
   | "EMPHASIS"
-  | "SOCIAL";
+  | "SOCIAL"
+  // Library 2
+  | "SOCIAL_POSTS"
+  | "PHONE"
+  | "SEARCH_WEB"
+  | "NEWS_MEDIA"
+  | "HOOKS"
+  | "REACTIONS"
+  | "LIFE";
 
+/** Chip order in the library (ids are stable; labels may change). */
 export const GRAPHIC_CATEGORIES: Array<{ id: GraphicCategory; label: string }> = [
   { id: "MONEY", label: "Money & numbers" },
   { id: "CHARTS", label: "Charts" },
   { id: "COMPARISONS", label: "Comparisons" },
+  { id: "SOCIAL_POSTS", label: "Social posts" },
+  { id: "PHONE", label: "Phone & apps" },
+  { id: "SEARCH_WEB", label: "Search & web" },
+  { id: "NEWS_MEDIA", label: "News & media" },
+  { id: "HOOKS", label: "Hooks & quizzes" },
+  { id: "REACTIONS", label: "Reactions & FX" },
   { id: "TIMELINES", label: "Timelines & steps" },
   { id: "LISTS", label: "Lists & tables" },
+  { id: "LIFE", label: "Life & places" },
   { id: "TEXT", label: "Text & titles" },
   { id: "CALLOUTS", label: "Callouts & annotations" },
   { id: "OBJECTS_3D", label: "3D objects" },
   { id: "EMPHASIS", label: "Transitions & emphasis" },
-  { id: "SOCIAL", label: "Social & CTA" },
+  { id: "SOCIAL", label: "Follow & CTA" },
 ];
 
 type Range = readonly [number, number];
@@ -219,7 +299,20 @@ export interface GraphicComponentSpec {
     /** series count bounds + values-per-series bounds. */
     series?: { count: Range; values: Range; label: "ENTITY" | "SERIES" | "ROW" };
     categories?: Range;
-    items?: { count: Range; value?: boolean; sub?: boolean; icon?: boolean; op?: boolean; state?: boolean };
+    items?: {
+      count: Range;
+      value?: boolean;
+      sub?: boolean;
+      icon?: boolean;
+      op?: boolean;
+      state?: boolean;
+      /** Library 2: conversation side (ME / THEM). */
+      side?: boolean;
+      /** Library 2: reads `item.meta`; the string is its edit-sheet label. */
+      meta?: string;
+      /** Library 2: every entry needs a number. */
+      valueRequired?: boolean;
+    };
     highlight?: "SERIES" | "ITEMS" | "VALUES";
     total?: boolean;
     range?: boolean;
@@ -227,7 +320,25 @@ export interface GraphicComponentSpec {
     bodyRequired?: boolean;
     /** Title is required (lower thirds, transitions). */
     titleRequired?: boolean;
+    // ---- Library 2 (additive) ----
+    /** Reads `props.meta`; the string is its edit-sheet label ("Time", "URL", "App name"). */
+    meta?: string;
+    /** Offers the Dark / Light look. */
+    tone?: boolean;
+    /** Quick-entry dialect beyond numbers: CHAT ("Me: … | Them: …"), LINES (one entry per
+     * group: "1. Topic 120K"), QUERY (first group = title/query, the rest = entries). */
+    quick?: "CHAT" | "LINES" | "QUERY";
+    /** Numbers are drawn in the component's own style (social counts "12.4K", clocks…): hide
+     * the generic number-format section. */
+    ownFormat?: boolean;
+    /** Edit-sheet wording for the shared fields (defaults: Title / Subtitle / Text / Label /
+     * Small line / Value / Entries). */
+    labels?: { title?: string; subtitle?: string; body?: string; text?: string; sub?: string; value?: string; entries?: string };
   };
+  /** Library 2: the look when `tone` is AUTO. */
+  toneDefault?: "DARK" | "LIGHT";
+  /** Library 2: full-screen backdrop — PLAIN = flat black/white by tone (keynote-style). */
+  backdrop?: "PLAIN";
   /** Default overlay vs full-screen scene. FULL_FRAME components are always full screen. */
   kind: "BOX" | "FULL_FRAME";
   preferY: number;
@@ -244,7 +355,7 @@ const S = (
   kind: GraphicComponentSpec["kind"] = "BOX",
 ): GraphicComponentSpec => ({ id, label, blurb, category, variants, uses, kind, preferY });
 
-export const GRAPHIC_COMPONENT_SPECS: Record<GraphicComponent, GraphicComponentSpec> = {
+const CORE_SPECS: Record<CoreGraphicComponent, GraphicComponentSpec> = {
   STAT_TILES: S("STAT_TILES", "Stat tiles", "1–6 numbers on glass tiles", "MONEY", [["ROW", "Row"], ["GRID", "Grid"], ["STACK", "Stack"]], {
     title: true,
     items: { count: [1, 6], value: true, sub: true, icon: true },
@@ -391,6 +502,9 @@ export const GRAPHIC_COMPONENT_SPECS: Record<GraphicComponent, GraphicComponentS
   }, 0.5, "FULL_FRAME"),
 };
 
+/** Every base component's spec: the 28 core ones + library 2's families (graphics/families). */
+export const GRAPHIC_COMPONENT_SPECS: Record<GraphicComponent, GraphicComponentSpec> = { ...CORE_SPECS, ...LIBRARY2_SPECS };
+
 // ---------------------------------------------------------------------------------------
 // Props schema
 // ---------------------------------------------------------------------------------------
@@ -417,6 +531,10 @@ const GraphicPropsBase = z.object({
   animation: GraphicAnimationSchema.default(DEFAULT_GRAPHIC_ANIMATION),
   /** OVERLAY = a box placed around Chris; FULL = a full-screen scene with its own backdrop. */
   screen: z.enum(["OVERLAY", "FULL"]).default("OVERLAY"),
+  /** Library 2: a short context line (time stamp, URL, app/source name…) — component-defined. */
+  meta: z.string().max(GRAPHIC_LIMITS.meta).nullable().default(null),
+  /** Library 2: light/dark look for UI-style components (AUTO = the component's default). */
+  tone: z.enum(GRAPHIC_TONES).default("AUTO"),
 });
 
 /** Plain-English problems with a GRAPHIC's props (component bounds). Empty = renders. */
@@ -439,7 +557,7 @@ export function graphicPropsIssues(p: z.infer<typeof GraphicPropsBase>): Array<{
     const [lo, hi] = u.items.count;
     if (p.items.length < lo) out.push({ path: ["items"], message: lo === 1 ? "needs at least one entry" : `needs at least ${lo} entries` });
     if (p.items.length > hi) out.push({ path: ["items"], message: `can show at most ${hi} entries` });
-    if (u.items.value && ["DONUT", "PROGRESS", "GAUGE", "BIG_NUMBER"].includes(p.component)) {
+    if (u.items.value && (u.items.valueRequired || ["DONUT", "PROGRESS", "GAUGE", "BIG_NUMBER"].includes(p.component))) {
       p.items.forEach((it, i) => {
         if (it.value === null) out.push({ path: ["items", i, "value"], message: "needs a number" });
       });
@@ -462,6 +580,12 @@ export type GraphicProps = z.infer<typeof GraphicPropsSchema>;
 export function graphicVariant(p: Pick<GraphicProps, "component" | "variant">): string {
   const spec = GRAPHIC_COMPONENT_SPECS[p.component];
   return p.variant && spec.variants.some(([id]) => id === p.variant) ? p.variant : spec.variants[0]![0];
+}
+
+/** The light/dark look actually used. */
+export function graphicTone(p: Pick<GraphicProps, "component" | "tone">): "DARK" | "LIGHT" {
+  if (p.tone === "DARK" || p.tone === "LIGHT") return p.tone;
+  return GRAPHIC_COMPONENT_SPECS[p.component].toneDefault ?? "DARK";
 }
 
 export function isFullScreenGraphic(p: Pick<GraphicProps, "component" | "screen">): boolean {
@@ -567,6 +691,8 @@ export function graphicDesignSize(p: GraphicProps): { width: number; height: num
       return { width: 900, height: 260 };
     case "TRANSITION":
       return { width: 1080, height: 1920 };
+    default:
+      return library2DesignSize(p, v, head);
   }
 }
 
@@ -700,6 +826,7 @@ export function graphicShownNumbers(props: GraphicProps): { numbers: Array<{ val
     if (text && text.trim()) texts.push({ text, field });
   };
   if (u.title || props.title) t(props.title, "title");
+  if (u.meta) t(props.meta, "meta");
   if (u.subtitle) t(props.subtitle, "subtitle");
   if (u.body) t(props.body, "body");
   // Components that are pure prefab (no numbers in their design) still show their text.
@@ -724,6 +851,7 @@ export function graphicShownNumbers(props: GraphicProps): { numbers: Array<{ val
     props.items.forEach((it, i) => {
       t(it.text, `items[${i}].text`);
       if (u.items!.sub) t(it.sub, `items[${i}].sub`);
+      if (u.items!.meta) t(it.meta, `items[${i}].meta`);
       if (u.items!.value && it.value !== null) numbers.push({ value: it.value, field: `items[${i}].value` });
     });
     if (props.component === "DONUT") donutShares(props.items).forEach((s, i) => numbers.push({ value: s, field: `items[${i}] share %` }));

@@ -1,5 +1,11 @@
 import type { MotionTemplate, SfxSound } from "../motion-contract";
 import type { GraphicCategory, GraphicComponent, GraphicProps } from "./contract";
+import { FX_PRESETS } from "./library2/fx";
+import { LIFE_PRESETS } from "./library2/life";
+import { OBJECTS_PRESETS } from "./library2/objects";
+import { PHONE_PRESETS } from "./library2/phone";
+import { SOCIAL_PRESETS } from "./library2/social";
+import { WEB_PRESETS } from "./library2/web";
 
 /**
  * The graphics LIBRARY: 150+ curated presets. Each is a named, tagged, categorised starting
@@ -901,6 +907,14 @@ graphic("month-grid-savings-streak", "Savings streak", "12 months of saving the 
   format: { ...USD, compact: "NONE" },
   animation: { order: "STAGGER", stagger: 0.07, enter: "POP" },
 }, { seconds: 6 });
+
+// =======================================================================================
+// LIBRARY 2 (2026-10-18): platform-style UI, phone & apps, search & web, news & media,
+// hooks & quizzes, reactions & FX, life & places, more 3D objects — appended after the
+// original library so its order (and every saved preset id) is unchanged.
+// =======================================================================================
+
+all.push(...SOCIAL_PRESETS, ...PHONE_PRESETS, ...WEB_PRESETS, ...LIFE_PRESETS, ...FX_PRESETS, ...OBJECTS_PRESETS);
 
 export const GRAPHIC_PRESETS: readonly GraphicPreset[] = all;
 

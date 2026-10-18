@@ -110,3 +110,25 @@ describe("data table + entries (pure)", () => {
     expect(graphicPropsOf(next.visuals[0]!)!.title).toBe("My year");
   });
 });
+
+describe("library 2 in the editor (conversations, dialects)", () => {
+  const chat = () => GraphicPropsSchema.parse({ component: "DM_CHAT", title: "Mom", items: [{ text: "you up?", side: "THEM" }] });
+  it("quick entry speaks the component's dialect", () => {
+    const r = quickEntryInto(chat(), "Mom: did you pay rent | Me: yes | Me: twice, apparently");
+    expect(r.changed).toBe(true);
+    expect(r.props.items.map((i) => i.side)).toEqual(["THEM", "ME", "ME"]);
+    expect(quickEntryInto(chat(), "   ").changed).toBe(false);
+  });
+  it("adding a message alternates the side", () => {
+    const a = addItem(chat());
+    expect(a.items[1]!.side).toBe("ME");
+    expect(addItem(a).items[2]!.side).toBe("THEM");
+  });
+  it("every library-2 preset inserts and validates", () => {
+    for (const p of GRAPHIC_PRESETS.slice(171)) {
+      const d = addPresetVisual(doc(), p, 0, { id: "v" }).doc;
+      expect(d.visuals.length, p.id).toBe(1);
+      expect(MotionPropsSchemas[p.template].safeParse(d.visuals[0]!.props).success, p.id).toBe(true);
+    }
+  });
+});

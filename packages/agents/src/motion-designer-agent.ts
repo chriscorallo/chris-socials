@@ -91,7 +91,7 @@ export const MotionDesignerPropsSchemas = {
   LIST_STEPS: z.object({ title: S.nullable(), items: z.array(S), style: z.enum(["NUMBERED", "CHECK"]) }).strict(),
   ICON_3D: z
     .object({
-      icon: z.enum(["COIN", "CREDIT_CARD", "HOUSE", "PIGGY_BANK", "CHART_UP", "CALENDAR", "LOCK", "PHONE", "BRIEFCASE", "GRADUATION_CAP"]),
+      icon: z.enum(["COIN", "CREDIT_CARD", "HOUSE", "PIGGY_BANK", "CHART_UP", "CALENDAR", "LOCK", "PHONE", "BRIEFCASE", "GRADUATION_CAP", "TROPHY", "ROCKET", "LIGHTBULB", "BRAIN", "GIFT", "KEY", "MAGNIFIER", "MEGAPHONE", "CROWN", "FIRE", "LIGHTNING", "TARGET", "LAPTOP"]),
       caption: S.nullable(),
     })
     .strict(),
@@ -132,7 +132,9 @@ export const MotionDesignerPropsSchemas = {
 /** GRAPHIC keys that differ between the model schema and the contract: the model gives only the
  * animation ORDER (`order`); the rest of `animation` comes from the preset. */
 export const GRAPHIC_MODEL_ONLY_KEYS = ["order"] as const;
-export const GRAPHIC_CONTRACT_ONLY_KEYS = ["animation"] as const;
+/** `meta` (time stamps, URLs, app names) and `tone` (light/dark) come from the preset too
+ * (library 2, additive — the model schema and prompt version are unchanged). */
+export const GRAPHIC_CONTRACT_ONLY_KEYS = ["animation", "meta", "tone"] as const;
 
 /**
  * Model GRAPHIC props → contract props: the named preset's props (when it exists and uses the
@@ -147,7 +149,15 @@ export function graphicPropsFromModel(m: z.infer<(typeof MotionDesignerPropsSche
   for (const k of ["title", "subtitle", "body"] as const) if (m[k] !== null) out[k] = m[k];
   if (m.series !== null) out.series = m.series.map((s) => ({ label: s.label, values: s.values, icon: s.icon }));
   if (m.categories !== null) out.categories = m.categories;
-  if (m.items !== null) out.items = m.items;
+  if (m.items !== null) {
+    // Library 2: keep the preset's per-entry side (conversations) and meta (app names, times)
+    // by position — the model schema doesn't carry them.
+    const baseItems = Array.isArray(base.items) ? (base.items as Array<Record<string, unknown>>) : [];
+    out.items = m.items.map((it, i) => {
+      const b = baseItems[i] ?? (baseItems.length ? baseItems[i % baseItems.length] : undefined);
+      return b && (b.side !== undefined || b.meta !== undefined) ? { side: b.side, meta: b.meta, ...it } : it;
+    });
+  }
   if (m.highlight !== null) out.highlight = m.highlight;
   if (m.showTotal !== null) out.showTotal = m.showTotal;
   if (m.range !== null) out.range = m.range;
@@ -508,14 +518,14 @@ const TEMPLATE_GUIDE: Record<MotionTemplate, string> = {
   COMPARISON: "A vs B side by side (left/right {label, value string}, verdict, winner)",
   PERCENT_RING: "a single share/percentage 0-100 (percent, label)",
   LIST_STEPS: "2-5 short steps/rules as they're named (items <=48 chars each, NUMBERED|CHECK)",
-  ICON_3D: "a concrete object made real: COIN, CREDIT_CARD, HOUSE, PIGGY_BANK, CHART_UP, CALENDAR, LOCK, PHONE, BRIEFCASE, GRADUATION_CAP (+ caption)",
+  ICON_3D: "a concrete object made real: COIN, CREDIT_CARD, HOUSE, PIGGY_BANK, CHART_UP, CALENDAR, LOCK, PHONE, BRIEFCASE, GRADUATION_CAP, TROPHY, ROCKET, LIGHTBULB, BRAIN, GIFT, KEY, MAGNIFIER, MEGAPHONE, CROWN, FIRE, LIGHTNING, TARGET, LAPTOP (+ caption)",
   MONEY_STACK_3D: "an amount of cash made physical (amount, label)",
   CALLOUT: "arrow + label pointing at something visible on screen (text <=40, pointTo canvas fractions) — rarely needed",
   TIMELINE: "2-5 dated/ordered events (label <=16, sub)",
   DEFINITION: "a term Chris defines (term, definition <=140)",
   TITLE_CARD: "cinematic full-frame chapter/hook moment, background dimmed (title, subtitle) — HERO/MEDIUM only, max 1",
   GRAPHIC:
-    "the composable graphics library — pick a `preset` id from the library below (its layout, look and animation come with it) and fill the CONTENT with this video's numbers/labels; or preset null + any `component`. Use it for multi-entity comparisons (VALUE_COLUMNS, VERSUS, ENTITY_CARDS), month-by-month values (MONTH_GRID), cash flow ups/downs (WATERFALL), formulas (FORMULA), grouped/stacked bars with negatives (BAR_GROUP), multi-series lines (LINE_AREA), donuts, gauges, progress, steps, checklists, rankings, tables, quotes, lower thirds, CTAs",
+    "the composable graphics library — pick a `preset` id from the library below (its layout, look and animation come with it) and fill the CONTENT with this video's numbers/labels; or preset null + any `component`. Use it for multi-entity comparisons (VALUE_COLUMNS, VERSUS, ENTITY_CARDS), month-by-month values (MONTH_GRID), cash flow ups/downs (WATERFALL), formulas (FORMULA), grouped/stacked bars with negatives (BAR_GROUP), multi-series lines (LINE_AREA), donuts, gauges, progress, steps, checklists, rankings, tables, quotes, lower thirds, CTAs — and (library 2) generic platform-style UI when Chris refers to it: a search typing his query (SEARCH_BAR), a text conversation (DM_CHAT), notifications, posts/comments/trending, news bars, quizzes/polls, MYTH/FACT stamps, hook titles, maps, payments. Never invent quotes, posts or messages he didn't say; never use real brand names",
 };
 
 /** Compact library catalogue for the prompt: per component, what it reads + its preset ids. */

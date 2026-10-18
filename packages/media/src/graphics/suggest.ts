@@ -1,5 +1,5 @@
-import { GraphicPropsSchema, type GraphicItem, type GraphicProps, type GraphicSeries } from "./contract";
-import { presetById, type GraphicPreset } from "./presets";
+import { GRAPHIC_COMPONENT_SPECS, GraphicPropsSchema, type GraphicComponent, type GraphicItem, type GraphicProps, type GraphicSeries } from "./contract";
+import { GRAPHIC_PRESETS, presetById, type GraphicPreset } from "./presets";
 
 /**
  * Deterministic suggestions from what Chris is saying at the playhead (no AI, $0): detects
@@ -77,8 +77,126 @@ function graphicFrom(presetId: string, patch: (p: GraphicProps) => GraphicProps)
   return r.success ? { preset, props: r.data as unknown as Record<string, unknown> } : null;
 }
 
+/** The library's preset for a component (+ variant) — featured first — pre-filled by `patch`.
+ * Library-2 suggestions go through this so they don't depend on individual preset ids. */
+function graphicFromComponent(component: GraphicComponent, variant: string | null, patch: (p: GraphicProps) => GraphicProps): { preset: GraphicPreset; props: Record<string, unknown> } | null {
+  const pick = (pred: (p: GraphicPreset) => boolean) => GRAPHIC_PRESETS.filter((p) => p.template === "GRAPHIC" && p.props.component === component && pred(p)).sort((a, b) => Number(!!b.featured) - Number(!!a.featured))[0];
+  const variantOf = (p: GraphicPreset) => (p.props.variant as string | null | undefined) ?? GRAPHIC_COMPONENT_SPECS[component].variants[0]![0];
+  const preset = (variant ? pick((p) => variantOf(p) === variant) : undefined) ?? pick(() => true);
+  return preset ? graphicFrom(preset.id, patch) : null;
+}
+
+/** Words after a trigger up to the end of the clause ("I googled how to … " → "how to …"). */
+function phraseAfter(text: string, re: RegExp, max = 60): string | null {
+  const m = re.exec(text);
+  if (!m) return null;
+  const rest = text.slice(m.index + m[0].length).replace(/^[\s:,"“'‘]+/, "");
+  const q = /^["“'‘](.+?)["”'’]/.exec(text.slice(m.index + m[0].length).trim());
+  const raw = q ? q[1]! : rest.split(/[.!?;]|,\s(?:and|but|so)\b|\s(?:and then|but)\s/)[0]!;
+  const s = raw.trim().replace(/["”'’]+$/, "");
+  if (s.length < 3) return null;
+  return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
+}
+
+/** A quoted bit of speech ("she said 'are you up'") or null. */
+function quoted(text: string): string | null {
+  const m = /["“‘']([^"”’']{3,90})["”’']/.exec(text);
+  return m ? m[1]!.trim() : null;
+}
+
+function capitalize(s: string): string {
+  return s ? s[0]!.toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * Library 2 — moments that call for platform/phone/news/hook graphics, detected from explicit
+ * words ("I googled…", "she texted me", "breaking news", "went viral", "subscribe", "myth",
+ * "plot twist", "wait for it", "pros and cons"…). Pre-filled with the words/numbers said.
+ */
+function library2Suggestions(text: string, lower: string, nums: DetectedNumber[], push: (s: { preset: GraphicPreset; props: Record<string, unknown> } | null, reason: string) => void): void {
+  const money = nums.filter((n) => n.kind === "MONEY");
+  const said = quoted(text);
+  // Search
+  const searchRe = /\b(?:i\s+)?(?:googled|google(?:d)? it|searched(?: for| up)?|looked up|typed in(?:to google)?|search(?:ed)? online for)\b/i;
+  if (searchRe.test(text) || /\bgoogle\b/.test(lower)) {
+    const q = phraseAfter(text, searchRe) ?? said;
+    push(graphicFromComponent("SEARCH_BAR", "TYPING", (p) => (q ? { ...p, title: q.toLowerCase() } : p)), q ? `You searched “${q}”` : "You talked about searching");
+    push(graphicFromComponent("SEARCH_BAR", "ASK", (p) => p), "“People also ask”");
+  }
+  // Texts / DMs
+  if (/\b(?:texted|texting|text(?:ed)? me|messaged|dm'?d|dmed|sent me a (?:text|message|dm)|group chat|replied)\b/.test(lower)) {
+    const who = /\b(my (?:mom|dad|boss|friend|landlord|ex|sister|brother|girlfriend|boyfriend|wife|husband)|she|he|they)\b/.exec(lower)?.[1];
+    const name = who && who.startsWith("my ") ? capitalize(who.slice(3)) : null;
+    push(
+      graphicFromComponent("DM_CHAT", "MESSAGES", (p) => ({
+        ...p,
+        title: name ?? p.title,
+        items: said ? [{ text: said, sub: null, value: null, icon: null, color: "AUTO", op: "NONE", state: "NONE", side: "THEM", meta: null }, ...p.items.filter((i) => i.side === "ME").slice(0, 1)] : p.items,
+      })),
+      said ? `A text: “${said}”` : "Sounds like a text conversation",
+    );
+  }
+  // Notifications / alerts / payments
+  if (/\bnotification|\bgot an? (?:email|alert|text) from|\bmy bank\b|\bdirect deposit|\bpaycheck (?:hit|landed)/.test(lower)) {
+    push(graphicFromComponent("NOTIFICATION", "BANNER", (p) => p), "A notification moment");
+  }
+  if (/\b(?:venmo(?:ed)?|zelle(?:d)?|paid me|sent me|cash ?app)\b/.test(lower) && money.length) {
+    const v = Math.abs(money[0]!.value);
+    push(graphicFromComponent("PAYMENT", "RECEIVED", (p) => ({ ...p, items: p.items.length ? [{ ...p.items[0]!, value: v }, ...p.items.slice(1)] : [item("", v)] })), `${fmtShort(money[0]!)} received`);
+  }
+  if (/\b(?:called me|phone rang|calling me|got a call|facetime)\b/.test(lower)) push(graphicFromComponent("CALL", "INCOMING", (p) => p), "An incoming call");
+  // News
+  if (/\bbreaking news\b|\bin the news\b|\bheadlines?\b|\bjust announced\b/.test(lower)) {
+    const h = phraseAfter(text, /\b(?:breaking news|headline(?:s)?|just announced)\b:?/i, 70);
+    push(graphicFromComponent("NEWS", "BREAKING", (p) => (h ? { ...p, title: capitalize(h) } : p)), "Breaking-news moment");
+    push(graphicFromComponent("NEWS", "HEADLINE", (p) => (h ? { ...p, title: capitalize(h) } : p)), "As a headline");
+  }
+  // Viral / trending / posts
+  if (/\bwent viral\b|\bviral\b|\btrending\b|\bblew up\b|\bfor you page\b|\bfyp\b/.test(lower)) push(graphicFromComponent("TRENDING", "LIST", (p) => p), "Went viral / trending");
+  if (/\btweet(?:ed)?\b|\bposted\b|\bthread\b|\bcomments? section\b/.test(lower)) {
+    push(graphicFromComponent("SOCIAL_POST", "MICRO", (p) => ({ ...p, body: (said ?? text).slice(0, 220) })), "As a post");
+    if (/\bcomment/.test(lower)) push(graphicFromComponent("COMMENT", "REPLY", (p) => (said ? { ...p, items: [{ ...p.items[0]!, text: said }] } : p)), "Reply to a comment");
+  }
+  // Subscribe / follow / milestones
+  if (/\bsubscribe(?:d|rs)?\b|\bfollow (?:me|for)\b|\bhit follow\b|\bturn on (?:post )?notifications\b/.test(lower)) {
+    push(graphicFromComponent("VIDEO_CARD", "SUBSCRIBE", (p) => p), "Subscribe / follow");
+    push(presetById("cta-follow") ? graphicFrom("cta-follow", (p) => p) : null, "Follow prompt");
+  }
+  const milestone = /\b(?:hit|reached|crossed|at)\s+(\d[\d.,]*\s*(?:k|m|thousand|million)?)\s+(?:followers|subscribers|subs|views)\b/i.exec(text);
+  if (milestone) {
+    const n = detectNumbers(milestone[1]!)[0];
+    if (n) push(graphicFromComponent("SOCIAL_COUNTER", "MILESTONE", (p) => ({ ...p, items: p.items.length ? [{ ...p.items[0]!, value: Math.abs(n.value) }, ...p.items.slice(1)] : [item("", Math.abs(n.value))] })), `${milestone[1]} milestone`);
+  }
+  // Hooks & verdicts
+  if (/\bmyth\b|\bthat'?s (?:false|a lie|wrong|not true)\b|\bdebunk|\bbusted\b/.test(lower)) push(graphicFromComponent("VERDICT", "STAMP", (p) => ({ ...p, title: /\bmyth\b/.test(lower) ? "MYTH" : /\bwrong\b/.test(lower) ? "WRONG" : "FALSE" })), "Call it out");
+  else if (/\bthat'?s (?:true|a fact|right)\b|\bfact:/.test(lower)) push(graphicFromComponent("VERDICT", "STAMP", (p) => ({ ...p, title: /\bfact\b/.test(lower) ? "FACT" : "TRUE" })), "Stamp it true");
+  if (/\bwait for it\b/.test(lower)) push(graphicFromComponent("HOOK_TEXT", "WAIT", (p) => p), "Wait for it…");
+  if (/\bplot twist\b/.test(lower)) push(graphicFromComponent("HOOK_TEXT", "PLOT_TWIST", (p) => p), "Plot twist");
+  if (/\bpov\b/.test(lower)) {
+    const pov = phraseAfter(text, /\bpov\b:?/i, 120);
+    push(graphicFromComponent("HOOK_TEXT", "POV", (p) => (pov ? { ...p, body: pov } : p)), "POV title");
+  }
+  if (/\bstory ?time\b/.test(lower)) push(graphicFromComponent("HOOK_TEXT", "CHAPTER", (p) => p), "Storytime");
+  if (/\bquiz\b|\bguess (?:what|how much|which)\b|\bquestion for you\b|\bcan you guess\b/.test(lower)) push(graphicFromComponent("QUIZ", "QUESTION", (p) => p), "Quiz the viewer");
+  if (/\brate (?:it|this|them)\b|\bout of (?:10|ten)\b/.test(lower)) push(graphicFromComponent("QUIZ", "SLIDER", (p) => p), "Rate it 1–10");
+  if (/\bpros and cons\b|\bupsides? and downsides?\b/.test(lower)) push(graphicFromComponent("LIST_SPLIT", "PROS_CONS", (p) => p), "Pros and cons");
+  if (/\bdo'?s and don'?ts\b/.test(lower)) push(graphicFromComponent("LIST_SPLIT", "DOS_DONTS", (p) => p), "Do's and don'ts");
+  if (/\bthree,? two,? one\b|\b3,? 2,? 1\b|\bcountdown\b/.test(lower)) push(graphicFromComponent("COUNTDOWN", "NUMBERS", (p) => p), "Countdown");
+  // Life
+  if (/\bweather\b|\bdegrees\b|\bheat ?wave\b/.test(lower)) push(graphicFromComponent("WEATHER", "CARD", (p) => p), "Weather");
+  if (/\bflew\b|\bflight\b|\bairport\b|\bboarding\b/.test(lower)) push(graphicFromComponent("MAP_NAV", "FLIGHT", (p) => p), "A flight");
+  const city = /\b(los angeles|new york|miami|chicago|austin|san francisco|seattle|denver|nashville|boston|atlanta|dallas|houston|london|paris|tokyo)\b/i.exec(text);
+  if (city || /\bin la\b|\bl\.a\.\b/.test(lower)) push(graphicFromComponent("MAP_NAV", "PIN", (p) => ({ ...p, title: city ? city[1]!.replace(/\b\w/g, (c) => c.toUpperCase()) : "Los Angeles" })), "A place");
+  if (/\bscreen ?time\b|\bon my phone for\b|\bdoom ?scroll/.test(lower)) push(graphicFromComponent("SCREEN_TIME", "REPORT", (p) => p), "Screen time");
+  if (/\bgym\b|\bworkout\b|\bsets?\b.*\breps?\b|\bbench\b|\bsquat/.test(lower)) push(graphicFromComponent("TRACKER", "SETS", (p) => p), "Workout sets");
+  if (/\bstreak\b|\bevery (?:single )?day for\b|\bdays? in a row\b|\bhabit\b/.test(lower)) push(graphicFromComponent("TRACKER", "HABIT", (p) => p), "Habit streak");
+  if (/\bpodcast\b|\bepisode\b/.test(lower)) push(graphicFromComponent("MEDIA_PLAYER", "PODCAST", (p) => p), "Podcast");
+  if (/\buber\b|\blyft\b|\bride ?share\b/.test(lower)) push(graphicFromComponent("TRAVEL", "RIDE", (p) => p), "A ride");
+  if (/\bdeclined\b/.test(lower)) push(graphicFromComponent("PAYMENT", "DECLINED", (p) => p), "Card declined");
+}
+
 function item(text: string, value: number | null, prev?: GraphicItem): GraphicItem {
-  return { text, value, sub: null, icon: prev?.icon ?? null, color: prev?.color ?? "AUTO", op: prev?.op ?? "NONE", state: prev?.state ?? "NONE" };
+  return { text, value, sub: null, icon: prev?.icon ?? null, color: prev?.color ?? "AUTO", op: prev?.op ?? "NONE", state: prev?.state ?? "NONE", side: prev?.side ?? "NONE", meta: prev?.meta ?? null };
 }
 
 function money(fmt: GraphicProps["format"], kind: DetectedNumber["kind"]): GraphicProps["format"] {
@@ -116,6 +234,9 @@ export function suggestGraphics(phrase: string, limit = 6): GraphicSuggestion[] 
   const push = (s: { preset: GraphicPreset; props: Record<string, unknown> } | null, reason: string) => {
     if (s && !out.some((o) => o.preset.id === s.preset.id)) out.push({ ...s, reason });
   };
+
+  // Library 2: explicit platform/phone/news/hook language ("I googled…", "she texted me").
+  library2Suggestions(text, lower, nums, push);
 
   // Roles × amounts → Chris's comparison. Each role gets the amounts said between its mention
   // and the next role's ("as a business owner: zero, then 5k, then lost 15k…"); one amount said

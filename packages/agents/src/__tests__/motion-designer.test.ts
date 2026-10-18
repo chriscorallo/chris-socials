@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { EditTimelineSchema, MotionPropsSchemas, MOTION_TEMPLATES, visualRect, intersectionArea, type EditTimeline } from "@chris/media/timeline";
+import { EditTimelineSchema, GRAPHIC_COMPONENTS, MotionPropsSchemas, MOTION_TEMPLATES, visualRect, intersectionArea, type EditTimeline } from "@chris/media/timeline";
 import { MockModelProvider } from "../providers/mock-provider";
 import {
   designVisualsForTimeline,
@@ -267,7 +267,7 @@ describe("graphics library (GRAPHIC template)", () => {
     await designVisualsForTimeline(p, base());
     expect(p.calls[0]!.userPrompt).toContain("income-3-people-12-months");
     expect(p.calls[0]!.userPrompt).toContain("VALUE_COLUMNS");
-    expect(graphicsCatalogue().split("\n")).toHaveLength(28);
+    expect(graphicsCatalogue().split("\n")).toHaveLength(GRAPHIC_COMPONENTS.length);
   });
   it("merges the model's content onto the preset and validates it", async () => {
     const res = await designVisualsForTimeline(provider([v({ template: "GRAPHIC", props: gProps() as never, start: 5, end: 9, importance: 4 })]), base());

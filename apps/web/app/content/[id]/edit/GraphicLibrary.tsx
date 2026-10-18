@@ -34,7 +34,7 @@ import "./graphics.css";
  * The graphics LIBRARY in the Visuals sheet (phone-first): search (fuzzy, synonyms), category
  * chips, ★ favourites and recently used (per user, saved in the DB), "For this moment"
  * suggestions pre-filled from what's being said at the playhead (deterministic, free) plus an
- * optional "Suggest with AI", and a grid of 150+ presets with real rendered posters. Tap a card
+ * optional "Suggest with AI", and a grid of 380+ presets with real rendered posters. Tap a card
  * to add it at the playhead (then its edit sheet opens); ▶ plays a live animated preview.
  */
 const PresetPlayer = dynamic(() => import("@chris/motion/preset-player").then((m) => m.PresetPlayer), { ssr: false, loading: () => null });
@@ -141,7 +141,7 @@ export function GraphicLibrary() {
           className="ed-input gl-search-input"
           type="search"
           value={query}
-          placeholder="Search 150+ graphics — income, vs, donut…"
+          placeholder={`Search ${GRAPHIC_PRESETS.length} graphics — income, google, text, news…`}
           aria-label="Search graphics"
           onChange={(e) => setQuery(e.target.value)}
           enterKeyHint="search"

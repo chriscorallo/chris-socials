@@ -59,23 +59,23 @@ function cleanWord(w: string): string {
   return w.toLowerCase().replace(/[^\p{L}\p{N}%$]/gu, "");
 }
 
-function splitWords(s: string | null | undefined): string[] {
+export function splitWords(s: string | null | undefined): string[] {
   return (s ?? "").split(/\s+/).filter(Boolean);
 }
 
 /** Latest frame a build may finish so it can still be read before the exit. */
-function buildBudget(ctx: GCtx, hold = 0.6): number {
+export function buildBudget(ctx: GCtx, hold = 0.6): number {
   return Math.max(8, ctx.D - ctx.exitFrames - Math.round(hold * ctx.fps));
 }
 
 /** Compression factor (≤ 1) so `total` frames of choreography starting at `t0` fit the budget. */
-function squeeze(ctx: GCtx, t0: number, total: number, hold = 0.6): number {
+export function squeeze(ctx: GCtx, t0: number, total: number, hold = 0.6): number {
   const room = buildBudget(ctx, hold) - t0;
   return total <= 0 || room >= total ? 1 : Math.max(0.2, room / total);
 }
 
 /** Relative glyph advance (em) for Inter Display Bold/ExtraBold — a conservative estimate. */
-function charW(c: string): number {
+export function charW(c: string): number {
   if (c === " " || c.charCodeAt(0) === 160) return 0.27;
   if ("iljI.,:;'!|’‘·".includes(c)) return 0.31;
   if ("ftr()-\"“”/".includes(c)) return 0.42;
@@ -88,20 +88,20 @@ function charW(c: string): number {
 }
 
 /** Estimated rendered width of `s` at `size` px (k scales for narrower/wider faces). */
-function textW(s: string, size: number, k = 1): number {
+export function textW(s: string, size: number, k = 1): number {
   let w = 0;
   for (const c of s) w += charW(c);
   return w * size * k;
 }
 
 /** Largest size ≤ max at which `s` fits `width` on one line. */
-function fitLine(s: string, width: number, max: number, min = 28, k = 1): number {
+export function fitLine(s: string, width: number, max: number, min = 28, k = 1): number {
   const w = textW(s || " ", max, k);
   return Math.max(min, Math.min(max, Math.floor((max * width) / Math.max(1, w))));
 }
 
 /** Greedy line break of words (token indices per line). */
-function breakLines(words: string[], size: number, width: number, k: number): number[][] {
+export function breakLines(words: string[], size: number, width: number, k: number): number[][] {
   const lines: number[][] = [];
   let cur: number[] = [];
   let curText = "";
@@ -121,7 +121,7 @@ function breakLines(words: string[], size: number, width: number, k: number): nu
 }
 
 /** Same line count, but balanced (no orphan last word): narrow the measure while it holds. */
-function balancedLines(words: string[], size: number, width: number, k: number): number[][] {
+export function balancedLines(words: string[], size: number, width: number, k: number): number[][] {
   const base = breakLines(words, size, width, k);
   if (base.length <= 1) return base;
   const longest = Math.max(...words.map((w) => textW(w, size, k)));
@@ -134,7 +134,7 @@ function balancedLines(words: string[], size: number, width: number, k: number):
   return best;
 }
 
-interface Fitted {
+export interface Fitted {
   size: number;
   lines: number[][];
   /** Words actually shown (the last may carry an ellipsis when even the minimum overflows). */
@@ -142,7 +142,7 @@ interface Fitted {
 }
 
 /** Largest font size (max → min) at which the words wrap into `width` × `height`. */
-function fitWords(wordsIn: string[], width: number, height: number, o: { max: number; min: number; lh: number; k?: number; maxLines?: number }): Fitted {
+export function fitWords(wordsIn: string[], width: number, height: number, o: { max: number; min: number; lh: number; k?: number; maxLines?: number }): Fitted {
   const k = o.k ?? 1;
   const words = wordsIn.length ? wordsIn : [" "];
   for (let s = o.max; s >= o.min; s -= 2) {
@@ -166,7 +166,7 @@ function fitWords(wordsIn: string[], width: number, height: number, o: { max: nu
 }
 
 /** Indices of body words that belong to the `phrase` (every occurrence). */
-function matchPhrase(words: string[], phrase: string | null | undefined): boolean[] {
+export function matchPhrase(words: string[], phrase: string | null | undefined): boolean[] {
   const marks = words.map(() => false);
   const pw = splitWords(phrase).map(cleanWord).filter(Boolean);
   if (!pw.length) return marks;
@@ -177,7 +177,7 @@ function matchPhrase(words: string[], phrase: string | null | undefined): boolea
   return marks;
 }
 
-function luminance(hex: string): number {
+export function luminance(hex: string): number {
   const h = hex.replace("#", "");
   const ch = (i: number) => {
     const v = parseInt(h.slice(i, i + 2), 16) / 255;
@@ -187,23 +187,23 @@ function luminance(hex: string): number {
 }
 
 /** Readable content colour on a solid fill. */
-function onFill(c: string): string {
+export function onFill(c: string): string {
   return luminance(c) > 0.32 ? DARK : "#FFFFFF";
 }
 
 /** Deterministic 0..1 hash. */
-function hash01(n: number): number {
+export function hash01(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return x - Math.floor(x);
 }
 
-function solidFill(c: string): string {
+export function solidFill(c: string): string {
   return `linear-gradient(150deg, ${mix(c, "#FFFFFF", 0.32)} 0%, ${c} 52%, ${mix(c, "#000000", 0.2)} 100%)`;
 }
 
 /** A word that enters per the animation's entrance — RISE/SLIDE/DROP/WIPE = a masked slide
  * (the premium kinetic-type reveal), others use the shared element vocabulary. */
-function Word({ ctx, start, len, size, face, children }: { ctx: GCtx; start: number; len: number; size: number; face: CSSProperties; children: ReactNode }) {
+export function Word({ ctx, start, len, size, face, children }: { ctx: GCtx; start: number; len: number; size: number; face: CSSProperties; children: ReactNode }) {
   const style = ctx.anim.enter;
   if (style === "RISE" || style === "SLIDE" || style === "DROP" || style === "WIPE") {
     const t = prog(ctx.frame, start, Math.round(len * 1.25), ctx.ease);
@@ -224,12 +224,12 @@ function Word({ ctx, start, len, size, face, children }: { ctx: GCtx; start: num
   );
 }
 
-function goldFace(ctx: GCtx, glow: number): CSSProperties {
+export function goldFace(ctx: GCtx, glow: number): CSSProperties {
   return { ...gradientText(ctx.p.primary), filter: `drop-shadow(0 0 ${r1(10 + 18 * glow)}px ${rgba(ctx.p.primary, 0.22 + 0.3 * glow)}) drop-shadow(0 6px 16px ${rgba("#000000", 0.5)})` };
 }
 
 /** A tinted glass disc holding a line icon. */
-function Disc({ size, color, icon, draw = 1, style }: { size: number; color: string; icon: GraphicIcon | null; draw?: number; style?: CSSProperties }) {
+export function Disc({ size, color, icon, draw = 1, style }: { size: number; color: string; icon: GraphicIcon | null; draw?: number; style?: CSSProperties }) {
   return (
     <div
       style={{
