@@ -139,7 +139,8 @@ describe("ChatGPT connector MCP endpoint", () => {
 
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    expect(Object.keys(byName).sort()).toEqual(["get_video", "list_videos_needing_scripts", "save_scripts"]);
+    expect(Object.keys(byName).sort()).toEqual(["get_plan_context", "get_video", "list_videos_needing_scripts", "save_scripts"]);
+    expect(byName.get_plan_context!.annotations).toMatchObject({ readOnlyHint: true });
     expect(byName.list_videos_needing_scripts!.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
     expect(byName.get_video!.annotations).toMatchObject({ readOnlyHint: true });
     expect(byName.save_scripts!.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: false });
@@ -181,6 +182,11 @@ describe("ChatGPT connector MCP endpoint", () => {
 
     const got = await client.callTool({ name: "get_video", arguments: { code: videoCode(videoIds[0]!) } });
     expect((got.structuredContent as { video: { latestScript: { text: string } } }).video.latestScript.text).toContain("Turn them off.");
+
+    // Plan context: whatever is saved is returned as text (or a plain "none yet" when empty).
+    const ctx = await client.callTool({ name: "get_plan_context", arguments: { maxChars: 5000 } });
+    expect(ctx.isError).toBeFalsy();
+    expect(JSON.stringify(ctx.content)).toMatch(/conversation/i);
 
     const bad = await client.callTool({ name: "save_scripts", arguments: { scripts: [] } });
     expect(bad.isError).toBe(true);

@@ -13,6 +13,7 @@ import {
   listVideosNeedingScripts,
   getConnectorVideo,
   saveConnectorScripts,
+  getActivePlanContext,
   SCOPE_READ,
   SCOPE_WRITE,
   MAX_LIST_BATCH,
@@ -85,6 +86,10 @@ async function guarded(
     return errorResult(message);
   }
 }
+
+/** Plan-context text sent to ChatGPT per call (tool results should stay well under ChatGPT's size limits). */
+const PLAN_CONTEXT_DEFAULT_CHARS = 40_000;
+const PLAN_CONTEXT_MAX_CHARS = 80_000;
 
 const SECURITY = (scopes: string[]) => ({ securitySchemes: [{ type: "oauth2", scopes }] });
 
@@ -182,9 +187,29 @@ export function createMcpServer(access: VerifiedAccess): McpServer {
       }),
   );
 
-  // TODO(plan-context): a `get_plan_context` read tool belongs here once the separate "plan
-  // context import" (ChatGPT conversation export upload) lands on fix/usable-v1 with its domain
-  // read function. Deliberately not stubbed with a model of our own, to avoid a conflicting schema.
+  server.registerTool(
+    "get_plan_context",
+    {
+      title: "Get Chris's planning conversation",
+      description:
+        "Returns the planning conversation(s) Chris imported into Chris Studio from ChatGPT (his plan, business model, audience, pillars), as plain text — highlights and the most recent messages first when it has to be shortened. " +
+        "Use it when this chat doesn't already contain that planning context. It is for intent and direction only — never a source of facts or statistics. Read-only.",
+      inputSchema: {
+        maxChars: z.number().int().min(2_000).max(PLAN_CONTEXT_MAX_CHARS).optional().describe(`How much text to return (default ${PLAN_CONTEXT_DEFAULT_CHARS}, max ${PLAN_CONTEXT_MAX_CHARS}).`),
+      },
+      annotations: { title: "Get planning conversation", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: SECURITY([SCOPE_READ]),
+    },
+    async (args) =>
+      guarded(access, "get_plan_context", SCOPE_READ, async () => {
+        const r = await getActivePlanContext(prisma, { maxChars: args.maxChars ?? PLAN_CONTEXT_DEFAULT_CHARS });
+        if (r.conversations === 0) {
+          return { result: result({ conversations: 0 }, "Chris hasn't imported a planning conversation into Chris Studio yet (Plan → Bring in your ChatGPT conversation). Use this chat's own context."), summary: { conversations: 0 } };
+        }
+        const head = `${r.conversations} conversation(s): ${r.sources.map((s) => s.title).join(", ")}. ${r.includedMessages} of ${r.totalMessages} messages${r.truncated ? " (shortened — highlights and the most recent first)" : ""}.`;
+        return { result: result({ truncated: r.truncated, conversations: r.conversations, includedMessages: r.includedMessages, totalMessages: r.totalMessages, sources: r.sources.map((s) => s.title) }, `${head}\n\n${r.text}`), summary: { conversations: r.conversations, chars: r.chars, truncated: r.truncated } };
+      }),
+  );
 
   return server;
 }
