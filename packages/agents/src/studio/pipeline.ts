@@ -675,8 +675,28 @@ export async function skipFinalCheck(deps: StudioDeps, filmId: string): Promise<
 export async function resumeFilm(deps: StudioDeps, filmId: string): Promise<ChrisActionResult> {
   const film = await deps.store.getFilm(filmId);
   if (!film) return { ok: false, message: "Film not found.", film: null };
+  // A block that is purely TECHNICAL (e.g. the storyboard renderer failed) is retryable once the
+  // cause is fixed: clear it and grant a few more engine attempts. Gate/fact blocks never are.
+  if (film.status === "BLOCKED" && isTechnicalOnlyBlock(film.blockedReasons)) {
+    return {
+      ok: true,
+      film: await deps.store.updateFilm(filmId, {
+        status: "WORKING",
+        blockedReasons: [],
+        engineJob: null,
+        lastError: null,
+        limits: { ...film.limits, maxStoryboards: film.counters.storyboards + 3, maxRenders: Math.max(film.limits.maxRenders, film.counters.renders + 2) },
+        statusMessage: "Trying again…",
+      }),
+    };
+  }
   if (film.status !== "FAILED" && film.status !== "STOPPED") return { ok: true, film };
   return { ok: true, film: await deps.store.updateFilm(filmId, { status: film.engineJob?.kind === "RENDER" ? "RENDERING" : film.pending ? "NEEDS_CHATGPT" : "WORKING", lastError: null, statusMessage: "Picking up where it stopped…" }) };
 }
 
 export const studioClaimKey = claimKey;
+
+/** True when every block reason is a technical engine failure (retryable), not a quality/fact gate. */
+export function isTechnicalOnlyBlock(reasons: readonly string[] | null | undefined): boolean {
+  return !!reasons?.length && reasons.every((r) => r.startsWith("Technical:"));
+}

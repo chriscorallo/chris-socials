@@ -183,6 +183,11 @@ export async function buildRunner(options: { skipMotionBundle?: boolean; skipCin
     "set -euo pipefail",
     // Defaults; a value already in the environment (e.g. a per-job override) wins.
     ...Object.entries(env).map(([k, v]) => `export ${k}="${"$"}{${k}:-${v}}"`),
+    // System ffmpeg (has drawtext) when the snapshot installed it.
+    // No `grep -q` here: with pipefail, grep -q exiting early SIGPIPEs ffmpeg and the test fails.
+    'if [ -z "${FFMPEG_BIN:-}" ] && [ -x /usr/bin/ffmpeg ] && [ "$(/usr/bin/ffmpeg -hide_banner -filters 2>/dev/null | grep -c " drawtext " || true)" != "0" ]; then export FFMPEG_BIN=/usr/bin/ffmpeg; fi',
+    // `run-job.sh print-ffmpeg` (used by the snapshot check) prints which ffmpeg jobs will use.
+    'if [ "${1:-}" = "print-ffmpeg" ]; then echo "FFMPEG_BIN=${FFMPEG_BIN:-static}"; exit 0; fi',
     `cd ${SANDBOX_ROOT}`,
     `exec node --enable-source-maps ${SANDBOX_ROOT}/apps/worker/dist/job-runner.mjs "$@"`,
     "",

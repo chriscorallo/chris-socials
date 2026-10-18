@@ -1,4 +1,4 @@
-import { claimKey, crewRoomView, flattenShots, studioStatusLabel, type CrewRoomView, type FilmArtifactRecord, type FilmRecord, type FilmVersionRecord, type MeaningFirstPass, type RenderResult, type StoryboardResult, type StudioFilm, type VerificationReport, type QualityIssue, type ContinuityIssue, type MeaningMatchReport } from "@chris/agents/studio";
+import { claimKey, crewRoomView, isTechnicalOnlyBlock, flattenShots, studioStatusLabel, type CrewRoomView, type FilmArtifactRecord, type FilmRecord, type FilmVersionRecord, type MeaningFirstPass, type RenderResult, type StoryboardResult, type StudioFilm, type VerificationReport, type QualityIssue, type ContinuityIssue, type MeaningMatchReport } from "@chris/agents/studio";
 
 /**
  * Pure view model for /studio/[id] (tested in view.test.ts): everything the phone shows, derived
@@ -118,7 +118,7 @@ export function buildStudioFilmView(film: FilmRecord, versions: FilmVersionRecor
       edit: atReview,
       finalCheck: film.status === "READY" && !film.pending,
       sendToVideos: film.status === "READY" && !film.contentItemId,
-      resume: film.status === "FAILED" || film.status === "STOPPED",
+      resume: film.status === "FAILED" || film.status === "STOPPED" || (film.status === "BLOCKED" && isTechnicalOnlyBlock(film.blockedReasons)),
     },
     costUsd: 0,
   };

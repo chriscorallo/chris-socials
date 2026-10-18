@@ -123,7 +123,7 @@ export function StudioFilmClient({ initial, demo }: { initial: StudioFilmView; d
           </ul>
           {v.can.resume && (
             <button className="btn btn-primary mt-3 w-full" disabled={!!busy} onClick={() => act("resume", () => resumeAction(v.id))}>
-              {busy === "resume" ? "Resuming…" : "Resume"}
+              {busy === "resume" ? "Resuming…" : v.phase === "blocked" ? "Try again" : "Resume"}
             </button>
           )}
         </section>

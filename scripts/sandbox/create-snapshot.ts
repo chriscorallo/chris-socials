@@ -109,11 +109,16 @@ async function main() {
   let snapshotted = false;
   let failed = false;
   try {
-    const run = steps.slice(steps.indexOf(resume ? from : base ? "upload" : "system"));
+    // With --base, `--from system` re-runs the apt step too (e.g. a new system package).
+    const run = steps.slice(steps.indexOf(resume ? from : base ? (flag("--from") ? from : "upload") : "system"));
     if (run.includes("system")) await installSystemPackages(sandbox);
     if (run.includes("upload")) await uploadRunner(sandbox);
     if (run.includes("restore")) await restoreRunner(sandbox);
     if (run.includes("warmup")) await warmup(sandbox);
+    // drawtext (storyboard sheets, on-screen text) must work — the static ffmpeg lacks it.
+    // Check through run-job.sh itself (same shell options jobs run with), not a separate test.
+    const ff = await sh(sandbox, `${SANDBOX_ROOT}/bin/run-job.sh print-ffmpeg`);
+    if (!ff.includes("FFMPEG_BIN=/usr/bin/ffmpeg")) throw new Error(`run-job.sh would not use the system ffmpeg (drawtext): ${ff.trim()}`);
     await smoke(sandbox);
     await sh(sandbox, `echo ${built.version} > ${SANDBOX_ROOT}/SNAPSHOT_VERSION && du -sh /vercel/sandbox/runner /vercel/sandbox/cache`);
     if (keep) {

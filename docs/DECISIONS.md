@@ -8303,3 +8303,13 @@ corners and 720p softness), old engine 9.8–12.7. Baked graphics are slightly s
 High. `?engine=video` / localStorage switches back per device; `select.ts` is one function. The
 two tables are additive and only used by the editor; dropping bakes leaves the lite live path.
 Renders are unchanged (bakes are preview-only; `renderVisualBake` is a new export).
+
+
+## Cloud worker uses the system ffmpeg (drawtext) (2026-10-18)
+
+The studio's storyboard failed in production: "No such filter: 'drawtext'" — the Linux
+ffmpeg-static build has no FreeType, so storyboard contact sheets (and any on-screen Text
+overlay in final renders) could not draw text in the Sandbox. The snapshot now apt-installs
+`ffmpeg` (FreeType/libass) and `run-job.sh` exports `FFMPEG_BIN=/usr/bin/ffmpeg` when it has
+drawtext; `FFMPEG_PATH` honors `FFMPEG_BIN` (falls back to ffmpeg-static locally). Snapshot
+creation now fails unless drawtext works. `create-snapshot --base X --from system` re-runs apt.
