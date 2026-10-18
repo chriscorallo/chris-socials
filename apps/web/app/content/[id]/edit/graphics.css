@@ -502,3 +502,7 @@
   text-overflow: ellipsis;
   max-width: 55%;
 }
+.gl-item-top .gl-side.ed-input {
+  flex: none;
+  width: 76px;
+}

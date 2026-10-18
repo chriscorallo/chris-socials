@@ -239,9 +239,133 @@ function short(v: number): string {
   return v < 0 ? `-${s}` : s;
 }
 
+// ---------------------------------------------------------------------------------------
+// Library 2: text dialects (conversations, ranked lines, a query + entries)
+// ---------------------------------------------------------------------------------------
+
+export type QuickTextMode = "CHAT" | "LINES" | "QUERY";
+
+export interface QuickTextEntry {
+  text: string;
+  sub: string | null;
+  value: number | null;
+  side: "NONE" | "ME" | "THEM";
+}
+
+export interface QuickTextResult {
+  title: string | null;
+  items: QuickTextEntry[];
+  warnings: string[];
+}
+
+const ME_WORDS = new Set(["me", "i", "myself", "you (me)", "chris"]);
+const THEM_WORDS = new Set(["them", "they", "other", "friend"]);
+
+function textGroups(text: string): string[] {
+  return text
+    .split(/\||\n/)
+    .map((g) => g.trim())
+    .filter((g) => g.length > 0);
+}
+
+/** "Topic — context" / "Topic - context" / "Topic · context" → [text, sub]. */
+function splitSub(s: string): [string, string | null] {
+  const m = /^(.*?)\s+(?:—|–|·|-{1,2})\s+(.+)$/.exec(s);
+  return m ? [m[1]!.trim(), m[2]!.trim()] : [s.trim(), null];
+}
+
+/**
+ * Parses the text dialects (deterministic, no AI):
+ * - CHAT  — `Me: running late | Mom: again? | Me: the rent went up 300` → messages (ME = right;
+ *   any other name = THEM with that name as the sender). Unlabelled lines alternate, starting
+ *   with THEM.
+ * - LINES — `1. Rent prices 120K | 2. #budget — Trending in Finance 48K` → entries (leading
+ *   rank dropped; a trailing count → value; " — " splits off a second line).
+ * - QUERY — `is a 401k worth it | is a 401k worth it reddit | … ` → the first group is the
+ *   title (search query / question), the rest are entries.
+ */
+export function parseQuickText(text: string, mode: QuickTextMode, opts: { values?: boolean } = { values: true }): QuickTextResult {
+  const groups = textGroups(text);
+  const out: QuickTextResult = { title: null, items: [], warnings: [] };
+  if (mode === "CHAT") {
+    let next: "ME" | "THEM" = "THEM";
+    for (const g of groups) {
+      const m = /^([^:]{1,24}):\s*(.+)$/.exec(g);
+      if (m) {
+        const who = m[1]!.trim();
+        const isMe = ME_WORDS.has(who.toLowerCase());
+        const isThem = THEM_WORDS.has(who.toLowerCase());
+        out.items.push({ text: m[2]!.trim().slice(0, GRAPHIC_LIMITS.itemText), sub: isMe || isThem ? null : who.slice(0, GRAPHIC_LIMITS.itemSub), value: null, side: isMe ? "ME" : "THEM" });
+        next = isMe ? "THEM" : "ME";
+      } else {
+        out.items.push({ text: g.slice(0, GRAPHIC_LIMITS.itemText), sub: null, value: null, side: next });
+        next = next === "ME" ? "THEM" : "ME";
+      }
+    }
+    return out;
+  }
+  const entry = (g: string): QuickTextEntry => {
+    let s = g.replace(/^\s*(?:#\s?)?\d{1,2}\s*[.)]\s+/, "");
+    let value: number | null = null;
+    const tail = /^(.*\S)\s+([+\-−]?[$€£]?\d[\d.,]*\s*(?:k|K|m|M|b|B|mm|bn)?%?)(?:\s+(?:posts|views|likes|searches))?$/.exec(s);
+    if (tail && opts.values !== false) {
+      const n = parseQuickNumber(tail[2]!.replace(/\s+/g, ""));
+      if (n) {
+        value = n.value;
+        s = tail[1]!;
+      }
+    }
+    const [t, sub] = splitSub(s);
+    return { text: t.slice(0, GRAPHIC_LIMITS.itemText), sub: sub ? sub.slice(0, GRAPHIC_LIMITS.itemSub) : null, value, side: "NONE" };
+  };
+  if (mode === "QUERY") {
+    if (groups.length) out.title = groups[0]!.slice(0, GRAPHIC_LIMITS.title);
+    for (const g of groups.slice(1)) out.items.push(entry(g));
+    return out;
+  }
+  for (const g of groups) out.items.push(entry(g));
+  return out;
+}
+
+/**
+ * Applies a text dialect to a graphic that declares one (`uses.quick`); null when the component
+ * has none. Existing per-entry look (icons, colours, states, metas) is kept by position.
+ */
+export function applyQuickText(props: GraphicProps, text: string): { props: GraphicProps; summary: string; warnings: string[] } | null {
+  const u = GRAPHIC_COMPONENT_SPECS[props.component].uses;
+  if (!u.quick || !u.items) return null;
+  const q = parseQuickText(text, u.quick, { values: !!u.items.value });
+  const max = u.items.count[1];
+  const items: GraphicItem[] = q.items.slice(0, max).map((e, i) => {
+    const prev = props.items[i];
+    return {
+      ...blankItem(e.text, u.items!.value ? (e.value ?? prev?.value ?? null) : null, prev),
+      sub: u.items!.sub ? (e.sub ?? (u.quick === "CHAT" ? null : (prev?.sub ?? null))) : null,
+      side: u.items!.side ? e.side : (prev?.side ?? "NONE"),
+    };
+  });
+  const next: GraphicProps = { ...props, items, title: q.title !== null ? q.title : props.title };
+  const word = u.quick === "CHAT" ? "message" : "entr";
+  const n = items.length;
+  let summary = u.quick === "CHAT" ? `${n} ${word}${n === 1 ? "" : "s"}` : `${n} ${word}${n === 1 ? "y" : "ies"}`;
+  if (q.title !== null) summary = `“${q.title.length > 24 ? `${q.title.slice(0, 23)}…` : q.title}” + ${summary}`;
+  if (q.items.length > max) summary += ` (only ${max} fit)`;
+  return { props: next, summary, warnings: q.warnings };
+}
+
+function textEntry(it: GraphicItem, withValue: boolean): string {
+  const base = it.sub ? `${it.text} — ${it.sub}` : it.text;
+  return withValue && it.value !== null ? `${base} ${short(it.value)}` : base;
+}
+
 /** The current data as quick-entry text (round-trips through parseQuickEntry). */
 export function toQuickEntry(props: GraphicProps): string {
   const u = GRAPHIC_COMPONENT_SPECS[props.component].uses;
+  if (u.quick === "CHAT") {
+    return props.items.map((it) => `${it.side === "ME" ? "Me" : it.sub || "Them"}: ${it.text}`).join(" | ");
+  }
+  if (u.quick === "LINES") return props.items.map((it, i) => `${i + 1}. ${textEntry(it, !!u.items?.value)}`).join(" | ");
+  if (u.quick === "QUERY") return [props.title ?? "", ...props.items.map((it) => textEntry(it, !!u.items?.value))].join(" | ");
   if (u.series && props.series.length) {
     return props.series
       .map((s) => {
