@@ -112,6 +112,23 @@ export const EvalCaseSchema = z.discriminatedUnion("promptId", [
     expect: z.array(AssertionSchema).min(1),
     mockResponse: z.unknown(),
   }),
+  /** Mini-movie Studio Meaning-Match: the free first pass (concept rules + embeddings, code) on a
+   * fixture film modelled on the proof film's "you raised your baseline" flaw, then the
+   * FILM_MEANING_MATCH second pass (ChatGPT round trip / local model; mockResponse in mock mode).
+   * Graded output: per-shot verdicts of both passes. */
+  z.object({
+    id: z.string(),
+    category: z.string(),
+    description: z.string(),
+    promptId: z.literal("FILM_MEANING_MATCH"),
+    input: z.object({
+      /** flawed = the proof film's baseline shot (no floor rises); fixed = the floor rises under the
+       * apartment + car; floor_alone = the floor rises but the things left the frame. */
+      variant: z.enum(["flawed", "fixed", "floor_alone"]),
+    }),
+    expect: z.array(AssertionSchema).min(1),
+    mockResponse: z.unknown(),
+  }),
 ]);
 export type EvalCase = z.output<typeof EvalCaseSchema>;
 

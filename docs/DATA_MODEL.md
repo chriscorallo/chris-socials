@@ -12,6 +12,17 @@ Prisma migration when that phase starts, per `CLAUDE.md`'s "no schema change wit
 migrations" rule. Introducing a table earlier than the phase that needs it is avoided
 deliberately — undriven schema invites design mistakes made without real usage context.
 
+## Mini-movie Studio (2026-10-18, migration `20261018070000_film_studio`)
+
+| Entity | Purpose | Key fields |
+|---|---|---|
+| `Film` | One on-demand animated short made by the studio crew | `title, idea, targetSeconds, look, voiceId, voiceEngine, aiMode (CHATGPT/LOCAL), status, step, iteration, counters, limits, currentVersionId?, pending? (the ChatGPT pack waiting), engineJob?, confirmedClaims, chrisNotes, blockedReasons, leaseHolder?/leaseUntil?, sourceContentItemId?, contentItemId? (after Send to Videos)` |
+| `FilmVersion` | Append-only versions of the film (DSL + script + brief) | `filmId, version (unique per film), origin (CREW_WRITE/CREW_REVISION/FIX/CHRIS_EDIT/CHATGPT_DRAFT), parentVersionId?, dsl, script?, brief?, note` |
+| `FilmArtifact` | Append-only crew reports, engine results, round trips, Chris actions | `filmId, versionId?, kind, agent, via (DETERMINISTIC/LOCAL_EMBEDDING/CHATGPT/LOCAL_AI/ENGINE/CHRIS), promptVersion?, iteration, idempotencyKey (unique), summary, payload, gate?` |
+
+No update/delete path for versions/artifacts (`packages/agents/src/studio/prisma-film-store.ts`).
+See `docs/decisions-pending/studio-crew.md`.
+
 ## Segmented recording + drafts (2026-10-18)
 
 | Entity | Purpose | Key fields |

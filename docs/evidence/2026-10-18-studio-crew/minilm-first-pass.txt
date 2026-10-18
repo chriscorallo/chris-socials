@@ -1,0 +1,22 @@
+fixed false 708108 ms
+hook 0.29 MATCH GONE action:SET.level:0.31 actor:COIN_STACK:0.29 action:SET.count:0.20
+taxes 0.01 MATCH MONEY_TAKEN action:FLOW:0.24 actor:COIN_STACK:0.17 actor:BUILDING:0.16
+rent 0.28 MATCH RENT_BUILDING actor:BUILDING:0.53 actor:CAR:0.28 actor:CARD_FAN:0.25
+car 0.29 MATCH CAR actor:CAR:0.54 actor:BUILDING:0.28 actor:CARD_FAN:0.24
+subs 0.30 MATCH SUBSCRIPTIONS actor:CARD_FAN:0.59 actor:CARD:0.45 actor:BUILDING:0.18
+didnt 0.05 WEAK  action:SET.level:0.32 actor:COIN_STACK:0.28 actor:COIN_CHART:0.19
+baseline 0.13 MISMATCH BASELINE_RISES action:SET.level:0.50 actor:BASELINE:0.25 action:PULSE:0.25
+flip 0.31 WEAK  actor:COIN_STACK:0.37 actor:CARD_FAN:0.35 actor:BUILDING:0.28
+total 0.30 WEAK  actor:COIN_CHART:0.28 actor:COIN_STACK:0.26 action:SET.progress:0.23
+end 0.30 WEAK  action:SET.level:0.43 actor:COIN_STACK:0.26 actor:BASELINE:0.25
+fixed true 279 ms
+hook 0.29 MATCH GONE action:SET.level:0.32 actor:COIN_STACK:0.29 action:SET.count:0.20
+taxes 0.02 MATCH MONEY_TAKEN action:FLOW:0.24 actor:BUILDING:0.16 actor:COIN_STACK:0.15
+rent 0.30 MATCH RENT_BUILDING actor:BUILDING:0.53 actor:CAR:0.26 actor:CARD_FAN:0.25
+car 0.28 MATCH CAR actor:CAR:0.53 actor:BUILDING:0.25 actor:CARD_FAN:0.22
+subs 0.29 MATCH SUBSCRIPTIONS actor:CARD_FAN:0.58 actor:CARD:0.46 actor:BUILDING:0.18
+didnt 0.07 WEAK  action:SET.level:0.30 actor:COIN_STACK:0.28 actor:CAR:0.19
+baseline 0.37 MATCH BASELINE_RISES action:SET.level:0.52 actor:BASELINE:0.27 action:PULSE:0.26
+flip 0.31 WEAK  actor:COIN_STACK:0.37 actor:CARD_FAN:0.36 actor:BUILDING:0.28
+total 0.33 WEAK  actor:COIN_CHART:0.28 actor:COIN_STACK:0.26 action:SET.progress:0.25
+end 0.32 WEAK  action:SET.level:0.42 actor:BASELINE:0.27 actor:COIN_STACK:0.27

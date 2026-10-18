@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./transcription": "./src/transcription/index.ts",
+    "./embeddings": "./src/embeddings.ts",
     "./timeline": "./src/timeline-browser.ts",
     "./font-registry": "./src/font-registry.ts"
   },

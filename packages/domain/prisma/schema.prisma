@@ -1482,3 +1482,89 @@ model GraphicPresetPref {
   @@unique([userId, presetId])
   @@index([userId, lastUsedAt])
 }
+
+// Mini-movie Studio (docs/decisions-pending/studio-crew.md). A Film is one on-demand animated
+// short made by the crew (packages/agents/src/studio). FilmVersion and FilmArtifact are
+// APPEND-ONLY (no update/delete path in packages/domain film-studio.ts): every draft/revision/
+// edit is a new version; every crew report, engine result, round trip and Chris action is a new
+// artifact keyed by an idempotency key. Additive tables only.
+
+model Film {
+  id                  String    @id @default(cuid())
+  title               String
+  idea                String
+  targetSeconds       Int
+  look                String
+  voiceId             String
+  voiceEngine         String // KOKORO | CHRIS
+  aiMode              String    @default("CHATGPT") // CHATGPT | LOCAL
+  status              String // WORKING | NEEDS_CHATGPT | NEEDS_CHRIS | RENDERING | READY | BLOCKED | STOPPED | FAILED
+  step                String
+  iteration           Int       @default(1)
+  counters            Json
+  limits              Json
+  currentVersionId    String?
+  /// The round-trip pack waiting for Chris's ChatGPT (prompt, image, prompt versions) or null.
+  pending             Json?
+  engineJob           Json?
+  confirmedClaims     Json
+  chrisNotes          Json
+  skipCreativeReview  Boolean   @default(false)
+  statusMessage       String?
+  blockedReasons      Json
+  lastError           String?
+  sourceContentItemId String?
+  /// The video this film became (Send to Videos / engine registration).
+  contentItemId       String?
+  leaseHolder         String?
+  leaseUntil          DateTime?
+  createdBy           String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  versions  FilmVersion[]
+  artifacts FilmArtifact[]
+
+  @@index([status, updatedAt])
+  @@index([contentItemId])
+}
+
+model FilmVersion {
+  id              String   @id @default(cuid())
+  filmId          String
+  version         Int
+  origin          String // CREW_WRITE | CREW_REVISION | FIX | CHRIS_EDIT | CHATGPT_DRAFT
+  parentVersionId String?
+  /// The film DSL exactly as received (validation is recorded as a FilmArtifact beside it).
+  dsl             Json
+  script          Json?
+  brief           Json?
+  note            String
+  createdBy       String
+  createdAt       DateTime @default(now())
+
+  film Film @relation(fields: [filmId], references: [id])
+
+  @@unique([filmId, version])
+}
+
+model FilmArtifact {
+  id             String   @id @default(cuid())
+  filmId         String
+  versionId      String?
+  kind           String
+  agent          String
+  /// DETERMINISTIC | LOCAL_EMBEDDING | CHATGPT | LOCAL_AI | ENGINE | CHRIS
+  via            String
+  promptVersion  String?
+  iteration      Int
+  idempotencyKey String   @unique
+  summary        String
+  payload        Json
+  gate           String? // PASS | BLOCK
+  createdAt      DateTime @default(now())
+
+  film Film @relation(fields: [filmId], references: [id])
+
+  @@index([filmId, createdAt])
+}
