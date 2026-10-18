@@ -248,20 +248,25 @@ export function MobileTimeline() {
                 <Icon name="captions" size={12} /> Captions off — tap to turn on
               </button>
             ) : (
-              chunks.map((ch, i) => (
-                <button
-                  type="button"
-                  key={`${i}:${ch.start}`}
-                  className="ed-mtl-chunk"
-                  style={{ left: xOf(ch.start), width: Math.max(2, (ch.end - ch.start) * pps - 2), outline: sel?.kind === "captions" ? "1px solid rgba(110,231,176,.6)" : undefined }}
-                  onClick={() => {
-                    focus({ kind: "captions" });
-                    setUi({ sheet: "captions" });
-                  }}
-                >
-                  {ch.text}
-                </button>
-              ))
+              chunks.map((ch, i) => {
+                const w = Math.max(2, (ch.end - ch.start) * pps - 2);
+                return (
+                  <button
+                    type="button"
+                    key={`${i}:${ch.start}`}
+                    className="ed-mtl-chunk"
+                    aria-label={ch.text}
+                    style={{ left: xOf(ch.start), width: w, padding: w < 30 ? 0 : undefined, outline: sel?.kind === "captions" ? "1px solid rgba(110,231,176,.6)" : undefined }}
+                    onClick={() => {
+                      focus({ kind: "captions" });
+                      setUi({ sheet: "captions" });
+                    }}
+                  >
+                    {/* Too narrow for a readable word → a clean chip, never clipped letter fragments. */}
+                    {w >= 30 ? ch.text : null}
+                  </button>
+                );
+              })
             )}
           </div>
 
