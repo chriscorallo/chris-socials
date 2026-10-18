@@ -83,7 +83,15 @@ shot = {"id":"…","line":"exact narration","say":"tts pronunciation (optional)"
   "music":{"intensity":0.6,"hit":true,"drop":false},"purpose":"HOOK / TWIST / PAYOFF …"}
 ANCHOR = seconds from shot start (1.2) | "start" | "end" | {"word":"raised"} (a word of THIS shot's line) | {"fraction":0.5}
 Params: COIN_STACK count, columns · BASELINE level (height m), label · COIN_CHART values[], split[], progress 0..1 · BUILDING floors, glow · CARD label, price · CARD_FAN count, labels["Name|$9.99"].
-Scale: a 100-coin stack with 7 columns is ~1 m tall; a building ~3 m; frame a subject with distance 8–14 at 32–40 mm.`;
+Scale: a 100-coin stack with 7 columns is ~1 m tall; a building ~3 m; frame a subject with distance 8–14 at 32–40 mm.
+v1.1 VOCABULARY (same "dsl":1 — see the catalog list for what each depicts and its params):
+  more actor kinds: FIGURE (a faceless person ~1.8 m; params.pose STAND|WALK|RUN|SIT|CLIMB|CHEER|SLUMP|THINK|REACH|PUSH|CARRY|POINT|BALANCE) · CROWD · PLATFORM (a solid floor; params.level, label, ghost) ·
+  STAIRS · LADDER · BALANCE · DOOR · WALLS · WHEEL · SNOWBALL · TREE · BLOCKS · BUCKET · HOURGLASS · CHAIN · FORK_PATH · MAGNIFIER · DOCUMENT · RECEIPT · CALENDAR · GAUGE · METER · DIVIDER · HOUSE · PHONE · BANK_CARD · BAR_CHART · LINE_CHART · PIE_CHART · TEXT_3D · ARROW
+  actor "parent":"other_id" = rides on that actor (stands on a PLATFORM's top and rises with it)
+  more actions: {"do":"SHIFT","by":[dx,dy,dz]} · {"do":"POSE","pose":"CHEER"} · {"do":"WALK","to":[x,y,z]} · {"do":"CLIMB","on":"stairs_id","from":0,"to":1} · {"do":"PATH","points":[[x,y,z],…]}
+    · verbs {"do":"OPEN|CLOSE|FILL|DRAIN|GROW|BREAK|TIP|FLIP|UNROLL|REVEAL|RAISE|LOWER|SPIN","actor":"id","to":n?,"at":ANCHOR} (each drives that kind's own param)
+  sets: INFINITY_STUDIO | NUMBERS_VOID | CITY_NIGHT | ROOM | HORIZON
+  "You raised your baseline" = a PLATFORM under the person + their things (each with "parent":"floor") and {"do":"RAISE","actor":"floor","to":1.6,"at":{"word":"raised"}}.`;
 
 function section(promptId: string): { text: string; version: string } {
   const p = getAgentPrompt(promptId);

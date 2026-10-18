@@ -36,6 +36,10 @@ export function isFilmJobKind(v: unknown): v is FilmJobKind {
 export interface FilmSource {
   film?: unknown;
   filmKey?: string;
+  /** The studio's Film id (lease subject `film:<filmId>` — one engine job per film at a time). */
+  filmId?: string;
+  versionId?: string;
+  idempotencyKey?: string;
 }
 
 export type HeavyJobKind = (typeof HEAVY_JOB_KINDS)[number];
@@ -77,19 +81,24 @@ export interface HeavyJobArgsByKind {
     tier: "PREVIEW" | "FINAL";
     /** Picture chunks rendered in parallel cloud workers (default: from the length and HEAVY_JOB_MAX_SANDBOXES; 1 on a Mac). */
     chunks?: number;
-    /** Chris's aligned narration (the `linesKey` a film-voice-align job returned). Required for engine CHRIS. */
+    /** Chris's aligned narration (the `linesKey` a film-voice-align job returned). */
     narrationKey?: string;
+    /** Chris's own recorded lines, shot id → storage key (the studio's per-line recorder), or
+     * `{ "*": key }` for one take of the whole script. Aligned to the picture by the engine. */
+    chrisNarration?: Record<string, string> | null;
+    /** Attach an already-finished render (its renderId) to `contentItemId` — "Send to Videos". */
+    attachRenderId?: string;
     /** Attach to this existing video instead of creating one. */
     contentItemId?: string;
     /** Title for a new video (default: the film's title). */
     title?: string;
+    /** Register as a video right away (default: true, except studio films — they go to Videos via Send to Videos → attachRenderId). */
     register?: boolean;
-    idempotencyKey?: string;
   };
   /** One frame range of a film-render (queued by the film-render job; the manifest lives in storage). */
   "film-render-chunk": { renderId: string; chunkIndex: number; attempt?: number };
   /** Keyframe stills per shot (cheap; PREVIEW at half size by default) with per-shot timing + the line each covers. */
-  "film-storyboard": FilmSource & { tier?: "DRAFT" | "PREVIEW"; stillsPerShot?: number; shots?: string[]; narrate?: boolean; scale?: number };
+  "film-storyboard": FilmSource & { tier?: "DRAFT" | "PREVIEW"; stillsPerShot?: number; shots?: string[]; points?: number[]; narrate?: boolean; scale?: number };
   /** Chris's own narration: align an uploaded recording (storage key) against the film's lines. */
   "film-voice-align": FilmSource & { recordingKey: string };
 }
@@ -108,7 +117,8 @@ export function stableHash(s: string): string {
 
 /** The render id of a film-render request: same film + tier + narration + key → same id (idempotency). */
 export function filmRenderId(a: HeavyJobArgsByKind["film-render"]): string {
-  return `fr-${stableHash(JSON.stringify([a.film ?? null, a.filmKey ?? null, a.tier, a.narrationKey ?? null, a.idempotencyKey ?? null, a.contentItemId ?? null]))}`;
+  if (a.attachRenderId) return a.attachRenderId;
+  return `fr-${stableHash(JSON.stringify([a.film ?? null, a.filmKey ?? null, a.tier, a.narrationKey ?? null, a.chrisNarration ?? null, a.idempotencyKey ?? null]))}`;
 }
 
 /** Lease subject of the reference-analysis job (one at a time for the whole library). */
@@ -128,13 +138,17 @@ export function heavyJobSubject(kind: HeavyJobKind, args: unknown): string {
   if (kind === "reference-analyze") return REFERENCE_LIBRARY_SUBJECT;
   if (kind === "film-render") {
     const a = args as HeavyJobArgsByKind["film-render"];
-    return a.contentItemId ?? `film:${filmRenderId(a)}`;
+    if (a.attachRenderId && a.contentItemId) return a.contentItemId;
+    return a.filmId ? `film:${a.filmId}` : (a.contentItemId ?? `film:${filmRenderId(a)}`);
   }
   if (kind === "film-render-chunk") {
     const a = args as HeavyJobArgsByKind["film-render-chunk"];
     return `film:${a.renderId}:chunk:${a.chunkIndex}`;
   }
-  if (kind === "film-storyboard" || kind === "film-voice-align") return `${kind}:${stableHash(JSON.stringify(args))}`;
+  if (kind === "film-storyboard" || kind === "film-voice-align") {
+    const id = (args as FilmSource).filmId;
+    return id ? `film:${id}` : `${kind}:${stableHash(JSON.stringify(args))}`;
+  }
   if (kind === "viewer-review") {
     const a = args as HeavyJobArgsByKind["viewer-review"];
     if (a.referenceContentId) return referenceVideoSubject(a.referenceContentId);
@@ -221,10 +235,20 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
   if (kind === "film-render" || kind === "film-storyboard" || kind === "film-voice-align") {
     const film = a.film;
     const filmKey = optStr(a.filmKey, "filmKey");
+    const attach = kind === "film-render" ? optStr(a.attachRenderId, "attachRenderId") : undefined;
+    if (attach) {
+      return { attachRenderId: attach, contentItemId: str(a.contentItemId, "contentItemId"), tier: a.tier === "PREVIEW" ? "PREVIEW" : "FINAL", register: true } as HeavyJobArgsByKind[K];
+    }
     if (film == null && !filmKey) throw new Error(`${kind} needs a film (DSL object) or a filmKey`);
     if (film != null && (typeof film !== "object" || Array.isArray(film))) throw new Error("film must be a film DSL object");
     if (film != null && JSON.stringify(film).length > 400_000) throw new Error("film is too large (max 400 KB of JSON)");
     const src: FilmSource = film != null ? { film } : { filmKey };
+    const filmId = optStr(a.filmId, "filmId");
+    if (filmId) src.filmId = filmId;
+    const versionId = optStr(a.versionId, "versionId");
+    if (versionId) src.versionId = versionId;
+    const idk = typeof a.idempotencyKey === "string" && a.idempotencyKey ? a.idempotencyKey.slice(0, 300) : undefined;
+    if (idk) src.idempotencyKey = idk;
     if (kind === "film-render") {
       const tier = String(a.tier ?? "FINAL");
       if (tier !== "PREVIEW" && tier !== "FINAL") throw new Error("tier must be PREVIEW or FINAL");
@@ -239,8 +263,12 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
       if (typeof a.title === "string" && a.title.trim()) out.title = a.title.trim().slice(0, 120);
       const register = optBool(a.register, "register");
       if (register !== undefined) out.register = register;
-      const idem = optStr(a.idempotencyKey, "idempotencyKey");
-      if (idem) out.idempotencyKey = idem;
+      if (a.chrisNarration != null) {
+        if (typeof a.chrisNarration !== "object" || Array.isArray(a.chrisNarration)) throw new Error("chrisNarration must be { shotId: storageKey }");
+        const m: Record<string, string> = {};
+        for (const [k, v] of Object.entries(a.chrisNarration as Record<string, unknown>).slice(0, 80)) m[str(k, "chrisNarration key")] = str(v, `chrisNarration.${k}`);
+        if (Object.keys(m).length) out.chrisNarration = m;
+      }
       return out as HeavyJobArgsByKind[K];
     }
     if (kind === "film-storyboard") {
@@ -254,8 +282,12 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
       if (tier) out.tier = tier as "DRAFT" | "PREVIEW";
       if (stills) out.stillsPerShot = stills;
       if (scale) out.scale = scale;
-      const shots = optIds(a.shots, "shots");
+      const shots = optIds(a.shots ?? a.shotIds, "shots");
       if (shots) out.shots = shots;
+      if (Array.isArray(a.points)) {
+        const pts = a.points.map(Number).filter((p) => Number.isFinite(p) && p >= 0 && p <= 1).slice(0, 3);
+        if (pts.length) out.points = pts;
+      }
       const narrate = optBool(a.narrate, "narrate");
       if (narrate !== undefined) out.narrate = narrate;
       return out as HeavyJobArgsByKind[K];

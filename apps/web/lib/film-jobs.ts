@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { prisma, enqueueHeavyJob, listOnlineRenderWorkers } from "@chris/domain";
+import { prisma, enqueueHeavyJob, getHeavyJob, listOnlineRenderWorkers, patchHeavyJobSummary } from "@chris/domain";
 import { estimateFilmRender, chooseChunkCount, resolveFilm, validateFilm, type FilmRenderEstimate } from "@chris/cinema/pure";
 import { heavyJobSubject, parseHeavyJobArgs, type FilmJobKind, type HeavyJobArgsByKind } from "@chris/worker/heavy-job-kinds";
-import { cloudKindAllowed, runHeavyJob, sandboxConfig, type RunHeavyJobResult } from "./heavy-jobs";
+import { cloudKindAllowed, kickQueuedHeavyJobs, runHeavyJob, sandboxConfig, type RunHeavyJobResult } from "./heavy-jobs";
 import { cloudWorkerConfigured, heavyJobMode } from "./render-config";
 
 /**
@@ -82,8 +82,49 @@ export async function startFilmJob<K extends FilmJobKind>(kind: K, rawArgs: Heav
     }
     return r;
   }
-  if (kind !== "film-render" && cloudWorkerConfigured() && cloudKindAllowed(kind)) return runHeavyJob(kind, args, { actorId: options.actorId, background: true });
+  const fullRender = kind === "film-render" && !(args as HeavyJobArgsByKind["film-render"]).attachRenderId;
+  if (!fullRender && cloudWorkerConfigured() && cloudKindAllowed(kind)) return runHeavyJob(kind, args, { actorId: options.actorId, background: true });
   const film = (args as { film?: unknown }).film ?? null;
   const tier = kind === "film-render" ? (args as HeavyJobArgsByKind["film-render"]).tier : "PREVIEW";
   return { status: "needs-choice", jobRunId: null, message: "Your Mac's render worker is offline. Start it to render for $0, or render in the cloud.", options: await filmRenderOptions(film, tier) };
+}
+
+/**
+ * Chris tapped "Render in the cloud (~$X)": a film job that is waiting for the Mac becomes a cloud
+ * job IN PLACE (same JobRun id — the studio keeps following it) and the queue is kicked, which
+ * starts its sandbox. Refused (nothing changes) if the cloud isn't set up for film jobs.
+ */
+export async function moveFilmJobToCloud(jobRunId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const job = await getHeavyJob(prisma, jobRunId);
+  if (!job || job.status !== "QUEUED" || job.summary?.target !== "mac") return { ok: false, message: "That job isn't waiting for your Mac any more." };
+  const kind = job.summary.jobKind;
+  if (!cloudWorkerConfigured() || !cloudKindAllowed(kind) || !cloudKindAllowed("film-render-chunk")) return { ok: false, message: "The cloud renderer isn't switched on for mini-movies (RENDER_SANDBOX_SNAPSHOT_ID / RENDER_SANDBOX_KINDS). Nothing was changed." };
+  await patchHeavyJobSummary(prisma, jobRunId, { target: "cloud", mode: "sandbox", progress: { pct: 0, message: "Waiting for a cloud worker…", stage: "queued", updatedAt: new Date().toISOString() } });
+  await kickQueuedHeavyJobs().catch(() => undefined);
+  return { ok: true };
+}
+
+/** What the film page needs to offer the cloud: is the render waiting for the Mac, and what would the cloud cost. */
+export async function filmCloudOffer(filmId: string): Promise<{ jobRunId: string; waitingForMac: boolean; macOnline: boolean; estimate: FilmRenderOptions["cloud"] } | null> {
+  const film = await prisma.film.findUnique({ where: { id: filmId }, select: { engineJob: true } });
+  const ej = film?.engineJob as { id?: string; kind?: string } | null;
+  if (!ej?.id || ej.kind !== "RENDER") return null;
+  const job = await getHeavyJob(prisma, ej.id);
+  if (!job) return null;
+  const args = (job.summary?.args ?? {}) as { film?: unknown; tier?: "PREVIEW" | "FINAL" };
+  const opts = await filmRenderOptions(args.film ?? null, args.tier ?? "FINAL");
+  return { jobRunId: job.id, waitingForMac: job.status === "QUEUED" && job.summary?.target === "mac", macOnline: opts.macOnline, estimate: opts.cloud };
+}
+
+/**
+ * "Send to Videos" for a studio film: the crew's sendFilmToVideos created the MINI_MOVIE item; this
+ * attaches the finished render to it through the normal take → edit plan → render path (a
+ * film-render job with attachRenderId — no re-render). Best effort: returns null when the film
+ * has no finished render yet.
+ */
+export async function attachStudioRender(filmId: string, contentItemId: string, actorId: string): Promise<StartFilmJobResult | null> {
+  const art = await prisma.filmArtifact.findFirst({ where: { filmId, kind: "RENDER" }, orderBy: { createdAt: "desc" } });
+  const renderId = (art?.payload as { renderId?: string } | null)?.renderId;
+  if (!renderId) return null;
+  return startFilmJob("film-render", { attachRenderId: renderId, contentItemId, tier: "FINAL" }, { actorId, where: "auto" });
 }

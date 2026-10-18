@@ -5,6 +5,10 @@ import { getCinemaBundle, rendererGl } from "./render";
 import { resolveFilm, resolveAnchor, type LineClip, type ResolvedFilm, type ResolvedShot } from "./timing";
 import type { FilmTier as Tier } from "./chunks";
 import { runFfmpeg } from "./audio/ffmpeg";
+import { compileFilm, evaluateFrame } from "./evaluate";
+import { LOOK_DEFS } from "./looks";
+import { bandOf } from "./text-bands";
+import { captionedContactSheet, measureStill, type StillMetricsResult, type StillTextInfo } from "./sheets";
 
 /**
  * Storyboard: a few keyframe stills per shot instead of the whole film — one browser, one page
@@ -18,6 +22,17 @@ export interface StoryboardStill {
   /** Film seconds. */
   time: number;
   path: string;
+  /** 0..1 position inside the shot. */
+  point: number;
+  /** Pixel metrics for the Quality checks (contrast per text band, empty frame, mean light). */
+  metrics?: StillMetricsResult;
+}
+
+/** The on-screen text of a frame (band + color as drawn) — for contrast measurement. */
+export function textInfoAt(film: Film, cf: ReturnType<typeof compileFilm>, frame: number): StillTextInfo[] {
+  const st = evaluateFrame(cf, frame);
+  const look = LOOK_DEFS[film.look];
+  return st.texts.filter((t) => t.enter > 0.6 && t.exit < 0.4).map((t) => ({ band: bandOf(t.beat), color: t.beat.accent || t.beat.style === "HERO_NUMBER" ? look.goldLight : look.cream }));
 }
 
 export interface StoryboardShot {
@@ -36,7 +51,7 @@ export interface StoryboardShot {
 
 export interface StoryboardResult {
   shots: StoryboardShot[];
-  /** All stills tiled into one contact sheet (JPEG). */
+  /** All stills tiled into one JPEG contact sheet, the narration line under each still. */
   sheet: string;
   stills: string[];
   timingMeasured: boolean;
@@ -127,24 +142,40 @@ export async function renderStoryboard(input: {
   } finally {
     await browser.close({ silent: true }).catch(() => undefined);
   }
-  const shots: StoryboardShot[] = plan.map(({ rs, frames }) => ({
-    shotId: rs.shot.id,
-    index: rs.index,
-    sceneId: rs.sceneId,
-    startSec: rs.startSec,
-    endSec: rs.endSec,
-    purpose: rs.shot.purpose ?? null,
-    line: rs.shot.line ?? null,
-    words: rs.words.map((w) => ({ word: w.raw, start: w.start, end: w.end })),
-    stills: frames.map((f) => ({ frame: f, time: f / rf.fps, path: pathOf(f) })),
-  }));
+  const cf = compileFilm(rf);
+  const shots: StoryboardShot[] = [];
+  for (const { rs, frames } of plan) {
+    const stills: StoryboardStill[] = [];
+    for (const f of frames) {
+      const metrics = await measureStill(pathOf(f), textInfoAt(input.film, cf, f)).catch(() => undefined);
+      stills.push({ frame: f, time: f / rf.fps, path: pathOf(f), point: Math.round(((f - rs.startFrame) / Math.max(1, rs.endFrame - rs.startFrame)) * 100) / 100, ...(metrics ? { metrics } : {}) });
+    }
+    shots.push({ shotId: rs.shot.id, index: rs.index, sceneId: rs.sceneId, startSec: rs.startSec, endSec: rs.endSec, purpose: rs.shot.purpose ?? null, line: rs.shot.line ?? null, words: rs.words.map((w) => ({ word: w.raw, start: w.start, end: w.end })), stills });
+  }
   const stills = shots.flatMap((s) => s.stills.map((x) => x.path));
-  // contact sheet: stills in order, 6 per row
-  const listFile = join(input.outDir, "sheet-inputs.txt");
-  await writeFile(listFile, stills.map((p) => `file '${p.replace(/'/g, "'\\''")}'\nduration 1`).join("\n"));
   const sheet = join(input.outDir, "storyboard.jpg");
-  const cols = Math.min(6, Math.max(1, stills.length));
-  const rows = Math.ceil(stills.length / cols);
-  if (stills.length) await runFfmpeg(["-f", "concat", "-safe", "0", "-i", listFile, "-vf", `scale=240:-2,tile=${cols}x${rows}:padding=4:margin=4:color=0x111111`, "-frames:v", "1", "-update", "1", "-q:v", "3", sheet]);
+  if (stills.length) await captionedContactSheet(shots.flatMap((s) => s.stills.map((x) => ({ path: x.path, caption: s.line ?? "", label: `${s.index + 1} · ${s.shotId}` }))), sheet, { cols: 4, workDir: join(input.outDir, "sheet-work") });
   return { shots, sheet, stills, timingMeasured: rf.measured, durationSeconds: rf.durationSeconds, ms: Date.now() - t0 };
+}
+
+/**
+ * Frames of a RENDERED film for the final review: one per shot at its key moment (the same
+ * keyframe rule as the storyboard), measured, plus a captioned JPEG contact sheet and a poster
+ * (the hook's keyframe). No browser — decoded from the video with ffmpeg.
+ */
+export async function framesFromVideo(input: { film: Film; clips: Record<string, LineClip> | null; videoPath: string; outDir: string }): Promise<{ shots: StoryboardShot[]; sheet: string; poster: string }> {
+  await mkdir(input.outDir, { recursive: true });
+  const rf = resolveFilm(input.film, input.clips);
+  const cf = compileFilm(rf);
+  const shots: StoryboardShot[] = [];
+  for (const rs of rf.shots) {
+    const f = keyframesForShot(rf, rs, 1)[0]!;
+    const path = join(input.outDir, `final-${String(f).padStart(5, "0")}.jpg`);
+    await runFfmpeg(["-ss", (f / rf.fps + 0.5 / rf.fps).toFixed(4), "-i", input.videoPath, "-frames:v", "1", "-vf", "scale=540:-2", "-q:v", "3", path]);
+    const metrics = await measureStill(path, textInfoAt(input.film, cf, f)).catch(() => undefined);
+    shots.push({ shotId: rs.shot.id, index: rs.index, sceneId: rs.sceneId, startSec: rs.startSec, endSec: rs.endSec, purpose: rs.shot.purpose ?? null, line: rs.shot.line ?? null, words: rs.words.map((w) => ({ word: w.raw, start: w.start, end: w.end })), stills: [{ frame: f, time: f / rf.fps, path, point: Math.round(((f - rs.startFrame) / Math.max(1, rs.endFrame - rs.startFrame)) * 100) / 100, ...(metrics ? { metrics } : {}) }] });
+  }
+  const sheet = join(input.outDir, "final-sheet.jpg");
+  await captionedContactSheet(shots.map((s) => ({ path: s.stills[0]!.path, caption: s.line ?? "", label: `${s.index + 1} · ${s.shotId}` })), sheet, { cols: 4, workDir: join(input.outDir, "final-sheet-work") });
+  return { shots, sheet, poster: shots[0]?.stills[0]?.path ?? sheet };
 }

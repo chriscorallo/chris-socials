@@ -1,14 +1,13 @@
-import { resolveTranscriptionCacheDir } from "@chris/media/transcription";
 import { VISUAL_CATALOG, catalogEntryText, searchCatalog, type CatalogEntry, type CatalogEntryType } from "./catalog";
 
 /**
  * Meaning-Match: ranks catalog entries for a narration line with a small LOCAL sentence-embedding
  * model — $0, no API, runs in Node / the Sandbox / Chris's Mac.
  *
- * Model: sentence-transformers/all-MiniLM-L6-v2 (Apache-2.0), ONNX export Xenova/all-MiniLM-L6-v2,
- * q8 (~23 MB), via @huggingface/transformers (already a dependency for Whisper/Kokoro). Downloaded
- * once into the same cache as Whisper (TRANSCRIPTION_CACHE_DIR); the Sandbox snapshot's warmup
- * pre-downloads it.
+ * Model: the studio crew's local embedder (@chris/media/embeddings LocalSentenceEmbedder —
+ * sentence-transformers/all-MiniLM-L6-v2, Apache-2.0, ONNX q8 ≈ 23 MB, transformers.js), the SAME
+ * model and cache the crew's Meaning-Match first pass uses — one model, not two. Downloaded once
+ * into TRANSCRIPTION_CACHE_DIR; the Sandbox snapshot's warmup pre-downloads it.
  *
  * Score: for each entry, the best cosine similarity between the line and (a) the entry's full
  * description and (b) each of its "good for" phrases — so "you raised your baseline" lands on
@@ -17,33 +16,23 @@ import { VISUAL_CATALOG, catalogEntryText, searchCatalog, type CatalogEntry, typ
 
 export const CATALOG_EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
 
-type Extractor = (texts: string[], opts: { pooling: "mean"; normalize: boolean }) => Promise<{ data: Float32Array; dims: number[] }>;
-
-let extractorPromise: Promise<Extractor> | null = null;
-
-async function getExtractor(cacheDir?: string): Promise<Extractor> {
-  if (!extractorPromise) {
-    extractorPromise = (async () => {
-      const { env, pipeline } = await import("@huggingface/transformers");
-      env.cacheDir = resolveTranscriptionCacheDir(cacheDir);
-      return (await pipeline("feature-extraction", CATALOG_EMBEDDING_MODEL, { dtype: "q8", device: "cpu" })) as unknown as Extractor;
-    })();
-    extractorPromise.catch(() => (extractorPromise = null));
+const embedders = new Map<string, Promise<{ embed(t: string[]): Promise<number[][]> }>>();
+function embedderFor(cacheDir?: string) {
+  const key = cacheDir ?? "";
+  let p = embedders.get(key);
+  if (!p) {
+    p = import("@chris/media/embeddings").then(({ LocalSentenceEmbedder }) => new LocalSentenceEmbedder({ model: CATALOG_EMBEDDING_MODEL, cacheDir }));
+    embedders.set(key, p);
   }
-  return extractorPromise;
+  return p;
 }
 
 /** Unit-length sentence embeddings (384-d). */
 export async function embedTexts(texts: string[], opts: { cacheDir?: string } = {}): Promise<Float32Array[]> {
   if (!texts.length) return [];
-  const ex = await getExtractor(opts.cacheDir);
+  const em = await embedderFor(opts.cacheDir);
   const out: Float32Array[] = [];
-  for (let i = 0; i < texts.length; i += 64) {
-    const batch = texts.slice(i, i + 64);
-    const r = await ex(batch, { pooling: "mean", normalize: true });
-    const d = r.dims[r.dims.length - 1]!;
-    for (let k = 0; k < batch.length; k++) out.push(r.data.slice(k * d, (k + 1) * d));
-  }
+  for (let i = 0; i < texts.length; i += 64) for (const v of await em.embed(texts.slice(i, i + 64))) out.push(Float32Array.from(v));
   return out;
 }
 

@@ -97,3 +97,6 @@ export const CHRIS_VOICE = { id: "chris", label: "Your voice", engine: "CHRIS" a
 
 /** The voice a film uses when none is chosen. */
 export const DEFAULT_NARRATION_VOICE = "af_heart";
+
+/** The crew's voice picker reads this name (apps/web/lib/studio/cinema-engine.ts). */
+export const KOKORO_VOICES = NARRATION_VOICES;

@@ -44,7 +44,34 @@ import { renderContentItem } from "./render-job";
  * <film>-<tier>.mp4, result.json}; films/storyboards/<id>/…; films/voice/<id>/…
  */
 
-export type CinemaEngine = Pick<typeof Cinema, "prepareFilm" | "renderFilmFrames" | "assembleFilm" | "renderStoryboard" | "narrationFromRecording" | "narrateFilm">;
+export type CinemaEngine = Pick<typeof Cinema, "prepareFilm" | "renderFilmFrames" | "assembleFilm" | "renderStoryboard" | "narrationFromRecording" | "narrationFromShotRecordings" | "narrateFilm" | "framesFromVideo" | "measureLoudness">;
+
+/** A URL the phone can show for a film file in storage (served by apps/web/app/api/films/file, `films/` keys only). */
+export function filmFileUrl(key: string): string {
+  return `/api/films/file?key=${encodeURIComponent(key)}`;
+}
+
+/** The studio crew's Still shape (packages/agents/src/studio/engine-port.ts). */
+export interface PortStill {
+  id: string;
+  shotId: string;
+  point: number;
+  url: string;
+  caption?: string;
+  metrics?: Record<string, unknown>;
+}
+
+/** Where the studio's narration recorder keeps Chris's takes for a film (apps/web/app/api/films/narration). */
+export const studioNarrationIndexKey = (filmId: string) => `films/studio/${filmId}/narration/index.json`;
+export interface StudioNarrationIndex {
+  /** One take of the whole script. */
+  recordingKey?: string;
+  /** Or one take per shot. */
+  shots?: Record<string, string>;
+  /** Set by a film-voice-align run on the latest take (pre-aligned lines). */
+  linesKey?: string;
+  updatedAt: string;
+}
 
 export interface FilmJobContext {
   db: PrismaClient;
@@ -153,7 +180,7 @@ export interface FilmRenderManifest {
 export interface FilmRenderResult {
   renderId: string;
   videoKey: string;
-  frames: number;
+  frameCount: number;
   durationSeconds: number;
   width: number;
   height: number;
@@ -164,6 +191,13 @@ export interface FilmRenderResult {
   state: string | null;
   renderStatus: string | null;
   msByStage: Record<string, number>;
+  // the studio crew's RenderResult fields
+  videoUrl: string;
+  posterUrl: string | null;
+  loudnessLufs: number | null;
+  truePeakDbtp: number | null;
+  frames: PortStill[];
+  contactSheetUrl: string | null;
 }
 
 const prefixOf = (renderId: string) => `films/${renderId}`;
@@ -187,6 +221,43 @@ async function downloadNarration(storage: StorageAdapter, linesKey: string, dir:
   return out;
 }
 
+/**
+ * Chris's own voice for a render, from (in order): pre-aligned lines (narrationKey), the studio's
+ * per-shot / whole-script takes passed as chrisNarration, or the studio narration recorder's index
+ * for this film (films/studio/<filmId>/narration/index.json).
+ */
+async function resolveChrisNarration(
+  args: HeavyJobArgsByKind["film-render"],
+  film: Film,
+  ctx: FilmJobContext,
+  engine: CinemaEngine,
+  work: string,
+): Promise<{ ok: true; lines: Record<string, NarratedLine> } | { ok: false; error: string; report?: unknown }> {
+  const dir = join(work, "chris-voice");
+  await mkdir(dir, { recursive: true });
+  let linesKey = args.narrationKey ?? null;
+  let takes: Record<string, string> | null = args.chrisNarration ?? null;
+  if (!linesKey && !takes && args.filmId) {
+    const idx = await tryGetJson<StudioNarrationIndex>(ctx.storage, studioNarrationIndexKey(args.filmId));
+    if (idx?.linesKey) linesKey = idx.linesKey;
+    else if (idx?.shots && Object.keys(idx.shots).length) takes = idx.shots;
+    else if (idx?.recordingKey) takes = { "*": idx.recordingKey };
+  }
+  if (linesKey) return { ok: true, lines: await downloadNarration(ctx.storage, linesKey, dir) };
+  if (!takes) return { ok: false, error: "This film is narrated by you — record (or upload) the narration on the film page first, then render." };
+  ctx.progress(4, "Syncing the picture to your voice…", "narration");
+  const ext = (k: string) => (k.match(/\.[a-z0-9]{2,4}$/i)?.[0] ?? ".m4a").toLowerCase();
+  if (takes["*"]) {
+    const rec = await download(ctx.storage, takes["*"], join(dir, `take${ext(takes["*"])}`));
+    const r = await engine.narrationFromRecording({ film, recordingPath: rec, outDir: dir });
+    return r.report.ok ? { ok: true, lines: r.lines } : { ok: false, error: r.report.problems[0] ?? "Your recording didn't line up with the script.", report: r.report };
+  }
+  const local: Record<string, string> = {};
+  for (const [shotId, key] of Object.entries(takes)) local[shotId] = await download(ctx.storage, key, join(dir, `src-${shotId}${ext(key)}`));
+  const r = await engine.narrationFromShotRecordings({ film, recordings: local, outDir: dir });
+  return r.report.ok ? { ok: true, lines: r.lines } : { ok: false, error: r.report.problems[0] ?? "Some recorded lines didn't match the script.", report: r.report };
+}
+
 export async function runFilmRender(args: HeavyJobArgsByKind["film-render"], ctx: FilmJobContext): Promise<FilmJobOutcome> {
   const engine = await engineOf(ctx);
   const renderId = filmRenderId(args);
@@ -202,6 +273,22 @@ export async function runFilmRender(args: HeavyJobArgsByKind["film-render"], ctx
   };
 
   const done = await tryGetJson<FilmRenderResult>(ctx.storage, `${prefix}/result.json`);
+  // "Send to Videos": attach the finished film to the studio's ContentItem through the normal path
+  if (args.attachRenderId) {
+    if (!done) return { ok: false, result: { renderId }, error: "That render isn't finished (or was never made) — render the film first.", message: "Nothing to attach yet." };
+    if (done.contentItemId === args.contentItemId) return { ok: true, result: { ...done, reused: true }, message: "Already in Videos." };
+    const work = join(ctx.workRoot ?? tmpdir(), `chris-film-${renderId}-attach`);
+    await mkdir(work, { recursive: true });
+    const file = await download(ctx.storage, done.videoKey, join(work, "film.mp4"));
+    const film = await loadFilm(ctx.storage, { filmKey: `${prefix}/film.json` });
+    ctx.progress(20, "Adding it to your videos…", "register");
+    const reg = await registerFilmVideo(ctx.db, ctx.storage, { filePath: file, film, title: film.title, contentItemId: args.contentItemId, renderId, renderItem: ctx.renderItem }, ctx.actor);
+    const updated: FilmRenderResult = { ...done, contentItemId: reg.contentItemId, mediaAssetId: reg.mediaAssetId, state: reg.state, renderStatus: reg.renderStatus };
+    await putJson(ctx.storage, `${prefix}/result.json`, updated);
+    await rm(work, { recursive: true, force: true }).catch(() => undefined);
+    const okReg = reg.renderStatus === "SUCCESS" && reg.state !== "QC_REPAIR" && reg.state !== "QC_BLOCKED";
+    return { ok: okReg, result: updated, error: okReg ? undefined : `Added, but the video's technical check needs a look (${reg.renderError ?? reg.state}).`, message: okReg ? "Your mini-movie is in Videos." : "Added — check the video page." };
+  }
   if (done) return { ok: true, result: { ...done, reused: true }, message: "Already rendered — here it is." };
 
   let film: Film;
@@ -219,8 +306,11 @@ export async function runFilmRender(args: HeavyJobArgsByKind["film-render"], ctx
   let audioPath: string | null = null;
   if (!manifest) {
     let narration: Record<string, NarratedLine> | undefined;
-    if (args.narrationKey) narration = await downloadNarration(ctx.storage, args.narrationKey, join(work, "chris-lines"));
-    else if (film.narration?.engine === "CHRIS") return { ok: false, result: { renderId }, error: "This film is narrated by Chris — sync his recording first (film-voice-align) and pass its linesKey as narrationKey.", message: "Waiting for your narration." };
+    if (film.narration?.engine === "CHRIS" || args.narrationKey || args.chrisNarration) {
+      const r = await resolveChrisNarration(args, film, ctx, engine, work);
+      if (!r.ok) return { ok: false, result: { renderId, report: r.report ?? null }, error: r.error, message: "Waiting for your narration." };
+      narration = r.lines;
+    }
     ctx.progress(3, film.narration?.engine === "CHRIS" ? "Laying in your narration and the music…" : "Recording the narration and the music…", "prepare");
     const prep = await t("prepare", () => engine.prepareFilm({ film, workDir: work, narration }));
     clips = prep.clips;
@@ -339,17 +429,32 @@ export async function runFilmRender(args: HeavyJobArgsByKind["film-render"], ctx
   const videoKey = `${prefix}/${m.filmId}-${m.tier.toLowerCase()}.mp4`;
   await ctx.storage.put(videoKey, await readFile(outPath), "video/mp4");
   const probe = await probeMediaFile(outPath);
+  // review material for the crew: a measured frame per shot, a captioned contact sheet, a poster, loudness
+  ctx.progress(95, "Checking the frames and the sound…", "review");
+  const review = await t("review", () => engine.framesFromVideo({ film, clips, videoPath: outPath, outDir: join(work, "review") }));
+  const frames: PortStill[] = [];
+  for (const s of review.shots) {
+    const st = s.stills[0]!;
+    const key = `${prefix}/review/${s.shotId}-${st.frame}.jpg`;
+    await ctx.storage.put(key, await readFile(st.path), "image/jpeg");
+    frames.push({ id: `${renderId}:${s.shotId}:${st.frame}`, shotId: s.shotId, point: st.point, url: filmFileUrl(key), ...(s.line ? { caption: s.line } : {}), ...(st.metrics ? { metrics: st.metrics as unknown as Record<string, unknown> } : {}) });
+  }
+  const sheetKey = `${prefix}/review/contact-sheet.jpg`;
+  await ctx.storage.put(sheetKey, await readFile(review.sheet), "image/jpeg");
+  const posterKey = `${prefix}/poster.jpg`;
+  await ctx.storage.put(posterKey, await readFile(review.poster), "image/jpeg");
+  const loud = audioPath ? await engine.measureLoudness(outPath).catch(() => null) : null;
 
   // --- register as a video
   let reg: Awaited<ReturnType<typeof registerFilmVideo>> | null = null;
-  if (args.register !== false) {
+  if (args.register ?? !args.filmId) {
     ctx.progress(96, "Adding it to your videos…", "register");
     reg = await t("register", () => registerFilmVideo(ctx.db, ctx.storage, { filePath: outPath, film, title: m.title, contentItemId: args.contentItemId, renderId, renderItem: ctx.renderItem }, ctx.actor));
   }
   const result: FilmRenderResult = {
     renderId,
     videoKey,
-    frames: asm.frames,
+    frameCount: asm.frames,
     durationSeconds: asm.videoSeconds,
     width: probe.width ?? 0,
     height: probe.height ?? 0,
@@ -360,6 +465,12 @@ export async function runFilmRender(args: HeavyJobArgsByKind["film-render"], ctx
     state: reg?.state ?? null,
     renderStatus: reg?.renderStatus ?? null,
     msByStage,
+    videoUrl: filmFileUrl(videoKey),
+    posterUrl: filmFileUrl(posterKey),
+    loudnessLufs: loud && Number.isFinite(loud.integratedLufs) ? loud.integratedLufs : null,
+    truePeakDbtp: loud && Number.isFinite(loud.truePeakDb) ? loud.truePeakDb : null,
+    frames,
+    contactSheetUrl: filmFileUrl(sheetKey),
   };
   await putJson(ctx.storage, `${prefix}/result.json`, result);
   await rm(work, { recursive: true, force: true }).catch(() => undefined);
@@ -406,7 +517,7 @@ export async function runFilmStoryboard(args: HeavyJobArgsByKind["film-storyboar
   } catch (err) {
     return { ok: false, result: {}, error: (err as Error).message, message: "The film script needs fixing first." };
   }
-  const id = `sb-${stableHash(JSON.stringify([film, args.tier ?? "PREVIEW", args.stillsPerShot ?? 1, args.shots ?? null, args.narrate ?? false, args.scale ?? 0.5]))}`;
+  const id = `sb-${stableHash(JSON.stringify([film, args.tier ?? "PREVIEW", args.stillsPerShot ?? 1, args.shots ?? null, args.points ?? null, args.narrate ?? false, args.scale ?? 0.5]))}`;
   const prefix = `films/storyboards/${id}`;
   const done = await tryGetJson<Record<string, unknown>>(ctx.storage, `${prefix}/result.json`);
   if (done) return { ok: true, result: { ...done, reused: true }, message: "Storyboard ready." };
@@ -419,7 +530,7 @@ export async function runFilmStoryboard(args: HeavyJobArgsByKind["film-storyboar
     clips = Object.fromEntries(Object.entries(lines).map(([k, l]) => [k, { durationSeconds: l.durationSeconds, words: l.words }]));
   }
   ctx.progress(15, "Sketching each shot…", "storyboard");
-  const sb = await engine.renderStoryboard({ film, clips, outDir: join(work, "stills"), tier: args.tier ?? "PREVIEW", stillsPerShot: args.stillsPerShot, shots: args.shots, scale: args.scale, onProgress: (d, total) => ctx.progress(15 + (75 * d) / Math.max(1, total), `Sketching… ${d} of ${total}`, "storyboard") });
+  const sb = await engine.renderStoryboard({ film, clips, outDir: join(work, "stills"), tier: args.tier ?? "PREVIEW", stillsPerShot: args.stillsPerShot, points: args.points, shots: args.shots, scale: args.scale, onProgress: (d, total) => ctx.progress(15 + (75 * d) / Math.max(1, total), `Sketching… ${d} of ${total}`, "storyboard") });
   ctx.progress(92, "Saving the storyboard…", "upload");
   const shots = [];
   for (const s of sb.shots) {
@@ -427,13 +538,15 @@ export async function runFilmStoryboard(args: HeavyJobArgsByKind["film-storyboar
     for (const st of s.stills) {
       const key = `${prefix}/${s.shotId}-${st.frame}.jpg`;
       await ctx.storage.put(key, await readFile(st.path), "image/jpeg");
-      stills.push({ frame: st.frame, time: st.time, key });
+      stills.push({ frame: st.frame, time: st.time, key, point: st.point, ...(st.metrics ? { metrics: st.metrics } : {}) });
     }
     shots.push({ shotId: s.shotId, index: s.index, sceneId: s.sceneId, startSec: s.startSec, endSec: s.endSec, purpose: s.purpose, line: s.line, words: s.words, stills });
   }
   const sheetKey = `${prefix}/storyboard.jpg`;
   if (existsSync(sb.sheet)) await ctx.storage.put(sheetKey, await readFile(sb.sheet), "image/jpeg");
-  const result = { storyboardId: id, shots, sheetKey, timingMeasured: sb.timingMeasured, durationSeconds: sb.durationSeconds, ms: sb.ms };
+  // the studio crew's StoryboardResult: { stills: Still[], contactSheetUrl } (+ the engine's richer per-shot view)
+  const portStills: PortStill[] = shots.flatMap((s) => s.stills.map((st) => ({ id: `${id}:${s.shotId}:${st.frame}`, shotId: s.shotId, point: st.point, url: filmFileUrl(st.key), ...(s.line ? { caption: s.line } : {}), ...(st.metrics ? { metrics: st.metrics as unknown as Record<string, unknown> } : {}) })));
+  const result = { storyboardId: id, stills: portStills, contactSheetUrl: existsSync(sb.sheet) ? filmFileUrl(sheetKey) : null, shots, sheetKey, timingMeasured: sb.timingMeasured, durationSeconds: sb.durationSeconds, ms: sb.ms };
   await putJson(ctx.storage, `${prefix}/result.json`, result);
   await rm(work, { recursive: true, force: true }).catch(() => undefined);
   return { ok: true, result, message: `Storyboard ready (${shots.length} shots).` };
@@ -471,6 +584,11 @@ export async function runFilmVoiceAlign(args: HeavyJobArgsByKind["film-voice-ali
   }
   const linesKey = `${prefix}/lines.json`;
   await putJson(ctx.storage, linesKey, doc);
+  // the studio's recorder: remember the aligned lines for this film's latest take (render reuses them)
+  if (args.filmId) {
+    const idx = await tryGetJson<StudioNarrationIndex>(ctx.storage, studioNarrationIndexKey(args.filmId));
+    if (idx && idx.recordingKey === args.recordingKey) await putJson(ctx.storage, studioNarrationIndexKey(args.filmId), { ...idx, linesKey, updatedAt: new Date().toISOString() });
+  }
   await rm(work, { recursive: true, force: true }).catch(() => undefined);
   const warn = report.problems.length ? ` ${report.problems.join(" ")}` : "";
   return { ok: true, result: { linesKey, report }, message: `Synced ${Object.keys(lines).length} lines (${Math.round(report.matchedRatio * 100)}% of the script heard).${warn}` };

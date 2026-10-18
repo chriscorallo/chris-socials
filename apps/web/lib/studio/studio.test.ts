@@ -60,8 +60,8 @@ describe("CinemaFilmEngine adapter (real engine, pure parts)", () => {
     expect(pointInFrame(cam, [9, 1, 0])).toBe(false);
   });
 
-  it("voices: 7 Kokoro voices with ▶ samples + Chris's own voice", () => {
-    expect(STUDIO_VOICES.filter((v) => v.engine === "KOKORO" && v.sampleUrl)).toHaveLength(7);
+  it("voices: the engine's 9 curated Kokoro voices with ▶ samples + Chris's own voice", () => {
+    expect(STUDIO_VOICES.filter((v) => v.engine === "KOKORO" && v.sampleUrl)).toHaveLength(9); // the engine's curated KOKORO_VOICES
     expect(STUDIO_VOICES.some((v) => v.engine === "CHRIS")).toBe(true);
   });
 

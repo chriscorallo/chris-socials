@@ -258,7 +258,7 @@ export function initialWorld(film: StudioFilm): WorldState {
     w.set(a.id, {
       visible: a.visible === true,
       count: a.kind === "COIN_STACK" ? numParam(a.params, "count", 40) : null,
-      level: a.kind === "BASELINE" ? numParam(a.params, "level", 0.05) : null,
+      level: a.kind === "BASELINE" ? numParam(a.params, "level", 0.05) : a.kind === "PLATFORM" ? numParam(a.params, "level", 0) : null,
       everEntered: a.visible === true,
       exited: false,
     });
@@ -285,6 +285,8 @@ export function applyShot(world: WorldState, shot: StudioShot): WorldState {
       s.exited = true;
     } else if (a.do === "SET" && a.param === "count" && typeof a.to === "number") s.count = a.to;
     else if (a.do === "SET" && a.param === "level" && typeof a.to === "number") s.level = a.to;
+    else if (a.do === "RAISE" && typeof a.to === "number" && s.level !== null) s.level = a.to;
+    else if (a.do === "LOWER" && s.level !== null) s.level = typeof a.to === "number" ? a.to : 0;
     else if (a.do === "FLOW") {
       if (s.count !== null) s.count = Math.max(0, s.count - a.amount);
       const into = w.get(a.into);

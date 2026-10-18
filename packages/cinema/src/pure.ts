@@ -17,3 +17,5 @@ export * from "./figure-poses";
 export * from "./chunks";
 export * from "./narration/voices";
 export * from "./narration/speech-text";
+export * from "./film-catalog";
+export * from "./text-bands";

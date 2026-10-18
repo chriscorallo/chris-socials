@@ -16,7 +16,13 @@ import {
 } from "@chris/domain";
 import { FFMPEG_PATH, LocalFsStorageAdapter } from "@chris/media";
 import { assembleFilm, resolveFilm, type Film } from "@chris/cinema";
-import { runFfmpeg } from "../../../../packages/cinema/src/audio/ffmpeg";
+async function runFfmpeg(args: string[]): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const p = spawn(FFMPEG_PATH, ["-hide_banner", "-loglevel", "error", "-y", ...args]);
+    p.on("error", reject);
+    p.on("close", (c) => (c === 0 ? resolve() : reject(new Error(`ffmpeg ${c}`))));
+  });
+}
 import { executeHeavyJob, runHeavyJobRecorded } from "../heavy-jobs";
 import { filmRenderId, heavyJobSubject, parseHeavyJobArgs } from "../heavy-job-kinds";
 import { filmPassthroughPlan, type CinemaEngine } from "../film-jobs";
@@ -84,9 +90,30 @@ function fakeEngine(calls: { frames: Array<[number, number]>; narration: unknown
         const frame = Math.round((rs.startFrame + rs.endFrame) / 2);
         const path = join(o.outDir, `f-${frame}.jpg`);
         await runFfmpeg(["-f", "lavfi", "-i", `color=c=0x553311:s=${W}x${H}:d=0.1`, "-frames:v", "1", path]);
-        shots.push({ shotId: rs.shot.id, index: rs.index, sceneId: rs.sceneId, startSec: rs.startSec, endSec: rs.endSec, purpose: null, line: rs.shot.line ?? null, words: rs.words.map((w) => ({ word: w.raw, start: w.start, end: w.end })), stills: [{ frame, time: frame / 30, path }] });
+        shots.push({ shotId: rs.shot.id, index: rs.index, sceneId: rs.sceneId, startSec: rs.startSec, endSec: rs.endSec, purpose: null, line: rs.shot.line ?? null, words: rs.words.map((w) => ({ word: w.raw, start: w.start, end: w.end })), stills: [{ frame, time: frame / 30, path, point: 0.5, metrics: { meanLuma: 0.2, emptyRatio: 0.1 } }] });
       }
-      return { shots, sheet: join(o.outDir, "none.jpg"), stills: shots.map((s) => s.stills[0]!.path), timingMeasured: false, durationSeconds: rf.durationSeconds, ms: 5 };
+      const sheet = join(o.outDir, "sheet.jpg");
+      await runFfmpeg(["-f", "lavfi", "-i", `color=c=0x222222:s=${W}x${H}:d=0.1`, "-frames:v", "1", sheet]);
+      return { shots, sheet, stills: shots.map((s) => s.stills[0]!.path), timingMeasured: false, durationSeconds: rf.durationSeconds, ms: 5 };
+    },
+    async framesFromVideo(o) {
+      await mkdir(o.outDir, { recursive: true });
+      const rf = resolveFilm(o.film, o.clips);
+      const shots = [];
+      for (const rs of rf.shots) {
+        const path = join(o.outDir, `${rs.shot.id}.jpg`);
+        await runFfmpeg(["-ss", String(rs.startSec + 0.2), "-i", o.videoPath, "-frames:v", "1", path]);
+        shots.push({ shotId: rs.shot.id, index: rs.index, sceneId: rs.sceneId, startSec: rs.startSec, endSec: rs.endSec, purpose: null, line: rs.shot.line ?? null, words: [], stills: [{ frame: rs.startFrame + 6, time: rs.startSec + 0.2, path, point: 0.1, metrics: { meanLuma: 0.3, emptyRatio: 0 } }] });
+      }
+      return { shots, sheet: shots[0]!.stills[0]!.path, poster: shots[0]!.stills[0]!.path };
+    },
+    async measureLoudness() {
+      return { integratedLufs: -14, truePeakDb: -1.5, lra: 2 };
+    },
+    async narrationFromShotRecordings(o) {
+      const lines: Record<string, { path: string; durationSeconds: number; words: Array<{ word: string; start: number; end: number }>; heard: string }> = {};
+      for (const [shotId, p] of Object.entries(o.recordings)) lines[shotId] = { path: p, durationSeconds: 1.2, words: [{ word: "Your", start: 0.1, end: 0.3 }, { word: "raise", start: 0.3, end: 0.6 }, { word: "is", start: 0.6, end: 0.7 }, { word: "gone.", start: 0.7, end: 1.1 }], heard: "Your raise is gone." };
+      return { lines, report: { ok: true, matchedRatio: 1, missedWords: [], extraWords: [], shots: [], problems: [] } };
     },
     async narrationFromRecording(o) {
       const path = join(o.outDir, "a.wav");
@@ -132,8 +159,11 @@ describe("mini-movie jobs", () => {
     const out = await executeHeavyJob("film-render", { film: film("reg-film"), tier: "PREVIEW" }, ctx(fakeEngine(calls)));
     expect(out.error ?? null).toBeNull();
     expect(out.ok).toBe(true);
-    const r = out.result as { contentItemId: string; frames: number; videoKey: string; state: string; renderStatus: string; chunks: number };
-    expect(r.frames).toBe(90);
+    const r = out.result as { contentItemId: string; frameCount: number; videoKey: string; state: string; renderStatus: string; chunks: number; videoUrl: string; frames: unknown[]; loudnessLufs: number; contactSheetUrl: string };
+    expect(r.frameCount).toBe(90);
+    expect(r.videoUrl).toBe(`/api/films/file?key=${encodeURIComponent(r.videoKey)}`);
+    expect(r.frames).toHaveLength(2);
+    expect(r.loudnessLufs).toBe(-14);
     expect(r.chunks).toBe(1);
     expect(calls.frames).toEqual([[0, 89]]);
     expect(r.state).toBe("RENDERED");
@@ -163,9 +193,9 @@ describe("mini-movie jobs", () => {
     if (!lease.acquired) throw new Error("no lease");
     const out = await runHeavyJobRecorded(lease.jobRunId, "film-render", args, ctx(fakeEngine(calls)));
     expect(out.error ?? null).toBeNull();
-    const r = out.result as { frames: number; chunks: number; renderId: string };
+    const r = out.result as { frameCount: number; chunks: number; renderId: string };
     expect(r.chunks).toBe(3);
-    expect(r.frames).toBe(180);
+    expect(r.frameCount).toBe(180);
     expect(calls.frames.sort((x, y) => x[0] - y[0])).toEqual([[0, 59], [60, 119], [120, 179]]);
     // the queued parts were claimed and finished, not left waiting
     const parts = await prisma.jobRun.findMany({ where: { kind: { startsWith: `heavy:film:${r.renderId}:chunk:` } } });
@@ -192,7 +222,37 @@ describe("mini-movie jobs", () => {
     }
     const done = await parent;
     expect(done.ok).toBe(true);
-    expect((done.result as { frames: number }).frames).toBe(90);
+    expect((done.result as { frameCount: number }).frameCount).toBe(90);
+  }, 120_000);
+
+  it("speaks the studio crew's port: film:<filmId> lease, Still[] + contact sheet, render → Send to Videos attach", async () => {
+    const f = film("crew-film", { engine: "KOKORO", voice: "af_heart" });
+    const sbArgs = parseHeavyJobArgs("film-storyboard", { filmId: "film123", versionId: "v1", film: f, shotIds: ["a", "b"], points: [0.6], idempotencyKey: "film123:v1:storyboard:0" });
+    expect(heavyJobSubject("film-storyboard", sbArgs)).toBe("film:film123");
+    const sb = await executeHeavyJob("film-storyboard", sbArgs, ctx(fakeEngine({ frames: [], narration: [] })));
+    expect(sb.ok).toBe(true);
+    const sr = sb.result as { stills: Array<{ id: string; shotId: string; point: number; url: string; caption?: string; metrics?: { emptyRatio: number } }>; contactSheetUrl: string };
+    expect(sr.stills.map((s) => s.shotId)).toEqual(["a", "b"]);
+    expect(sr.stills[0]!.caption).toBe("Your raise is gone.");
+    expect(sr.stills[0]!.metrics?.emptyRatio).toBe(0.1);
+    expect(sr.stills[0]!.url).toMatch(/^\/api\/films\/file\?key=films%2Fstoryboards%2F/);
+    expect(sr.contactSheetUrl).toMatch(/storyboard\.jpg$/);
+
+    const calls = { frames: [] as Array<[number, number]>, narration: [] as unknown[] };
+    const rArgs = parseHeavyJobArgs("film-render", { filmId: "film123", versionId: "v1", film: f, tier: "FINAL", idempotencyKey: "film123:v1:render:0" });
+    expect(heavyJobSubject("film-render", rArgs)).toBe("film:film123");
+    const rendered = await executeHeavyJob("film-render", rArgs, ctx(fakeEngine(calls)));
+    expect(rendered.error ?? null).toBeNull();
+    const rr = rendered.result as { renderId: string; contentItemId: string | null; posterUrl: string };
+    expect(rr.contentItemId).toBeNull(); // studio films go to Videos via Send to Videos
+    expect(rr.posterUrl).toMatch(/poster\.jpg$/);
+    // Send to Videos made a MINI_MOVIE item; the engine attaches the finished film to it
+    const { createContentItem } = await import("@chris/domain");
+    const item = await createContentItem(prisma, { title: "Crew film", format: "MINI_MOVIE" }, { actorId: "chris" });
+    const attach = await executeHeavyJob("film-render", { attachRenderId: rr.renderId, contentItemId: item.id, tier: "FINAL" }, ctx(fakeEngine(calls)));
+    expect(attach.error ?? null).toBeNull();
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } })).currentState).toBe("RENDERED");
+    expect(calls.frames).toHaveLength(1); // attaching never re-renders
   }, 120_000);
 
   it("storyboard: stills per shot with timing and the narration each shot covers", async () => {
@@ -216,7 +276,7 @@ describe("mini-movie jobs", () => {
     const { linesKey } = al.result as { linesKey: string };
     const noVoice = await executeHeavyJob("film-render", { film: f, tier: "PREVIEW", register: false }, ctx(fakeEngine(calls)));
     expect(noVoice.ok).toBe(false);
-    expect(noVoice.error).toMatch(/narrated by Chris/);
+    expect(noVoice.error).toMatch(/narrated by you/);
     const withVoice = await executeHeavyJob("film-render", { film: f, tier: "PREVIEW", register: false, narrationKey: linesKey }, ctx(fakeEngine(calls)));
     expect(withVoice.ok).toBe(true);
     const lines = calls.narration.at(-1) as Record<string, { words: unknown[] }>;

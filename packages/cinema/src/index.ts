@@ -20,12 +20,13 @@ export {
   type RenderFilmReport,
   type PreparedFilm,
 } from "./render";
-export { renderStoryboard, keyframesForShot, type StoryboardResult, type StoryboardShot, type StoryboardStill } from "./storyboard";
+export { renderStoryboard, framesFromVideo, textInfoAt, keyframesForShot, type StoryboardResult, type StoryboardShot, type StoryboardStill } from "./storyboard";
 export { narrateFilm, defaultTranscriber, type NarratedLine, type WordTranscriber } from "./narration/narrate";
-export { narrationFromRecording, alignRecordingWords, MIN_MATCHED_RATIO, type RecordingAlignmentReport, type AlignedShot } from "./narration/recording";
+export { narrationFromRecording, narrationFromShotRecordings, alignRecordingWords, MIN_MATCHED_RATIO, type RecordingAlignmentReport, type AlignedShot } from "./narration/recording";
 export { synthesizeLine, loadKokoro, KOKORO_MODEL_ID } from "./narration/kokoro";
 export { matchLineToCatalog, embedTexts, warmCatalogMatcher, CATALOG_EMBEDDING_MODEL, type CatalogMatch } from "./catalog-match";
 export { renderScore, encodeStereoWav, duckEnvelope, progression, type ScorePlan } from "./audio/score";
 export { mixFilm, voiceBusArgs, premixArgs, TARGET_LUFS } from "./audio/mix";
 export { measureLoudness, probeMedia } from "./audio/ffmpeg";
 export { cinemaSfxFiles } from "./audio/sfx";
+export { measureStill, metricsFromGray, captionedContactSheet, wrapCaption, type StillMetricsResult, type StillTextInfo } from "./sheets";

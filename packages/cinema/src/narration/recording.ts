@@ -106,6 +106,55 @@ export function alignRecordingWords(film: Film, heard: Array<{ word: string; sta
 const round = (x: number) => Math.round(x * 1000) / 1000;
 
 /**
+ * Chris recorded each line separately (the studio's per-shot recorder: shot id → file). Each take
+ * is trimmed of leading/trailing silence, transcribed and aligned to its own line; the same report
+ * as the one-take path (missing shots, unheard and extra words). A shot with a line but no take
+ * is an error (report.ok false) — nothing is silently synthesized in his place.
+ */
+export async function narrationFromShotRecordings(input: { film: Film; recordings: Record<string, string>; outDir: string; transcriber?: WordTranscriber }): Promise<{ lines: Record<string, NarratedLine>; report: RecordingAlignmentReport }> {
+  const transcriber = input.transcriber ?? (await defaultTranscriber());
+  const dir = join(input.outDir, "chris-lines");
+  await mkdir(dir, { recursive: true });
+  const lines: Record<string, NarratedLine> = {};
+  const missedWords: RecordingAlignmentReport["missedWords"] = [];
+  const extraWords: RecordingAlignmentReport["extraWords"] = [];
+  const shots: RecordingAlignmentReport["shots"] = [];
+  const problems: string[] = [];
+  let total = 0;
+  for (const sc of input.film.scenes) {
+    for (const sh of sc.shots) {
+      if (!sh.line) continue;
+      const tokens = tokenizeLine(sh.line);
+      total += tokens.length;
+      const src = input.recordings[sh.id];
+      if (!src) {
+        problems.push(`No recording for shot "${sh.id}" ("${sh.line}").`);
+        missedWords.push(...tokens.map((t) => ({ shotId: sh.id, word: t.raw })));
+        shots.push({ shotId: sh.id, start: 0, end: 0, matched: 0, total: tokens.length });
+        continue;
+      }
+      const wav = join(dir, `${sh.id}.wav`);
+      await runFfmpeg(["-i", src, "-vn", "-ac", "1", "-ar", "24000", "-af", "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.08,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.12,areverse", "-c:a", "pcm_s16le", wav]);
+      const duration = await probeDurationSeconds(wav);
+      const tr = await transcriber.transcribe(wav);
+      const h = tr.words.map((w) => ({ ...w, norm: normalizeWord(w.word) })).filter((w) => w.norm.length > 0);
+      const match = alignTokenMatches(tokens, h);
+      const used = new Set(match.filter((m): m is number => m !== null));
+      const timed = match.map((m) => (m === null ? undefined : { start: h[m]!.start, end: h[m]!.end, interpolated: false }));
+      match.forEach((m, k) => m === null && missedWords.push({ shotId: sh.id, word: tokens[k]!.raw }));
+      h.forEach((w, i) => !used.has(i) && extraWords.push({ word: w.word.trim(), at: round(w.start) }));
+      const filled = interpolateGaps(timed, duration);
+      lines[sh.id] = { path: wav, durationSeconds: duration, words: filled.map((w, k) => ({ word: tokens[k]!.raw, start: w.start, end: w.end })), heard: tr.text.trim() };
+      shots.push({ shotId: sh.id, start: 0, end: round(duration), matched: timed.filter(Boolean).length, total: tokens.length });
+    }
+  }
+  const matchedRatio = total ? (total - missedWords.length) / total : 1;
+  if (matchedRatio < MIN_MATCHED_RATIO) problems.unshift(`Only ${Math.round(matchedRatio * 100)}% of the script was heard in the recordings — re-record the lines that don't match.`);
+  const ok = matchedRatio >= MIN_MATCHED_RATIO && shots.every((s) => s.matched > 0);
+  return { lines: ok ? lines : {}, report: { ok, matchedRatio: round(matchedRatio), missedWords, extraWords, shots, problems } };
+}
+
+/**
  * The function the app calls after Chris uploads (or records) his narration: transcribe → align →
  * cut one clip per shot. Returns lines ready for `renderFilm({ narration })` / the film-render
  * job, plus the report to show him ("2 words weren't heard: …"). Never throws for a bad take —
