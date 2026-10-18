@@ -14,21 +14,6 @@ import { setAutoEditModeAction, styleCutAction } from "./actions";
  * hook, title, graphics and removed lines can each be changed in one tap.
  */
 
-const KIND_LABEL: Record<string, string> = {
-  REPEAT: "Said twice",
-  RETAKE: "Retake",
-  FLUFF: "Filler line",
-  TANGENT: "Tangent",
-  GREETING: "Greeting",
-  META: "About the video",
-  SIGN_OFF: "Sign-off",
-  RECAP: "Recap",
-  LOW_VALUE: "Trimmed for length",
-  DANGLING: "Needs a cut line",
-  EXTRA_CTA: "Extra call to action",
-  SLOW_START: "Slow start",
-};
-
 export function StyleCutPanel() {
   const { itemId, dirty, loadSavedVersion, toast, styleCut, setStyleCut, doc, apply } = useEditor();
   const [busy, setBusy] = useState<null | string>(null);
@@ -208,7 +193,7 @@ export function StyleCutPanel() {
                     <li key={r.sentenceId} className="fe-row flex items-start gap-2">
                       <span className="min-w-0 flex-1">
                         <span className="block text-[12.5px]">“{r.text}”</span>
-                        <span className="block text-[11px] text-[var(--color-text-faint)]">{KIND_LABEL[r.kind] ?? r.kind} — {r.why}</span>
+                        <span className="block text-[11px] text-[var(--color-text-faint)]">{r.why}</span>
                       </span>
                       <button type="button" className="fe-link shrink-0" disabled={!!busy} onClick={() => void restore(r.sentenceId)}>
                         {busy === `restore-${r.sentenceId}` ? "…" : "Restore"}

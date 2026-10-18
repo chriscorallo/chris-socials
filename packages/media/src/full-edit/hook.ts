@@ -208,7 +208,8 @@ export function hookTitles(hookSentences: FESentence[], allSentences: FESentence
   const q = hookSentences.find((s) => s.question && s.wordCount <= 9);
   if (q) push(q.text.replace(TITLE_STOP_START, "").replace(/\?*$/, "?"), "QUESTION");
   // 3. Imperative he said ("Stop using the card…").
-  const imp = /\b(stop|don'?t|never)\s+([^,.;!?]{3,40})/i.exec(text);
+  // Only a real instruction: at the start of one of his sentences (not "they don't even know").
+  const imp = hookSentences.map((s) => /^(?:(?:so|and|but|okay)[,]?\s+)?(stop|don'?t|never)\s+([^,.;!?]{3,40})/i.exec(s.text)).find(Boolean) ?? null;
   if (imp) push(trimWords(`${imp[1]} ${imp[2]}`.split(/\s+/), 6).join(" "), "IMPERATIVE");
   // 4. Contrast clause ("Most people leave free money on the table").
   const clauses = text.split(/[;!?]|[.,:](?=\s|$)|\s—\s/).map((c) => c.trim().replace(TITLE_STOP_START, "")).filter((c) => tokens(c).length >= 3);

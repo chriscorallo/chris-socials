@@ -188,7 +188,9 @@ export function chooseVisuals(input: VisualsInput): { picks: VisualPick[]; rejec
     if (s.beat === "CTA") {
       const verb = /\b(follow|comment|save|share|send)\b/i.exec(s.text)?.[1]?.toLowerCase();
       const preset = presetById(verb === "comment" ? "cta-comment" : verb === "save" ? "cta-save" : verb === "share" || verb === "send" ? "cta-share" : "cta-follow");
-      const words = s.text.replace(/[.!?]+$/, "").split(/\s+/);
+      // Start at the action itself ("If this helped, follow for more" → "Follow for more").
+      const fromVerb = s.text.replace(/[.!?]+$/, "").replace(/^[\s\S]*?\b(follow|comment|save|share|send)\b/i, (_m, v: string) => v.charAt(0).toUpperCase() + v.slice(1));
+      const words = fromVerb.split(/\s+/);
       // Short enough to show whole on the CTA bar (≈ 20 characters).
       let n = Math.min(words.length, 6);
       let title = words.slice(0, n).join(" ");
