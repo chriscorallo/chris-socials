@@ -228,10 +228,14 @@ export function Editor({ item, planId, initialDoc, assets: initialAssets, music:
   // Opening a style cut: say what was done, once (the Style cut tool has the details + undo).
   const styleCutToasted = useRef(false);
   useEffect(() => {
-    if (styleCutToasted.current || !initialStyleCut.active) return;
+    if (styleCutToasted.current || !(initialStyleCut.active || initialStyleCut.fullEditActive)) return;
     styleCutToasted.current = true;
-    toast("Edited to your references' pace — tap Style cut to see what changed or go back to the full take.");
-  }, [initialStyleCut.active, toast]);
+    toast(
+      initialStyleCut.fullEditActive
+        ? "Full edit ready — tap Auto edit to see the hook, what was cut, or switch to cuts only."
+        : "Edited to your references' pace — tap Auto edit to see what changed or go back to the full take.",
+    );
+  }, [initialStyleCut.active, initialStyleCut.fullEditActive, toast]);
 
   const apply = useCallback<EditorContextValue["apply"]>(
     (recipe, opts) => dispatch({ type: "apply", recipe, coalesce: opts?.coalesce, select: opts?.select }),

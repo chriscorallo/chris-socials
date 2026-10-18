@@ -306,7 +306,7 @@ function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void
   } else {
     tools = (
       <>
-        <Tool icon="sparkle" label="Style cut" onClick={() => open("style")} active={ui.sheet === "style"} />
+        <Tool icon="sparkle" label="Auto edit" onClick={() => open("style")} active={ui.sheet === "style"} />
         <Tool icon="split" label="Split" onClick={onSplit} />
         <Tool
           icon="film"
@@ -388,7 +388,7 @@ const SHEET_TITLES: Record<SheetId, string> = {
   platforms: "Platforms",
   visuals: "Visuals",
   sound: "Sound",
-  style: "Style cut",
+  style: "Auto edit",
 };
 
 function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onSnapChange: (h: number) => void }) {

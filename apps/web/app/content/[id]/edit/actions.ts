@@ -1,7 +1,7 @@
 "use server";
 
-import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, getHeavyJob, getGraphicPrefs, setGraphicFavorite, recordGraphicPresetUse, parsePreviewMeta, PREVIEW_META_VERSION, requestGraphicBakes, pruneGraphicBakes, type ContentState, type GraphicPrefs, type GraphicBakeState } from "@chris/domain";
-import { EditTimelineSchema, graphicBakeKey, type EditTimeline, type PlacementWarning, type GraphicBakeInput } from "@chris/media/timeline";
+import { prisma, setAutoEditMode, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, getHeavyJob, getGraphicPrefs, setGraphicFavorite, recordGraphicPresetUse, parsePreviewMeta, PREVIEW_META_VERSION, requestGraphicBakes, pruneGraphicBakes, type ContentState, type GraphicPrefs, type GraphicBakeState } from "@chris/domain";
+import { EditTimelineSchema, graphicBakeKey, type FullEditReport, type FullEditChoices, type EditTimeline, type PlacementWarning, type GraphicBakeInput } from "@chris/media/timeline";
 import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
 import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
@@ -190,15 +190,28 @@ async function designResultFromJob(contentItemId: string, ok: boolean, raw: unkn
  */
 export async function styleCutAction(input: {
   contentItemId: string;
-  mode: "STYLE" | "PLAIN";
-}): Promise<StepResult<{ editPlanId: string; state: ContentState; timeline: EditTimeline; summary: string | null; profileNote: string | null }>> {
+  mode: "STYLE" | "PLAIN" | "FULL";
+  /** FULL only: "Try another hook" / restore a removed line / graphics removed. */
+  choices?: FullEditChoices;
+}): Promise<StepResult<{ editPlanId: string; state: ContentState; timeline: EditTimeline; summary: string | null; profileNote: string | null; fullEdit: FullEditReport | null }>> {
   const session = await requireSession();
   try {
-    const r = await applyStyleCutChoice(prisma, storage, input.contentItemId, input.mode, session.user!.id!);
+    const r = await applyStyleCutChoice(prisma, storage, input.contentItemId, input.mode, session.user!.id!, input.choices ?? {});
     if (!r.ok) return { ok: false, error: r.error };
-    return { ok: true, editPlanId: r.editPlanId, state: await stateOf(input.contentItemId), timeline: r.timeline, summary: r.summary, profileNote: r.profileNote };
+    return { ok: true, editPlanId: r.editPlanId, state: await stateOf(input.contentItemId), timeline: r.timeline, summary: r.summary, profileNote: r.profileNote, fullEdit: r.fullEdit ?? null };
   } catch (err) {
-    return { ok: false, error: plainError(err, input.mode === "STYLE" ? "The style cut" : "Going back to the full take") };
+    return { ok: false, error: plainError(err, input.mode === "STYLE" ? "The style cut" : input.mode === "FULL" ? "The full edit" : "Going back to the full take") };
+  }
+}
+
+/** "For new uploads": Full edit (default) or Cuts only. Audit-logged (setFlag). */
+export async function setAutoEditModeAction(mode: "FULL" | "CUTS"): Promise<StepResult> {
+  const session = await requireSession();
+  try {
+    await setAutoEditMode(prisma, mode, session.user!.id!);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: plainError(err, "Saving the setting") };
   }
 }
 

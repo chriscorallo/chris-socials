@@ -51,7 +51,7 @@ export function Inspector() {
     sel?.kind === "clip" ? "Clip" : sel?.kind === "text" ? "Text" : sel?.kind === "zoom" ? "Zoom" : sel?.kind === "visual" ? "Graphic" : "Selection";
   const tabs: Array<[InspectorTab, string]> = [
     ["selection", selLabel],
-    ["style", "Style cut"],
+    ["style", "Auto edit"],
     ["visuals", "Visuals"],
     ["sound", "Sound"],
     ["captions", "Captions"],

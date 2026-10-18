@@ -1,7 +1,8 @@
 import type { Viewport } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getLatestEditPlan, FINISHING_EDIT_STATES, canStartEdit, friendlyStateLabel, readStoredStyleCut } from "@chris/domain";
+import { prisma, getLatestEditPlan, FINISHING_EDIT_STATES, canStartEdit, friendlyStateLabel, readStoredStyleCut, readStoredFullEdit, getAutoEditMode } from "@chris/domain";
+import { FullEditReportSchema } from "@chris/media/timeline";
 import { startEditing } from "../flow-actions";
 import { requireSession } from "../../../../lib/session";
 import { toDatetimeLocal } from "../../../../lib/calendar-week";
@@ -109,6 +110,9 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
   });
 
   const storedStyleCut = readStoredStyleCut(plan.plan);
+  const storedFullEdit = readStoredFullEdit(plan.plan);
+  const fullEditReport = storedFullEdit && storedFullEdit.mediaAssetId === selectedId ? FullEditReportSchema.safeParse(storedFullEdit.report) : null;
+  const autoEditMode = await getAutoEditMode(prisma).catch(() => "FULL" as const);
   const entry = item.scheduleEntry;
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -127,6 +131,9 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
         active: !!storedStyleCut && storedStyleCut.mediaAssetId === selectedId && !/Finishing edit by Chris(?!: Style cut)/.test(plan.revisionReason ?? ""),
         summary: storedStyleCut?.summary ?? null,
         profileNote: storedStyleCut?.profileNote ?? null,
+        fullEdit: fullEditReport?.success ? fullEditReport.data : null,
+        fullEditActive: !!fullEditReport?.success && !/Finishing edit by Chris(?!: Full edit)/.test(plan.revisionReason ?? ""),
+        autoMode: autoEditMode,
       }}
       schedule={{
         date: toDatetimeLocal(entry?.scheduledDate ?? tomorrow),
