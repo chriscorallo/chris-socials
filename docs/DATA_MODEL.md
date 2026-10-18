@@ -158,7 +158,7 @@ externally supplied for now).
 | Entity | Purpose | Key fields |
 |---|---|---|
 | `ResearchPacket` | Spec §9 step 5 — one row per research attempt, append-only | `contentItemId, primaryClaim, facts (json), citations (json), numericInputs (json), calculationNotes?, caveats (json), confidence, contradictoryEvidence (json), prohibitedClaims (json), contentSafeWording, status, stopResearching, claimsGateResult (json, filled in once evaluated)` |
-| `ScriptVersion` | Spec §9 step 7 — one row per script draft, append-only | `contentItemId, researchPacketId?, spokenScript, beats (json), intendedPauses (json), emphasizedWords (json), visualBeats (json), requiredFactualCaveats (json), targetRuntimeSeconds, estimatedSpeakingRuntimeSeconds, followUpIdeas (json), brandGuardianReport (json, filled in once evaluated)` |
+| `ScriptVersion` | Spec §9 step 7 — one row per script draft, append-only | `contentItemId, researchPacketId?, spokenScript, beats (json), intendedPauses (json), emphasizedWords (json), visualBeats (json), requiredFactualCaveats (json), targetRuntimeSeconds, estimatedSpeakingRuntimeSeconds, followUpIdeas (json), brandGuardianReport (json, filled in once evaluated), scriptClaimsGateResult (json?), authorType ("AGENT" \| "HUMAN" \| "IMPORTED" — pasted from ChatGPT via /plan/scripts, raw block kept in AuditLog SCRIPT_IMPORTED), revisedFromId?, revisionNote?` |
 
 Both tables are append-only (episodic memory, per `/docs/ARCHITECTURE.md`) — the most recent
 row per `ContentItem` is "current." `packages/agents` defines the corresponding Zod schemas

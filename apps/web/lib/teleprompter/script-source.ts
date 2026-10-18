@@ -47,9 +47,11 @@ export function pickPrompterSource(input: PrompterInputs): PrompterSource {
   const latest = input.scriptVersions?.[0];
   if (latest && latest.spokenScript.trim()) {
     const n = input.scriptVersionCount ?? input.scriptVersions!.length;
+    // "your edit" / "from ChatGPT" (imported via /plan/scripts) / nothing for the Script agent.
+    const who = latest.authorType === "HUMAN" ? "your edit" : latest.authorType === "IMPORTED" ? "from ChatGPT" : "";
     return {
       kind: "script",
-      label: `Your script${n > 1 ? ` (v${n}${latest.authorType === "HUMAN" ? ", your edit" : ""})` : latest.authorType === "HUMAN" ? " (your edit)" : ""}`,
+      label: `Your script${n > 1 ? ` (v${n}${who ? `, ${who}` : ""})` : who ? ` (${who})` : ""}`,
       text: cleanPrompterText(latest.spokenScript),
     };
   }

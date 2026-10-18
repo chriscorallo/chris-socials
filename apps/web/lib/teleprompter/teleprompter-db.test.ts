@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { prisma, commitPlanImport, advancePlannedItemToFilmed, createContentItemFromFootage, ymdInTz, addDaysYmd } from "@chris/domain";
+import { prisma, commitPlanImport, advancePlannedItemToFilmed, createContentItemFromFootage, saveImportedScripts, ymdInTz, addDaysYmd } from "@chris/domain";
+import { videoCode } from "@chris/domain/script-import";
 import { listPrompterPicks, loadPrompterVideo, prompterCanFilm } from "./data";
 import { deliverTakes } from "./handoff";
 
@@ -110,5 +111,25 @@ describe("teleprompter (database)", () => {
     expect(r.ok).toBe(true);
     const created = await prisma.contentItem.findUniqueOrThrow({ where: { id: r.contentItemId! } });
     expect(created).toMatchObject({ title: `Prompter new ${tag}`, currentState: "FILMED" });
+  });
+
+  it("shows a script imported from ChatGPT (and a newer replace wins), and lists it as having a script", async () => {
+    const tag = uniq();
+    const ymd = addDaysYmd(ymdInTz(new Date(), TZ), 2);
+    const item = await planOne(tag, ymd);
+    const opts = { tz: TZ, plan: null, wpm: 200 };
+    const raw = (text: string) => `### VIDEO 1 | ${ymd} | ${item.title} | ${videoCode(item.id)}\nHOOK: Stop paying 1% fees.\nSCRIPT:\n${text}`;
+    const first = raw("Stop paying 1% fees. Index funds cost almost nothing [CHECK].");
+    await saveImportedScripts(prisma, { rawPaste: first, items: [{ rawBlock: first, contentItemId: item.id }] }, actor, opts);
+
+    let v = await loadPrompterVideo(prisma, item.id);
+    expect(v).toMatchObject({ state: "SCRIPTED", canFilm: true });
+    expect(v?.source).toEqual({ kind: "script", label: "Your script (from ChatGPT)", text: "Stop paying 1% fees. Index funds cost almost nothing." });
+    expect((await listPrompterPicks(prisma, TZ, 500)).find((p) => p.id === item.id)).toMatchObject({ hasScript: true });
+
+    const second = raw("Stop paying 1% fees. Here's the cheaper way.");
+    await saveImportedScripts(prisma, { rawPaste: second, items: [{ rawBlock: second, contentItemId: item.id, replace: true }] }, actor, opts);
+    v = await loadPrompterVideo(prisma, item.id);
+    expect(v?.source).toMatchObject({ label: "Your script (v2, from ChatGPT)", text: "Stop paying 1% fees. Here's the cheaper way." });
   });
 });

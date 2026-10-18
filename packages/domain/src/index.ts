@@ -133,6 +133,10 @@ export type { PostingPlan, NudgeDismissal } from "@prisma/client";
 export * from "./plan-import-db";
 export type { PlanImport } from "@prisma/client";
 
+// Scripts from ChatGPT (2026-10-17) — see docs/decisions-pending/chatgpt-scripts.md. The
+// browser-safe prompt/parser/matcher are at `@chris/domain/script-import`.
+export * from "./script-import-db";
+
 // Reference videos (2026-10-17) — private, deterministic style measurement of creators Chris
 // learns from. See docs/decisions-pending/reference-videos.md. `getReferenceStyleProfile` is the
 // typed aggregate for the edit planner (not wired into any agent yet).

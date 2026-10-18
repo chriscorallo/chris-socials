@@ -4,6 +4,7 @@ import {
   getActivePostingPlan,
   listPlannedVideos,
   listPlanImports,
+  countVideosNeedingScripts,
   addDaysYmd,
   mondayOfYmd,
   parseYmd,
@@ -45,6 +46,7 @@ export default async function PlanPage({
   const plan = await getActivePostingPlan(prisma);
   const all = await listPlannedVideos(prisma, { tz: APP_TZ });
   const imports = await listPlanImports(prisma, 5);
+  const needScripts = all.length ? await countVideosNeedingScripts(prisma, { tz: APP_TZ, fromYmd: addDaysYmd(today, -7) }) : 0;
 
   const weekEnd = addDaysYmd(mondayOfYmd(today), 7); // exclusive: next Monday
   // "This week" is rolling (next 7 days) so it is never empty on a Saturday.
@@ -105,6 +107,22 @@ export default async function PlanPage({
           <Panel className="mb-4" padding="p-4">
             <p className="text-[14px]">{sp.notice}</p>
           </Panel>
+        )}
+
+        {needScripts > 0 && (
+          <Link
+            href="/plan/scripts"
+            className="panel mb-4 flex min-h-[64px] items-center justify-between gap-3 px-4 py-3 active:opacity-70"
+            data-testid="scripts-banner"
+          >
+            <span className="min-w-0">
+              <span className="block text-[16px] font-semibold leading-snug">
+                {needScripts} video{needScripts === 1 ? "" : "s"} need{needScripts === 1 ? "s" : ""} a script
+              </span>
+              <span className="block text-[13.5px] text-[var(--color-text-muted)]">Get them from ChatGPT — free, about 15 at a time</span>
+            </span>
+            <span className="btn btn-primary !min-h-[40px] shrink-0 !px-3.5 !text-[14px]">Get scripts</span>
+          </Link>
         )}
 
         {all.length === 0 ? (

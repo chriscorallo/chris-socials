@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./planning": "./src/planning.ts",
     "./plan-import": "./src/plan-import/index.ts",
+    "./script-import": "./src/script-import/index.ts",
     "./style-metrics": "./src/style-metrics.ts"
   },
   "scripts": {

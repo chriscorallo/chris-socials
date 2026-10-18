@@ -174,9 +174,16 @@ export function isScriptVersionFilmable(
 ): { ok: true } | { ok: false; reason: string } {
   const gate = version.scriptClaimsGateResult as { result?: string } | null;
   if (gate == null) {
-    return version.authorType === "HUMAN"
-      ? { ok: false, reason: "This hand-edited script hasn't been re-checked by the Claims Gate yet." }
-      : { ok: true };
+    // Only legacy AGENT rows are grandfathered; anything a person wrote or pasted in (HUMAN,
+    // IMPORTED from ChatGPT, …) must be checked first.
+    if (version.authorType === "AGENT") return { ok: true };
+    return {
+      ok: false,
+      reason:
+        version.authorType === "IMPORTED"
+          ? "This script came from ChatGPT and hasn't been fact-checked yet."
+          : "This hand-edited script hasn't been re-checked by the Claims Gate yet.",
+    };
   }
   return gate.result === "PASS"
     ? { ok: true }
