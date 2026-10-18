@@ -10,22 +10,35 @@ import {
   parseTranscriptWords,
   readStarterSequence,
   readStoredStyleCut,
+  readStoredFullEdit,
   recordAutoStyleCut,
+  recordAutoFullEdit,
   saveStyleCutChoice,
+  saveFullEditChoice,
   autoStyleCutEligibility,
+  getAutoEditMode,
   type PrismaClient,
   type StoredStyleCut,
+  type StoredFullEdit,
 } from "@chris/domain";
 import { EditPlanOutputSchema } from "@chris/agents";
 import {
+  analyzeTakeAudio,
+  buildFullEdit,
   buildStyleCut,
   detectSilences,
   EditTimelineSchema,
+  LEXICAL_EMBEDDER,
+  nodeMeasureText,
   parseSubjectTrack,
   planToTimeline,
+  storyTargetFromProfile,
   styleCutTargetFromProfile,
   timelineDuration,
   type EditTimeline,
+  type FullEditChoices,
+  type FullEditEmbedder,
+  type FullEditReport,
   type StorageAdapter,
   type StyleCutResult,
 } from "@chris/media";
@@ -158,6 +171,8 @@ function plainTimeline(takes: LoadedTake[], keepLookFrom?: EditTimeline): EditTi
 async function silencesFor(db: PrismaClient, storage: StorageAdapter, contentItemId: string, take: LoadedTake, measure = true) {
   const plans = await db.editPlan.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" }, take: 30, select: { plan: true } });
   for (const p of plans) {
+    const fe = readStoredFullEdit(p.plan);
+    if (fe && fe.mediaAssetId === take.id && Array.isArray(fe.silences)) return fe.silences;
     const sc = readStoredStyleCut(p.plan);
     if (!sc) continue;
     const byAsset = sc.silencesByAsset?.[take.id];
@@ -244,6 +259,119 @@ async function compute(db: PrismaClient, storage: StorageAdapter, contentItemId:
   return { r, stored };
 }
 
+// ---------------------------------------------------------------------------------------
+// Full edit (free) — docs/decisions-pending/full-edit.md. $0: local MiniLM sentence
+// embeddings (falls back to hashed word stems if the model can't load), deterministic bots.
+// ---------------------------------------------------------------------------------------
+
+/** Local MiniLM, degrading to the lexical embedder (and saying so in its id) if it can't load. */
+class LocalOrLexicalEmbedder implements FullEditEmbedder {
+  private fallback = false;
+  private primary: FullEditEmbedder | null = null;
+  get id() {
+    return this.fallback || !this.primary ? `${LEXICAL_EMBEDDER.id}${this.fallback ? " (local model unavailable)" : ""}` : this.primary.id;
+  }
+  get thresholds() {
+    return this.fallback || !this.primary ? LEXICAL_EMBEDDER.thresholds : this.primary.thresholds;
+  }
+  async embed(texts: string[]): Promise<number[][]> {
+    if (!this.fallback) {
+      try {
+        if (!this.primary) {
+          const { LocalSentenceEmbedder } = await import("@chris/media/embeddings");
+          this.primary = new LocalSentenceEmbedder();
+        }
+        return await this.primary.embed(texts);
+      } catch (err) {
+        console.warn("[full-edit] local sentence model unavailable — using word overlap:", err instanceof Error ? err.message : err);
+        this.fallback = true;
+      }
+    }
+    return LEXICAL_EMBEDDER.embed(texts);
+  }
+}
+
+let embedderSingleton: FullEditEmbedder | null = null;
+/** FULL_EDIT_EMBEDDINGS=lexical forces the model-free embedder (tests, tiny hosts). */
+export function fullEditEmbedder(): FullEditEmbedder {
+  if (process.env.FULL_EDIT_EMBEDDINGS === "lexical") return LEXICAL_EMBEDDER;
+  return (embedderSingleton ??= new LocalOrLexicalEmbedder());
+}
+
+/** Silences + loudness envelope of a take: cached on an earlier full edit, else measured now. */
+async function takeAudioFor(db: PrismaClient, storage: StorageAdapter, contentItemId: string, take: LoadedTake, measure: boolean) {
+  const plans = await db.editPlan.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" }, take: 30, select: { plan: true } });
+  for (const p of plans) {
+    const fe = readStoredFullEdit(p.plan);
+    if (fe && fe.mediaAssetId === take.id && Array.isArray(fe.silences) && fe.envelope) return { silences: fe.silences, envelope: fe.envelope };
+  }
+  if (!measure) return { silences: await silencesFor(db, storage, contentItemId, take, false), envelope: null };
+  const dir = await mkdtemp(join(tmpdir(), "chris-fulledit-"));
+  try {
+    const file = join(dir, `take${extname(take.originalFilename) || ".mp4"}`);
+    await writeFile(file, await storage.get(take.storageKey));
+    const a = await analyzeTakeAudio(file);
+    return { silences: a.silences, envelope: a.envelope };
+  } catch (err) {
+    console.warn("[full-edit] audio analysis failed — using word timings only:", err instanceof Error ? err.message : err);
+    return { silences: null, envelope: null };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+type FullEditComputed =
+  | { ok: true; timeline: EditTimeline; stored: StoredFullEdit; report: FullEditReport }
+  | { ok: false; error: string };
+
+/** The free Full edit of the selected take (one-take videos; multi-part recordings get the style cut). */
+async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, contentItemId: string, l: Loaded, choices: FullEditChoices, measure = true): Promise<FullEditComputed> {
+  if (l.takes.length > 1) return { ok: false, error: "The full edit works on one take — this video was recorded in parts, so it gets the cuts-only edit." };
+  if (!l.take.words?.length) return { ok: false, error: "The full edit needs captions first — they appear once your words are transcribed." };
+  const profile = await getReferenceStyleProfile(db, { group: "MAIN" });
+  const audio = await takeAudioFor(db, storage, contentItemId, l.take, measure);
+  const r = await buildFullEdit(
+    {
+      base: l.current,
+      mediaAssetId: l.take.id,
+      words: l.take.words,
+      durationSeconds: l.take.durationSeconds,
+      subjectTrack: l.take.subjectTrack,
+      sourceSize: l.take.width && l.take.height ? { width: l.take.width, height: l.take.height } : null,
+      silences: audio.silences,
+      envelope: audio.envelope,
+      target: styleCutTargetFromProfile(profile),
+      story: storyTargetFromProfile(profile),
+      choices,
+      measure: nodeMeasureText,
+    },
+    fullEditEmbedder(),
+  );
+  if (!r.ok) return { ok: false, error: r.message };
+  const stored: StoredFullEdit = {
+    version: r.version,
+    origin: "AUTO",
+    inputsKey: r.inputsKey,
+    summary: r.report.summary,
+    report: r.report as unknown as Record<string, unknown>,
+    choices: { ...choices },
+    mediaAssetId: l.take.id,
+    silences: audio.silences,
+    envelope: audio.envelope,
+  };
+  return { ok: true, timeline: r.timeline, stored, report: r.report };
+}
+
+/** Which automatic edit new uploads get: FULL_EDIT_AUTO=off forces Cuts only; else Chris's setting. */
+async function autoMode(db: PrismaClient): Promise<"FULL" | "CUTS"> {
+  if (process.env.FULL_EDIT_AUTO === "off") return "CUTS";
+  try {
+    return await getAutoEditMode(db);
+  } catch {
+    return "CUTS";
+  }
+}
+
 /**
  * Automatic: after captions (or the face track) land, replace an UNTOUCHED starter edit (or an
  * earlier automatic style cut whose inputs changed) with a style cut. Never touches anything
@@ -266,6 +394,24 @@ export async function maybeAutoStyleCut(
     if (!elig.eligible) return { status: "SKIPPED", reason: elig.reason };
     // The auto cut always starts from the plain take's look (the latest is untouched anyway).
     const base = { ...l, current: elig.replaces === "STARTER" ? plainTimeline(l.takes) : l.current };
+    if ((await autoMode(db)) === "FULL" && l.takes.length === 1) {
+      try {
+        const fe = await computeFullEdit(db, storage, contentItemId, base, {}, options.measureSilences ?? true);
+        if (fe.ok) {
+          const row = await recordAutoFullEdit(
+            db,
+            { contentItemId, expectedLatestPlanId: l.latest.id, timeline: fe.timeline, durationSeconds: timelineDuration(fe.timeline), fullEdit: fe.stored },
+            actor,
+          );
+          if (!row) return { status: "SKIPPED", reason: "Already up to date." };
+          return { status: "APPLIED", editPlanId: row.id, summary: fe.stored.summary, profileNote: "Full edit (free) — no AI." };
+        }
+        console.warn("[full-edit] fell back to the style cut:", fe.error);
+      } catch (err) {
+        // Graceful: one broken bot must never leave Chris with nothing — the cuts-only edit runs.
+        console.warn("[full-edit] failed — falling back to the style cut:", err instanceof Error ? err.message : err);
+      }
+    }
     const { r, stored } = await compute(db, storage, contentItemId, base, options.measureSilences ?? true);
     if (!r.ok || !stored) return { status: "SKIPPED", reason: r.ok ? "Nothing to do." : r.message };
     const row = await recordAutoStyleCut(
@@ -290,11 +436,22 @@ export async function applyStyleCutChoice(
   db: PrismaClient,
   storage: StorageAdapter,
   contentItemId: string,
-  mode: "STYLE" | "PLAIN",
+  mode: "STYLE" | "PLAIN" | "FULL",
   actorId: string,
-): Promise<{ ok: true; editPlanId: string; timeline: EditTimeline; summary: string | null; profileNote: string | null } | { ok: false; error: string }> {
+  choices: FullEditChoices = {},
+): Promise<
+  | { ok: true; editPlanId: string; timeline: EditTimeline; summary: string | null; profileNote: string | null; fullEdit?: FullEditReport | null }
+  | { ok: false; error: string }
+> {
   const l = await load(db, contentItemId);
   if ("error" in l) return { ok: false, error: l.error };
+  if (mode === "FULL") {
+    // Always from the plain take (keeping Chris's caption style/look): a full edit re-cuts everything.
+    const fe = await computeFullEdit(db, storage, contentItemId, { ...l, current: plainTimeline(l.takes, l.current) }, choices);
+    if (!fe.ok) return { ok: false, error: fe.error };
+    const row = await saveFullEditChoice(db, { contentItemId, timeline: fe.timeline, durationSeconds: timelineDuration(fe.timeline), actorId, fullEdit: fe.stored });
+    return { ok: true, editPlanId: row.id, timeline: fe.timeline, summary: fe.stored.summary, profileNote: null, fullEdit: fe.report };
+  }
   if (mode === "PLAIN") {
     const timeline = plainTimeline(l.takes, l.current);
     const row = await saveStyleCutChoice(db, { contentItemId, timeline, durationSeconds: timelineDuration(timeline), actorId, styleCut: null });

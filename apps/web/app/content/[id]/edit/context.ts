@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { InteractionContext, PlacementResult, TimelineCaptionChunk, TimelineVisual, TranscriptWord, VisualInteraction } from "@chris/media/timeline";
+import type { FullEditReport, InteractionContext, PlacementResult, TimelineCaptionChunk, TimelineVisual, TranscriptWord, VisualInteraction } from "@chris/media/timeline";
 import type { EditorAction, EditorState } from "../../../../lib/editor/reducer";
 import type { EditorAsset, EditorDoc, EditorMusicAsset, Selection } from "../../../../lib/editor/types";
 import type { PlatformId } from "../../../../lib/editor/platform-profiles";
@@ -39,6 +39,13 @@ export interface EditorStyleCut {
   active: boolean;
   summary: string | null;
   profileNote: string | null;
+  /** The free Full edit's report (hook options, removed lines, graphics, checks), if this
+   * version (or the one it was edited from) is a Full edit. */
+  fullEdit: FullEditReport | null;
+  /** The current version IS the full edit (not a later hand edit of it). */
+  fullEditActive: boolean;
+  /** Which automatic edit new uploads get (Chris's setting). */
+  autoMode: "FULL" | "CUTS";
 }
 
 export interface EditorContextValue {

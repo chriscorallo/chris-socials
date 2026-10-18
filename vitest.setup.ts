@@ -14,3 +14,7 @@ process.env.DATABASE_URL = inject("testDatabaseUrl");
 // Every automated test uses MockModelProvider; make an accidental real (billed) model call
 // impossible rather than merely unlikely.
 delete process.env.ANTHROPIC_API_KEY;
+
+// The Full edit's sentence embeddings: the model-free embedder in tests (deterministic, no
+// model download); the local MiniLM path is exercised by the evidence runs.
+process.env.FULL_EDIT_EMBEDDINGS ??= "lexical";

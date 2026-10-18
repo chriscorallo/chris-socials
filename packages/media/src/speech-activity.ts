@@ -96,6 +96,31 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+/** Loudness envelope: RMS dBFS per `frameS` (default 100 ms) — the Full edit's delivery-energy
+ * signal (a line said louder/with more energy than the rest of the take). Pure. */
+export function loudnessEnvelopeFromPcm(pcm: Float32Array, sampleRate: number, frameS = 0.1): { frameS: number; db: number[] } {
+  const frame = Math.max(1, Math.round(sampleRate * frameS));
+  const n = Math.floor(pcm.length / frame);
+  const db: number[] = new Array(n);
+  for (let f = 0; f < n; f++) {
+    let sum = 0;
+    const off = f * frame;
+    for (let i = 0; i < frame; i++) {
+      const v = pcm[off + i]!;
+      sum += v * v;
+    }
+    db[f] = Math.round(10 * Math.log10(sum / frame + 1e-12) * 10) / 10;
+  }
+  return { frameS, db };
+}
+
+/** Node: one decode → silences + loudness envelope (the Full edit's audio inputs). */
+export async function analyzeTakeAudio(filePath: string, options: Partial<SilenceOptions> = {}): Promise<SilenceAnalysis & { envelope: { frameS: number; db: number[] } }> {
+  const { extractAudioPcm16k, WHISPER_SAMPLE_RATE } = await import("./transcription/local-whisper");
+  const pcm = await extractAudioPcm16k(filePath);
+  return { ...detectSilencesFromPcm(pcm, WHISPER_SAMPLE_RATE, options), envelope: loudnessEnvelopeFromPcm(pcm, WHISPER_SAMPLE_RATE) };
+}
+
 /** Node: decodes a take's audio (16 kHz mono via ffmpeg) and finds its silences. */
 export async function detectSilences(filePath: string, options: Partial<SilenceOptions> = {}): Promise<SilenceAnalysis> {
   const { extractAudioPcm16k, WHISPER_SAMPLE_RATE } = await import("./transcription/local-whisper");

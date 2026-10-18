@@ -1,0 +1,89 @@
+{
+ "wholeFileDb": -13.717228439200024,
+ "splices": [
+  {
+   "cut": 1,
+   "at": 2.8,
+   "jump": 0.0003,
+   "before30ms": -61.6,
+   "after30ms": -61.8
+  },
+  {
+   "cut": 2,
+   "at": 6.5,
+   "jump": 0.0003,
+   "before30ms": -59,
+   "after30ms": -60.2
+  },
+  {
+   "cut": 3,
+   "at": 8.07,
+   "jump": 0.0003,
+   "before30ms": -61.7,
+   "after30ms": -60.2
+  },
+  {
+   "cut": 4,
+   "at": 9.93,
+   "jump": 0.0003,
+   "before30ms": -60.1,
+   "after30ms": -60.9
+  },
+  {
+   "cut": 5,
+   "at": 12.6,
+   "jump": 0.0003,
+   "before30ms": -61,
+   "after30ms": -62.3
+  },
+  {
+   "cut": 6,
+   "at": 15.7,
+   "jump": 0.0003,
+   "before30ms": -61.3,
+   "after30ms": -60.3
+  },
+  {
+   "cut": 7,
+   "at": 18.4,
+   "jump": 0.0004,
+   "before30ms": -61.4,
+   "after30ms": -60.7
+  },
+  {
+   "cut": 8,
+   "at": 19.47,
+   "jump": 0.0003,
+   "before30ms": -58,
+   "after30ms": -62
+  },
+  {
+   "cut": 9,
+   "at": 23.2,
+   "jump": 0.0004,
+   "before30ms": -59.3,
+   "after30ms": -59
+  },
+  {
+   "cut": 10,
+   "at": 25.77,
+   "jump": 0.0003,
+   "before30ms": -61.3,
+   "after30ms": -62
+  },
+  {
+   "cut": 11,
+   "at": 28,
+   "jump": 0.0003,
+   "before30ms": -59.6,
+   "after30ms": -60.6
+  },
+  {
+   "cut": 12,
+   "at": 30.67,
+   "jump": 0.0004,
+   "before30ms": -61,
+   "after30ms": -59.3
+  }
+ ]
+}

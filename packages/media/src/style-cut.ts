@@ -210,8 +210,9 @@ export interface StyleCutShot {
   sourceEnd: number;
   framing: StyleCutFramingName;
   /** "PAUSE" = the cut before this shot removed a pause; "RHYTHM" = framing change only;
-   * "JOIN" = the first shot of the next part of a multi-part recording. */
-  cutBefore: "START" | "PAUSE" | "RHYTHM" | "JOIN";
+   * "JOIN" = the first shot of the next part of a multi-part recording; "STORY" = the Full edit
+   * removed or reordered words here (a retake, a repeat, the cold-open jump). */
+  cutBefore: "START" | "PAUSE" | "RHYTHM" | "JOIN" | "STORY";
 }
 
 export interface StyleCutStats {
@@ -299,7 +300,8 @@ function hash(s: string): string {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-function cleanWords(words: TranscriptWord[] | null | undefined, duration: number): TranscriptWord[] {
+/** Valid words, clamped to the take, in time order (shared with the Full edit). */
+export function cleanWords(words: TranscriptWord[] | null | undefined, duration: number): TranscriptWord[] {
   return (words ?? [])
     .filter((w) => w && typeof w.word === "string" && w.word.trim() && Number.isFinite(w.start) && Number.isFinite(w.end))
     .map((w) => ({ word: w.word.trim(), start: clamp(w.start, 0, duration), end: clamp(Math.max(w.start, w.end), 0, duration) }))
@@ -962,4 +964,95 @@ function headFits(w: Window, head: NormBox, captionTop: number): boolean {
   const y1 = (head.y - w.top) / w.fh;
   const y2 = (head.y + head.h - w.top) / w.fh;
   return x1 >= 0.02 && x2 <= 0.98 && y1 >= 0.02 && y2 <= captionTop;
+}
+
+// ---------------------------------------------------------------------------------------
+// Ranges: the Full edit's assembly (packages/media full-edit) — the style cut's pause
+// tightening + face-centred framing applied to an ordered list of source ranges of ONE take
+// (story order: a cold-open hook first, then the story with retakes/fluff removed).
+// ---------------------------------------------------------------------------------------
+
+export interface StyleCutRange {
+  /** Source seconds; edges should sit inside a measured pause (the Full edit puts them at the
+   * middle of the pause between the last kept word and the first removed one). */
+  start: number;
+  end: number;
+}
+
+export interface StyleCutRangesInput {
+  base: EditTimeline;
+  mediaAssetId: string;
+  words: TranscriptWord[] | null | undefined;
+  durationSeconds: number;
+  subjectTrack?: SubjectTrack | null;
+  sourceSize?: { width: number; height: number } | null;
+  silences?: Array<{ start: number; end: number }> | null;
+  target?: StyleCutTarget;
+  options?: Partial<StyleCutOptions>;
+  /** Playback order (may jump backwards — a cold open). */
+  ranges: StyleCutRange[];
+  /** Framing alternation offset (1 → the first shot is a TIGHT punch-in). */
+  framingOffset?: number;
+  /** Silence kept after the last word of a range that isn't the last one (s). */
+  joinTailS?: number;
+}
+
+export interface StyleCutRangeShot extends StyleCutShot {
+  rangeIndex: number;
+}
+
+export type StyleCutRangesResult =
+  | { ok: true; timeline: EditTimeline; shots: StyleCutRangeShot[]; pausesRemoved: number; pauseSecondsRemoved: number; speechTiming: "AUDIO" | "WHISPER"; faceTracked: boolean }
+  | { ok: false; reason: "NO_TRANSCRIPT" | "NO_DURATION" | "NO_RANGES"; message: string };
+
+/** Pure. Each range is cut like a take of its own (dead air at its edges trimmed, pauses inside
+ * shortened), the results concatenated in the given order; framing alternates across ranges. */
+export function buildStyleCutFromRanges(input: StyleCutRangesInput): StyleCutRangesResult {
+  const opts: StyleCutOptions = { ...DEFAULT_STYLE_CUT_OPTIONS, ...input.options };
+  const target = input.target ?? DEFAULT_STYLE_CUT_TARGET;
+  const duration = input.durationSeconds;
+  if (!(duration > 0)) return { ok: false, reason: "NO_DURATION", message: "This take has no length yet — wait for it to finish processing." };
+  const words = cleanWords(input.words, duration);
+  if (words.length === 0) return { ok: false, reason: "NO_TRANSCRIPT", message: "Needs captions first — they appear once your words are transcribed." };
+  const ranges = input.ranges.map((r) => ({ start: clamp(r.start, 0, duration), end: clamp(r.end, 0, duration) })).filter((r) => r.end - r.start > FRAME);
+  if (ranges.length === 0) return { ok: false, reason: "NO_RANGES", message: "Nothing left to play." };
+  const offset = input.framingOffset ?? 0;
+  const shots: StyleCutRangeShot[] = [];
+  let pausesRemoved = 0;
+  let pauseSecondsRemoved = 0;
+  let audio = true;
+  ranges.forEach((r, ri) => {
+    const last = ri === ranges.length - 1;
+    const local = words
+      .filter((w) => (w.start + w.end) / 2 >= r.start && (w.start + w.end) / 2 <= r.end)
+      .map((w) => ({ word: w.word, start: Math.max(0, w.start - r.start), end: Math.max(0, Math.min(r.end, w.end) - r.start) }));
+    const sil = input.silences
+      ? input.silences.map((s) => ({ start: Math.max(r.start, s.start) - r.start, end: Math.min(r.end, s.end) - r.start })).filter((s) => s.end > s.start)
+      : null;
+    const dur = r.end - r.start;
+    if (local.length === 0) {
+      shots.push({ sourceStart: q(r.start, "ceil"), sourceEnd: q(r.end, "floor"), framing: "WIDE", cutBefore: ri === 0 ? "START" : "STORY", rangeIndex: ri });
+      return;
+    }
+    const o = last ? opts : { ...opts, tailS: Math.min(opts.tailS, input.joinTailS ?? Math.max(0.16, target.sentencePauseKeepS * 0.6)) };
+    const c = cutOneTake(local, dur, sil && sil.length ? sil : null, o, target, offset + shots.length, ri === 0);
+    if (c.speech.mode !== "AUDIO") audio = false;
+    pausesRemoved += c.pausesRemoved;
+    pauseSecondsRemoved += c.pauseSecondsRemoved;
+    c.shots.forEach((s, k) => {
+      // Back to source time, on the frame grid.
+      const a = q(s.sourceStart + r.start, "round");
+      const b = q(s.sourceEnd + r.start, "round");
+      if (b - a < FRAME - 1e-9) return;
+      shots.push({ ...s, sourceStart: a, sourceEnd: b, cutBefore: ri === 0 && k === 0 ? "START" : k === 0 ? "STORY" : s.cutBefore, rangeIndex: ri });
+    });
+  });
+  if (shots.length === 0) return { ok: false, reason: "NO_RANGES", message: "Nothing left to play." };
+  // Framings alternate continuously across ranges.
+  shots.forEach((s, i) => (s.framing = framingForShot(offset + i)));
+  const canvas = input.base.canvas;
+  const src = input.sourceSize && input.sourceSize.width > 0 && input.sourceSize.height > 0 ? input.sourceSize : canvas;
+  const track = trackOrNull(input.subjectTrack);
+  const clips = framedClips(shots, shots.map(() => ({ mediaAssetId: input.mediaAssetId, track, src })), input.base);
+  return { ok: true, timeline: styleCutTimeline(input.base, clips), shots, pausesRemoved, pauseSecondsRemoved: r3(pauseSecondsRemoved), speechTiming: audio ? "AUDIO" : "WHISPER", faceTracked: !!track };
 }
