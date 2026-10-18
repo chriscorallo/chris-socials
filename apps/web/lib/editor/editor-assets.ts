@@ -1,4 +1,4 @@
-import { parsePreviewMeta, parseSubjectTrackRecord, parseTranscriptWords } from "@chris/domain";
+import { parsePreviewMeta, parseSubjectTrackRecord, parseTranscriptWords, PREVIEW_META_VERSION } from "@chris/domain";
 import { TAKE_COLORS, type EditorAsset } from "./types";
 
 /** The MediaAsset columns the editor needs (a Prisma MediaAsset row satisfies it). */
@@ -25,7 +25,10 @@ export interface EditorAssetRow {
  */
 export function editorAssetsFrom(rows: EditorAssetRow[]): EditorAsset[] {
   return rows.map((a, i) => {
-    const meta = parsePreviewMeta(a.previewMeta);
+    const parsed = parsePreviewMeta(a.previewMeta);
+    // A proxy from before rotation-aware sizing (v1) can be squashed sideways — ignore it (play the
+    // original) until the background job regenerates it.
+    const meta = parsed?.v === PREVIEW_META_VERSION ? parsed : null;
     const proxied = !!a.proxyStorageKey && !!meta;
     const originalUrl = `/api/media/${a.storageKey}`;
     return {

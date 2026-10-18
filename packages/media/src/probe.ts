@@ -24,6 +24,8 @@ interface FfprobeStream {
   height?: number;
   avg_frame_rate?: string;
   duration?: string;
+  tags?: { rotate?: string };
+  side_data_list?: Array<{ rotation?: number }>;
 }
 
 interface FfprobeOutput {
@@ -58,10 +60,18 @@ export async function probeMedia(filePath: string): Promise<ProbeResult> {
     frameRate = num !== undefined && den ? num / den : null;
   }
 
+  // DISPLAY size, not the coded size: iPhone footage is stored landscape with a 90° rotation flag,
+  // and every consumer (players, ffmpeg's autorotate, layout, crops) sees it upright. Using the
+  // coded size made vertical takes look sideways to the app (e.g. a 1280x720 preview proxy).
+  const rotation = Number(videoStream?.side_data_list?.find((d) => d.rotation != null)?.rotation ?? videoStream?.tags?.rotate ?? 0);
+  const quarterTurn = Math.abs(Math.round(rotation / 90)) % 2 === 1;
+  const codedW = videoStream?.width ?? null;
+  const codedH = videoStream?.height ?? null;
+
   return {
     durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : 0,
-    width: videoStream?.width ?? null,
-    height: videoStream?.height ?? null,
+    width: quarterTurn ? codedH : codedW,
+    height: quarterTurn ? codedW : codedH,
     frameRate,
     hasVideo: Boolean(videoStream),
     hasAudio: Boolean(audioStream),

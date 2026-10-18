@@ -112,3 +112,33 @@ describe("makePreviewAssets (real ffmpeg)", () => {
     expect(statSync(r.proxyPath).size).toBeLessThan(statSync(src).size * 2);
   }, 60000);
 });
+
+describe("rotated (iPhone-style) footage", () => {
+  let dir = "";
+  let rotated = "";
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "chris-rot-"));
+    const plain = join(dir, "plain.mp4");
+    rotated = join(dir, "rotated.mp4");
+    // Stored landscape 640x360 with a 90° display rotation, like an iPhone portrait clip.
+    await runFfmpegRaw(["-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=2", "-f", "lavfi", "-i", "sine=duration=2", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", plain]);
+    await runFfmpegRaw(["-y", "-display_rotation:v:0", "90", "-i", plain, "-c", "copy", rotated]);
+  }, 60_000);
+  afterAll(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  it("probeMedia reports the DISPLAY size (upright), not the coded landscape size", async () => {
+    const p = await probeMedia(rotated);
+    expect({ w: p.width, h: p.height }).toEqual({ w: 360, h: 640 });
+  });
+
+  it("the preview proxy of a rotated take is upright, even when told the coded size", async () => {
+    const out = join(dir, "out");
+    const res = await makePreviewAssets(rotated, dir, { width: 640, height: 360, fps: 30, durationSeconds: 2, hasAudio: true });
+    expect(res.plan.proxy.height).toBeGreaterThan(res.plan.proxy.width);
+    const proxyProbe = await probeMedia(res.proxyPath);
+    expect(proxyProbe.height! > proxyProbe.width!).toBe(true);
+    void out;
+  }, 60_000);
+});

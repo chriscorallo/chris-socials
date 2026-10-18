@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
-import { recordPreviewAssets, type PrismaClient } from "@chris/domain";
+import { recordPreviewAssets, parsePreviewMeta, PREVIEW_META_VERSION, type PrismaClient } from "@chris/domain";
 import type { PreviewAssetsResult, StorageAdapter } from "@chris/media";
 
 /**
@@ -48,9 +48,16 @@ export async function makePreviewForMediaAsset(
     const make = options.make ?? (await defaultMaker());
     const src = join(work, `take${extname(asset.originalFilename) || ".mp4"}`);
     await writeFile(src, await storage.get(asset.storageKey));
+    // Older takes were stored with the CODED size (sideways for iPhone footage) — correct the row
+    // to the display size so layout/crops/placement see the take upright.
+    const { displayDimensions } = await import("@chris/media");
+    const shown = await displayDimensions(src).catch(() => null);
+    if (shown && (shown.width !== asset.width || shown.height !== asset.height)) {
+      await db.mediaAsset.update({ where: { id: asset.id }, data: { width: shown.width, height: shown.height } });
+    }
     const res = await make(src, work, {
-      width: asset.width,
-      height: asset.height,
+      width: shown?.width ?? asset.width,
+      height: shown?.height ?? asset.height,
       fps: asset.frameRate,
       durationSeconds: asset.durationSeconds,
       hasAudio: asset.hasAudio !== false,
@@ -63,7 +70,7 @@ export async function makePreviewForMediaAsset(
     await recordPreviewAssets(
       db,
       asset.id,
-      { proxyStorageKey: proxyKey, filmstripStorageKey: stripKey, meta: { proxy: res.plan.proxy, filmstrip: res.plan.filmstrip, peaks: res.peaks } },
+      { proxyStorageKey: proxyKey, filmstripStorageKey: stripKey, meta: { v: PREVIEW_META_VERSION, proxy: res.plan.proxy, filmstrip: res.plan.filmstrip, peaks: res.peaks } },
       { actorId: actor.actorId, actorType: "JOB" },
       { ms: res.ms, sourceCodec: asset.videoCodec },
     );
@@ -93,7 +100,7 @@ export async function ensurePreviewProxies(
   const out: PreviewProxyJobResult[] = [];
   for (const id of ids) {
     const a = await db.mediaAsset.findUniqueOrThrow({ where: { id } });
-    if (!options.force && a.proxyStorageKey) {
+    if (!options.force && a.proxyStorageKey && parsePreviewMeta(a.previewMeta)?.v === PREVIEW_META_VERSION) {
       out.push({ mediaAssetId: id, status: "SKIPPED", proxyStorageKey: a.proxyStorageKey });
       continue;
     }

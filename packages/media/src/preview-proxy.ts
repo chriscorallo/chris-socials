@@ -17,6 +17,7 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { FFMPEG_PATH } from "./ffmpeg-paths";
+import { displayDimensions } from "./subject-track";
 
 import { planPreviewAssets, peaksFromPcm, PEAKS_PER_SECOND, type PreviewPlan } from "./preview-plan";
 
@@ -98,7 +99,10 @@ export async function makePreviewAssets(
   src: { width: number; height: number; fps: number | null; durationSeconds: number; hasAudio: boolean },
 ): Promise<PreviewAssetsResult> {
   const t0 = Date.now();
-  const plan = planPreviewAssets(src);
+  // Plan from the file's real DISPLAY size (rotation applied) — ffmpeg autorotates the frames, so
+  // planning from stored/coded dims squeezed vertical iPhone takes into a landscape proxy.
+  const shown = await displayDimensions(srcPath).catch(() => null);
+  const plan = planPreviewAssets(shown ? { ...src, width: shown.width, height: shown.height } : src);
   const proxyPath = join(outDir, "proxy.mp4");
   const filmstripPath = join(outDir, "filmstrip.jpg");
   await run(proxyFfmpegArgs(srcPath, proxyPath, plan, src.hasAudio));

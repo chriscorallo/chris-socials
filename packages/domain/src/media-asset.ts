@@ -346,7 +346,10 @@ export function isPreviewStorageKeyFor(contentItemId: string, storageKey: string
   return storageKey.startsWith(`proxies/${contentItemId}/`) && !storageKey.includes("..");
 }
 
+/** Bumped when previews must be regenerated (2: rotation-aware sizing — v1 squashed vertical iPhone takes). */
+export const PREVIEW_META_VERSION = 2;
 export const PreviewMetaSchema = z.object({
+  v: z.number().int().optional(),
   proxy: z.object({ width: z.number().int().positive(), height: z.number().int().positive(), fps: z.number().positive(), gopFrames: z.number().int().positive(), videoKbps: z.number().positive() }),
   filmstrip: z.object({
     count: z.number().int().positive(),
