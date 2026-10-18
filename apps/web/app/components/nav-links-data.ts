@@ -30,6 +30,7 @@ export const MORE_LINKS: { href: string; label: string; hint: string }[] = [
   { href: "/reference", label: "Reference", hint: "Creators you learn from" },
   { href: "/settings/ai", label: "AI credit", hint: "What the AI has cost, and top up" },
   { href: "/settings/connections", label: "Connections", hint: "Instagram, TikTok, YouTube" },
+  { href: "/settings/diagnostics", label: "Editor diagnostics", hint: "How smoothly the editor ran on your phone, and any glitches you reported" },
 ];
 
 /** Every destination, once. */

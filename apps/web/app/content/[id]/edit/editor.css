@@ -1367,7 +1367,8 @@ html:has(.ed-root) body {
  * ==================================================================================== */
 .ed-m {
   --ed-top-h: 52px;
-  --ed-mtl-max: 236px;
+  /* timeline capped lower than before (236 → 220): the preview gets the height (editor-rebuild) */
+  --ed-mtl-max: 220px;
   grid-template-areas: "top" "banner" "stage" "side";
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -1381,7 +1382,7 @@ html:has(.ed-root) body {
 @media (max-height: 700px) {
   .ed-m {
     --ed-top-h: 48px;
-    --ed-mtl-max: 200px;
+    --ed-mtl-max: 176px;
   }
 }
 @media (min-height: 1000px) {
@@ -1484,6 +1485,7 @@ html:has(.ed-root) body {
 /* stage */
 .ed-m-stage {
   grid-area: stage;
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1498,6 +1500,40 @@ html:has(.ed-root) body {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px 2px;
+}
+/* floating beside the picture (top-right column) */
+.ed-m-stagetools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.ed-m-chip-plain {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.ed-m-glitch {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 9;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: var(--color-text-faint);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.ed-m-glitch:active {
+  color: var(--color-gold-400);
 }
 .ed-seg-compact button {
   height: 32px;
@@ -1569,7 +1605,7 @@ html:has(.ed-root) body {
   flex: none;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  height: 58px;
+  height: 52px;
   padding: 0 6px 0 16px;
 }
 .ed-m-time {
@@ -2138,7 +2174,41 @@ html:has(.ed-root) body {
   padding: 0 12px;
   font-size: 14px;
 }
-.ed-m .ed-seg.ed-seg-compact button {
+.ed-m .ed-seg/* floating beside the picture (top-right column) */
+.ed-m-stagetools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.ed-m-chip-plain {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.ed-m-glitch {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 9;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: var(--color-text-faint);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.ed-m-glitch:active {
+  color: var(--color-gold-400);
+}
+.ed-seg-compact button {
   height: 32px;
   padding: 0 10px;
   font-size: 13px;

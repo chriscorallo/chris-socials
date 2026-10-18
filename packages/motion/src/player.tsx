@@ -44,6 +44,15 @@ export interface VisualsPreviewProps {
   height: number;
   /** Default 30. Use the render's fps for frame-exact parity. */
   fps?: number;
+  /**
+   * Lite mode: CSS/SVG filters (glows, drop shadows, blurs, the scene-integration filter) are
+   * switched off. WebKit rasterises those on the CPU every frame — measured 0.5–1 s of main
+   * thread per frame in Safari's engine, 0 in Chrome (docs/decisions-pending/editor-rebuild.md).
+   * The editor uses it while playing/scrubbing; positions and timing are unchanged.
+   */
+  lite?: boolean;
+  /** Mount 3D scenes from the start once idle (default true). In WebKit that setup takes seconds. */
+  premount3d?: boolean;
   fontBaseUrl?: string;
   style?: CSSProperties;
 }
@@ -54,7 +63,9 @@ export function previewDurationFrames(timeline: Pick<EditTimeline, "visuals" | "
   return Math.max(1, Math.ceil(Math.max(clipsEnd, visEnd) * fps));
 }
 
-export function VisualsPreview({ timeline, currentTime, playing, width, height, fps = 30, fontBaseUrl = "/api/fonts", style, interactions = null, depthFilter = "ALL", playingQuality = 0.6 }: VisualsPreviewProps) {
+const LITE_CSS = ".chris-motion-lite *{filter:none!important;-webkit-filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}";
+
+export function VisualsPreview({ timeline, currentTime, playing, width, height, fps = 30, fontBaseUrl = "/api/fonts", style, interactions = null, depthFilter = "ALL", playingQuality = 0.6, lite = false, premount3d: allowPremount3d = true }: VisualsPreviewProps) {
   const ref = useRef<PlayerRef>(null);
   const canvas = timeline.canvas ?? { width: 1080, height: 1920 };
   const durationInFrames = previewDurationFrames(timeline, fps);
@@ -64,6 +75,7 @@ export function VisualsPreview({ timeline, currentTime, playing, width, height, 
   // After the editor has settled (idle, or 2 s at most), mount the 3D scenes up front.
   const [premount3d, setPremount3d] = useState(false);
   useEffect(() => {
+    if (!allowPremount3d) return;
     const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
     if (w.requestIdleCallback) {
       const id = w.requestIdleCallback(() => setPremount3d(true), { timeout: 2000 });
@@ -71,31 +83,26 @@ export function VisualsPreview({ timeline, currentTime, playing, width, height, 
     }
     const id = window.setTimeout(() => setPremount3d(true), 1200);
     return () => window.clearTimeout(id);
-  }, []);
+  }, [allowPremount3d]);
   const inputProps = useMemo<VisualsLayerProps>(
     () => ({ visuals: timeline.visuals, canvas, fontBaseUrl, clipMode: false, interactions, motionTheme: timeline.motionTheme ?? null, depthFilter, previewQuality: { maxDpr, premount3d } }),
     [timeline.visuals, canvas, fontBaseUrl, interactions, timeline.motionTheme, depthFilter, maxDpr, premount3d],
   );
   const target = Math.max(0, Math.min(durationInFrames - 1, Math.round(currentTime * fps)));
 
+  // Frame-locked to the editor's clock: the Player never runs its own clock (which drifted and
+  // re-seeked by up to 2 frames — graphics jumping against the footage). The editor re-renders
+  // this at most once per frame.
   useEffect(() => {
     const p = ref.current;
     if (!p) return;
-    if (playing) {
-      if (!p.isPlaying()) {
-        p.seekTo(target);
-        p.play();
-      } else if (Math.abs(p.getCurrentFrame() - target) > 2) {
-        p.seekTo(target);
-      }
-    } else {
-      if (p.isPlaying()) p.pause();
-      if (p.getCurrentFrame() !== target) p.seekTo(target);
-    }
+    if (p.isPlaying()) p.pause();
+    if (p.getCurrentFrame() !== target) p.seekTo(target);
   }, [playing, target]);
 
   return (
-    <div style={{ position: "absolute", inset: 0, width, height, pointerEvents: "none", ...style }}>
+    <div className={lite ? "chris-motion-lite" : undefined} style={{ position: "absolute", inset: 0, width, height, pointerEvents: "none", ...style }}>
+      {lite ? <style>{LITE_CSS}</style> : null}
       <Player
         ref={ref}
         component={VisualsLayer}

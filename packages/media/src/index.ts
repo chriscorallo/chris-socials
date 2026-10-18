@@ -49,6 +49,7 @@ export * from "./style-cut";
 export * from "./speech-activity";
 export * from "./viewer-audio";
 export * from "./preview-proxy";
+export * from "./graphic-bake";
 export * from "./graphics/contract";
 export * from "./graphics/presets";
 export * from "./graphics/quick-entry";

@@ -1568,3 +1568,54 @@ model FilmArtifact {
 
   @@index([filmId, createdAt])
 }
+
+// Editor health telemetry (docs/decisions-pending/editor-rebuild.md): one compact report per
+// editor session checkpoint or "Something glitched" snapshot, written by the editor on Chris's
+// phone so preview problems are measured on the real device instead of guessed. Timings,
+// counters and device facts only — never media, transcript text or titles. Append-only rows
+// (a session posts cumulative checkpoints; the diagnostics page shows the latest per session);
+// pruned automatically to the newest 400 rows / 30 days.
+model EditorHealthReport {
+  id            String   @id @default(cuid())
+  userId        String
+  contentItemId String?
+  /// Client-generated id of one editor session (one open of the editor).
+  sessionId     String
+  /// "session" (checkpoint) | "glitch" (Chris tapped "Something glitched").
+  kind          String
+  /// Preview engine that ran: "compositor" (WebCodecs + WebGL) | "video" (<video> pool).
+  engine        String?
+  userAgent     String?
+  report        Json
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([sessionId, createdAt])
+}
+
+// A motion graphic pre-rendered for the editor PREVIEW by the real Remotion renderer (half
+// size, colour over alpha stacked in one H.264 stream) so the phone composites a decoded
+// video instead of running live DOM/WebGL with filters every frame. Keyed by a hash of
+// everything that changes the graphic's pixels (graphicBakeKey); renders never read these.
+// Preview cache, not history: superseded bakes are deleted (row + file).
+model GraphicBake {
+  id            String   @id @default(cuid())
+  contentItemId String
+  key           String
+  /// PENDING | READY | FAILED
+  status        String   @default("PENDING")
+  /// { visual, interaction, canvas, motionTheme, fps } — what the job renders.
+  input         Json
+  storageKey    String?
+  fps           Int      @default(30)
+  frames        Int?
+  width         Int?
+  height        Int?
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([contentItemId, key])
+  @@index([contentItemId, status])
+  @@index([storageKey])
+}

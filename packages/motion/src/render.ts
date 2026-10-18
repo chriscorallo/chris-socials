@@ -195,3 +195,122 @@ export async function renderVisualsLayer(input: RenderVisualsLayerInput): Promis
   }
   return { outputPath: input.outputPath, framesRendered, segments, skipped: errors, renderMs: Date.now() - started, bundleMs };
 }
+
+// ---------------------------------------------------------------------------------------
+// Editor preview bakes (docs/decisions-pending/editor-rebuild.md)
+// ---------------------------------------------------------------------------------------
+
+export interface RenderVisualBakeInput {
+  visual: unknown;
+  interaction: VisualInteraction | null;
+  canvas: { width: number; height: number };
+  motionTheme: EditTimeline["motionTheme"] | null;
+  fps: number;
+  /** fraction of the canvas (0.5 → 540x960 for 1080x1920) */
+  scale: number;
+  /** .mp4 output (H.264, colour on top, alpha as grey below) */
+  outputPath: string;
+  workDir: string;
+}
+
+/**
+ * One graphic for the editor PREVIEW, rendered by the same Remotion composition the export
+ * uses (`VisualClip`, frame 0 = the visual's first frame), at `scale`, then packed for any
+ * browser's hardware H.264 decoder: colour in the top half, alpha as grey in the bottom half,
+ * key frame every 15 frames, no B-frames, +faststart. The preview composites it in WebGL.
+ */
+export async function renderVisualBake(input: RenderVisualBakeInput): Promise<{ frames: number; width: number; height: number; ms: number }> {
+  const started = Date.now();
+  const { parsed, errors } = parseVisuals([input.visual]);
+  const pv = parsed[0];
+  if (!pv) throw new Error(`invalid graphic: ${errors[0]?.error ?? "unknown"}`);
+  const win = visualFrameWindow(pv.visual, input.fps);
+  const frames = win.durationInFrames;
+  const { renderMedia, selectComposition, openBrowser, ensureBrowser } = await import("@remotion/renderer");
+  const { serveUrl } = await getMotionBundle();
+  const browserExecutable = findLocalHeadlessShell();
+  if (!browserExecutable) await ensureBrowser();
+  const browser = await openBrowser("chrome", { browserExecutable, chromiumOptions: { gl: rendererGl() } });
+  const mov = join(input.workDir, "bake.mov");
+  try {
+    const inputProps = {
+      visuals: [pv.visual],
+      canvas: input.canvas,
+      fontBaseUrl: null,
+      clipMode: true,
+      fps: input.fps,
+      durationInFrames: frames,
+      interactions: input.interaction ? { [pv.visual.id]: input.interaction } : null,
+      motionTheme: input.motionTheme ?? null,
+    };
+    const composition = await selectComposition({ serveUrl, id: "VisualClip", inputProps, puppeteerInstance: browser, chromiumOptions: { gl: rendererGl() }, logLevel: "error" });
+    await renderMedia({
+      serveUrl,
+      composition,
+      inputProps,
+      codec: "prores",
+      proResProfile: "4444",
+      pixelFormat: "yuva444p10le",
+      imageFormat: "png",
+      colorSpace: "bt709",
+      muted: true,
+      scale: input.scale,
+      puppeteerInstance: browser,
+      chromiumOptions: { gl: rendererGl() },
+      logLevel: "error",
+      outputLocation: mov,
+      concurrency: Number(process.env.REMOTION_CONCURRENCY) > 0 ? Number(process.env.REMOTION_CONCURRENCY) : null,
+    });
+  } finally {
+    await browser.close({ silent: true }).catch(() => undefined);
+  }
+  const width = Math.round((input.canvas.width * input.scale) / 2) * 2;
+  const height = Math.round((input.canvas.height * input.scale) / 2) * 2;
+  const { FFMPEG_PATH } = await import("@chris/media");
+  const { spawn } = await import("node:child_process");
+  await new Promise<void>((resolve, reject) => {
+    const args = [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      mov,
+      "-filter_complex",
+      `[0:v]scale=${width}:${height},format=yuva444p,split[c][a];[a]alphaextract,format=gray,format=yuv444p[al];[c]format=yuv444p[cc];[cc][al]vstack=inputs=2,format=yuv420p[out]`,
+      "-map",
+      "[out]",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-profile:v",
+      "high",
+      "-crf",
+      "20",
+      "-g",
+      "15",
+      "-keyint_min",
+      "15",
+      "-sc_threshold",
+      "0",
+      "-bf",
+      "0",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
+      "-colorspace",
+      "bt709",
+      "-movflags",
+      "+faststart",
+      input.outputPath,
+    ];
+    const p = spawn(FFMPEG_PATH, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    p.stderr.on("data", (d) => (err += String(d)));
+    p.on("error", reject);
+    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg bake pack failed (${code}): ${err.slice(-400)}`))));
+  });
+  return { frames, width, height: height * 2, ms: Date.now() - started };
+}

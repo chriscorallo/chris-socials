@@ -4,7 +4,7 @@ import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { auth } from "../../../../auth";
 import { prisma } from "@chris/domain";
-import { storage, getLocalStorage } from "../../../../lib/storage";
+import { storage, getLocalStorage, streamFromStorage } from "../../../../lib/storage";
 
 /**
  * Authenticated media serving for raw takes (MediaAsset), rendered outputs (Render) and
@@ -33,18 +33,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   // A take's editor preview proxy / filmstrip sprite (preview-only; renders use the original).
   const proxyOf = asset || matteOf ? null : await prisma.mediaAsset.findFirst({ where: { OR: [{ proxyStorageKey: storageKey }, { filmstripStorageKey: storageKey }] } });
   const isFilmstrip = !!proxyOf && proxyOf.filmstripStorageKey === storageKey;
-  const render = asset || matteOf || proxyOf ? null : await prisma.render.findFirst({ where: { storageKey } });
+  // A graphic baked for the editor preview (docs/decisions-pending/editor-rebuild.md).
+  const bake = asset || matteOf || proxyOf ? null : storageKey.startsWith("bakes/") ? await prisma.graphicBake.findFirst({ where: { storageKey }, select: { id: true } }) : null;
+  const render = asset || matteOf || proxyOf || bake ? null : await prisma.render.findFirst({ where: { storageKey } });
   // A reference video (private, preview-only on the Reference pages — never a render input).
-  const reference = asset || matteOf || proxyOf || render ? null : await prisma.referenceContent.findFirst({ where: { mediaStorageKey: storageKey } });
-  if (!asset && !render && !matteOf && !proxyOf && !reference) {
+  const reference = asset || matteOf || proxyOf || render || bake ? null : await prisma.referenceContent.findFirst({ where: { mediaStorageKey: storageKey } });
+  if (!asset && !render && !matteOf && !proxyOf && !reference && !bake) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const contentType = asset?.mimeType ?? reference?.mediaMimeType ?? (isFilmstrip ? "image/jpeg" : "video/mp4");
   // Header-safe filename: strip quotes/control chars rather than trusting the upload name.
-  const filename = (asset?.originalFilename ?? reference?.mediaFilename ?? (matteOf ? "matte.mp4" : isFilmstrip ? "filmstrip.jpg" : proxyOf ? "preview.mp4" : "render.mp4")).replace(/[^\w.-]+/g, "_");
+  const filename = (asset?.originalFilename ?? reference?.mediaFilename ?? (matteOf ? "matte.mp4" : isFilmstrip ? "filmstrip.jpg" : proxyOf ? "preview.mp4" : bake ? "graphic.mp4" : "render.mp4")).replace(/[^\w.-]+/g, "_");
+  // Editor-preview files are write-once (bakes are content-addressed by key).
+  const previewCache = bake ? "private, max-age=31536000, immutable" : proxyOf ? "private, max-age=86400" : null;
 
   const local = getLocalStorage();
   if (!local) {
+    // The compositor preview reads proxies/bakes with fetch(); if the Blob origin refuses that
+    // cross-origin read, it asks for the bytes through the app instead (`?stream=1`).
+    if ((proxyOf || bake) && new URL(request.url).searchParams.get("stream") === "1") {
+      const stream = await streamFromStorage(storageKey);
+      if (stream) return new NextResponse(stream, { headers: { "Content-Type": contentType, "Cache-Control": previewCache ?? "private, max-age=0" } });
+    }
     return NextResponse.redirect(await storage.signedUrl(storageKey, 600), 302);
   }
 
@@ -55,7 +65,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
     "Content-Disposition": `inline; filename="${filename}"`,
     // Preview proxies/filmstrips are write-once per take: let the phone keep them (no re-download
     // every time the editor opens). Everything else revalidates as before.
-    "Cache-Control": proxyOf ? "private, max-age=86400" : "private, max-age=0, must-revalidate",
+    "Cache-Control": previewCache ?? "private, max-age=0, must-revalidate",
     "Accept-Ranges": "bytes",
   };
 

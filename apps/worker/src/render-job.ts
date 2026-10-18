@@ -129,6 +129,17 @@ export interface MotionModule {
     onProgress?: (p: number) => void;
   }): Promise<{ framesRendered: number; segments: VisualOverlaySegment[]; skipped: Array<{ id: string; error: string }>; renderMs: number }>;
   sfxFiles(): Partial<Record<SfxSound, string>>;
+  /** One graphic for the editor preview (graphics-bake job); optional for older hosts/fakes. */
+  renderVisualBake?(input: {
+    visual: unknown;
+    interaction: VisualInteraction | null;
+    canvas: { width: number; height: number };
+    motionTheme: EditTimeline["motionTheme"] | null;
+    fps: number;
+    scale: number;
+    outputPath: string;
+    workDir: string;
+  }): Promise<{ frames: number; width: number; height: number; ms: number }>;
 }
 
 export interface MotionOptions {
@@ -153,7 +164,7 @@ export type RenderProgress = (p: { pct: number; message: string; stage: string }
  * never try to pull Remotion/webpack/three into a serverless bundle; only the worker process
  * that actually renders visuals loads it.
  */
-async function defaultLoadMotion(): Promise<MotionModule> {
+export async function defaultLoadMotion(): Promise<MotionModule> {
   // A host process can register its own loader. The web app does (apps/web/instrumentation.ts):
   // inside the Next.js server, Node's native ESM loader can't run @chris/motion's TypeScript
   // source (extensionless relative imports), and Remotion must never be bundled into the app,

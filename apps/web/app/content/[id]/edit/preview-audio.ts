@@ -45,6 +45,7 @@ type AudioCtx = AudioContext;
 export class PreviewAudio {
   private cfg: PreviewAudioConfig | null = null;
   private ctx: AudioCtx | null = null;
+  private sharedCtx = false;
   private el: HTMLAudioElement | null = null;
   private elUrl: string | null = null;
   private gain: GainNode | null = null;
@@ -73,12 +74,19 @@ export class PreviewAudio {
     for (const u of this.unsub) u();
     this.unsub = [];
     this.dropMusic();
-    void this.ctx?.close().catch(() => undefined);
+    if (!this.sharedCtx) void this.ctx?.close().catch(() => undefined);
     this.ctx = null;
   }
 
   private ensureCtx(): AudioCtx | null {
     if (this.ctx) return this.ctx;
+    // The compositor engine's context (its clock is the master clock; iOS unlocks it on play).
+    const shared = this.engine.audioContext();
+    if (shared) {
+      this.ctx = shared;
+      this.sharedCtx = true;
+      return shared;
+    }
     const Ctor = (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext) as typeof AudioContext | undefined;
     if (!Ctor) return null;
     try {

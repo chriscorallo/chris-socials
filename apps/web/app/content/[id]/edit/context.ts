@@ -85,6 +85,10 @@ export interface EditorContextValue {
   loadSavedVersion: (doc: EditorDoc, state?: string) => void;
   styleCut: EditorStyleCut;
   setStyleCut: (s: EditorStyleCut) => void;
+  /** Graphics the compositor draws from bakes (the live Remotion layer skips these). */
+  bakedIds: Set<string>;
+  /** "Something glitched": snapshot the last ~20 s of editor health into a report. */
+  reportGlitch: () => void;
 }
 
 export const EditorContext = createContext<EditorContextValue | null>(null);

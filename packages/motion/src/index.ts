@@ -7,5 +7,5 @@
 export * from "./timing";
 export * from "./samples";
 export * from "./style";
-export { renderVisualsLayer, getMotionBundle, findLocalHeadlessShell, type RenderVisualsLayerInput, type RenderVisualsLayerResult } from "./render";
+export { renderVisualsLayer, renderVisualBake, getMotionBundle, findLocalHeadlessShell, type RenderVisualsLayerInput, type RenderVisualsLayerResult, type RenderVisualBakeInput } from "./render";
 export { resolveSfxDir, sfxFiles, sfxFileName, resolveRemotionEntry } from "./assets";
