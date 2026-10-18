@@ -1,5 +1,6 @@
 import { parseHhmm, weekdayOfYmd } from "../tz";
-import { PLAN_PLATFORMS, type PlanPlatform, type PostingPlanData } from "../posting-plan-core";
+import { PLAN_PLATFORMS, type PlanPlatform } from "../plan-platforms";
+import type { PostingPlanData } from "../posting-plan-core";
 import { normalizeTitleKey } from "./rows";
 import type { PlanDraftRow } from "./types";
 

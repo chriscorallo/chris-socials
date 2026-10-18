@@ -15,7 +15,7 @@ import {
   weekDays,
   type CalendarView,
 } from "../../lib/calendar-views";
-import { addDaysYmd } from "@chris/domain/planning";
+import { addDaysYmd } from "@chris/domain/tz";
 import { Legend } from "./calendar-ui";
 import { Agenda, MonthCompact, MonthDesktop, TimeGrid, type Deadline, type ViewProps } from "./views";
 import { EventSheetBody, Sheet, type SheetState } from "./EventSheet";

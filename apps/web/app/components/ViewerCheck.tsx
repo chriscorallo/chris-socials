@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useJobProgress } from "../../lib/use-job-progress";
 import { plainJobError } from "../../lib/heavy-job-text";
+import { thumbUrlForMediaUrl } from "../../lib/media-urls";
 import {
   attentionStrip,
   isAiUnavailableError,
@@ -220,7 +221,8 @@ function ViewerResult({ latest, mediaUrl, variant }: { latest: ViewerReviewView;
           src={`${mediaUrl}#t=0.1`}
           controls
           playsInline
-          preload="metadata"
+          preload="none"
+          poster={thumbUrlForMediaUrl(mediaUrl)}
           onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
           className="aspect-[9/16] max-h-[340px] w-auto self-center rounded-xl bg-black"
           data-testid="viewer-player"

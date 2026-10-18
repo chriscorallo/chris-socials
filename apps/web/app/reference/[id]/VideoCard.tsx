@@ -92,8 +92,9 @@ export function VideoCard({
     <li className="panel flex flex-col gap-1.5 p-4" data-testid="ref-video">
       {v.mediaStorageKey && (
         <video
-          src={`/api/media/${v.mediaStorageKey.split("/").map(encodeURIComponent).join("/")}#t=0.5`}
-          preload="metadata"
+          src={`/api/media/${v.mediaStorageKey.split("/").map(encodeURIComponent).join("/")}`}
+          poster={`/api/thumb/${v.mediaStorageKey.split("/").map(encodeURIComponent).join("/")}`}
+          preload="none"
           muted
           playsInline
           controls

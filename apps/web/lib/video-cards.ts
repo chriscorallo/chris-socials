@@ -1,5 +1,6 @@
 import { prisma, homeGroupFor, nextActionFor, listOpenRecordingDrafts, type ContentState, type HomeGroup, type NextAction } from "@chris/domain";
 import { APP_TZ } from "./calendar-data";
+import { thumbUrlFor } from "./media-urls";
 
 /** Everything a video card shows: thumbnail source, plain status, the one next action. */
 export interface VideoCardData {
@@ -8,7 +9,7 @@ export interface VideoCardData {
   state: ContentState;
   group: HomeGroup;
   next: NextAction;
-  /** /api/media URL of the latest good render, else the first take — null = placeholder. */
+  /** Poster (/api/thumb) of the latest good render, else the first take — null = placeholder. */
   thumbUrl: string | null;
   /** "Scheduled for Tue, Oct 21, 9:00 AM" etc. — null when there's nothing time-bound. */
   when: string | null;
@@ -55,7 +56,7 @@ export async function loadVideoCards(opts: { states?: ContentState[]; limit?: nu
       // A discarded recording draft leaves an ingested video with no takes — it needs footage
       // again (same rule as the plan board), not "Edit video".
       next: nextActionFor(r.mediaAssets.length === 0 && (r.currentState === "MEDIA_INGESTED" || r.currentState === "TAKE_SELECTED") ? "FILMED" : r.currentState, draft),
-      thumbUrl: key ? `/api/media/${key}` : null,
+      thumbUrl: key ? thumbUrlFor(key) : null,
       when,
       postUrl: pub?.url ?? null,
       updatedAt: r.updatedAt,

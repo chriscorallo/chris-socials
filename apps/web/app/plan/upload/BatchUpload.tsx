@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { formatYmdShort, matchClipsToPlan, type MatchConfidence } from "@chris/domain/plan-import";
-import { ymdInTz } from "@chris/domain/planning";
+import { ymdInTz } from "@chris/domain/tz";
 import { uploadRawTake } from "../../../lib/upload-client";
 import { createVideoForClip, makeStarterEdit, preparePlannedUpload } from "../actions";
 

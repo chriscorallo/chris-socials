@@ -8,6 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./planning": "./src/planning.ts",
+    "./tz": "./src/tz.ts",
+    "./friendly-status": "./src/friendly-status.ts",
     "./plan-import": "./src/plan-import/index.ts",
     "./script-import": "./src/script-import/index.ts",
     "./plan-context": "./src/plan-context/index.ts",

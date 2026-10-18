@@ -1,4 +1,4 @@
-import { PLAN_PLATFORMS, type PlanPlatform } from "../posting-plan-core";
+import { PLAN_PLATFORMS, type PlanPlatform } from "../plan-platforms";
 
 /**
  * Platform words people actually type in a plan → the three platforms this app publishes to.

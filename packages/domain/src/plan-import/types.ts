@@ -1,4 +1,4 @@
-import type { PlanPlatform } from "../posting-plan-core";
+import type { PlanPlatform } from "../plan-platforms";
 import type { DateSpec } from "./dates";
 
 export type PlanPillar = "SKILL" | "MINDSET" | "LIFESTYLE" | "PASSIONS";

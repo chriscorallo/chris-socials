@@ -12,6 +12,7 @@ import {
   parseYmd,
   ymdInTz,
   type PlannedVideo,
+  queryAll,
 } from "@chris/domain";
 import { formatTime12, formatYmdShort, plannedVideoStatus, PRE_FILM_STATES } from "@chris/domain/plan-import";
 import { requireSession } from "../../lib/session";
@@ -45,12 +46,17 @@ export default async function PlanPage({
   const range: Range = sp.range === "week" || sp.range === "all" ? sp.range : "month";
   const mode = sp.mode === "film" ? "film" : "board";
   const today = ymdInTz(new Date(), APP_TZ);
-  const plan = await getActivePostingPlan(prisma);
-  const all = await listPlannedVideos(prisma, { tz: APP_TZ });
-  const imports = await listPlanImports(prisma, 5);
+  // Independent reads together on Neon, one at a time on PGlite (queryAll); only the drafts
+  // lookup needs the planned ids.
+  const [plan, all, imports, planContexts, scriptsNeeded] = await queryAll([
+    () => getActivePostingPlan(prisma),
+    () => listPlannedVideos(prisma, { tz: APP_TZ }),
+    () => listPlanImports(prisma, 5),
+    () => prisma.planContext.count(),
+    () => countVideosNeedingScripts(prisma, { tz: APP_TZ, fromYmd: addDaysYmd(today, -7) }),
+  ] as const);
   const drafts = new Map((await listOpenRecordingDrafts(prisma, all.map((v) => v.id))).map((d) => [d.contentItemId, d]));
-  const planContexts = await prisma.planContext.count();
-  const needScripts = all.length ?await countVideosNeedingScripts(prisma, { tz: APP_TZ, fromYmd: addDaysYmd(today, -7) }) : 0;
+  const needScripts = all.length ? scriptsNeeded : 0;
 
   const weekEnd = addDaysYmd(mondayOfYmd(today), 7); // exclusive: next Monday
   // "This week" is rolling (next 7 days) so it is never empty on a Saturday.

@@ -46,7 +46,7 @@ export function NavLinks() {
       {PRIMARY_LINKS.map((link) => {
         const active = isActive(link.href, pathname);
         return (
-          <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} className={LINK + (active ? ON : OFF)}>
+          <Link key={link.href} href={link.href} prefetch={true} aria-current={active ? "page" : undefined} className={LINK + (active ? ON : OFF)}>
             {link.label}
           </Link>
         );

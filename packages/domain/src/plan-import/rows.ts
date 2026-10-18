@@ -1,5 +1,5 @@
 import { combineSpecs, resolveDateSpec, specIsRelative, formatTime12, type DateSpec } from "./dates";
-import type { PlanPlatform } from "../posting-plan-core";
+import type { PlanPlatform } from "../plan-platforms";
 import type { ParseContext, ParseResult, PlanDraftRow, PlanPillar } from "./types";
 import { weekdayOfYmd } from "../tz";
 import { formatYmdShort } from "./preview";

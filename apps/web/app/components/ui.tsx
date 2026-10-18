@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SubmitButton } from "./SubmitButton";
-import { friendlyStateLabel, friendlyStateTone } from "@chris/domain/planning";
+import { friendlyStateLabel, friendlyStateTone } from "@chris/domain/friendly-status";
 import type { ContentState } from "@chris/domain/planning";
 
 /**

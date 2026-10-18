@@ -91,7 +91,7 @@ export function TimeGrid({
     >
       <div style={{ width: `calc(var(--gw) + ${days.length} * ${colW})` }}>
         {/* Header */}
-        <div className={`sticky top-0 z-20 border-b ${variant === "day" ? "hidden" : "flex"} border-[var(--color-border)] bg-[#0b0b0e]/95 backdrop-blur`}>
+        <div className={`sticky top-0 z-20 border-b ${variant === "day" ? "hidden" : "flex"} border-[var(--color-border)] bg-[#0b0b0e]/95`}>
           <div data-gutter className="sticky left-0 z-30 shrink-0 bg-[#0b0b0e]" style={{ width: "var(--gw)" }} />
           {days.map((d) => {
             const isToday = d === p.today;
@@ -119,7 +119,7 @@ export function TimeGrid({
 
         {/* All-day lane: pipeline deadlines ("Film 2 by Wed") on the day they fall due. */}
         {deadlinesIn.length > 0 && (
-          <div className="sticky top-[61px] z-20 flex border-b border-[var(--color-border)] bg-[#0b0b0e]/95 backdrop-blur">
+          <div className="sticky top-[61px] z-20 flex border-b border-[var(--color-border)] bg-[#0b0b0e]/95">
             <div className="sticky left-0 z-30 flex shrink-0 items-center justify-end bg-[#0b0b0e] pr-1.5 text-[10px] text-[var(--color-text-faint)]" style={{ width: "var(--gw)" }}>
               due
             </div>
@@ -425,7 +425,7 @@ export function DayHeader({ ymd, today, count, sticky = false }: { ymd: string; 
   const rel = ymd === today ? "Today" : null;
   return (
     <div
-      className={`flex items-baseline justify-between gap-3 px-1 pb-2 pt-1 ${sticky ? "sticky z-10 bg-[color-mix(in_srgb,var(--color-ink)_94%,transparent)] backdrop-blur-xl" : ""}`}
+      className={`flex items-baseline justify-between gap-3 px-1 pb-2 pt-1 ${sticky ? "sticky z-10 bg-[color-mix(in_srgb,var(--color-ink)_94%,transparent)]" : ""}`}
       style={sticky ? { top: "calc(var(--safe-top) + 48px)" } : undefined}
     >
       <p className="text-[15px] font-semibold">

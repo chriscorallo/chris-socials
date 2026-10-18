@@ -1,7 +1,7 @@
 import { parseDateText, parseTimeText } from "./dates";
 import { headerPlatform, isTruthyCell, parsePlatforms } from "./platforms";
 import { emptyPartial, finalizeRows, type PartialRow } from "./rows";
-import type { PlanPlatform } from "../posting-plan-core";
+import type { PlanPlatform } from "../plan-platforms";
 import type { ParseContext, ParseResult } from "./types";
 
 /**

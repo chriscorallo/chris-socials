@@ -1,16 +1,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { prisma, countContentItems, type Nudge } from "@chris/domain";
-import { requireSession } from "../lib/session";
-import { NavBar } from "./components/NavBar";
-import { PageShell, QuietLink } from "./components/ui";
-import { VideoCard, NextActionButton } from "./components/VideoCard";
-import { loadTodo } from "../lib/todo-data";
-import { loadVideoCards, sortInProgress, type VideoCardData } from "../lib/video-cards";
-import { APP_TZ } from "../lib/calendar-data";
-import { CourseStatusPill } from "./calendar/nudges";
-import { scheduleFromNudge } from "./calendar/actions";
-import { SubmitButton } from "./components/SubmitButton";
+import { prisma, countContentItems, queryAll, type Nudge } from "@chris/domain";
+import { requireSession } from "../../lib/session";
+import { NavBar } from "../components/NavBar";
+import { PageShell, QuietLink } from "../components/ui";
+import { VideoCard, NextActionButton } from "../components/VideoCard";
+import { loadTodo } from "../../lib/todo-data";
+import { loadVideoCards, sortInProgress, type VideoCardData } from "../../lib/video-cards";
+import { APP_TZ } from "../../lib/calendar-data";
+import { CourseStatusPill } from "../calendar/nudges";
+import { scheduleFromNudge } from "../calendar/actions";
+import { SubmitButton } from "../components/SubmitButton";
 
 // Home = your videos. Chris's words: "Where is the editor??? The flow of this app is
 // confusing." So Home answers two questions and nothing else: what should I do right now
@@ -60,10 +60,12 @@ function Section({ title, count, children, more }: { title: string; count: numbe
 
 export default async function HomePage() {
   const session = await requireSession();
-  // Sequential, not Promise.all — the PGlite dev database can't take concurrent queries.
-  const cards = await loadVideoCards({ limit: 200 });
-  const ideaCount = await countContentItems(prisma, { state: "IDEA" });
-  const { course, todo } = await loadTodo();
+  // Independent reads: together on Neon, one at a time on the PGlite dev database (queryAll).
+  const [cards, ideaCount, { course, todo }] = await queryAll([
+    () => loadVideoCards({ limit: 200 }),
+    () => countContentItems(prisma, { state: "IDEA" }),
+    () => loadTodo(),
+  ] as const);
 
   const now = new Date();
   const firstName = session.user?.name?.split(" ")[0] ?? "Chris";

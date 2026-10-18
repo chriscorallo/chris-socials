@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { getCurrentWeekThesis } from "./weekly-thesis";
+import { queryAll } from "./db-concurrency";
 
 /**
  * Home's "NEEDS YOU" queue — spec §20, verbatim: "Default human review queue should show only
@@ -72,13 +73,23 @@ export async function getNeedsYouQueue(
   const limit = opts.limit ?? 8;
   const entries: NeedsYouEntry[] = [];
 
-  // Sequential reads throughout — see /docs/DECISIONS.md's PGlite entries (no Promise.all
-  // over multiple Prisma queries).
+  // Independent reads go out together on Neon and one at a time on PGlite (queryAll — see
+  // db-concurrency.ts and /docs/DECISIONS.md's PGlite entries). Entries are still pushed in
+  // the same order as before, so the final sort's tie-breaking is unchanged.
+  const [qcBlocked, researchBlocked, failedPublications, thesis, proposedBeliefs, critiques] = await queryAll([
+    () => prisma.contentItem.findMany({ where: { currentState: "QC_BLOCKED" }, orderBy: { updatedAt: "desc" } }),
+    () => prisma.contentItem.findMany({ where: { currentState: "RESEARCH_BLOCKED" }, orderBy: { updatedAt: "desc" } }),
+    () => prisma.publication.findMany({ where: { status: "FAILED" }, orderBy: { createdAt: "desc" }, include: { contentItem: true } }),
+    () => getCurrentWeekThesis(prisma),
+    () => prisma.belief.findMany({ where: { status: "PROPOSED" }, orderBy: { createdAt: "desc" } }),
+    () =>
+      prisma.adversarialCritique.findMany({
+        where: { noMaterialWeaknessesFound: false },
+        orderBy: { createdAt: "desc" },
+        take: limit, // a critique with no cap could dominate the queue on a rough week — pre-trim
+      }),
+  ] as const);
 
-  const qcBlocked = await prisma.contentItem.findMany({
-    where: { currentState: "QC_BLOCKED" },
-    orderBy: { updatedAt: "desc" },
-  });
   for (const item of qcBlocked) {
     entries.push({
       category: "UNRESOLVED_QC",
@@ -89,10 +100,6 @@ export async function getNeedsYouQueue(
     });
   }
 
-  const researchBlocked = await prisma.contentItem.findMany({
-    where: { currentState: "RESEARCH_BLOCKED" },
-    orderBy: { updatedAt: "desc" },
-  });
   for (const item of researchBlocked) {
     entries.push({
       category: "FACTUAL_NUANCE",
@@ -103,11 +110,6 @@ export async function getNeedsYouQueue(
     });
   }
 
-  const failedPublications = await prisma.publication.findMany({
-    where: { status: "FAILED" },
-    orderBy: { createdAt: "desc" },
-    include: { contentItem: true },
-  });
   // Only the most recent attempt per (contentItem, platform) — a retry that later succeeded
   // must not leave a stale FAILED entry behind.
   const latestByKey = new Map<string, (typeof failedPublications)[number]>();
@@ -115,11 +117,18 @@ export async function getNeedsYouQueue(
     const key = `${pub.contentItemId}:${pub.platform}`;
     if (!latestByKey.has(key)) latestByKey.set(key, pub);
   }
-  for (const pub of latestByKey.values()) {
-    const latestAttempt = await prisma.publication.findFirst({
-      where: { contentItemId: pub.contentItemId, platform: pub.platform },
-      orderBy: { attempt: "desc" },
-    });
+  const failedLatest = [...latestByKey.values()];
+  const latestAttempts = await queryAll(
+    failedLatest.map(
+      (pub) => () =>
+        prisma.publication.findFirst({
+          where: { contentItemId: pub.contentItemId, platform: pub.platform },
+          orderBy: { attempt: "desc" },
+        }),
+    ),
+  );
+  for (const [i, pub] of failedLatest.entries()) {
+    const latestAttempt = latestAttempts[i];
     if (latestAttempt?.status !== "FAILED") continue; // superseded by a later, non-failed attempt
     entries.push({
       category: "PLATFORM_ISSUE",
@@ -130,7 +139,6 @@ export async function getNeedsYouQueue(
     });
   }
 
-  const thesis = await getCurrentWeekThesis(prisma);
   if (thesis) {
     const decisions = (thesis.humanDecisionsNeeded as unknown as string[]) ?? [];
     for (const decision of decisions) {
@@ -144,10 +152,6 @@ export async function getNeedsYouQueue(
     }
   }
 
-  const proposedBeliefs = await prisma.belief.findMany({
-    where: { status: "PROPOSED" },
-    orderBy: { createdAt: "desc" },
-  });
   for (const belief of proposedBeliefs) {
     entries.push({
       category: "SUBJECTIVE_CHOICE",
@@ -158,11 +162,6 @@ export async function getNeedsYouQueue(
     });
   }
 
-  const critiques = await prisma.adversarialCritique.findMany({
-    where: { noMaterialWeaknessesFound: false },
-    orderBy: { createdAt: "desc" },
-    take: limit, // a critique with no cap could dominate the queue on a rough week — pre-trim
-  });
   for (const critique of critiques) {
     const concerns = (critique.concerns as unknown as { description: string }[]) ?? [];
     const first = concerns[0]?.description ?? "The adversarial evaluator flagged a concern.";
