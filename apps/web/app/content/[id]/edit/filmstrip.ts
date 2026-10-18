@@ -79,10 +79,22 @@ async function generate(asset: EditorAsset): Promise<void> {
   }
 }
 
+/**
+ * Client-side frame grabbing is the FALLBACK: a take with a server sprite (preview proxy job)
+ * never decodes here, and a big camera original without a proxy yet (> 1080p) isn't decoded
+ * either — a third 4K decoder + its download competing with playback on an iPhone is exactly
+ * the load-time jank to avoid; its clips show their colour until the proxy's sprite arrives.
+ */
+function clientFramesAllowed(asset: EditorAsset): boolean {
+  if (asset.filmstrip) return false;
+  if (asset.proxied) return true;
+  return (asset.width ?? 0) * (asset.height ?? 0) <= 1920 * 1080 * 1.05;
+}
+
 export function useFilmstrip(asset: EditorAsset | undefined): Filmstrip | null {
   const [, force] = useState(0);
   useEffect(() => {
-    if (!asset) return;
+    if (!asset || !clientFramesAllowed(asset)) return;
     const fn = () => force((n) => n + 1);
     if (!waiters.has(asset.id)) waiters.set(asset.id, new Set());
     waiters.get(asset.id)!.add(fn);
@@ -94,7 +106,7 @@ export function useFilmstrip(asset: EditorAsset | undefined): Filmstrip | null {
       waiters.get(asset.id)?.delete(fn);
     };
   }, [asset]);
-  if (!asset) return null;
+  if (!asset || !clientFramesAllowed(asset)) return null;
   const v = cache.get(asset.id);
   return v && v !== "failed" && v.frames.length ? v : null;
 }

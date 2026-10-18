@@ -30,15 +30,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   const asset = await prisma.mediaAsset.findFirst({ where: { storageKey } });
   // A take's person matte (Motion v2 — the editor previews graphics behind Chris with it).
   const matteOf = asset ? null : await prisma.mediaAsset.findFirst({ where: { matteStorageKey: storageKey } });
-  const render = asset || matteOf ? null : await prisma.render.findFirst({ where: { storageKey } });
+  // A take's editor preview proxy / filmstrip sprite (preview-only; renders use the original).
+  const proxyOf = asset || matteOf ? null : await prisma.mediaAsset.findFirst({ where: { OR: [{ proxyStorageKey: storageKey }, { filmstripStorageKey: storageKey }] } });
+  const isFilmstrip = !!proxyOf && proxyOf.filmstripStorageKey === storageKey;
+  const render = asset || matteOf || proxyOf ? null : await prisma.render.findFirst({ where: { storageKey } });
   // A reference video (private, preview-only on the Reference pages — never a render input).
-  const reference = asset || matteOf || render ? null : await prisma.referenceContent.findFirst({ where: { mediaStorageKey: storageKey } });
-  if (!asset && !render && !matteOf && !reference) {
+  const reference = asset || matteOf || proxyOf || render ? null : await prisma.referenceContent.findFirst({ where: { mediaStorageKey: storageKey } });
+  if (!asset && !render && !matteOf && !proxyOf && !reference) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const contentType = asset?.mimeType ?? reference?.mediaMimeType ?? "video/mp4";
+  const contentType = asset?.mimeType ?? reference?.mediaMimeType ?? (isFilmstrip ? "image/jpeg" : "video/mp4");
   // Header-safe filename: strip quotes/control chars rather than trusting the upload name.
-  const filename = (asset?.originalFilename ?? reference?.mediaFilename ?? (matteOf ? "matte.mp4" : "render.mp4")).replace(/[^\w.-]+/g, "_");
+  const filename = (asset?.originalFilename ?? reference?.mediaFilename ?? (matteOf ? "matte.mp4" : isFilmstrip ? "filmstrip.jpg" : proxyOf ? "preview.mp4" : "render.mp4")).replace(/[^\w.-]+/g, "_");
 
   const local = getLocalStorage();
   if (!local) {
@@ -50,7 +53,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   const baseHeaders: Record<string, string> = {
     "Content-Type": contentType,
     "Content-Disposition": `inline; filename="${filename}"`,
-    "Cache-Control": "private, max-age=0, must-revalidate",
+    // Preview proxies/filmstrips are write-once per take: let the phone keep them (no re-download
+    // every time the editor opens). Everything else revalidates as before.
+    "Cache-Control": proxyOf ? "private, max-age=86400" : "private, max-age=0, must-revalidate",
     "Accept-Ranges": "bytes",
   };
 

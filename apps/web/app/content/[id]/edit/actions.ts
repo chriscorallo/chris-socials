@@ -12,7 +12,8 @@ import { getModelProvider } from "../../../../lib/model-provider";
 import { getRenderFontPath, heavyJobMode, isAutoSubjectTrackingEnabled } from "../../../../lib/render-config";
 import { runHeavyJob, type RunHeavyJobResult } from "../../../../lib/heavy-jobs";
 import { plainJobError } from "../../../../lib/heavy-job-text";
-import type { EditorMusicAsset } from "../../../../lib/editor/types";
+import type { EditorAsset, EditorMusicAsset } from "../../../../lib/editor/types";
+import { editorAssetsFrom } from "../../../../lib/editor/editor-assets";
 
 /**
  * Server Actions for the finishing editor. "Finish & schedule" is deliberately FOUR actions
@@ -370,4 +371,27 @@ export async function scheduleStepAction(input: {
   } catch (err) {
     return { ok: false, error: plainError(err, "Scheduling"), state: await stateOf(input.contentItemId).catch(() => undefined) };
   }
+}
+
+
+/**
+ * Editor preview proxies (docs/decisions-pending/editor-smoothness-fullscreen-platform-ui.md):
+ * takes uploaded before proxies existed get one lazily — the editor calls this once when it
+ * opens on a take without a proxy, then polls `previewAssetsAction` and switches to the proxy
+ * while paused. Background job (never blocks the editor); a busy video (another job running,
+ * e.g. the upload's own analysis, which makes the proxy too) just means "try later".
+ */
+export async function ensurePreviewProxiesAction(contentItemId: string): Promise<{ started: boolean; message?: string }> {
+  const session = await requireSession();
+  const missing = await prisma.mediaAsset.count({ where: { contentItemId, kind: "RAW_TAKE", proxyStorageKey: null, width: { not: null } } });
+  if (missing === 0) return { started: false };
+  const r = await runHeavyJob("preview-proxy", { contentItemId }, { actorId: session.user!.id!, background: true });
+  return r.status === "started" || r.status === "done" ? { started: true } : { started: false, message: r.message };
+}
+
+/** The editor's assets as they are now (picks up proxies made since the editor opened). */
+export async function previewAssetsAction(contentItemId: string): Promise<EditorAsset[]> {
+  await requireSession();
+  const rows = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } });
+  return editorAssetsFrom(rows);
 }

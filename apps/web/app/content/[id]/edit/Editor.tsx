@@ -30,12 +30,12 @@ import { usePlaybackEngine } from "./playback";
 import { usePreviewAudio } from "./preview-audio";
 import { useFootageInteractions } from "./interaction";
 import { FONT_FACE_CSS, browserMeasureText, useFontsVersion } from "./measure";
-import { saveFinishingEditAction } from "./actions";
+import { saveFinishingEditAction, ensurePreviewProxiesAction, previewAssetsAction } from "./actions";
 import { MediaBin } from "./MediaBin";
 import { Preview } from "./Preview";
 import { TimelinePanel } from "./TimelinePanel";
 import { Inspector } from "./Inspector";
-import { FinishModal } from "./FinishModal";
+import { FinishModal } from "./lazy-panels";
 import { MobileShell } from "./MobileShell";
 import { useEditorLayout } from "./layout-hooks";
 import { Icon } from "./icons";
@@ -72,7 +72,8 @@ function isTypingTarget(t: EventTarget | null): boolean {
   return false;
 }
 
-export function Editor({ item, planId, initialDoc, assets, music: initialMusic, storageMode, schedule, styleCut: initialStyleCut }: EditorProps) {
+export function Editor({ item, planId, initialDoc, assets: initialAssets, music: initialMusic, storageMode, schedule, styleCut: initialStyleCut }: EditorProps) {
+  const [assets, setAssets] = useState(initialAssets);
   const [styleCut, setStyleCut] = useState<EditorStyleCut>(initialStyleCut);
   const assetMap = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const durations = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.duration])), [assets]);
@@ -125,6 +126,43 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
   const solvePlacements = useCallback((d: EditorDoc) => solveVisualPlacements(d, placementOptions).visuals, [placementOptions]);
   // Motion v2: anchor/camera tracks, emphasis hits and scene looks — same pure engine as the render.
   const { interactions, interactionCtx } = useFootageInteractions(item.id, doc, placement.visuals, assets);
+
+  // Fast preview: takes without a proxy get one in the background; once it exists the editor
+  // switches to it (the engine swaps the source only while paused). Polls gently, stops after
+  // ~6 minutes or when every take has one. Never blocks editing.
+  const needsProxy = assets.some((a) => !a.proxied && a.width != null);
+  useEffect(() => {
+    if (!needsProxy) return;
+    let cancelled = false;
+    let timer = 0;
+    let tries = 0;
+    void ensurePreviewProxiesAction(item.id).catch(() => undefined);
+    const poll = async () => {
+      if (cancelled || ++tries > 36) return;
+      try {
+        const fresh = await previewAssetsAction(item.id);
+        if (cancelled) return;
+        const byId = new Map(fresh.map((a) => [a.id, a]));
+        if (fresh.some((a) => a.proxied)) {
+          setAssets((cur) =>
+            cur.map((a) => {
+              const f = byId.get(a.id);
+              return f && f.proxied && !a.proxied ? { ...a, url: f.url, proxied: true, filmstrip: f.filmstrip, peaks: f.peaks } : a;
+            }),
+          );
+        }
+        if (fresh.every((a) => a.proxied || a.width == null)) return;
+      } catch {
+        /* offline / session expired — try again later */
+      }
+      timer = window.setTimeout(poll, 10_000);
+    };
+    timer = window.setTimeout(poll, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [needsProxy, item.id]);
 
   const warnings = useMemo(
     // Only after fonts load on the client (fontsVersion > 0): layouts need real glyph widths,

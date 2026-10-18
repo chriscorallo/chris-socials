@@ -483,6 +483,13 @@ model MediaAsset {
   // Per-frame person matte for this take (grayscale video, same timing as the source) — lets
   // motion graphics sit BEHIND Chris. Storage key; null until computed.
   matteStorageKey  String?
+  // Editor PREVIEW assets (never render inputs — renders always use the original): a small
+  // H.264 proxy with a keyframe every 0.5 s, a filmstrip sprite (JPEG) and, in previewMeta,
+  // the proxy/sprite geometry + audio peaks. Null until generated (ingest / lazy backfill).
+  // See docs/decisions-pending/editor-smoothness-fullscreen-platform-ui.md.
+  proxyStorageKey     String?
+  filmstripStorageKey String?
+  previewMeta         Json?
 
   contentItem    ContentItem     @relation(fields: [contentItemId], references: [id])
   takeSelections TakeSelection[] @relation("SelectedTake")

@@ -1,4 +1,5 @@
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, type CSSProperties, type ReactNode } from "react";
+import { usePreviewQuality } from "../preview-quality";
 import { ThreeCanvas } from "@remotion/three";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
@@ -31,6 +32,15 @@ function StudioEnvironment({ style = "GOLD_METAL" }: { style?: IconStyle }) {
     scene.environmentIntensity = style === "SOFT_CLAY" ? 0.6 : style === "GLASS" ? 1.1 : 0.85;
     pm.dispose();
   }, [gl, scene, style]);
+  // Free the environment map when the 3D object leaves (a long editor session mounts and
+  // unmounts these canvases every time the playhead crosses a 3D graphic).
+  useEffect(
+    () => () => {
+      scene.environment?.dispose();
+      scene.environment = null;
+    },
+    [scene],
+  );
   return null;
 }
 
@@ -608,13 +618,16 @@ const ICON_FRAMING: Record<string, { y: number; scale: number; tiltX: number }> 
 };
 
 function Stage({ width, height, dpr, children, cameraZ = 6, fov = 30, cameraY = 0 }: { width: number; height: number; dpr: number; children: ReactNode; cameraZ?: number; fov?: number; cameraY?: number }) {
+  // Editor preview: draw at (at most) the resolution it's shown at; renders: unchanged.
+  const pq = usePreviewQuality();
+  const effDpr = pq ? Math.max(0.15, Math.min(dpr, pq.maxDpr)) : dpr;
   return (
     <ThreeCanvas
       width={width}
       height={height}
-      dpr={dpr}
+      dpr={effDpr}
       linear={false}
-      gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
+      gl={{ antialias: !pq, alpha: true, preserveDrawingBuffer: !pq, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       camera={{ fov, position: [0, cameraY, cameraZ], near: 0.1, far: 100 }}
       style={{ position: "absolute", inset: 0, background: "transparent" }}
     >

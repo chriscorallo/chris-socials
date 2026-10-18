@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from "react";
-import { anchorOffsetFor, layoutTimelineText, locateOutputTime, resolveGrade, timelineDuration, type TimelineCrop, type TimelineText, type TimelineVisual } from "@chris/media/timeline";
+import { anchorOffsetFor, cropGeometry, filmstripTileAt, layoutTimelineText, locateOutputTime, resolveGrade, timelineDuration, type TimelineCrop, type TimelineText, type TimelineVisual } from "@chris/media/timeline";
 import { updateClip, updateZoom, updateText, updateCaptions, setCover } from "../../../../lib/editor/timeline-ops";
 import { panAfterDrag, formatTime, vignetteGradient } from "../../../../lib/editor/preview-math";
 import { moveAnchoredVisual, placeVisualManually } from "../../../../lib/editor/visuals";
@@ -553,6 +553,7 @@ export function Canvas({ w, h, view = false, viewPlatform = null }: { w: number;
       {/* video layer: clip crop → punch-in zoom (engine) → grade (exact SVG filter) */}
       <div className="ed-layer" style={{ filter: gradeOn ? "url(#ed-grade)" : undefined }}>
         <div className="ed-layer" ref={zoomLayerRef} style={{ willChange: "transform" }}>
+          <PosterLayer w={w} h={h} />
           {slots.map((key) => (
             <video key={key} ref={engine.playerRef(key)} preload="auto" playsInline disablePictureInPicture disableRemotePlayback style={{ opacity: 0 }} aria-label="Preview video" />
           ))}
@@ -584,6 +585,51 @@ export function Canvas({ w, h, view = false, viewPlatform = null }: { w: number;
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Instant picture before the video has decoded a frame (first open, a take switching source):
+ * the filmstrip sprite's tile for the clip under the playhead, cropped exactly like the clip.
+ * It sits BEHIND the pool videos, so the real frame simply covers it once decoded.
+ */
+function PosterLayer({ w, h }: { w: number; h: number }) {
+  const { doc, engine, assetMap } = useEditor();
+  const key = usePlayheadValue(engine, (t) => {
+    const loc = locateOutputTime(doc, t);
+    if (!loc) return "";
+    const clip = doc.clips[loc.clipIndex];
+    const a = clip ? assetMap.get(clip.mediaAssetId) : undefined;
+    if (!a?.filmstrip) return "";
+    return `${loc.clipIndex}:${filmstripTileAt(a.filmstrip, loc.sourceTime).index}`;
+  });
+  if (!key) return null;
+  const [ci, ti] = key.split(":").map(Number) as [number, number];
+  const clip = doc.clips[ci];
+  const a = clip ? assetMap.get(clip.mediaAssetId) : undefined;
+  const f = a?.filmstrip;
+  if (!clip || !a || !f) return null;
+  const srcW = a.width ?? f.tileW;
+  const srcH = a.height ?? f.tileH;
+  const g = cropGeometry({ width: srcW, height: srcH }, { width: w, height: h }, clip.crop);
+  const sx = g.scaledWidth / f.tileW;
+  const sy = g.scaledHeight / f.tileH;
+  const tx = (ti % f.cols) * f.tileW;
+  const ty = Math.floor(ti / f.cols) * f.tileH;
+  return (
+    <div
+      className="pointer-events-none absolute left-0 top-0"
+      aria-hidden
+      style={{
+        width: g.scaledWidth,
+        height: g.scaledHeight,
+        transform: `translate(${-g.offsetX}px, ${-g.offsetY}px)`,
+        backgroundImage: `url(${f.url})`,
+        backgroundSize: `${f.cols * f.tileW * sx}px ${f.rows * f.tileH * sy}px`,
+        backgroundPosition: `${-tx * sx}px ${-ty * sy}px`,
+        transformOrigin: "0 0",
+      }}
+    />
   );
 }
 

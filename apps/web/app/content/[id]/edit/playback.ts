@@ -373,9 +373,12 @@ export class PlaybackEngine {
     const clip = this.doc.clips[clipIndex];
     const asset = clip ? this.assets.get(clip.mediaAssetId) : undefined;
     if (!clip || !asset) return;
-    if (el.dataset.assetId !== asset.id) {
+    // A new take — or the same take's preview proxy arriving (swapped only while paused, so
+    // playback never stalls on a source change).
+    if (el.dataset.assetId !== asset.id || (el.dataset.url !== asset.url && !this.playing)) {
       if (!el.paused) el.pause();
       el.dataset.assetId = asset.id;
+      el.dataset.url = asset.url;
       this.pendingSeek.set(el, sourceTime);
       el.src = asset.url;
       return;
