@@ -19,6 +19,7 @@ import {
   setVisualFollow,
 } from "../../../../lib/editor/visuals";
 import { useEditor } from "./context";
+import { ensurePersonCutoutAction } from "./actions";
 import { Section, Seg, Slider, Toggle } from "./Inspector";
 import { drawnPlacement, PREVIEW_FPS } from "./MotionLayer";
 import { Icon } from "./icons";
@@ -28,7 +29,7 @@ import { Icon } from "./icons";
  * undo step each, and nothing ever jumps: Behind me / Follow me pin the graphic where it's drawn.
  */
 export function InShotSection({ v }: { v: TimelineVisual }) {
-  const { apply, doc, placement, engine, interactionCtx, interactions, assets, toast } = useEditor();
+  const { apply, doc, placement, engine, interactionCtx, interactions, assets, toast, itemId } = useEditor();
   const shown = placement.visuals.find((x) => x.id === v.id) ?? v;
   const fullFrame = v.template === "TITLE_CARD";
   const anyMatte = assets.some((a) => !!a.matteUrl);
@@ -61,12 +62,23 @@ export function InShotSection({ v }: { v: TimelineVisual }) {
     <Section title="In the shot">
       {!fullFrame && (
         <div>
-          <Toggle label="Behind me" checked={behind} onChange={(on) => apply((d) => setVisualDepth(d, v.id, on, shown))} />
+          <Toggle
+            label="Behind me"
+            checked={behind}
+            onChange={(on) => {
+              apply((d) => setVisualDepth(d, v.id, on, shown));
+              if (on && !anyMatte) {
+                void ensurePersonCutoutAction(itemId).then((r) => {
+                  if (r.started) toast("Cutting you out of the background — reopen the editor in a minute or two to see it behind you. The final video does it either way.", "ok");
+                });
+              }
+            }}
+          />
           <p className="ed-hint">
             {behind
               ? anyMatte
                 ? "Sits between you and the background — you pass in front of it."
-                : "Needs your outline from the upload — until then it renders in front."
+                : "Cutting you out in the background — the preview shows it in front until that's done; the final video puts it behind you."
               : "Put it behind you, like big type behind your head."}
           </p>
         </div>

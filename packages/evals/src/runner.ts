@@ -19,6 +19,8 @@ import {
   type StructuredCompletionRequest,
 } from "@chris/agents";
 import { z } from "zod";
+import * as studio from "@chris/agents/studio";
+import { getAgentPrompt } from "@chris/agents";
 import { EditTimelineSchema } from "@chris/media/timeline";
 import { EvalCaseSchema, type Assertion, type EvalCase, type EvalCaseResult, type ResearchFixture } from "./types";
 
@@ -214,7 +216,32 @@ async function runViewerCase(provider: ModelProvider, c: ViewerCase, brandContex
   };
 }
 
+type FilmMeaningCase = Extract<EvalCase, { promptId: "FILM_MEANING_MATCH" }>;
+
+/** Free first pass (code) + the FILM_MEANING_MATCH second pass on the same fixture film. */
+async function runFilmMeaningCase(provider: ModelProvider, c: FilmMeaningCase) {
+  const film = studio.demoFilm(c.input.variant !== "flawed");
+  if (c.input.variant === "floor_alone") film.scenes[0]!.shots[5]!.actions = [{ do: "EXIT", actor: "building", at: 0 }, { do: "EXIT", actor: "car", at: 0 }, { do: "EXIT", actor: "subs", at: 0 }];
+  const first = await studio.runMeaningMatchFirstPass({ film, script: studio.DEMO_SCRIPT, catalog: studio.FALLBACK_CATALOG, embedder: new studio.LexicalEmbedder() });
+  const prompt = getAgentPrompt("FILM_MEANING_MATCH");
+  const r = await provider.completeStructured({
+    modelClass: "HIGH",
+    systemPrompt: `${getAgentPrompt("SYSTEM_BASE").body}\n\n---\n\n${prompt.body}`,
+    userPrompt: `THE FILM (DSL):\n${JSON.stringify(film)}\n\nFIRST PASS:\n${JSON.stringify(first.report)}\n\n(No storyboard image in this eval — judge from the DSL and say so in evidence.)`,
+    schema: studio.MeaningMatchReportSchema,
+    promptId: "FILM_MEANING_MATCH",
+  });
+  const verdicts = (checks: Array<{ shotId: string; verdict: string }>) => Object.fromEntries(checks.map((x) => [x.shotId, x.verdict]));
+  return {
+    firstPass: verdicts(first.report.checks),
+    firstPassForcing: first.details.filter((d) => d.forcing).map((d) => d.shotId).join(","),
+    review: verdicts(r.output.checks),
+    reviewNonMatchHaveReplacement: r.output.checks.every((x) => x.verdict === "MATCH" || !!x.replacement),
+  };
+}
+
 async function invoke(provider: ModelProvider, c: EvalCase, brandContext: string): Promise<unknown> {
+  if (c.promptId === "FILM_MEANING_MATCH") return runFilmMeaningCase(provider, c);
   if (c.promptId === "VIEWER_PANEL") return runViewerCase(provider, c, brandContext);
   if (c.promptId === "CLAIMS_GATE") {
     const research = toResearchPacket(c.input.research);

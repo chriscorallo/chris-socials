@@ -429,3 +429,17 @@ export async function recordGraphicUseAction(presetId: string): Promise<GraphicP
     return null;
   }
 }
+
+/**
+ * "Behind me" on a take with no person cut-out yet: make the cut-out now, in the background.
+ * Uploads no longer cut Chris out of every take up front (it's the slowest, costliest cloud
+ * step and most videos never put a graphic behind him) — docs/DECISIONS.md ("Person cut-out
+ * on demand"). Renders also compute a missing cut-out themselves when a graphic is behind him.
+ */
+export async function ensurePersonCutoutAction(contentItemId: string): Promise<{ started: boolean; message?: string }> {
+  const session = await requireSession();
+  const missing = await prisma.mediaAsset.count({ where: { contentItemId, kind: "RAW_TAKE", matteStorageKey: null, width: { not: null } } });
+  if (missing === 0) return { started: false };
+  const r = await runHeavyJob("person-matte", { contentItemId }, { actorId: session.user!.id!, background: true });
+  return r.status === "started" || r.status === "done" ? { started: true } : { started: false, message: r.message };
+}

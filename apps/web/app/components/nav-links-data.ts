@@ -21,6 +21,7 @@ export const MORE_LINKS: { href: string; label: string; hint: string }[] = [
   { href: "/settings/chatgpt", label: "Connect ChatGPT", hint: "Let ChatGPT save scripts from your planning chat" },
   { href: "/plan/context", label: "ChatGPT conversation", hint: "Your planning chat — read it, update your plan, give the AI context" },
   { href: "/film", label: "Film", hint: "What's ready to shoot, with hooks and talking points" },
+  { href: "/studio", label: "Mini-movie studio", hint: "An idea in, an animated short out — your crew of bots makes it, $0" },
   { href: "/ideas", label: "Ideas", hint: "Capture and browse ideas" },
   { href: "/todo", label: "To-do", hint: "What's missing to stay on your posting plan" },
   { href: "/strategy", label: "Strategy", hint: "This week's thesis and portfolio" },

@@ -185,6 +185,9 @@ importers:
         specifier: ^4.5.4
         version: 4.5.4
     devDependencies:
+      '@chris/cinema':
+        specifier: workspace:*
+        version: link:../cinema
       '@types/node':
         specifier: ^26.5.0
         version: 26.5.0
