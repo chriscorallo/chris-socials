@@ -1,0 +1,39 @@
+{
+  "name": "@chris/cinema",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./pure": "./src/pure.ts"
+  },
+  "scripts": {
+    "proof": "tsx scripts/make-film.ts"
+  },
+  "dependencies": {
+    "@chris/media": "workspace:*",
+    "@chris/motion": "workspace:*",
+    "@huggingface/transformers": "3.7.5",
+    "@react-three/fiber": "9.8.1",
+    "@remotion/bundler": "4.0.533",
+    "@remotion/renderer": "4.0.533",
+    "@remotion/three": "4.0.533",
+    "kokoro-js": "1.2.1",
+    "postprocessing": "6.39.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.533",
+    "three": "0.186.1",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@types/three": "0.186.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  }
+}
