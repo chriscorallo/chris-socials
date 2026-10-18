@@ -49,9 +49,9 @@ export type FilmTier = "DRAFT" | "PREVIEW" | "FINAL";
  * motion layer (×1.25), so treat it as ±30 %.
  */
 export const RENDER_SECONDS_PER_FILM_SECOND: Record<RenderHost, Record<FilmTier, number>> = {
-  MAC_GPU: { DRAFT: 1.2, PREVIEW: 2.4, FINAL: 3.4 },
-  MAC_CPU: { DRAFT: 14, PREVIEW: 40, FINAL: 65 },
-  SANDBOX_8VCPU: { DRAFT: 18, PREVIEW: 50, FINAL: 81 },
+  MAC_GPU: { DRAFT: 1.0, PREVIEW: 1.8, FINAL: 2.4 },
+  MAC_CPU: { DRAFT: 10, PREVIEW: 25, FINAL: 42 },
+  SANDBOX_8VCPU: { DRAFT: 13, PREVIEW: 31, FINAL: 53 },
 };
 
 /** Vercel Sandbox pricing (Pro, iad1, fetched 2026-10-17): active CPU $/vCPU-h, memory $/GB-h. */

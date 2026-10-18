@@ -25,7 +25,8 @@ function arg(name: string): string | undefined {
 const log = (event: string, data: Record<string, unknown> = {}) => console.log(JSON.stringify({ t: new Date().toISOString(), event, ...data }));
 
 export async function main(): Promise<void> {
-  const envFile = arg("env") ?? [".env.film-worker", ".env.local", ".env"].find((f) => existsSync(f));
+  // an explicit --env wins; otherwise a dotenv file only when the caller didn't already pass the database (the app's local-dev spawn does)
+  const envFile = arg("env") ?? (process.env.DATABASE_URL ? undefined : [".env.film-worker", ".env.local", ".env"].find((f) => existsSync(f)));
   if (envFile) {
     process.loadEnvFile(envFile);
     log("env_loaded", { file: envFile });

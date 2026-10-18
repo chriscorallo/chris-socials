@@ -665,7 +665,7 @@ export async function registerFilmVideo(
     await recordEditPlan(db, { contentItemId: itemId, takeSelectionId: sel.id, productionTier: "RAW", targetDurationSeconds: plan.targetDurationSeconds, doNothingElse: true, plan }, actor);
     item = await db.contentItem.findUniqueOrThrow({ where: { id: itemId } });
   }
-  let renderStatus: string | null = null;
+  let renderStatus: string | null;
   let renderError: string | null = null;
   if (item.currentState === "EDIT_PLANNED") {
     const r = await (input.renderItem ?? renderContentItem)(db, storage, itemId, {}, actor);

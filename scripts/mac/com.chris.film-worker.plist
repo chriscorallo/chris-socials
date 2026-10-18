@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Chris's Mac render worker as a login item ($0 mini-movie rendering on the Apple GPU).
+  Install (once):
+    1. Edit REPO_PATH below (2 places) to this repo's folder.
+    2. Put the production DATABASE_URL and BLOB_READ_WRITE_TOKEN in <repo>/.env.film-worker
+       (git-ignored — never commit it).
+    3. cp scripts/mac/com.chris.film-worker.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.chris.film-worker.plist
+  It starts at login, restarts if it crashes, and checks in every 30 s so the app knows the Mac is
+  online. Stop: launchctl unload ~/Library/LaunchAgents/com.chris.film-worker.plist
+  Logs: /tmp/chris-film-worker.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chris.film-worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd "REPO_PATH" &amp;&amp; exec pnpm --filter @chris/worker film-worker --env "REPO_PATH/.env.film-worker"</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/chris-film-worker.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chris-film-worker.log</string>
+</dict>
+</plist>

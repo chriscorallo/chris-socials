@@ -207,7 +207,7 @@ export function actorFootprint(kind: ActorKind, params: Record<string, unknown>)
   const h = actorCenterHeight(kind, p) * 2;
   switch (kind) {
     case "COIN_STACK":
-      return [n(p, "columns", 1) > 1 ? 1.1 * (1 + 2 * Math.ceil(Math.sqrt(n(p, "columns", 1) / 3))) : 1.2, Math.max(0.6, h)];
+      return [n(p, "columns", 1) <= 1 ? 1.2 : n(p, "columns", 1) <= 7 ? 3.3 : n(p, "columns", 1) <= 19 ? 5.5 : 7.7, Math.max(0.6, h)];
     case "PEDESTAL":
       return [n(p, "radius", 1.1) * 2.3, n(p, "height", 0.9) + 1];
     case "BUILDING":
@@ -297,9 +297,9 @@ const V_FOV_32 = 2 * Math.atan(18 / 32);
 export function defaultFraming(kind: ActorKind, params: Record<string, unknown> = {}): Framing {
   const [w, h] = actorFootprint(kind, params);
   // fit the width to ~70 % of the frame's width and the height to ~55 % of its height
-  const dw = w / 0.7 / (2 * Math.tan(H_FOV_32 / 2));
+  const dw = w / 0.82 / (2 * Math.tan(H_FOV_32 / 2));
   const dh = h / 0.55 / (2 * Math.tan(V_FOV_32 / 2));
-  const distance = Math.round((Math.max(dw, dh) + Math.max(w, 1) * 0.35) * 10) / 10;
+  const distance = Math.round((Math.max(dw, dh) + Math.min(w, 4) * 0.15) * 10) / 10;
   const elevation = kind === "FORK_PATH" || kind === "CROWD" || kind === "PIE_CHART" ? 26 : kind === "CALENDAR" || kind === "BUCKET" || kind === "COIN_STACK" ? 16 : 9;
   return { distance, focalLength: 32, elevation, lift: 0 };
 }
