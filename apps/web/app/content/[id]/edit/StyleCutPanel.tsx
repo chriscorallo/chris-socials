@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { FullEditChoices, FullEditReport } from "@chris/media/timeline";
+import type { FullEditChoices } from "@chris/media/timeline";
 import { useEditor } from "./context";
 import { setAutoEditModeAction, styleCutAction } from "./actions";
 

@@ -89,7 +89,7 @@ function featureList(text: string, sentences: FESentence[], ctx: HookContext): H
   if (beat === "LIST_ITEM") f.push({ key: "list-step", points: -1.5, evidence: "a list step out of context" });
   if (ctx.takeEndS > 0 && sentences[0]!.start > 0.78 * ctx.takeEndS) f.push({ key: "ending", points: -1.0, evidence: "it's your ending — opening on it spoils the payoff" });
   if (sentences.length > 1 && sentences[1]!.dependent === false && sentences[1]!.beat !== "NUMBER") f.push({ key: "two-thoughts", points: -0.4, evidence: "two separate thoughts" });
-  if (!sentences.every((s) => ctx.cleanEdges(s))) f.push({ key: "unclean-edges", points: -2.5, evidence: "no clean pause to cut on" });
+  if (!sentences.every((s) => ctx.cleanEdges(s))) f.push({ key: "unclean-edges", points: -6, evidence: "no clean pause to cut on" });
   return f;
 }
 

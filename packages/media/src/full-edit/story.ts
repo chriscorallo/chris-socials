@@ -255,7 +255,7 @@ export function planStory(input: StoryInput): StoryPlan {
 
   // ---- Chris's overrides.
   S.forEach((s, i) => {
-    if (forceKeep.has(s.id) && !dec[i]!.kept) Object.assign(dec[i]!, { kept: true, kind: null, why: "Restored by you", forced: true });
+    if (forceKeep.has(s.id)) Object.assign(dec[i]!, { kept: true, kind: null, why: "Restored by you", forced: true });
     if (forceDrop.has(s.id) && dec[i]!.kept && !hook.has(s.id)) Object.assign(dec[i]!, { kept: false, kind: "LOW_VALUE", why: "Removed by you", forced: true });
   });
 
