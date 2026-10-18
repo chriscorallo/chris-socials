@@ -52,7 +52,9 @@ export async function loadVideoCards(opts: { states?: ContentState[]; limit?: nu
       title: r.title,
       state: r.currentState,
       group: homeGroupFor(r.currentState),
-      next: nextActionFor(r.currentState, draft),
+      // A discarded recording draft leaves an ingested video with no takes — it needs footage
+      // again (same rule as the plan board), not "Edit video".
+      next: nextActionFor(r.mediaAssets.length === 0 && (r.currentState === "MEDIA_INGESTED" || r.currentState === "TAKE_SELECTED") ? "FILMED" : r.currentState, draft),
       thumbUrl: key ? `/api/media/${key}` : null,
       when,
       postUrl: pub?.url ?? null,
