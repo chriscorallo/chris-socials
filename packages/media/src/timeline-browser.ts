@@ -10,6 +10,7 @@ export * from "./timeline-captions";
 export * from "./font-metrics";
 export * from "./timeline-layout";
 export * from "./platform-profiles";
+export * from "./platform-ui";
 export * from "./motion-contract";
 export * from "./subject-track-core";
 export * from "./visual-footprints";

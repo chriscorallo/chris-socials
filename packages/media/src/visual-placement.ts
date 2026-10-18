@@ -20,7 +20,7 @@
  * In AUTO mode the engine owns x, y AND scale (it always solves from scale 1, so repeated
  * solves never compound a shrink). To size a graphic by hand, set it MANUAL.
  */
-import { combinedSafeZone, type SafeZonePx } from "./platform-profiles";
+import { PLACEMENT_SAFE_ZONE, type SafeZonePx } from "./platform-profiles";
 import type { Rect } from "./safe-zones";
 import { locateOutputTime, timelineDuration, clipStartTimes, type EditTimeline } from "./timeline";
 import {
@@ -172,7 +172,7 @@ function clipToCanvas(r: Rect, canvas: { width: number; height: number }): Rect 
 }
 
 /** The safe placement area in canvas px for a platform safe zone given at 1080x1920. */
-export function placementSafeArea(canvas: { width: number; height: number }, zone: SafeZonePx = combinedSafeZone()): Rect {
+export function placementSafeArea(canvas: { width: number; height: number }, zone: SafeZonePx = PLACEMENT_SAFE_ZONE): Rect {
   const sx = canvas.width / 1080;
   const sy = canvas.height / 1920;
   const left = Math.round(zone.left * sx);
@@ -382,7 +382,7 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
   const canvas = timeline.canvas;
   const k = canvas.width / 1080;
   const margin = Math.round((options.marginPx ?? 24) * k);
-  const safe = placementSafeArea(canvas, options.platformSafe ?? combinedSafeZone());
+  const safe = placementSafeArea(canvas, options.platformSafe ?? PLACEMENT_SAFE_ZONE);
   const step = Math.max(4, Math.round(16 * k));
   const captionIndex = buildCaptionIndex(timeline, options);
   const warnings: PlacementWarning[] = [];

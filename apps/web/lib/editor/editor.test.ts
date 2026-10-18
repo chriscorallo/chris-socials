@@ -7,6 +7,7 @@ import {
   resolveGrade,
   GRADE_PRESET_VALUES,
   type MeasureText,
+  type TimelineVisual,
 } from "@chris/media/timeline";
 import {
   splitAt,
@@ -341,14 +342,47 @@ describe("platform warnings (renderer layouts + PLATFORM_PROFILES)", () => {
     const w = all.find((x) => x.id === "text:t1")!;
     expect(w.platforms.sort()).toEqual(["INSTAGRAM", "TIKTOK", "YOUTUBE"]);
     expect(w.target).toEqual({ kind: "text", id: "t1" });
-    // headline block top at 250px: clears TikTok's 240px top bar but not Reels' 269px
+    // headline just below the apps' top bars (best-estimate 230 px): no warning anywhere
     const high = updateText(baseDoc(), "t1", { y: 0.161 });
-    expect(platformWarnings(high, ["INSTAGRAM"], {}, fakeMeasure).some((x) => x.id === "text:t1")).toBe(true);
-    expect(platformWarnings(high, ["TIKTOK"], {}, fakeMeasure).some((x) => x.id === "text:t1")).toBe(false);
+    expect(platformWarnings(high, ["INSTAGRAM", "TIKTOK", "YOUTUBE"], {}, fakeMeasure).some((x) => x.id === "text:t1")).toBe(false);
+    expect(safeRect(["TIKTOK", "INSTAGRAM"]).y0).toBe(269); // the derived conservative rectangle
     // too short everywhere
     const short = { ...doc, clips: [{ ...doc.clips[0]!, sourceStart: 1, sourceEnd: 1.5 }] };
     expect(platformWarnings(short, ["TIKTOK"], {}, fakeMeasure).some((x) => x.id === "duration-min:TIKTOK")).toBe(true);
-    expect(safeRect(["TIKTOK", "INSTAGRAM"]).y0).toBe(269);
+  });
+
+  it("uses each app's UI regions: right rail, caption block, edges", () => {
+    // a short text at the right edge, mid-height: under TikTok's rail (from y 760), clear of
+    // Reels' (from y 1050)
+    const right = updateText(baseDoc(), "t1", { text: "Hi", x: 0.88, y: 0.5, backgroundColor: null });
+    const tt = platformWarnings(right, ["TIKTOK"], {}, fakeMeasure).find((x) => x.id === "text:t1");
+    expect(tt?.message).toContain("like/comment buttons");
+    expect(platformWarnings(right, ["INSTAGRAM"], {}, fakeMeasure).some((x) => x.id === "text:t1")).toBe(false);
+    // low on the left: under the username/caption block
+    const low = updateText(baseDoc(), "t1", { text: "Hi", x: 0.2, y: 0.86, backgroundColor: null });
+    expect(platformWarnings(low, ["YOUTUBE"], {}, fakeMeasure).find((x) => x.id === "text:t1")?.message).toContain("caption & username");
+    // hard against the left edge: cut off on tall phones
+    const edge = updateText(baseDoc(), "t1", { text: "Hi", x: 0.02, y: 0.5, backgroundColor: null });
+    expect(platformWarnings(edge, ["INSTAGRAM"], {}, fakeMeasure).find((x) => x.id === "text:t1")?.message).toContain("edge");
+    // centred captions at the default height are clear everywhere
+    const words = { A: [{ word: "hi", start: 1.2, end: 1.6 }, { word: "there", start: 1.7, end: 2.1 }] };
+    expect(platformWarnings(baseDoc(), ["TIKTOK", "INSTAGRAM", "YOUTUBE"], words, fakeMeasure).some((x) => x.id === "captions")).toBe(false);
+    // captions dragged down into the caption block are flagged
+    const capsLow = { ...baseDoc(), captions: { ...baseDoc().captions, y: 0.86 } };
+    expect(platformWarnings(capsLow, ["TIKTOK"], words, fakeMeasure).find((x) => x.id === "captions")?.message).toContain("caption & username");
+  });
+
+  it("flags a graphic and a face under an app's buttons", () => {
+    const doc = baseDoc();
+    const visual = { id: "v1", template: "STAT_CARD", start: 1, end: 3, placement: { mode: "MANUAL", x: 0.75, y: 0.5, scale: 1 } } as unknown as TimelineVisual;
+    const ws = platformWarnings(doc, ["TIKTOK"], {}, fakeMeasure, {}, { visuals: [visual] });
+    expect(ws.find((x) => x.id === "visual-ui:v1")?.target).toEqual({ kind: "visual", id: "v1" });
+    // face (protected head box) low on the right of the source = under the rail
+    const track = [0, 2, 4, 6, 8, 10].map((t) => ({ t, box: { x: 0.78, y: 0.45, w: 0.2, h: 0.15 } }));
+    const centred = [0, 2, 4, 6, 8, 10].map((t) => ({ t, box: { x: 0.35, y: 0.2, w: 0.3, h: 0.2 } }));
+    const sizes = { A: { width: 1080, height: 1920 } };
+    expect(platformWarnings(doc, ["TIKTOK"], {}, fakeMeasure, sizes, { tracks: { A: track } }).find((x) => x.id === "face:TIKTOK")?.message).toContain("like/comment");
+    expect(platformWarnings(doc, ["TIKTOK"], {}, fakeMeasure, sizes, { tracks: { A: centred } }).some((x) => x.id.startsWith("face:"))).toBe(false);
   });
 
   it("flags captions overlapping a text (the Quality Gate's collision check)", () => {

@@ -294,13 +294,6 @@
   top: 50%;
   height: 1px;
 }
-.ed-safe {
-  position: absolute;
-  pointer-events: none;
-  border: 1px dashed rgba(255, 255, 255, 0.35);
-  border-radius: 6px;
-  transition: opacity 0.2s;
-}
 
 .ed-transport {
   display: flex;
@@ -1041,26 +1034,258 @@ textarea.ed-input {
   opacity: 1;
 }
 
-/* platform chrome mock */
-.ed-chrome {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  color: rgba(255, 255, 255, 0.9);
+/* platform UI mock (PlatformMock.tsx) */
+.ed-mock-edit {
+  opacity: 0.88;
   animation: ed-fade 0.2s ease;
 }
-.ed-chrome-dim {
+.ed-mock-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--color-text-muted);
+  border: 1px solid var(--ed-line);
+  background: rgba(255, 255, 255, 0.05);
+}
+.ed-mock-toggle[aria-pressed="true"] {
+  color: var(--color-text);
+}
+.ed-m .ed-mock-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+}
+
+/* full screen (Fullscreen.tsx): the stage box becomes a fixed, edge-to-edge overlay */
+.ed-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+  overscroll-behavior: none;
+  animation: ed-fade 0.18s ease;
+}
+.ed-fs .ed-canvas.ed-canvas-view {
+  border-radius: 0;
+  box-shadow: none;
+}
+.ed-fs-enter {
   position: absolute;
-  background: rgba(0, 0, 0, 0.28);
-}
-.ed-chrome-icon {
+  right: 14px;
+  bottom: 10px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  background: rgba(20, 20, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
-.ed-chrome-bar {
+.ed-fs-enter.ed-fs-enter-inline {
+  position: static;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  box-shadow: none;
+}
+.ed-fs-touch {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  touch-action: none;
+  transition: opacity 0.15s;
+}
+.ed-fs-top,
+.ed-fs-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.ed-fs-top {
+  top: 0;
+  justify-content: space-between;
+  padding-top: max(10px, env(safe-area-inset-top));
+  padding-bottom: 18px;
+  background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
+}
+.ed-fs-bottom {
+  bottom: 0;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  padding-top: 22px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+}
+/* with an app's UI shown, the scrub bar sits where the app's own progress bar is: just above its nav bar */
+.ed-fs-bottom.ed-fs-bottom-app {
+  padding-bottom: 2px;
+  background: none;
+}
+.ed-fs-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.ed-fs-top.ed-fs-hidden {
+  transform: translateY(-8px);
+}
+.ed-fs-bottom.ed-fs-hidden {
+  transform: translateY(8px);
+}
+.ed-fs-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.75);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.ed-fs-btn[aria-pressed="true"] {
+  color: var(--color-gold-400);
+}
+.ed-fs-seg {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.ed-fs-seg-label {
+  padding: 0 6px 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+}
+.ed-fs-seg button {
+  height: 34px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+.ed-fs-seg button[aria-pressed="true"] {
+  color: #000;
+  background: #fff;
+}
+.ed-fs-time {
+  flex: none;
+  min-width: 34px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+.ed-fs-scrub {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: none;
+}
+.ed-fs-scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fff var(--p, 0%), rgba(255, 255, 255, 0.3) var(--p, 0%));
+}
+.ed-fs-scrub::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fff var(--p, 0%), rgba(255, 255, 255, 0.3) var(--p, 0%));
+}
+.ed-fs-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.ed-fs-scrub::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+}
+.ed-fs-bigplay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  margin: -38px 0 0 -38px;
+  padding-left: 5px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
+  animation: ed-fade 0.15s ease;
+}
+.ed-fs-nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-around;
+  padding: 12px max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+  background: #000;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+.ed-fs-nav-item i {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+}
+.ed-fs-nav-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 28px;
+  border-radius: 9px;
+  color: #000;
+  background: #fff;
 }
 
 /* small shared bits (both shells) */

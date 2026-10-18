@@ -166,6 +166,7 @@ export class PreviewAudio {
     const t = this.engine.time;
     const playing = this.engine.playing;
     // ---- music
+    if (this.el && this.el.muted !== this.engine.muted) this.el.muted = this.engine.muted;
     if (this.el) {
       if (!playing || !cfg?.music || !cfg.musicAsset) {
         if (!this.el.paused) this.el.pause();
@@ -181,7 +182,7 @@ export class PreviewAudio {
       }
     }
     // ---- sound effects: fire the ones the playhead just crossed (not on seeks/jumps)
-    if (playing && cfg && this.ctx && this.lastT >= 0 && t >= this.lastT && t - this.lastT < 0.5) {
+    if (playing && cfg && this.ctx && !this.engine.muted && this.lastT >= 0 && t >= this.lastT && t - this.lastT < 0.5) {
       for (const h of cfg.hits) if (h.at > this.lastT && h.at <= t) this.fire(h);
     }
     this.lastT = playing ? t : -1;

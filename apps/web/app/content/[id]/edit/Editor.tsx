@@ -79,7 +79,7 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
   const [state, dispatch] = useReducer(editorReducer, undefined, () => initEditorState(initialDoc, durations));
   const doc = state.doc;
   const engine = usePlaybackEngine(doc, assetMap);
-  const [ui, setUiState] = useState<EditorUi>({ reframe: false, platformView: "ALL", tab: "look", pxPerSec: 60, sheet: null, editingTextId: null });
+  const [ui, setUiState] = useState<EditorUi>({ reframe: false, platformView: "ALL", tab: "look", pxPerSec: 60, sheet: null, editingTextId: null, platformMock: true, fullscreen: false });
   const layout = useEditorLayout();
   const touch = !layout.desktop;
   const setUi = useCallback((patch: Partial<EditorUi>) => setUiState((u) => ({ ...u, ...patch })), []);
@@ -99,6 +99,7 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
   const chunks = useMemo(() => timelineCaptionChunks(doc, wordsByAsset), [doc, wordsByAsset]);
   const fontsVersion = useFontsVersion([doc.captions.fontId, ...doc.texts.map((t) => t.fontId)]);
   const sourceSizes = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, { width: a.width, height: a.height }])), [assets]);
+  const faceTracks = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.subjectTrack])), [assets]);
   const [music, setMusic] = useState(initialMusic);
   const audio = usePreviewAudio(engine, doc, wordsByAsset, music, storageMode === "local");
 
@@ -130,9 +131,9 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
     // and the server render must match the first client render (no warnings yet).
     () =>
       fontsVersion > 0
-        ? [...platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, browserMeasureText, sourceSizes), ...visualWarnings(doc, placement.warnings)]
+        ? [...platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, browserMeasureText, sourceSizes, { visuals: placement.visuals, tracks: faceTracks }), ...visualWarnings(doc, placement.warnings)]
         : [],
-    [doc, ui.platformView, wordsByAsset, sourceSizes, fontsVersion, placement],
+    [doc, ui.platformView, wordsByAsset, sourceSizes, faceTracks, fontsVersion, placement],
   );
 
   const toast = useCallback((message: string, tone: Toast["tone"] = "ok") => {
@@ -329,6 +330,15 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
         return;
       }
       if (isTypingTarget(e.target)) return;
+      // Full screen is for watching: transport keys only; Escape closes it.
+      if (ui.fullscreen) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setUi({ fullscreen: false });
+          return;
+        }
+        if (mod || ![" ", "k", "K", "ArrowLeft", "ArrowRight", "j", "J", "l", "L", "Home", "End"].includes(e.key)) return;
+      }
       const step = e.shiftKey ? 1 : 1 / 30;
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -399,7 +409,7 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [engine, save, split, deleteSelection, duplicateSelection, ui.reframe, ui.sheet, setUi]);
+  }, [engine, save, split, deleteSelection, duplicateSelection, ui.reframe, ui.sheet, ui.fullscreen, setUi]);
 
   // Switch the inspector to whatever was just selected.
   const selKey = state.selection ? `${state.selection.kind}:${"id" in state.selection ? state.selection.id : ""}` : "";

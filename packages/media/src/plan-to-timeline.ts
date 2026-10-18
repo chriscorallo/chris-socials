@@ -46,10 +46,15 @@ export const PLAN_TEXT_PRESETS = {
   LOWER_THIRD: { fontId: "inter-semibold", maxSize: 46, minSize: 36, maxLines: 2, color: "#FFFFFF", backgroundColor: "#0000009E", strokeColor: null, align: "left", maxWidth: 0.668 },
 } as const;
 
-/** Today's caption presets as explicit Timeline caption values. */
+/**
+ * Today's caption presets as explicit Timeline caption values. BOLD_HIGHLIGHT was 72 px until
+ * 2026-10-17: a 3-word chunk at 72 px is up to ~740 px wide, which reaches TikTok's action rail
+ * (x ≥ 860 at 1080 wide, platform-ui.ts); 64 px keeps typical chunks clear
+ * (docs/decisions-pending/editor-smoothness-fullscreen-platform-ui.md).
+ */
 export const PLAN_CAPTION_PRESETS = {
   CLEAN: { preset: "CLEAN", fontId: "inter-display-bold", fontSize: 62, color: "#FFFFFF", highlightColor: "#FFD84D", strokeColor: "#000000BF", backgroundColor: null },
-  BOLD_HIGHLIGHT: { preset: "BOLD_HIGHLIGHT", fontId: "inter-display-extrabold", fontSize: 72, color: "#FFFFFF", highlightColor: "#FFD84D", strokeColor: "#000000EF", backgroundColor: null },
+  BOLD_HIGHLIGHT: { preset: "BOLD_HIGHLIGHT", fontId: "inter-display-extrabold", fontSize: 64, color: "#FFFFFF", highlightColor: "#FFD84D", strokeColor: "#000000EF", backgroundColor: null },
 } as const;
 
 function r4(n: number): number {

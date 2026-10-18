@@ -12,22 +12,27 @@ import {
   type TimelineZoom,
 } from "@chris/media/timeline";
 import type { EditorAsset, EditorDoc } from "../../../../lib/editor/types";
-import { assignPlayers } from "../../../../lib/editor/player-pool";
+import { assignPlayers, isContinuation, shouldStartStandby, standbyRate, standbyReady, standbySeekTarget, WARM_LEAD_S } from "../../../../lib/editor/player-pool";
 
 export { assignPlayers, PLAYER_POOL } from "../../../../lib/editor/player-pool";
 
 /**
  * The preview's playback engine — one requestAnimationFrame clock for the whole editor.
  *
- * Every clip is played by one of a FIXED POOL OF TWO <video> elements: clip i plays on element
- * i % 2, and the engine points that element at the clip's take (swapping `src` only when the
- * take changes). While one clip plays, the other element is already paused on the next clip's
- * first frame — the cut is a visibility swap, not a seek. Two elements regardless of how many
- * takes or clips: iOS Safari limits concurrent hardware decoders and only lets an element play
- * with sound once play() was called on it inside a user gesture, so the pool stays tiny and
- * both elements are unlocked from the play tap (see unlockFromGesture). While playing, the
- * ACTIVE video is the master clock (no audio/video drift); when it's stalled or not ready, a
- * wall clock carries time forward. No requestVideoFrameCallback dependency.
+ * Every clip is played by one of a FIXED POOL OF TWO <video> elements (lib/editor/player-pool.ts):
+ * a run of CONTINUATION clips (same take, adjacent source times — a framing-only cut) stays on
+ * one element that just keeps playing while the crop changes at the boundary; every JUMP cut (a
+ * removed pause, another take) switches to the other element. That element waits a little before
+ * the next clip's first frame and is started — muted, invisible — shortly before the boundary,
+ * its playbackRate nudged so it lands on the first frame exactly when the current clip ends
+ * ("warm standby"); the cut is then a visibility + audio swap between two elements that are
+ * already playing (no seek, no play() start latency on screen). If it isn't ready in time
+ * (playback started right before a cut, slow network) the cut falls back to a seek.
+ * Two elements regardless of how many takes or clips: iOS Safari limits concurrent hardware
+ * decoders and only lets an element play with sound once play() was called on it inside a user
+ * gesture, so the pool stays tiny and both elements are unlocked from the play tap (see
+ * unlockFromGesture). While playing, the ACTIVE video is the master clock (no audio/video
+ * drift); when it's stalled or not ready, a wall clock carries time forward.
  *
  * The engine writes per-frame visuals (which element is visible, the crop and punch-in
  * transforms) straight to the DOM and notifies subscribers with the time — React only
@@ -39,6 +44,13 @@ type Listener = () => void;
 export class PlaybackEngine {
   time = 0;
   playing = false;
+  /** Mutes the preview's sound (full-screen mute button); the edit itself is untouched. */
+  muted = false;
+  /**
+   * Warm standby on (default). `?warm=0` on the editor URL turns it off — a kill switch / A-B
+   * check for real devices (cuts then wait on the standby's first frame and start with play()).
+   */
+  private warmEnabled = typeof window === "undefined" || new URLSearchParams(window.location.search).get("warm") !== "0";
   private doc: EditorDoc;
   private assets: Map<string, EditorAsset>;
   private clipPlayer: string[] = [];
@@ -107,14 +119,67 @@ export class PlaybackEngine {
         if (!this.playing) this.syncPaused();
         this.applyVisuals();
       };
+      this.watchFrames(el, key);
       el.addEventListener("loadeddata", onReady);
-      el.addEventListener("seeked", onReady);
+      el.addEventListener("seeked", () => {
+        // Scrubbing: seeks that arrived while this one was in flight were coalesced — apply
+        // only the latest (a new currentTime aborts the running seek, so setting it on every
+        // scroll event would show no frame at all until the finger stops).
+        const t = this.pendingSeek.get(el);
+        if (t !== undefined && el.readyState >= 1) {
+          this.pendingSeek.delete(el);
+          if (Math.abs(el.currentTime - t) > 0.001) {
+            el.currentTime = t;
+            return;
+          }
+        }
+        onReady();
+      });
       if (!this.playing) this.syncPaused();
     } else {
       const old = this.players.get(key);
       old?.pause();
       this.players.delete(key);
     }
+  }
+
+  /**
+   * Frame-accurate cuts where the browser supports requestVideoFrameCallback (Chrome, Safari ≥
+   * 15.4): the callback runs right before the frame it reports is composited, so if the ACTIVE
+   * element is about to show the first frame past its clip's out point before the rAF tick's
+   * clock check (below) has cut, the cut happens in that same frame — the removed footage never
+   * reaches the screen and a crop change lands on the boundary frame.
+   */
+  private watchFrames(el: HTMLVideoElement, key: string) {
+    const v = el as HTMLVideoElement & {
+      requestVideoFrameCallback?: (cb: (now: number, meta: { mediaTime: number }) => void) => number;
+    };
+    if (typeof v.requestVideoFrameCallback !== "function") return;
+    const onFrame = (_now: number, meta: { mediaTime: number }) => {
+      v.requestVideoFrameCallback!(onFrame);
+      if (!this.playing || this.previewOverride || key !== this.activeKey) return;
+      const i = this.activeIndex;
+      const clip = this.doc.clips[i];
+      if (!clip || el.dataset.assetId !== clip.mediaAssetId) return;
+      if (meta.mediaTime >= clip.sourceEnd - 0.25 / 30 && meta.mediaTime < clip.sourceEnd + 0.5) this.crossBoundary(i);
+    };
+    v.requestVideoFrameCallback(onFrame);
+  }
+
+  /** The active clip `i` just ended: finish, or hand over to clip i + 1. */
+  private crossBoundary(i: number) {
+    const clip = this.doc.clips[i];
+    if (!clip || i !== this.activeIndex) return;
+    const clipEnd = this.starts[i]! + clipDuration(clip);
+    if (i + 1 >= this.doc.clips.length) {
+      this.time = this.duration;
+      this.pause();
+      this.emit();
+      return;
+    }
+    this.time = clipEnd;
+    this.startActive(false);
+    this.emit();
   }
 
   setZoomLayer(el: HTMLElement | null) {
@@ -159,7 +224,7 @@ export class PlaybackEngine {
   }
 
   private recompute() {
-    const { clipPlayer } = assignPlayers(this.doc.clips.length);
+    const { clipPlayer } = assignPlayers(this.doc.clips);
     this.clipPlayer = clipPlayer;
     this.starts = clipStartTimes(this.doc);
     this.duration = timelineDuration(this.doc);
@@ -192,10 +257,23 @@ export class PlaybackEngine {
     if (!this.playing) return;
     this.playing = false;
     cancelAnimationFrame(this.raf);
-    for (const p of this.players.values()) p.pause();
+    for (const p of this.players.values()) {
+      p.pause();
+      this.coolDown(p);
+    }
     this.syncPaused();
     this.emit();
   }
+
+  setMuted(m: boolean) {
+    this.muted = m;
+    const el = this.activeKey ? this.players.get(this.activeKey) : undefined;
+    const clip = this.doc.clips[this.activeIndex];
+    if (el && clip && !el.dataset.warm) el.muted = clip.volume === 0 || m;
+    this.emit();
+  }
+
+  getMuted = () => this.muted;
 
   toggle() {
     if (this.playing) this.pause();
@@ -303,10 +381,22 @@ export class PlaybackEngine {
       return;
     }
     if (el.readyState >= 1) {
-      if (Math.abs(el.currentTime - sourceTime) > tolerance) el.currentTime = sourceTime;
+      if (Math.abs(el.currentTime - sourceTime) <= tolerance) {
+        this.pendingSeek.delete(el);
+      } else if (el.seeking) {
+        this.pendingSeek.set(el, sourceTime); // applied on 'seeked' (latest wins)
+      } else {
+        el.currentTime = sourceTime;
+      }
     } else {
       this.pendingSeek.set(el, sourceTime);
     }
+  }
+
+  /** A standby that was started early goes back to a normal, paused-capable element. */
+  private coolDown(el: HTMLVideoElement) {
+    if (el.playbackRate !== 1) el.playbackRate = 1;
+    delete el.dataset.warm;
   }
 
   /**
@@ -328,6 +418,8 @@ export class PlaybackEngine {
       }
       void p
         ?.then(() => {
+          // A warm standby started in the meantime must stay muted until its cut.
+          if (el.dataset.warm) return;
           el.muted = wasMuted;
           if (this.activeKey !== key || !this.playing) {
             el.pause();
@@ -342,7 +434,12 @@ export class PlaybackEngine {
     }
   }
 
-  /** Points the other pool element at the first frame of the next clip (it plays next). */
+  /**
+   * Readies the element that plays after the current clip. A continuation needs nothing (same
+   * element, it keeps playing). For a jump, the other element waits WARM_LEAD_S before the next
+   * clip's first frame (the tick starts it so it arrives on time) — or ON the first frame when
+   * the cut is too close for a warm start (then the cut is a plain visibility swap + play()).
+   */
   private prerollNext(fromIndex: number) {
     const i = fromIndex + 1;
     const key = this.clipPlayer[i];
@@ -351,21 +448,63 @@ export class PlaybackEngine {
     const el = this.players.get(key);
     if (!el) return;
     if (!el.paused) el.pause();
-    this.bind(el, i, c.sourceStart, 0.04);
+    this.coolDown(el);
+    const cur = this.doc.clips[fromIndex];
+    const remaining = cur ? this.starts[fromIndex]! + clipDuration(cur) - this.time : 0;
+    const warm = this.warmEnabled && this.playing && remaining > WARM_LEAD_S + 0.35;
+    this.bind(el, i, warm ? standbySeekTarget(c) : c.sourceStart, 0.04);
+  }
+
+  /**
+   * Called every tick while playing: starts the waiting standby (muted, invisible) so it
+   * reaches the next clip's first frame when the current clip ends, and keeps it on time by
+   * nudging its playbackRate.
+   */
+  private driveStandby(index: number, remaining: number) {
+    const next = this.doc.clips[index + 1];
+    const key = this.clipPlayer[index + 1];
+    if (!next || !key || key === this.activeKey) return;
+    const el = this.players.get(key);
+    if (!el || el.dataset.assetId !== next.mediaAssetId || el.seeking || el.readyState < 2) return;
+    if (el.paused) {
+      if (el.dataset.warm || el.currentTime > next.sourceStart - 0.02) return; // cold: waits on its first frame
+      if (!shouldStartStandby(remaining, el.currentTime, next.sourceStart)) return;
+      el.muted = true;
+      el.dataset.warm = "1";
+      try {
+        void el.play().catch(() => this.coolDown(el));
+      } catch {
+        this.coolDown(el);
+      }
+    } else if (el.dataset.warm) {
+      // (Steering by presented frames instead of currentTime was measured and was no better.)
+      const r = standbyRate(el.currentTime, next.sourceStart, remaining);
+      if (Math.abs(el.playbackRate - r) > 0.004) el.playbackRate = r;
+    }
   }
 
   private startActive(seekExact: boolean) {
     const { clipIndex, sourceTime } = this.clipAt(this.time);
     const key = this.clipPlayer[clipIndex] ?? null;
-    for (const [k, p] of this.players) if (k !== key && !p.paused) p.pause();
+    const prevIndex = this.activeIndex;
+    for (const [k, p] of this.players)
+      if (k !== key) {
+        if (!p.paused) p.pause();
+        this.coolDown(p);
+      }
     this.activeIndex = clipIndex;
     this.activeKey = key;
     const el = key ? this.players.get(key) : undefined;
     if (el) {
-      this.bind(el, clipIndex, sourceTime, seekExact ? 0.05 : 0.3);
+      const clip = this.doc.clips[clipIndex]!;
+      const continuing = !seekExact && prevIndex === clipIndex - 1 && isContinuation(this.doc.clips[prevIndex], clip) && !el.paused;
+      const warmOnTime = !seekExact && !!el.dataset.warm && !el.paused && el.dataset.assetId === clip.mediaAssetId && standbyReady(el.currentTime, sourceTime);
+      // A continuation / an on-time warm standby is already exactly there — never seek it.
+      if (!continuing && !warmOnTime) this.bind(el, clipIndex, sourceTime, seekExact ? 0.05 : 1.5 / 30);
+      this.coolDown(el);
       // iOS ignores `volume` (always 1) — mute still works; the render applies the real level.
       el.volume = Math.min(1, Math.max(0, this.doc.clips[clipIndex]!.volume));
-      el.muted = this.doc.clips[clipIndex]!.volume === 0;
+      el.muted = this.doc.clips[clipIndex]!.volume === 0 || this.muted;
       try {
         void el.play().catch(() => {
           /* autoplay policies / not yet loaded — wall clock carries on */
@@ -392,6 +531,7 @@ export class PlaybackEngine {
     const clipStart = this.starts[i]!;
     const clipEnd = clipStart + clipDuration(clip);
     let t = this.time + dt;
+    this.driveStandby(i, clipEnd - this.time);
     const onTake = el?.dataset.assetId === clip.mediaAssetId;
     if (el && onTake && el.readyState >= 2 && !el.seeking && !el.paused) {
       const fromVideo = clipStart + (el.currentTime - clip.sourceStart);
@@ -401,16 +541,12 @@ export class PlaybackEngine {
       t = this.time; // buffering: hold the frame rather than letting picture and clock diverge
     }
 
+    // The clock (currentTime, a little ahead of the picture) cuts here; where frame callbacks
+    // exist, watchFrames cuts on the frame if it gets there first. (Cutting ONLY on frame
+    // callbacks was measured: worse in Chrome — 3–9 dropped frames per 13 cuts instead of 1–2.)
     if (t >= clipEnd - 0.008) {
-      if (i + 1 >= this.doc.clips.length) {
-        this.time = this.duration;
-        this.pause();
-        this.emit();
-        return;
-      }
-      this.time = clipEnd;
-      // the next element was pre-rolled to its first frame
-      this.startActive(false);
+      this.crossBoundary(i);
+      if (!this.playing) return;
     } else {
       this.time = Math.max(this.time, t);
       this.applyVisuals();
@@ -428,7 +564,12 @@ export class PlaybackEngine {
     const clip = this.doc.clips[activeIndex];
     for (const [key, el] of this.players) {
       const visible = key === activeKey;
-      el.style.opacity = visible ? "1" : "0";
+      // The hidden element is STACKED BEHIND the visible one (both cover the whole canvas), not
+      // made transparent: WebKit stops painting an opacity-0 <video> and, once shown again, can
+      // take most of a second to present its first frame (measured: Playwright WebKit, 0.9 s
+      // freezes at cuts) — a warm standby must stay "visible" to keep decoding to the screen.
+      el.style.zIndex = visible ? "1" : "0";
+      el.style.opacity = visible || (el.readyState >= 2 && !!el.dataset.assetId) ? "1" : "0";
       if (visible && clip) {
         const asset = this.assets.get(clip.mediaAssetId);
         const loaded = el.dataset.assetId === clip.mediaAssetId && el.videoWidth > 0;

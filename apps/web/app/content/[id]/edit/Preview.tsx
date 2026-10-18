@@ -6,14 +6,15 @@ import { updateClip, updateZoom, updateText, updateCaptions, setCover } from "..
 import { panAfterDrag, formatTime, vignetteGradient } from "../../../../lib/editor/preview-math";
 import { moveAnchoredVisual, placeVisualManually } from "../../../../lib/editor/visuals";
 import { movedBeyond, pinchGeometry, type Pt } from "../../../../lib/editor/touch-math";
-import { PLATFORM_PROFILES, PLATFORM_IDS, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
-import { safeRect } from "../../../../lib/editor/platform-warnings";
+import { PLATFORM_IDS, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
+import { PlatformMock } from "./PlatformMock";
 import { useEditor, type PlatformView } from "./context";
 import { assignPlayers, useIsPlaying, usePlayheadValue } from "./playback";
 import { GradeDefs, OverlaySvg } from "./Overlays";
 import { browserMeasureText } from "./measure";
 import { Icon } from "./icons";
 import { MotionLayer, VisualHandles, drawnPlacement, visualHitRect } from "./MotionLayer";
+import { FullscreenButton, StageCanvas } from "./Fullscreen";
 
 export { fontFamilyCss } from "./Overlays";
 
@@ -46,15 +47,17 @@ export function useFitCanvas(ref: RefObject<HTMLElement | null>, aspect: number,
 /** Desktop preview column: platform switch + reframe + warnings, the canvas, the transport. */
 export function Preview() {
   const { doc, ui, setUi, engine, state, apply, toast } = useEditor();
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const size = useFitCanvas(bodyRef, doc.canvas.width / doc.canvas.height, 32, 12);
   const selectedClip = state.selection?.kind === "clip" ? doc.clips.find((c) => c.id === (state.selection as { id: string }).id) : undefined;
 
   return (
     <section className="ed-stage" aria-label="Preview">
       <div className="ed-stage-head">
-        <PlatformSwitch value={ui.platformView} onChange={(v) => setUi({ platformView: v })} />
         <div className="flex items-center gap-1.5">
+          <PlatformSwitch value={ui.platformView} onChange={(v) => setUi({ platformView: v })} />
+          {ui.platformView !== "ALL" && <MockToggle />}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <FullscreenButton className="ed-fs-enter-inline" />
           <button
             type="button"
             className="ed-toolbtn"
@@ -71,9 +74,7 @@ export function Preview() {
           <WarningsPill />
         </div>
       </div>
-      <div className="ed-stage-body" ref={bodyRef}>
-        {size.w > 0 && <Canvas w={size.w} h={size.h} />}
-      </div>
+      <StageCanvas className="ed-stage-body" padX={32} padY={12} />
       <Transport
         onCover={() => {
           apply((d) => setCover(d, engine.time));
@@ -99,6 +100,23 @@ export function enterReframe(
   if (!on && loc?.clipIndex !== idx) engine.seek(starts + 0.01);
   engine.pause();
   setUi({ reframe: !on });
+}
+
+/** Shows / hides the app UI mock over the preview (platform tabs). */
+export function MockToggle() {
+  const { ui, setUi } = useEditor();
+  return (
+    <button
+      type="button"
+      className="ed-mock-toggle"
+      aria-pressed={ui.platformMock}
+      aria-label={ui.platformMock ? "Hide the app's buttons" : "Show the app's buttons"}
+      title={ui.platformMock ? "Hide the app's buttons" : "Show the app's buttons"}
+      onClick={() => setUi({ platformMock: !ui.platformMock })}
+    >
+      <Icon name={ui.platformMock ? "eye" : "eyeOff"} size={16} />
+    </button>
+  );
 }
 
 export function PlatformSwitch({ value, onChange, compact }: { value: PlatformView; onChange: (v: PlatformView) => void; compact?: boolean }) {
@@ -249,11 +267,12 @@ const SNAP_PX = 6;
  * - otherwise a tap toggles playback (touch) or selects the clip on screen (mouse).
  * The canvas has `touch-action: none`, so the browser never scrolls or zooms the page here.
  */
-export function Canvas({ w, h }: { w: number; h: number }) {
+export function Canvas({ w, h, view = false, viewPlatform = null }: { w: number; h: number; view?: boolean; viewPlatform?: PlatformId | null }) {
   const { doc, engine, assetMap, ui, setUi, state, apply, commit, dispatch, touch, placement, interactions, interactionCtx } = useEditor();
   const k = w / doc.canvas.width;
   const zoomLayerRef = useRef<HTMLDivElement>(null);
   const { slots } = useMemo(() => assignPlayers(doc.clips.length), [doc.clips.length]);
+  const progress = usePlayheadValue(engine, (t) => (view && viewPlatform ? Math.round((t / Math.max(0.01, timelineDuration(doc))) * 400) / 400 : 0));
   const g = resolveGrade(doc.grade);
   const gradeOn = g.brightness !== 0 || g.contrast !== 1 || g.saturation !== 1 || g.temperature !== 0;
   const vignette = vignetteGradient(g.vignette);
@@ -523,12 +542,12 @@ export function Canvas({ w, h }: { w: number; h: number }) {
 
   return (
     <div
-      className="ed-canvas"
-      style={{ width: w, height: h, cursor: ui.reframe ? "move" : selectedZoom ? "crosshair" : "default" }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
+      className={view ? "ed-canvas ed-canvas-view" : "ed-canvas"}
+      style={{ width: w, height: h, cursor: view ? undefined : ui.reframe ? "move" : selectedZoom ? "crosshair" : "default" }}
+      onPointerDown={view ? undefined : onPointerDown}
+      onPointerMove={view ? undefined : onPointerMove}
+      onPointerUp={view ? undefined : onPointerEnd}
+      onPointerCancel={view ? undefined : onPointerEnd}
     >
       <GradeDefs grade={doc.grade} />
       {/* video layer: clip crop → punch-in zoom (engine) → grade (exact SVG filter) */}
@@ -543,20 +562,23 @@ export function Canvas({ w, h }: { w: number; h: number }) {
       {/* motion graphics: over the graded picture, under texts/captions — the renderer's order */}
       <MotionLayer w={w} h={h} />
 
-      {ui.reframe && <ReframeGrid touch={touch} />}
-      <SafeArea w={w} h={h} view={ui.platformView} emphasize={dragging} />
-      {ui.platformView !== "ALL" && <PlatformChrome platform={ui.platformView} k={k} />}
+      {!view && ui.reframe && <ReframeGrid touch={touch} />}
+      {view ? (
+        viewPlatform && <PlatformMock platform={viewPlatform} w={w} h={h} progress={progress} className="z-[7]" />
+      ) : (
+        (ui.platformMock || dragging) && <PlatformMock platform={ui.platformView} w={w} h={h} zones={dragging} className={ui.platformView === "ALL" ? "z-[2]" : "z-[7] ed-mock-edit"} />
+      )}
 
-      {!ui.reframe && <VisualHandles w={w} dragging={draggingVisual} />}
-      <OverlaySvg w={w} h={h} guides={guides} inlineEditor={!touch} />
+      {!view && !ui.reframe && <VisualHandles w={w} dragging={draggingVisual} />}
+      <OverlaySvg w={w} h={h} guides={guides} inlineEditor={!touch && !view} />
 
-      {selectedZoom && (
+      {!view && selectedZoom && (
         <div className="pointer-events-none absolute z-[5]" style={{ left: selectedZoom.x * w - 14, top: selectedZoom.y * h - 14, width: 28, height: 28 }} aria-hidden>
           <div className="h-full w-full rounded-full border-2 border-[var(--color-gold-400)] shadow-[0_0_0_2px_rgba(0,0,0,0.4)]" />
           <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-gold-400)]" />
         </div>
       )}
-      {selectedZoom && (
+      {!view && selectedZoom && (
         <p className="pointer-events-none absolute inset-x-0 bottom-3 z-[5] px-2 text-center text-[11px] text-white/85 [text-shadow:0_1px_3px_rgba(0,0,0,0.8)]">
           {touch ? "Tap the video to aim the zoom" : "Click to set where the zoom aims"}
         </p>
@@ -578,70 +600,6 @@ function ReframeGrid({ touch }: { touch: boolean }) {
       <p className="absolute inset-x-0 top-3 px-2 text-center text-[11px] font-medium text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
         {touch ? "Drag to reframe · pinch to zoom" : "Drag to reframe · scroll to zoom"}
       </p>
-    </div>
-  );
-}
-
-function SafeArea({ w, h, view, emphasize }: { w: number; h: number; view: PlatformView; emphasize: boolean }) {
-  const ids: PlatformId[] = view === "ALL" ? PLATFORM_IDS : [view];
-  const r = safeRect(ids, w, h);
-  return (
-    <div
-      className="ed-safe z-[2]"
-      style={{ left: r.x0, top: r.y0, width: r.x1 - r.x0, height: r.y1 - r.y0, opacity: emphasize ? 0.9 : view === "ALL" ? 0.22 : 0.55 }}
-      aria-hidden
-    />
-  );
-}
-
-/** Stylized (unbranded) mock of each app's on-screen UI, drawn in canvas coordinates. */
-function PlatformChrome({ platform, k }: { platform: PlatformId; k: number }) {
-  const p = PLATFORM_PROFILES[platform];
-  const W = p.canvas.width;
-  const H = p.canvas.height;
-  const s = (n: number) => n * k;
-  const iconX = W - p.safeZone.right / 2;
-  const icons = platform === "YOUTUBE" ? 5 : platform === "TIKTOK" ? 5 : 4;
-  const iconSize = 78;
-  const gap = 150;
-  const firstY = H - p.safeZone.bottom - (icons - 1) * gap + 40;
-  return (
-    <div className="ed-chrome z-[3]" aria-hidden>
-      <div className="ed-chrome-dim" style={{ left: 0, top: 0, right: 0, height: s(p.safeZone.top) }} />
-      <div className="ed-chrome-dim" style={{ left: 0, bottom: 0, right: 0, height: s(p.safeZone.bottom) }} />
-      {/* top bar */}
-      {platform === "TIKTOK" && (
-        <div className="absolute flex items-center justify-center" style={{ left: 0, right: 0, top: s(70), gap: s(36) }}>
-          <div className="ed-chrome-bar opacity-60" style={{ width: s(150), height: s(26) }} />
-          <div className="ed-chrome-bar" style={{ width: s(150), height: s(26) }} />
-        </div>
-      )}
-      {platform === "INSTAGRAM" && (
-        <>
-          <div className="ed-chrome-bar absolute" style={{ left: s(48), top: s(110), width: s(150), height: s(36) }} />
-          <div className="ed-chrome-icon absolute" style={{ right: s(48), top: s(104), width: s(48), height: s(48) }} />
-        </>
-      )}
-      {platform === "YOUTUBE" && (
-        <>
-          <div className="ed-chrome-icon absolute" style={{ right: s(150), top: s(80), width: s(48), height: s(48) }} />
-          <div className="ed-chrome-icon absolute" style={{ right: s(48), top: s(80), width: s(48), height: s(48) }} />
-        </>
-      )}
-      {/* right action column */}
-      {Array.from({ length: icons }, (_, i) => (
-        <div key={i} className="ed-chrome-icon absolute" style={{ left: s(iconX - iconSize / 2), top: s(firstY + i * gap), width: s(iconSize), height: s(iconSize), opacity: 0.8 }} />
-      ))}
-      {/* bottom: username + caption lines */}
-      <div className="absolute" style={{ left: s(48), bottom: s(p.safeZone.bottom - 210) }}>
-        <div className="flex items-center" style={{ gap: s(16) }}>
-          <div className="ed-chrome-icon" style={{ width: s(56), height: s(56) }} />
-          <div className="ed-chrome-bar" style={{ width: s(220), height: s(28) }} />
-        </div>
-        <div className="ed-chrome-bar mt-[1px] opacity-70" style={{ width: s(640), height: s(22), marginTop: s(24) }} />
-        <div className="ed-chrome-bar opacity-70" style={{ width: s(460), height: s(22), marginTop: s(16) }} />
-      </div>
-      <div className="absolute rounded-full bg-white/50" style={{ left: s(48), right: s(48), bottom: s(platform === "YOUTUBE" ? 150 : 40), height: s(6) }} />
     </div>
   );
 }

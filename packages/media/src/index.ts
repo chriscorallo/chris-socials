@@ -34,6 +34,7 @@ export * from "./timeline-layout";
 export * from "./timeline-render";
 export * from "./plan-to-timeline";
 export * from "./platform-profiles";
+export * from "./platform-ui";
 export * from "./platform-variant";
 export * from "./motion-contract";
 export * from "./subject-track-core";
