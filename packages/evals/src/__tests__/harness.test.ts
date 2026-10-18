@@ -62,6 +62,17 @@ describe("eval harness (mock mode)", () => {
     expect(r2.results[0]!.failures.join(" ")).toContain("certaintyWarnings");
   });
 
+  it("film meaning-match cases: the baseline flaw is caught by the free first pass — and the grader fails a review that waves it through", async () => {
+    const categories = new Set(cases.map((c) => c.category));
+    for (const c of ["film_meaning_mismatch", "film_meaning_match"]) expect(categories).toContain(c);
+    const flawed = cases.find((c) => c.id === "fmm-baseline-flawed")!;
+    const fixedMock = cases.find((c) => c.id === "fmm-baseline-fixed")!.mockResponse;
+    const { results } = await runEvalSuite(new MockModelProvider(() => fixedMock), [flawed], { brandContext: "b" });
+    expect(results[0]!.passed).toBe(false);
+    expect(results[0]!.failures.join(" ")).toContain("review.baseline");
+    expect((results[0]!.output as { firstPass: Record<string, string> }).firstPass.baseline).toBe("MISMATCH");
+  });
+
   it("assertion modes: all vs any, and path/threshold checks", () => {
     const out = { voiceScore: 50, brandScore: 90, requiredChanges: [] };
     expect(checkAssertions(out, [{ path: "voiceScore", lt: 70 }, { path: "brandScore", lt: 70 }], "any")).toEqual([]);

@@ -1,0 +1,106 @@
+[
+  {
+    "id": "fmm-baseline-flawed",
+    "category": "film_meaning_mismatch",
+    "description": "The proof film's flaw: 'You raised your baseline.' plays over an empty pedestal in a light shaft — no floor rises under the things that raised it. Both passes must flag the baseline shot (MISMATCH) with a catalog replacement.",
+    "promptId": "FILM_MEANING_MATCH",
+    "input": { "variant": "flawed" },
+    "expect": [
+      { "path": "firstPass.baseline", "in": ["MISMATCH"] },
+      { "path": "firstPassForcing", "in": ["baseline"] },
+      { "path": "review.baseline", "in": ["MISMATCH", "WEAK"] },
+      { "path": "reviewNonMatchHaveReplacement", "in": [true] }
+    ],
+    "mockResponse": {
+      "checks": [
+        {
+          "shotId": "baseline",
+          "lineId": "l7",
+          "line": "You raised your baseline.",
+          "meaning": "Your lifestyle became your new minimum — the floor you now need just to stay level.",
+          "shown": "A pedestal under a top spotlight with a light shaft entering; no floor/plane moves; the apartment and car are not targeted.",
+          "verdict": "MISMATCH",
+          "evidence": [
+            { "kind": "LINE", "ref": "l7", "detail": "You raised your baseline." },
+            { "kind": "DSL", "ref": "baseline.actions", "detail": "only ENTER shaft; no SET level on the BASELINE actor" },
+            { "kind": "DSL", "ref": "baseline.camera.target", "detail": "pedestal" }
+          ],
+          "replacement": {
+            "description": "The YOUR BASELINE plane rises from the floor under the apartment and the car to where the raise used to stand.",
+            "catalogRefs": ["actor:BASELINE", "action:SET.level", "camera:CRANE_UP"],
+            "dslHint": "ENTER baseline at 0; SET baseline.level 0.02→1.8 at {word:'raised'}; CRANE_UP targeting baseline at distance ≥ 11"
+          }
+        },
+        {
+          "shotId": "taxes",
+          "lineId": "l2",
+          "line": "Taxes take 35%.",
+          "meaning": "A third of the raise is gone before you see it.",
+          "shown": "The coin stack drops from 100 to 65 coins on 'take' while $6,500 counts down.",
+          "verdict": "MATCH",
+          "evidence": [{ "kind": "DSL", "ref": "taxes.actions[0]", "detail": "SET raise.count 65 at 'take'" }],
+          "replacement": null
+        }
+      ],
+      "summary": "The twist line's picture doesn't show a baseline rising — the film's key idea is invisible. Everything else shows what it says."
+    }
+  },
+  {
+    "id": "fmm-baseline-fixed",
+    "category": "film_meaning_match",
+    "description": "Fixed: the baseline plane rises on 'raised' with the apartment and car still on screen. Both passes must call it a MATCH (calibration: no manufactured findings).",
+    "promptId": "FILM_MEANING_MATCH",
+    "input": { "variant": "fixed" },
+    "expect": [
+      { "path": "firstPass.baseline", "in": ["MATCH"] },
+      { "path": "firstPassForcing", "in": [""] },
+      { "path": "review.baseline", "in": ["MATCH"] }
+    ],
+    "mockResponse": {
+      "checks": [
+        {
+          "shotId": "baseline",
+          "lineId": "l7",
+          "line": "You raised your baseline.",
+          "meaning": "Your lifestyle became your new minimum.",
+          "shown": "The glowing YOUR BASELINE plane rises to 1.8 m under the apartment and the car while the camera cranes up.",
+          "verdict": "MATCH",
+          "evidence": [{ "kind": "DSL", "ref": "baseline.actions[1]", "detail": "SET baseline.level 1.8 at 'raised'" }],
+          "replacement": null
+        }
+      ],
+      "summary": "Every line's picture shows what it says."
+    }
+  },
+  {
+    "id": "fmm-floor-alone",
+    "category": "film_meaning_mismatch",
+    "description": "The floor rises, but the apartment, car and subscriptions left the frame a shot earlier — it reads as a glowing plane, not YOUR lifestyle rising. The first pass must still flag it.",
+    "promptId": "FILM_MEANING_MATCH",
+    "input": { "variant": "floor_alone" },
+    "expect": [
+      { "path": "firstPass.baseline", "in": ["MISMATCH"] },
+      { "path": "review.baseline", "in": ["MISMATCH", "WEAK"] },
+      { "path": "reviewNonMatchHaveReplacement", "in": [true] }
+    ],
+    "mockResponse": {
+      "checks": [
+        {
+          "shotId": "baseline",
+          "lineId": "l7",
+          "line": "You raised your baseline.",
+          "meaning": "The things you bought became your new floor.",
+          "shown": "A plane rises in an empty studio — the things that raised it exited in the previous shot.",
+          "verdict": "WEAK",
+          "evidence": [{ "kind": "DSL", "ref": "didnt.actions", "detail": "EXIT building, car, subs" }],
+          "replacement": {
+            "description": "Keep the apartment and car on screen and lift them on the rising baseline.",
+            "catalogRefs": ["actor:BASELINE", "actor:BUILDING", "actor:CAR"],
+            "dslHint": "remove the EXITs in 'didnt'; frame baseline + building + car"
+          }
+        }
+      ],
+      "summary": "The floor rises but alone, so it doesn't read as the viewer's lifestyle."
+    }
+  }
+]
