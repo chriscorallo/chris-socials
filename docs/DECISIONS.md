@@ -7337,3 +7337,15 @@ Reversibility: total — delete the package and the labs page; nothing else depe
 
 Ops note: the laptop's disk was at 99–100 % during this work (≈ 81 GB in ~/Library/Caches/Adobe,
 ≈ 37 GB in `.claude/worktrees`); a Kokoro download failed once with ENOSPC. Nothing was deleted.
+
+
+## Person cut-out on demand, not on every upload (2026-10-18)
+
+Chris: "make it free and don't lose quality as much as possible." The person matte (MODNet) was
+the slowest, costliest step of every cloud upload (~5–8¢/take) yet only matters when a graphic
+sits behind him. Production now sets `PERSON_MATTE=off`, so uploads skip it; the cut-out is made
+(1) when he turns on "Behind me" in the editor (`ensurePersonCutoutAction`, background job), and
+(2) by the render job itself whenever a graphic is behind him and the matte is missing (already
+the render job's behavior). Quality of finished videos is unchanged for graphics he puts behind
+him; trade-off: AUTO-depth graphics (no explicit "Behind me") stay in front unless a matte
+already exists. Reversible: set `PERSON_MATTE=on`.
