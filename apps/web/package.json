@@ -15,6 +15,7 @@
     "@chris/motion": "workspace:*",
     "@chris/platforms": "workspace:*",
     "@chris/worker": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@vercel/blob": "2.8.2",
     "@vercel/oidc": "4.0.0",
     "@vercel/sandbox": "3.8.0",
@@ -22,7 +23,8 @@
     "next": "^16.3.4",
     "next-auth": "5.0.0-beta.32",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

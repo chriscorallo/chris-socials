@@ -38,6 +38,16 @@ export const SCRIPT_IMPORT_AUTHOR = "IMPORTED";
 export const SCRIPT_IMPORT_SOURCE = "ChatGPT (pasted by Chris)";
 export const SCRIPT_IMPORT_REASON = "Script imported from ChatGPT (pasted by Chris) — not fact-checked yet; the factual check is still required before posting";
 
+/** Where an imported script came from — the copy-paste screen by default; the ChatGPT connector
+ * passes its own (chatgpt-connector.ts). Lands in revisionNote, the audit row and transition reasons. */
+export interface ScriptImportProvenance {
+  source: string;
+  reason: string;
+  /** Extra AuditLog metadata (e.g. the connector grant id). */
+  auditMetadata?: Record<string, unknown>;
+}
+const PASTE_PROVENANCE: ScriptImportProvenance = { source: SCRIPT_IMPORT_SOURCE, reason: SCRIPT_IMPORT_REASON };
+
 /** A script can be added while the video isn't filmed yet (and while a fact-check block is being fixed). */
 export const SCRIPT_IMPORTABLE_STATES: ReadonlySet<ContentState> = new Set<ContentState>([...PRE_FILM_STATES, "RESEARCH_BLOCKED"]);
 
@@ -245,9 +255,10 @@ export async function saveImportedScript(
   prisma: PrismaClient,
   input: { contentItemId: string; block: ParsedScriptBlock; replace: boolean; batchId?: string },
   actor: { actorId: string },
-  opts: Pick<SaveOptions, "wpm" | "targetSeconds"> = {},
+  opts: Pick<SaveOptions, "wpm" | "targetSeconds"> & { provenance?: ScriptImportProvenance } = {},
 ): Promise<{ status: SaveScriptStatus; message: string; title: string; scriptVersionId?: string }> {
   const { block } = input;
+  const prov = opts.provenance ?? PASTE_PROVENANCE;
   const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: input.contentItemId } });
   if (!SCRIPT_IMPORTABLE_STATES.has(item.currentState)) {
     return { status: "not-importable", title: item.title, message: "Already filmed — the script wasn't changed." };
@@ -262,7 +273,7 @@ export async function saveImportedScript(
   const same = versions.find((v) => scriptTextHash(v.spokenScript) === hash);
   if (same) {
     // Finish a walk an interrupted earlier save didn't complete (no-op otherwise).
-    if (versions[0]?.id === same.id) await walkToScripted(prisma, item, actor);
+    if (versions[0]?.id === same.id) await walkToScripted(prisma, item, actor, prov.reason);
     return { status: "already-saved", title: item.title, message: "This script is already saved.", scriptVersionId: same.id };
   }
   const latest = versions[0] ?? null;
@@ -272,7 +283,7 @@ export async function saveImportedScript(
 
   const contract = await prisma.productionContract.findUnique({ where: { contentItemId: item.id } });
   const wpm = opts.wpm && opts.wpm > 60 ? opts.wpm : DEFAULT_SCRIPT_WPM;
-  const note = `Imported from ${SCRIPT_IMPORT_SOURCE}${block.checks.length ? ` · ${block.checks.length} claim${block.checks.length === 1 ? "" : "s"} marked [CHECK]` : ""}`;
+  const note = `Imported from ${prov.source}${block.checks.length ? ` · ${block.checks.length} claim${block.checks.length === 1 ? "" : "s"} marked [CHECK]` : ""}`;
   const row = await prisma.scriptVersion.create({
     data: {
       contentItemId: item.id,
@@ -305,7 +316,8 @@ export async function saveImportedScript(
     before: latest ? { scriptVersionId: latest.id, authorType: latest.authorType } : undefined,
     after: { scriptVersionId: row.id, revisedFromId: latest?.id ?? null, sha256: hash, words: block.wordCount },
     metadata: {
-      source: SCRIPT_IMPORT_SOURCE,
+      ...prov.auditMetadata,
+      source: prov.source,
       batchId: input.batchId ?? null,
       rawBlock: block.raw,
       header: { number: block.number, ymd: block.ymd, title: block.title, code: block.code },
@@ -321,7 +333,7 @@ export async function saveImportedScript(
       question: `Which script wording should "${item.title}" use?`,
       selectedDecision: `Script imported from ChatGPT (ScriptVersion ${row.id})`,
       alternatives: [`Agent version ${latest.id}`],
-      rationale: "Chris pasted a ChatGPT script and chose Replace (the agent version is kept in the history).",
+      rationale: `Chris chose Replace for a script from ${prov.source} (the agent version is kept in the history).`,
       decisionOwner: actor.actorId,
       agentOrModel: "SCRIPT",
       userOverride: true,
@@ -329,7 +341,7 @@ export async function saveImportedScript(
     });
   }
 
-  await walkToScripted(prisma, item, actor, contract != null);
+  await walkToScripted(prisma, item, actor, prov.reason, contract != null);
   return {
     status: "saved",
     title: item.title,
@@ -339,13 +351,13 @@ export async function saveImportedScript(
 }
 
 /** IDEA … SCRIPTING → SCRIPTED, one honest transition per step (per-step idempotency keys). */
-async function walkToScripted(prisma: PrismaClient, item: ContentItem, actor: { actorId: string }, hasContract?: boolean) {
+async function walkToScripted(prisma: PrismaClient, item: ContentItem, actor: { actorId: string }, reason: string, hasContract?: boolean) {
   const fresh = await prisma.contentItem.findUniqueOrThrow({ where: { id: item.id } });
   let state = fresh.currentState;
   if (!WALKABLE.has(state)) return;
   const key = (to: ContentState) => `script-import:${item.id}:${to}`;
   if (state === "IDEA") {
-    await applyTransition(prisma, { contentItemId: item.id, to: "SELECTED", actorType: "HUMAN", actorId: actor.actorId, reason: SCRIPT_IMPORT_REASON, idempotencyKey: key("SELECTED") });
+    await applyTransition(prisma, { contentItemId: item.id, to: "SELECTED", actorType: "HUMAN", actorId: actor.actorId, reason, idempotencyKey: key("SELECTED") });
     state = "SELECTED";
   }
   if (state === "SELECTED") {
@@ -374,6 +386,6 @@ async function walkToScripted(prisma: PrismaClient, item: ContentItem, actor: { 
     state = "CONTRACTED";
   }
   for (const to of PATH.slice(PATH.indexOf(state) + 1)) {
-    await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM", actorId: actor.actorId, reason: SCRIPT_IMPORT_REASON, idempotencyKey: key(to) });
+    await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM", actorId: actor.actorId, reason, idempotencyKey: key(to) });
   }
 }

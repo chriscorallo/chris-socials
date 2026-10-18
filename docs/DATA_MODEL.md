@@ -296,6 +296,10 @@ via `writeTransition` — see `/docs/DECISIONS.md` and `packages/domain/src/stat
 - `FeatureFlag` — **Phase 0** (above)
 - `AutonomyLevel` — **Phase 8** (above) — not individually named in spec §19, but the real
   persisted form of §23's per-subsystem reliability-threshold tracking
+- `OAuthClient`, `OAuthAuthorizationCode`, `OAuthGrant`, `OAuthToken` — **ChatGPT connector
+  (2026-10-17)**: the app's own OAuth 2.1 server for the MCP endpoint `/api/mcp`. Codes and
+  tokens are stored only as SHA-256 hashes; revocation sets `revokedAt`, rows are never deleted.
+  See `docs/decisions-pending/chatgpt-connector.md`.
 
 ## Conventions
 

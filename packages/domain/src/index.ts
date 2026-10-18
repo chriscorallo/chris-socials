@@ -150,3 +150,7 @@ export * from "./style-cut-plan";
 // (docs/decisions-pending/viewer-panel.md). Never a hard-gate input.
 export * from "./viewer-review";
 export type { ViewerReview as ViewerReviewRow } from "@prisma/client";
+// ChatGPT connector (2026-10-17) — OAuth 2.1 server + MCP tool logic so Chris's own ChatGPT can
+// read his plan and save scripts (docs/decisions-pending/chatgpt-connector.md). No model calls.
+export * from "./connector-oauth";
+export * from "./chatgpt-connector";
