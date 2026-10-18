@@ -393,12 +393,12 @@ export function checkQualityBasics(input: QualityBasicsInput): QualityIssue[] {
   }
   const total = estimateFilmSeconds(input.film);
   const target = input.targetSeconds ?? 45;
-  if (total > 75) q(flat[0]?.shot.id ?? "film", "OTHER", "MAJOR", `Film runs ~${Math.round(total)} s — mini-movies land at 30–60 s.`, "Cut lines (the Director decides which).", [ev("CALC", "film", `${Math.round(total)} s at 2.6 words/s`)]);
-  else if (Math.abs(total - target) > target * 0.35) q(flat[0]?.shot.id ?? "film", "OTHER", "MINOR", `Film runs ~${Math.round(total)} s vs the ${target} s target.`, total > target ? "Tighten lines." : "Let key beats breathe (hold) or add a beat.", [ev("CALC", "film", `${Math.round(total)} s`)]);
+  if (total > 75) q("film", "OTHER", "MAJOR", `Film runs ~${Math.round(total)} s — mini-movies land at 30–60 s.`, "Cut lines (the Director decides which).", [ev("CALC", "film", `${Math.round(total)} s at 2.6 words/s`)]);
+  else if (Math.abs(total - target) > target * 0.35) q("film", "OTHER", "MINOR", `Film runs ~${Math.round(total)} s vs the ${target} s target.`, total > target ? "Tighten lines." : "Let key beats breathe (hold) or add a beat.", [ev("CALC", "film", `${Math.round(total)} s`)]);
   if (input.referenceMedianShotSeconds && flat.length) {
     const lens = flat.map((f) => estimateShotSeconds(f.shot)).sort((a, b) => a - b);
     const median = lens[Math.floor(lens.length / 2)]!;
-    if (median > input.referenceMedianShotSeconds * 1.8) q(flat[0]!.shot.id, "OTHER", "MINOR", `Median shot ~${median.toFixed(1)} s vs ${input.referenceMedianShotSeconds.toFixed(1)} s in your reference style — slower pacing.`, "Split long shots.", [ev("MEASURED", "reference-style", `median ${input.referenceMedianShotSeconds.toFixed(1)} s`)]);
+    if (median > input.referenceMedianShotSeconds * 1.8) q("film", "OTHER", "MINOR", `Median shot ~${median.toFixed(1)} s vs ${input.referenceMedianShotSeconds.toFixed(1)} s in your reference style — slower pacing.`, "Split long shots.", [ev("MEASURED", "reference-style", `median ${input.referenceMedianShotSeconds.toFixed(1)} s`)]);
   }
   const renderStage = !!input.render;
   for (const s of [...(input.stills ?? []), ...(input.render?.frames ?? [])]) {
@@ -413,7 +413,7 @@ export function checkQualityBasics(input: QualityBasicsInput): QualityIssue[] {
   }
   if (input.render) {
     const r = input.render;
-    const first = flat[0]?.shot.id ?? "film";
+    const first = "film";
     if (r.loudnessLufs !== null && Math.abs(r.loudnessLufs + 14) > 1) q(first, "OTHER", "MAJOR", `Mix is ${r.loudnessLufs.toFixed(1)} LUFS (target −14 ±1).`, "Re-run the mix.", [ev("MEASURED", "render.loudness", `${r.loudnessLufs} LUFS`)]);
     if (r.truePeakDbtp !== null && r.truePeakDbtp > -1) q(first, "ARTIFACT", "MAJOR", `True peak ${r.truePeakDbtp.toFixed(1)} dBTP (≤ −1 avoids clipping on phones).`, "Re-run the limiter.", [ev("MEASURED", "render.truePeak", `${r.truePeakDbtp} dBTP`)]);
   }

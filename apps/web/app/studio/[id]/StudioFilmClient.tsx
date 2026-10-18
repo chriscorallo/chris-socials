@@ -129,7 +129,7 @@ export function StudioFilmClient({ initial, demo }: { initial: StudioFilmView; d
         </section>
       )}
 
-      {v.pending && <AskChatGpt view={v} demo={demo} busy={busy} onSubmitted={() => load(true)} onSkip={() => act("skip", () => skipFinalCheckAction(v.id))} />}
+      {v.pending && <AskChatGpt key={`${v.pending.kind}-${v.roundTrips}`} view={v} demo={demo} busy={busy} onSubmitted={() => load(true)} onSkip={() => act("skip", () => skipFinalCheckAction(v.id))} />}
 
       {v.phase === "rendering" && (
         <section className="panel p-4">
@@ -372,7 +372,7 @@ function Storyboard({ view, busy, act }: { view: StudioFilmView; busy: string | 
               <span className="absolute left-1.5 top-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] text-white/80">{i + 1}</span>
               {s.verdict && (
                 <span className="absolute right-1.5 top-1.5">
-                  <Pill tone={VERDICT_TONE[s.verdict]!}>{s.verdict === "MATCH" ? "✓ shows it" : s.verdict === "WEAK" ? "weak" : "doesn't show it"}</Pill>
+                  <Pill tone={VERDICT_TONE[s.verdict]!}>{s.verdict === "MATCH" ? "✓ shows it" : s.verdict === "WEAK" ? "loose" : "doesn't show it"}</Pill>
                 </span>
               )}
             </div>

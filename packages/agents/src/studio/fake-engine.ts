@@ -60,7 +60,7 @@ function wrap(text: string, max: number): string[] {
 }
 
 /** One 270×480 animatic card of what's on screen at `point` of the shot. */
-export function sketchShotSvg(film: StudioFilm, shot: StudioShot, before: ReturnType<typeof initialWorld>, point: number, caption?: string): string {
+export function sketchShotSvg(film: StudioFilm, shot: StudioShot, before: ReturnType<typeof initialWorld>, point: number, caption?: string, withCaption = true): string {
   const after = applyShot(before, shot);
   const w = point > 0.5 ? after : before;
   const kinds = new Map(film.cast.map((a) => [a.id, a]));
@@ -110,8 +110,8 @@ export function sketchShotSvg(film: StudioFilm, shot: StudioShot, before: Return
   });
   const texts = (shot.text ?? []).filter((t) => t.style !== "FOOTNOTE").slice(0, 2).map((t, i) => `<text x="135" y="${80 + i * 34}" font-size="${t.style === "HERO_NUMBER" ? 28 : 15}" font-weight="700" fill="${t.style === "HERO_NUMBER" ? "#F6D68A" : "#F5F0E6"}" text-anchor="middle" font-family="sans-serif">${esc(t.text.replace("|", " "))}</text>`);
   const cap = (caption ?? shot.line ?? "").trim();
-  const capLines = wrap(cap, 34).map((l, i) => `<text x="135" y="${414 + i * 16}" font-size="12" fill="#F5F0E6" text-anchor="middle" font-family="sans-serif">${esc(l)}</text>`);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="270" height="480" viewBox="0 0 270 480"><rect width="270" height="480" fill="#0E0D12"/><rect x="0" y="336" width="270" height="56" fill="#16151C"/>${shapes.join("")}${texts.join("")}<rect x="0" y="392" width="270" height="88" fill="#000" opacity="0.55"/>${capLines.join("")}<text x="10" y="20" font-size="10" fill="#8F8BA3" font-family="monospace">${esc(shot.id)} · ${esc(shot.camera.rig)}</text></svg>`;
+  const capLines = (withCaption ? wrap(cap, 34) : []).map((l, i) => `<text x="135" y="${414 + i * 16}" font-size="12" fill="#F5F0E6" text-anchor="middle" font-family="sans-serif">${esc(l)}</text>`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="270" height="480" viewBox="0 0 270 480"><rect width="270" height="480" fill="#0E0D12"/><rect x="0" y="336" width="270" height="56" fill="#16151C"/>${shapes.join("")}${texts.join("")}${withCaption ? `<rect x="0" y="392" width="270" height="88" fill="#000" opacity="0.55"/>` : ""}${capLines.join("")}<text x="260" y="384" text-anchor="end" font-size="10" fill="#8F8BA3" font-family="monospace">${esc(shot.id)} · ${esc(shot.camera.rig)}</text></svg>`;
 }
 
 export const svgDataUrl = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -200,7 +200,7 @@ export class FakeFilmEngine implements FilmEnginePort {
     for (const { shot } of flattenShots(film)) {
       for (const p of points) {
         const svg = sketchShotSvg(film, shot, w, p);
-        stills.push({ id: `${shot.id}@${p}`, shotId: shot.id, point: p, url: svgDataUrl(svg), caption: shot.line, metrics: this.opts.stillMetrics?.(shot.id) });
+        stills.push({ id: `${shot.id}@${p}`, shotId: shot.id, point: p, url: svgDataUrl(sketchShotSvg(film, shot, w, p, undefined, false)), caption: shot.line, metrics: this.opts.stillMetrics?.(shot.id) });
         cells.push(svg);
       }
       w = applyShot(w, shot);

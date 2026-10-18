@@ -27,14 +27,8 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
       <PageShell maxWidth={680}>
         <PageHeader eyebrow="Studio" title="Mini-movie studio" description="Type an idea. Your crew writes it, storyboards it, checks every number and every picture, and renders a 30–60 s animated short. Costs $0 — it uses your ChatGPT for the creative calls." />
         {sp.error === "idea" && <p className="mb-3 rounded-xl bg-[color-mix(in_srgb,var(--color-rose-500)_14%,transparent)] px-3 py-2 text-[14px] text-[var(--color-rose-400)]">Type an idea (or pick one of your planned videos) first.</p>}
-        <Panel>
-          <NewFilmForm ideas={ideas} voices={STUDIO_VOICES} localAi={local.on} />
-        </Panel>
-
-        <h2 className="mb-2 mt-7 text-[17px] font-semibold">Your films</h2>
-        {films.length === 0 ? (
-          <p className="text-[15px] text-[var(--color-text-muted)]">No films yet — your first one starts above.</p>
-        ) : (
+        {films.length > 0 && <h2 className="mb-2 text-[17px] font-semibold">Your films</h2>}
+        {films.length > 0 && (
           <ul className="flex flex-col gap-2" data-testid="film-list">
             {films.map((f) => (
               <li key={f.id}>
@@ -51,6 +45,10 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
             ))}
           </ul>
         )}
+        {films.length > 0 && <h2 className="mb-2 mt-7 text-[17px] font-semibold">New film</h2>}
+        <Panel>
+          <NewFilmForm ideas={ideas} voices={STUDIO_VOICES} localAi={local.on} />
+        </Panel>
       </PageShell>
     </>
   );

@@ -211,7 +211,7 @@ async function applyAnswer(deps: StudioDeps, film: FilmRecord, kind: PackKind, v
   const k = (s: string) => `${key}:${s}`;
   if (kind === "WRITE") {
     const w = value as WritePackResponse;
-    await deps.store.addArtifact(art(film, null, "BRIEF", "FILM_DIRECTOR", via, `Brief: ${w.brief.premise} Metaphor: ${w.brief.centralMetaphor.idea}`, w.brief, null, k("brief"), pv("FILM_DIRECTOR")));
+    await deps.store.addArtifact(art(film, null, "BRIEF", "FILM_DIRECTOR", via, `Brief: ${w.brief.premise}`, w.brief, null, k("brief"), pv("FILM_DIRECTOR")));
     const rec = w.hooks.options.find((h) => h.id === w.hooks.recommendedId) ?? w.hooks.options[0]!;
     await deps.store.addArtifact(art(film, null, "HOOKS", "FILM_HOOK", via, `${w.hooks.options.length} hooks; picked ${rec.id}: "${rec.line}" (${rec.mechanism}, stop ≈ ${rec.stopEstimate.score}/100, estimate).`, w.hooks, null, k("hooks"), pv("FILM_HOOK")));
     await deps.store.addArtifact(art(film, null, "SCRIPT", "FILM_SCREENWRITER", via, `Script: ${w.script.lines.length} lines, ~${Math.round(w.script.estimatedSeconds)}s, ${w.script.calculations.length} calculations, ${w.script.claims.filter((c) => c.kind === "FACT").length} facts to confirm.`, w.script, null, k("script"), pv("FILM_SCREENWRITER")));
@@ -238,8 +238,7 @@ async function applyAnswer(deps: StudioDeps, film: FilmRecord, kind: PackKind, v
   // REVIEW
   const r = value as ReviewPackResponse;
   const vid = film.currentVersionId;
-  const mm = r.meaningMatch.checks.filter((c) => c.verdict !== "MATCH");
-  await deps.store.addArtifact(art(film, vid, "MEANING_MATCH", "FILM_MEANING_MATCH", via, mm.length ? mm.slice(0, 2).map((c) => `${c.shotId} “${c.line}” → ${c.verdict}: ${c.shown}. Fix: ${c.replacement?.description ?? "—"}`).join(" · ") : `All ${r.meaningMatch.checks.length} lines match their pictures.`, r.meaningMatch, null, k("mm"), pv("FILM_MEANING_MATCH")));
+    await deps.store.addArtifact(art(film, vid, "MEANING_MATCH", "FILM_MEANING_MATCH", via, meaningSummary(r.meaningMatch.checks, shotNumberer(await validFilmOf(deps, film))), r.meaningMatch, null, k("mm"), pv("FILM_MEANING_MATCH")));
   await deps.store.addArtifact(art(film, vid, "COHESION", "FILM_COHESION", via, `${r.cohesion.metaphor.holds ? "One metaphor holds" : "Metaphor breaks"}; ending ${r.cohesion.ending.lands ? "lands" : "doesn't land"}; ${r.cohesion.issues.length} issue(s).`, r.cohesion, null, k("cohesion"), pv("FILM_COHESION")));
   await deps.store.addArtifact(art(film, vid, "RETENTION", "FILM_RETENTION", via, `Hook stop ≈ ${r.retention.hook.stop.score}/100 (estimate). ${r.retention.fixes.length} fix(es). ${r.retention.summary}`, r.retention, null, k("retention"), pv("FILM_RETENTION")));
   await deps.store.addArtifact(art(film, vid, "QUALITY", "FILM_QUALITY", via, `Storyboard quality: ${r.quality.verdict}, ${r.quality.premiumBar.verdict} the premium bar. ${r.quality.topFixes[0] ?? ""}`.trim(), r.quality, null, k("quality"), pv("FILM_QUALITY")));
@@ -300,6 +299,35 @@ async function decide(deps: StudioDeps, film: FilmRecord, r: ReviewPackResponse,
       await issuePack(deps, atFix, buildFixPack({ reason: "REVISION", script: r.revisedScript ?? cur.script, film: base, problems, catalog: deps.engine.getCatalog() }), "REVISION");
     }
   }
+}
+
+const brief = (s: string, n = 90) => {
+  const first = s.split(/ — | \(|; /)[0]!.trim();
+  return first.length > n ? `${first.slice(0, n - 1).trimEnd()}…` : first;
+};
+
+/** Crew-room line for Meaning-Match, in Chris's words: shot 7 "you raised your baseline" → doesn't
+ * show it: <why>. Fix: <what>. Mismatches first; loose matches only counted. */
+export function meaningSummary(checks: Array<{ shotId: string; line: string; verdict: string; shown: string; evidence: Array<{ ref: string; detail: string }>; replacement: { description: string } | null }>, shotNumber: (id: string) => number): string {
+  const mis = checks.filter((c) => c.verdict === "MISMATCH");
+  const weak = checks.filter((c) => c.verdict === "WEAK").length;
+  if (!mis.length) return weak ? `Every line's picture shows it (${weak} only loosely — fine for abstract lines).` : `All ${checks.length} lines' pictures show what's said.`;
+  const parts = mis.slice(0, 2).map((c) => {
+    const why = c.evidence.find((e) => e.ref.startsWith("rule:") && e.detail !== "the shot shows it")?.detail ?? c.shown;
+    return `Shot ${shotNumber(c.shotId)} “${c.line}” → doesn't show it: ${brief(why)}. Fix: ${brief(c.replacement?.description ?? "—")}.`;
+  });
+  return `${parts.join(" ")}${mis.length > 2 ? ` (+${mis.length - 2} more)` : ""}${weak ? ` ${weak} other line${weak === 1 ? "" : "s"} only loosely match.` : ""}`;
+}
+
+function shotNumberer(film: StudioFilm | null): (id: string) => number {
+  const ids = film ? flattenShots(film).map((f) => f.shot.id) : [];
+  return (id) => ids.indexOf(id) + 1 || 0;
+}
+
+async function validFilmOf(deps: StudioDeps, film: FilmRecord): Promise<StudioFilm | null> {
+  const cur = await current(deps, film);
+  const v = cur ? validated(deps, film, cur) : null;
+  return v?.ok ? v.film : null;
 }
 
 function decisionSummary(d: FinalDecision): string {
@@ -469,9 +497,7 @@ async function runStep(deps: StudioDeps, film: FilmRecord): Promise<void> {
       const vk = `${film.id}:v${cur.version.version}`;
       const facts = engine.describeShots(v.film);
       const mm = await runMeaningMatchFirstPass({ film: v.film, script: cur.script, catalog: engine.getCatalog(), embedder: deps.embedder, facts });
-      const rank = { MISMATCH: 0, WEAK: 1, MATCH: 2 } as const;
-      const mmBad = mm.report.checks.filter((c) => c.verdict !== "MATCH").sort((a, b) => rank[a.verdict] - rank[b.verdict]);
-      await store.addArtifact(art(film, cur.version.id, "MEANING_MATCH_AUTO", "MEANING_MATCH_FIRST_PASS", mm.embedderId.startsWith("lexical") ? "DETERMINISTIC" : "LOCAL_EMBEDDING", mmBad.length ? mmBad.slice(0, 2).map((c) => `${c.shotId} “${c.line}” → ${c.verdict}: ${c.evidence.find((e) => e.ref.startsWith("rule:"))?.detail ?? "the picture is only loosely related"}. Fix: ${c.replacement?.description}`).join(" · ") : mm.report.summary, mm, mm.details.some((d) => d.forcing) ? "BLOCK" : "PASS", `${vk}:mm-auto`));
+            await store.addArtifact(art(film, cur.version.id, "MEANING_MATCH_AUTO", "MEANING_MATCH_FIRST_PASS", mm.embedderId.startsWith("lexical") ? "DETERMINISTIC" : "LOCAL_EMBEDDING", meaningSummary(mm.report.checks, shotNumberer(v.film)), mm, mm.details.some((d) => d.forcing) ? "BLOCK" : "PASS", `${vk}:mm-auto`));
       const cont = checkContinuity(v.film);
       await store.addArtifact(art(film, cur.version.id, "CONTINUITY", "CONTINUITY", "DETERMINISTIC", cont.length ? `${cont.length} continuity issue(s): ${cont[0]!.toShot} — ${cont[0]!.detail}` : "Continuity: objects, counts, screen direction and lighting all consistent.", { issues: cont }, null, `${vk}:continuity`));
       const q = checkQualityBasics({ film: v.film, stills: sb?.stills ?? [], targetSeconds: film.targetSeconds, referenceMedianShotSeconds: deps.referenceMedianShotSeconds ?? null });

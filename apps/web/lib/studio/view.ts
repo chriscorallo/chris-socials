@@ -68,8 +68,9 @@ export function buildStudioFilmView(film: FilmRecord, versions: FilmVersionRecor
           line: shot.line ?? null,
           stillUrl: sb?.stills.find((s) => s.shotId === shot.id)?.url ?? null,
           verdict: worst?.verdict ?? null,
-          verdictNote: worst && worst.verdict !== "MATCH" ? (ruleNote && worst === auto ? ruleNote : worst.shown) : null,
-          fix: worst?.replacement?.description ?? null,
+          // A loose (similarity-only) match is advisory — one short line, no essay on a phone.
+          verdictNote: !worst || worst.verdict === "MATCH" ? null : worst.verdict === "WEAK" && worst === auto ? "Only loosely shows the line." : (worst === auto ? ruleNote : null) ?? worst.shown,
+          fix: !worst || worst.verdict === "MATCH" || (worst.verdict === "WEAK" && worst === auto) ? null : (worst.replacement?.description ?? null),
           notes: [...cont.filter((c) => c.toShot === shot.id).map((c) => c.detail), ...qual.filter((q) => q.shotId === shot.id && q.severity !== "INFO").map((q) => q.detail)],
         };
       })
@@ -102,7 +103,7 @@ export function buildStudioFilmView(film: FilmRecord, versions: FilmVersionRecor
     storyboard,
     storyboardIsSketch: !!sb?.stills[0]?.url.startsWith("data:image/svg"),
     facts,
-    verification: ver ? { ok: ver.gate.status === "PASS", summary: ver.summary } : null,
+    verification: ver ? { ok: ver.gate.status === "PASS", summary: facts.length && facts.every((f) => f.confirmed) ? `${ver.summary.replace(/;? ?\d+ facts? for Chris to confirm\.?$/, "")}; facts confirmed by you.` : ver.summary } : null,
     render: render ? { videoUrl: render.videoUrl, posterUrl: render.posterUrl, durationSeconds: render.durationSeconds, loudnessLufs: render.loudnessLufs } : null,
     finalReports,
     versions: versions.map((v) => ({ version: v.version, origin: v.origin, note: v.note, at: v.createdAt.toISOString(), current: v.id === vid })).reverse(),

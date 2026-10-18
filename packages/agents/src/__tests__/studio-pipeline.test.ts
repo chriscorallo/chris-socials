@@ -79,7 +79,7 @@ describe("Studio orchestrator — happy path with the revise loop", () => {
     expect(r.film.pending!.prompt).toContain("rule — must be fixed or overruled");
     const autoMM = (await store.listArtifacts(film.id)).find((a) => a.kind === "MEANING_MATCH_AUTO")!;
     expect(autoMM.gate).toBe("BLOCK");
-    expect(autoMM.summary).toContain("baseline “You raised your baseline.” → MISMATCH");
+    expect(autoMM.summary).toContain("Shot 7 “You raised your baseline.” → doesn't show it");
 
     await submitPackAnswer(deps, film.id, demoAnswerFor("REVIEW", await currentFilm(deps, film.id)), "chris");
     let f = (await store.getFilm(film.id))!;
@@ -107,7 +107,7 @@ describe("Studio orchestrator — happy path with the revise loop", () => {
     const view = crewRoomView(r.film, await store.listArtifacts(film.id));
     expect(view.costUsd).toBe(0);
     expect(view.entries.find((e) => e.member.id === "verify")!.state).toBe("done");
-    expect(view.timeline.some((t) => t.who === "Meaning-Match" && t.summary.includes("MISMATCH"))).toBe(true);
+    expect(view.timeline.some((t) => t.who === "Meaning-Match" && t.summary.includes("doesn't show it"))).toBe(true);
 
     // Optional final check round trip.
     const fc = await requestFinalCheck(deps, film.id);

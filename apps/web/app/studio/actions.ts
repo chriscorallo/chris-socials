@@ -38,7 +38,9 @@ export async function createFilmAction(form: FormData): Promise<void> {
   const deps = await getStudioDeps(actorId);
   const sourceId = String(form.get("sourceContentItemId") ?? "") || null;
   let idea = String(form.get("idea") ?? "").trim();
-  let title = idea.split(/[.?!\n]/)[0]!.slice(0, 60) || "New mini-movie";
+  // A working title until the Director names the film: the idea's first clause, cut at a word.
+  const firstClause = idea.split(/[.?!\n]| — | - /)[0]!.trim();
+  let title = (firstClause.length > 48 ? `${firstClause.slice(0, 48).replace(/\s+\S*$/, "")}…` : firstClause) || "New mini-movie";
   if (sourceId) {
     const item = await prisma.contentItem.findUnique({ where: { id: sourceId }, select: { title: true, description: true } });
     if (item) {
