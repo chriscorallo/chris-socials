@@ -176,7 +176,11 @@ export async function attachRecordingSegment(
     if (existing) return { segment: existing, duplicateOf: existing.mediaAssetId };
     const max = await tx.recordingSegment.aggregate({ where: { recordingSessionId: session.id }, _max: { segmentIndex: true } });
     const next = (max._max.segmentIndex ?? -1) + 1;
-    const segmentIndex = Number.isInteger(input.segmentIndex) && (input.segmentIndex as number) >= 0 ? (input.segmentIndex as number) : next;
+    // The phone's order wins (a part retried late still lands in its place) — unless that index
+    // is already used by another part, live or deleted (indexes are never reused).
+    const wanted = Number.isInteger(input.segmentIndex) && (input.segmentIndex as number) >= 0 ? (input.segmentIndex as number) : null;
+    const taken = wanted != null && (await tx.recordingSegment.count({ where: { recordingSessionId: session.id, segmentIndex: wanted } })) > 0;
+    const segmentIndex = wanted != null && !taken ? wanted : next;
     const segment = await tx.recordingSegment.create({
       data: {
         recordingSessionId: session.id,

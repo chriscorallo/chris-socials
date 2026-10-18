@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, draftLabel } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary } from "@chris/domain";
 import { DiscardDraftButton } from "./DiscardDraftButton";
 import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
@@ -106,7 +106,9 @@ export default async function ContentDetailPage({
   const heroKey = goodRender?.storageKey ?? heroTake?.storageKey ?? null;
   const viewerCheck = goodRender ? await getViewerCheckForVideo(item.id).catch(() => null) : null;
   const livePost = item.publications.find((p) => p.status === "SUCCESS" && p.url);
-  const next = nextActionFor(state, draft);
+  // What the page shows: a draft is still being filmed; a discarded draft left no footage.
+  const shownState = draft ? "READY_TO_FILM" : footageGone ? "FILMED" : state;
+  const next = nextActionFor(footageGone ? "FILMED" : state, draft);
   const when =
     (state === "SCHEDULED" || state === "READY") && item.scheduleEntry
       ? `Scheduled for ${formatWhen(item.scheduleEntry.scheduledDate)}`
@@ -349,7 +351,7 @@ export default async function ContentDetailPage({
           <div className="min-w-0">
             <h1 className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[28px]">{item.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-muted)] sm:text-[14px]">
-              {draft ? <DraftBadge label={`Draft — ${draftLabel(draft)}`} /> : <StatusPill state={state} />}
+              {draft ? <DraftBadge /> : <StatusPill state={shownState} />}
               {when && <span>{when}</span>}
             </div>
             {draftSaved && draft && <p className="mt-2 text-[13.5px] text-[var(--color-emerald-400)]" data-testid="draft-saved">Draft saved — come back anytime to film the rest.</p>}
@@ -357,7 +359,8 @@ export default async function ContentDetailPage({
           </div>
 
           <div className="col-span-2 flex min-w-0 flex-col gap-4 self-start md:col-span-1 md:col-start-2">
-            <FlowProgress state={state} />
+            {/* A draft is still being filmed: light "Film", not "Edit" (display only). */}
+            <FlowProgress state={shownState} />
             {primary && (
               <div className="flex flex-col gap-2.5">
                 {primary.big}

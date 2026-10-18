@@ -143,6 +143,14 @@ describe("recording sessions (segmented teleprompter recording + drafts)", () =>
       ["d1", 0],
       ["d3", 2],
     ]);
+    // A phone that asks for the deleted part's index (1) gets the next free one instead.
+    await uploadSegment(item.id, session.id, "d4", 2, { index: 1 });
+    const after = await getOpenRecordingSession(prisma, item.id);
+    expect(after!.segments.map((s) => [s.clientKey, s.segmentIndex])).toEqual([
+      ["d1", 0],
+      ["d3", 2],
+      ["d4", 3],
+    ]);
   });
 
   it("resume: the draft survives (position saved) and new parts append after the existing ones", async () => {

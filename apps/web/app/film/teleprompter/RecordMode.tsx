@@ -107,6 +107,7 @@ export function RecordMode({
     setSegmentsState(segsRef.current);
   }, []);
   const partsThisVisit = useRef(0);
+  const nextIndexRef = useRef(0);
   const [visitParts, setVisitParts] = useState(0);
   const sessionRef = useRef<Session | null>(draft ? { contentItemId: draft.contentItemId, recordingSessionId: draft.recordingSessionId } : null);
   const sessionPromise = useRef<Promise<Session | { error: string }> | null>(null);
@@ -376,7 +377,9 @@ export function RecordMode({
         setError(blob.size === 0 ? "That part came out empty. Try again." : null);
         return;
       }
-      const index = nextSegmentIndex(segsRef.current);
+      // Never reuse the index of a part deleted in this visit (the server also refuses reuse).
+      const index = Math.max(nextSegmentIndex(segsRef.current), nextIndexRef.current);
+      nextIndexRef.current = index + 1;
       const file = new File([blob], segmentFileName(index, type, new Date()), { type: baseMime(type) });
       partsThisVisit.current += 1;
       setVisitParts(partsThisVisit.current);

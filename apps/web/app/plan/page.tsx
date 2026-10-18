@@ -4,7 +4,6 @@ import {
   getActivePostingPlan,
   listPlannedVideos,
   listOpenRecordingDrafts,
-  draftLabel,
   type RecordingDraftSummary,
   listPlanImports,
   countVideosNeedingScripts,
@@ -279,7 +278,8 @@ function Seg({ href, on, children }: { href: string; on: boolean; children: Reac
 }
 
 function PlanRow({ v, today, urgent, draft }: { v: PlannedVideo; today: string; urgent: boolean; draft: RecordingDraftSummary | null }) {
-  const st = plannedVideoStatus(v.state);
+  // A discarded recording draft leaves an ingested video with no takes: it needs footage again.
+  const st = plannedVideoStatus(v.takes === 0 && (v.state === "MEDIA_INGESTED" || v.state === "TAKE_SELECTED") ? "FILMED" : v.state);
   const { hook } = splitDescription(v.description);
   return (
     <li className="flex items-center gap-3 px-4 py-3" data-testid="plan-row">
@@ -293,8 +293,8 @@ function PlanRow({ v, today, urgent, draft }: { v: PlannedVideo; today: string; 
           {v.title}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {draft ? <Badge tone="gold">Draft · {draftLabel(draft)}</Badge> : <Badge tone={st.tone}>{st.label}</Badge>}
-          {v.takes > 0 && <span className="text-[12px] text-[var(--color-text-faint)]">{v.takes} take{v.takes === 1 ? "" : "s"}</span>}
+          {draft ? <Badge tone="gold">Draft · {draft.parts} {draft.parts === 1 ? "part" : "parts"}</Badge> : <Badge tone={st.tone}>{st.label}</Badge>}
+          {v.takes > 0 && !draft && <span className="text-[12px] text-[var(--color-text-faint)]">{v.takes} take{v.takes === 1 ? "" : "s"}</span>}
           <span className="truncate text-[12px] text-[var(--color-text-faint)]">{v.platforms.map((p) => (p === "TIKTOK" ? "TikTok" : p === "INSTAGRAM" ? "Reels" : "Shorts")).join(" · ")}</span>
         </div>
         {hook && st.action.kind === "UPLOAD" && <p className="mt-1 line-clamp-1 text-[13px] text-[var(--color-text-muted)]">“{hook}”</p>}
