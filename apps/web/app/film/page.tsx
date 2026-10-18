@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@chris/domain";
+import { prisma, queryAll } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, SectionHeading, Button, EmptyState } from "../components/ui";
@@ -33,25 +33,30 @@ export default async function FilmQueuePage({
   await requireSession();
   const { filmed, error } = await searchParams;
 
-  const ready = await prisma.contentItem.findMany({
-    where: { currentState: "READY_TO_FILM" },
-    include: { creatorCard: true },
-    orderBy: { createdAt: "asc" },
-    take: 200,
-  });
-  const awaitingUpload = await prisma.contentItem.findMany({
-    where: { currentState: "FILMED" },
-    orderBy: { updatedAt: "desc" },
-    take: 100,
-  });
-
-  const drafts = await listPrompterDraftPicks(prisma);
+  // Independent reads — together on Neon, one at a time on PGlite (queryAll).
+  const [ready, awaitingUpload, drafts, picks] = await queryAll([
+    () =>
+      prisma.contentItem.findMany({
+        where: { currentState: "READY_TO_FILM" },
+        include: { creatorCard: true },
+        orderBy: { createdAt: "asc" },
+        take: 200,
+      }),
+    () =>
+      prisma.contentItem.findMany({
+        where: { currentState: "FILMED" },
+        orderBy: { updatedAt: "desc" },
+        take: 100,
+      }),
+    () => listPrompterDraftPicks(prisma),
+    () => listPrompterPicks(prisma, APP_TZ, 40),
+  ] as const);
   const draftIds = new Set(drafts.map((d) => d.id));
   // Planned videos from the imported plan aren't READY_TO_FILM (no fact-checked script yet), but
   // they're exactly what Chris films next — list the soonest ones so this page is never "empty"
   // while 120 videos are waiting.
   const readyIds = new Set(ready.map((r) => r.id));
-  const nextUp = (await listPrompterPicks(prisma, APP_TZ, 40)).filter((p) => p.ymd && !readyIds.has(p.id) && !draftIds.has(p.id)).slice(0, 12);
+  const nextUp = picks.filter((p) => p.ymd && !readyIds.has(p.id) && !draftIds.has(p.id)).slice(0, 12);
   const groups = new Map<string, typeof ready>();
   for (const item of ready) {
     const setup = item.creatorCard?.setup ?? "UNSPECIFIED";

@@ -1,6 +1,7 @@
 import type { PrismaClient, ContentItem, ContentState } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "./audit";
+import { queryAll } from "./db-concurrency";
 
 /**
  * The IDEAS backlog and CONTENT list are both views over ContentItem — there is no separate
@@ -38,8 +39,9 @@ export async function createContentItem(
 }
 
 /**
- * Fetches a ContentItem with all its related artifacts, as separate sequential queries
- * rather than one `include` with many nested relations — see /docs/DECISIONS.md ("combining
+ * Fetches a ContentItem with all its related artifacts, as separate single-relation queries
+ * (through `queryAll`: parallel on Neon, sequential on PGlite — see db-concurrency.ts) rather
+ * than one `include` with many nested relations — see /docs/DECISIONS.md ("combining
  * many relations in one nested include crashes the PGlite dev database"). Sequential, not
  * `Promise.all`: this sandbox's PGlite dev database also breaks under concurrently
  * dispatched queries (confirmed by bisection — even a single pooled connection with
@@ -55,80 +57,56 @@ export async function getContentItem(prisma: PrismaClient, id: string) {
   const item = await prisma.contentItem.findUnique({ where: { id } });
   if (!item) return null;
 
-  const productionContract = await prisma.productionContract.findUnique({
-    where: { contentItemId: id },
-  });
-  const creatorCard = await prisma.creatorCard.findUnique({ where: { contentItemId: id } });
-  const mediaAssets = await prisma.mediaAsset.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const scheduleEntry = await prisma.scheduleEntry.findUnique({ where: { contentItemId: id } });
-  const transitions = await prisma.contentStateTransition.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "asc" },
-  });
-  const researchPackets = await prisma.researchPacket.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const scriptVersions = await prisma.scriptVersion.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const takeSelections = await prisma.takeSelection.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const editPlans = await prisma.editPlan.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const renders = await prisma.render.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const qcReports = await prisma.qCReport.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
+  // Independent per-relation reads: in parallel on Neon, one at a time on PGlite (queryAll).
+  const desc = { createdAt: "desc" } as const;
+  const where = { contentItemId: id };
+  const [
+    productionContract,
+    creatorCard,
+    mediaAssets,
+    scheduleEntry,
+    transitions,
+    researchPackets,
+    scriptVersions,
+    takeSelections,
+    editPlans,
+    renders,
+    qcReports,
+    platformPackages,
+    publications,
+    performanceSnapshots,
+    comments,
+    performanceEvaluations,
+    tasteFeedback,
+    adversarialCritiques,
+  ] = await queryAll([
+    () => prisma.productionContract.findUnique({ where }),
+    () => prisma.creatorCard.findUnique({ where }),
+    () => prisma.mediaAsset.findMany({ where, orderBy: desc }),
+    () => prisma.scheduleEntry.findUnique({ where }),
+    () => prisma.contentStateTransition.findMany({ where, orderBy: { createdAt: "asc" } }),
+    () => prisma.researchPacket.findMany({ where, orderBy: desc }),
+    () => prisma.scriptVersion.findMany({ where, orderBy: desc }),
+    () => prisma.takeSelection.findMany({ where, orderBy: desc }),
+    () => prisma.editPlan.findMany({ where, orderBy: desc }),
+    () => prisma.render.findMany({ where, orderBy: desc }),
+    () => prisma.qCReport.findMany({ where, orderBy: desc }),
+    () => prisma.platformPackage.findMany({ where, orderBy: desc }),
+    () => prisma.publication.findMany({ where, orderBy: desc }),
+    () => prisma.performanceSnapshot.findMany({ where, orderBy: [{ platform: "asc" }, { capturedAt: "asc" }] }),
+    () => prisma.comment.findMany({ where, orderBy: { ingestedAt: "desc" } }),
+    () => prisma.performanceEvaluation.findMany({ where, orderBy: desc }),
+    () => prisma.tasteFeedback.findMany({ where, orderBy: desc }),
+    () => prisma.adversarialCritique.findMany({ where, orderBy: desc }),
+  ] as const);
   // Only the latest QCReport's issues are worth the page ever showing — fetched separately
-  // (not folded into the qcReports query above) for the same reason every other relation here
-  // is its own sequential call rather than a nested `include`.
+  // (not folded into the qcReports query above) to keep every query single-relation.
   const latestQCIssues = qcReports[0]
     ? await prisma.qCIssue.findMany({
         where: { qcReportId: qcReports[0].id },
         orderBy: { createdAt: "asc" },
       })
     : [];
-  const platformPackages = await prisma.platformPackage.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const publications = await prisma.publication.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const performanceSnapshots = await prisma.performanceSnapshot.findMany({
-    where: { contentItemId: id },
-    orderBy: [{ platform: "asc" }, { capturedAt: "asc" }],
-  });
-  const comments = await prisma.comment.findMany({
-    where: { contentItemId: id },
-    orderBy: { ingestedAt: "desc" },
-  });
-  const performanceEvaluations = await prisma.performanceEvaluation.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const tasteFeedback = await prisma.tasteFeedback.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
-  const adversarialCritiques = await prisma.adversarialCritique.findMany({
-    where: { contentItemId: id },
-    orderBy: { createdAt: "desc" },
-  });
 
   return {
     ...item,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { prisma, listUnscheduledReadyItems, parseYmd, ymdInTz, minutesInTz, mondayOfYmd, PLAN_PLATFORMS } from "@chris/domain";
+import { prisma, listUnscheduledReadyItems, parseYmd, ymdInTz, minutesInTz, mondayOfYmd, PLAN_PLATFORMS, queryAll } from "@chris/domain";
 import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
 import { PageShell, Panel, Button } from "../components/ui";
@@ -40,12 +40,15 @@ export default async function CalendarPage({
   const anchor = (sp.date && parseYmd(sp.date) ? sp.date : null) ?? legacyWeek ?? today;
   const range = viewRange(view, anchor);
 
-  // Sequential — see /docs/DECISIONS.md (PGlite can't take concurrent queries).
-  const { course, todo, plan } = await loadTodo(now);
-  const ready = await listUnscheduledReadyItems(prisma);
+  // Two batches through queryAll — together on Neon, one at a time on PGlite (which can't take
+  // concurrent queries — /docs/DECISIONS.md): the to-do gather + ready pool, then the events
+  // (which need the plan and pool) alongside the autopilot candidates.
+  const [{ course, todo, plan }, ready] = await queryAll([() => loadTodo(now), () => listUnscheduledReadyItems(prisma)] as const);
   const readyPool = ready.map((r) => ({ id: r.id, title: r.title, state: r.currentState }));
-  const events = await loadCalendarEvents({ startYmd: range.start, endYmd: range.end, now, tz: APP_TZ, plan, readyPool });
-  const autopilot = readyPool.length === 0 ? await loadAutopilotCandidates() : [];
+  const [events, autopilot] = await queryAll([
+    () => loadCalendarEvents({ startYmd: range.start, endYmd: range.end, now, tz: APP_TZ, plan, readyPool }),
+    () => (readyPool.length === 0 ? loadAutopilotCandidates() : Promise.resolve([])),
+  ] as const);
 
   const deadlines: Deadline[] = (course.pipeline?.steps ?? [])
     .filter((s) => s.stage !== "ready")

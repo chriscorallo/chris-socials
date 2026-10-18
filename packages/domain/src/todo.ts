@@ -7,6 +7,7 @@ import { listPlatformConnectionSummaries, type PlatformConnectionSummary } from 
 import { isEnabled } from "./feature-flags";
 import { ymdInTz } from "./tz";
 import { ANTHROPIC_CREDIT_ERROR_RE } from "./model-call-log";
+import { queryAll } from "./db-concurrency";
 
 /**
  * The unified to-do list ("anything else that needs to be done"): Stay-on-course nudges
@@ -14,31 +15,36 @@ import { ANTHROPIC_CREDIT_ERROR_RE } from "./model-call-log";
  * setup, each with one clear action, prioritized, and dismissible for the rest of the day.
  *
  * `buildTodoList` is pure (tested with fixed inputs); `loadCourseInput` / `getTodoData` are
- * the DB gathers. Sequential queries throughout — see /docs/DECISIONS.md's PGlite entries.
+ * the DB gathers. Independent queries go through queryAll (parallel on Neon, sequential on
+ * PGlite — see db-concurrency.ts and /docs/DECISIONS.md's PGlite entries).
  */
 
 // ---- DB gather for computeCourse --------------------------------------------------------
 
 export async function loadCourseInput(prisma: PrismaClient, opts: { now: Date; tz: string; plan?: PostingPlanData | null }): Promise<CourseInput> {
-  const plan = opts.plan !== undefined ? opts.plan : await getActivePostingPlan(prisma);
-  const rows = await prisma.contentItem.findMany({
-    where: { currentState: { not: "CANCELLED" } },
-    select: { id: true, title: true, currentState: true, updatedAt: true },
-  });
-  const ids = rows.map((r) => r.id);
-  const lastTransitions = ids.length
-    ? await prisma.contentStateTransition.findMany({
-        where: { contentItemId: { in: ids } },
+  // All independent (the transitions query filters by the same "not cancelled" condition via
+  // the relation instead of an id list, so it needn't wait for `rows`) — one round trip on Neon.
+  const [plan, rows, lastTransitions, entries, pubs] = await queryAll([
+    () => (opts.plan !== undefined ? Promise.resolve(opts.plan) : getActivePostingPlan(prisma)),
+    () =>
+      prisma.contentItem.findMany({
+        where: { currentState: { not: "CANCELLED" } },
+        select: { id: true, title: true, currentState: true, updatedAt: true },
+      }),
+    () =>
+      prisma.contentStateTransition.findMany({
+        where: { contentItem: { currentState: { not: "CANCELLED" } } },
         orderBy: [{ contentItemId: "asc" }, { createdAt: "desc" }],
         distinct: ["contentItemId"],
         select: { contentItemId: true, toState: true, createdAt: true },
-      })
-    : [];
-  const entries = await prisma.scheduleEntry.findMany({ select: { contentItemId: true, scheduledDate: true, targetPlatforms: true } });
-  const pubs = await prisma.publication.findMany({
-    select: { contentItemId: true, platform: true, attempt: true, status: true, publishedAt: true, createdAt: true, errorMessage: true },
-    orderBy: [{ attempt: "desc" }, { createdAt: "desc" }],
-  });
+      }),
+    () => prisma.scheduleEntry.findMany({ select: { contentItemId: true, scheduledDate: true, targetPlatforms: true } }),
+    () =>
+      prisma.publication.findMany({
+        select: { contentItemId: true, platform: true, attempt: true, status: true, publishedAt: true, createdAt: true, errorMessage: true },
+        orderBy: [{ attempt: "desc" }, { createdAt: "desc" }],
+      }),
+  ] as const);
 
   const since = new Map(lastTransitions.map((t) => [t.contentItemId, t]));
   const entryBy = new Map(entries.map((e) => [e.contentItemId, e]));
@@ -242,19 +248,25 @@ export async function getTodoData(
   opts: { now: Date; tz: string; anthropicKeyConfigured: boolean; voiceSamplesEmpty: boolean },
 ): Promise<{ course: CourseResult; todo: TodoList; plan: PostingPlanData | null; today: string }> {
   const { now, tz } = opts;
-  const plan = await getActivePostingPlan(prisma);
-  const input = await loadCourseInput(prisma, { now, tz, plan });
+  const today = ymdInTz(now, tz);
+  // Independent gathers — together on Neon, one at a time on PGlite (queryAll). The posting
+  // plan is loaded inside loadCourseInput's own batch and read back from its result.
+  const [input, needsYou, connections, autoPublishEnabled, lastRun, recentFail, dismissed] = await queryAll([
+    () => loadCourseInput(prisma, { now, tz }),
+    () => getNeedsYouQueue(prisma, { limit: 12 }),
+    () => listPlatformConnectionSummaries(prisma, now),
+    () => isEnabled(prisma, "publishing.scheduled_auto"),
+    () => prisma.jobRun.findFirst({ where: { kind: "scheduled-publish" }, orderBy: { startedAt: "desc" }, select: { startedAt: true } }),
+    () =>
+      prisma.modelCallLog.findFirst({
+        where: { success: false, createdAt: { gte: new Date(now.getTime() - 3 * 86_400_000) } },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true, errorMessage: true },
+      }),
+    () => listDismissedNudgeKeys(prisma, today),
+  ] as const);
+  const plan = input.plan;
   const course = computeCourse(input);
-  const needsYou = await getNeedsYouQueue(prisma, { limit: 12 });
-  const connections = await listPlatformConnectionSummaries(prisma, now);
-  const autoPublishEnabled = await isEnabled(prisma, "publishing.scheduled_auto");
-  const lastRun = await prisma.jobRun.findFirst({ where: { kind: "scheduled-publish" }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });
-
-  const recentFail = await prisma.modelCallLog.findFirst({
-    where: { success: false, createdAt: { gte: new Date(now.getTime() - 3 * 86_400_000) } },
-    orderBy: { createdAt: "desc" },
-    select: { createdAt: true, errorMessage: true },
-  });
   let anthropicCreditError: SetupSignals["anthropicCreditError"] = null;
   if (recentFail?.errorMessage && ANTHROPIC_CREDIT_ERROR_RE.test(recentFail.errorMessage)) {
     const recovered = await prisma.modelCallLog.findFirst({ where: { success: true, createdAt: { gt: recentFail.createdAt } }, select: { id: true } });
@@ -268,8 +280,6 @@ export async function getTodoData(
     for (const p of item.targetPlatforms) upcomingByPlatform[p] = (upcomingByPlatform[p] ?? 0) + 1;
   }
 
-  const today = ymdInTz(now, tz);
-  const dismissed = await listDismissedNudgeKeys(prisma, today);
   const todo = buildTodoList({
     course,
     plan,

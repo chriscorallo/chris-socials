@@ -9,6 +9,7 @@ import {
   ymdInTz,
   ymdMinutesToUtc,
 } from "./tz";
+import { PLAN_PLATFORMS, type PlanPlatform } from "./plan-platforms";
 
 /**
  * Posting plan — Chris's chosen schedule + frequency, per platform — and the two pure
@@ -19,8 +20,7 @@ import {
  * slot generator in the browser. Persistence lives in posting-plan.ts.
  */
 
-export const PLAN_PLATFORMS = ["TIKTOK", "INSTAGRAM", "YOUTUBE"] as const;
-export type PlanPlatform = (typeof PLAN_PLATFORMS)[number];
+export { PLAN_PLATFORMS, type PlanPlatform };
 
 const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Times are HH:mm");
 

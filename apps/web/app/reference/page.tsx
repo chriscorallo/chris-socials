@@ -10,6 +10,7 @@ import {
   compareOwnToReference,
   getActiveHeavyJob,
   countOutdatedReferenceVideos,
+  queryAll,
 } from "@chris/domain";
 import { REFERENCE_LIBRARY_SUBJECT } from "@chris/worker/heavy-job-kinds";
 import { requireSession } from "../../lib/session";
@@ -26,16 +27,18 @@ const LIMIT = 60;
 // edit planner can use later. Capped like every other list page — see /docs/DECISIONS.md.
 export default async function ReferencePage() {
   await requireSession();
-  // Sequential, not Promise.all — see /docs/DECISIONS.md.
-  const creators = await listReferenceCreators(prisma, { limit: LIMIT });
-  const total = await countReferenceCreators(prisma);
-  const counts = await referenceVideoCounts(prisma);
-  const profile = await getReferenceStyleProfile(prisma, { group: "MAIN" });
-  const facelessProfile = await getReferenceStyleProfile(prisma, { group: "FACELESS" });
+  // Independent reads — together on Neon, one at a time on PGlite (queryAll; /docs/DECISIONS.md).
+  const [creators, total, counts, profile, facelessProfile, own, active, outdated] = await queryAll([
+    () => listReferenceCreators(prisma, { limit: LIMIT }),
+    () => countReferenceCreators(prisma),
+    () => referenceVideoCounts(prisma),
+    () => getReferenceStyleProfile(prisma, { group: "MAIN" }),
+    () => getReferenceStyleProfile(prisma, { group: "FACELESS" }),
+    () => getOwnSpeechProfile(prisma),
+    () => getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT),
+    () => countOutdatedReferenceVideos(prisma),
+  ] as const);
   const hasFaceless = creators.some((c) => creatorStyleGroup(c.formats) === "FACELESS");
-  const own = await getOwnSpeechProfile(prisma);
-  const active = await getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT);
-  const outdated = await countOutdatedReferenceVideos(prisma);
   const compare = compareOwnToReference(own, profile);
   const pending = [...counts.values()].reduce((s, c) => s + c.pending, 0);
   const failed = [...counts.values()].reduce((s, c) => s + c.failed, 0);

@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { prisma, nextActionFor } from "@chris/domain";
-import { requireSession } from "../../lib/session";
-import { NavBar } from "../components/NavBar";
-import { PageShell, PageHeader, Panel, Button, EmptyState, StatusPill } from "../components/ui";
-import { VideoCard } from "../components/VideoCard";
-import { RevealActiveChip } from "../components/RevealActiveChip";
-import { runAutopilotBatch } from "./actions";
-import { AUTOPILOT_JOB_KIND } from "../../lib/content-steps";
-import { loadVideoCards, sortInProgress, type VideoCardData } from "../../lib/video-cards";
+import { prisma, nextActionFor, queryAll } from "@chris/domain";
+import { requireSession } from "../../../lib/session";
+import { NavBar } from "../../components/NavBar";
+import { PageShell, PageHeader, Panel, Button, EmptyState, StatusPill } from "../../components/ui";
+import { VideoCard } from "../../components/VideoCard";
+import { RevealActiveChip } from "../../components/RevealActiveChip";
+import { runAutopilotBatch } from "../actions";
+import { AUTOPILOT_JOB_KIND } from "../../../lib/content-steps";
+import { loadVideoCards, sortInProgress, type VideoCardData } from "../../../lib/video-cards";
 
 const LIMIT = 300;
 
@@ -49,14 +49,16 @@ export default async function VideosPage({
   await requireSession();
   const { show, stage, batch } = await searchParams;
 
-  const cards = await loadVideoCards({ limit: LIMIT });
+  const [cards, lastBatch] = await queryAll([
+    () => loadVideoCards({ limit: LIMIT }),
+    () => prisma.jobRun.findFirst({ where: { kind: AUTOPILOT_JOB_KIND }, orderBy: { startedAt: "desc" } }),
+  ] as const);
   const counts = Object.fromEntries(FILTERS.map((f) => [f.key, cards.filter((c) => matches(c, f.key)).length])) as Record<FilterKey, number>;
   const requested = FILTERS.find((f) => f.key === (show ?? stage))?.key;
   const active: FilterKey = requested ?? (counts.progress > 0 ? "progress" : counts.ready > 0 ? "ready" : "all");
   const shown = cards.filter((c) => matches(c, active));
   const list = active === "progress" ? sortInProgress(shown) : shown;
 
-  const lastBatch = await prisma.jobRun.findFirst({ where: { kind: AUTOPILOT_JOB_KIND }, orderBy: { startedAt: "desc" } });
   const batchItems =
     (lastBatch?.summary as { items?: { contentItemId: string; title: string; finalState: string; stoppedBecause: string }[] } | null)?.items ?? [];
   // Autopilot only makes sense for videos the system can move forward on its own.

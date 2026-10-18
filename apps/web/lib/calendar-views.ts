@@ -4,7 +4,7 @@
  * nothing here depends on the process or browser time zone — see packages/domain/src/tz.ts.
  * Weeks run Monday–Sunday, matching the rest of the app (Auto-Fill Week, coverage).
  */
-import { addDaysYmd, addMonthsYmd, mondayOfYmd, parseYmd, toYmd, weekdayOfYmd } from "@chris/domain/planning";
+import { addDaysYmd, addMonthsYmd, mondayOfYmd, parseYmd, toYmd, weekdayOfYmd } from "@chris/domain/tz";
 
 export const CALENDAR_VIEWS = ["month", "week", "day", "agenda"] as const;
 export type CalendarView = (typeof CALENDAR_VIEWS)[number];

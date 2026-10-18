@@ -3,7 +3,7 @@ import { parsePlatforms } from "./platforms";
 import { emptyPartial, finalizeRows, type PartialRow } from "./rows";
 import { parseDelimited, parseMarkdownTable, suggestTableMapping, tableToRows } from "./table";
 import type { ParseContext, ParseResult } from "./types";
-import type { PlanPlatform } from "../posting-plan-core";
+import type { PlanPlatform } from "../plan-platforms";
 
 /**
  * Free-text plans — whatever Chris pastes from Notes, Docs or a ChatGPT answer:

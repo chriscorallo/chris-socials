@@ -161,3 +161,4 @@ export * from "./chatgpt-connector";
 export * from "./plan-context-db";
 export type { PlanContext as PlanContextRow, PlanContextVersion as PlanContextVersionRow } from "@prisma/client";
 export * from "./graphic-prefs";
+export * from "./db-concurrency";

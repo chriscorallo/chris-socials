@@ -66,13 +66,17 @@ export function NextActionButton({
   );
 }
 
-/** A 9:16 frame of the video (latest render, else the first take) or a soft placeholder. */
-export function VideoThumb({ url, title, className = "" }: { url: string | null; title: string; className?: string }) {
+/** A 9:16 frame of the video (latest render, else the first take) or a soft placeholder.
+ * `url` is a small poster JPEG (/api/thumb — lib/poster.ts), never the video file: a list of
+ * <video> elements made every card download its whole take on a phone connection. */
+// `title` stays in the props for callers; the image itself is decorative (alt="") because the
+// surrounding link already names the video — and a failed poster must never show alt text.
+export function VideoThumb({ url, className = "" }: { url: string | null; title: string; className?: string }) {
   return (
     <div className={`relative shrink-0 overflow-hidden rounded-xl bg-[linear-gradient(160deg,#2a2418,#151219_60%,#1b1626)] ${className}`}>
       {url ? (
-        // #t= seeks to a real frame so the first paint isn't black; metadata-only preload.
-        <video src={`${url}#t=0.6`} preload="metadata" muted playsInline className="pointer-events-none h-full w-full object-cover" aria-label={`${title} preview`} />
+        // Plain <img>: an authenticated, already-sized poster (next/image's optimizer can't fetch it).
+        <img src={url} alt="" loading="lazy" decoding="async" className="pointer-events-none h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-[var(--color-gold-400)]/70" aria-hidden>
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

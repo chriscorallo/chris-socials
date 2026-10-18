@@ -128,8 +128,10 @@ html {
     border-radius: 1rem;
     border: 1px solid var(--color-border);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    /* No backdrop-filter: panels sit on the flat ink + the already-120px-blurred ambient field,
+     * so a 20px backdrop blur changed no visible pixel — but it made every panel (120+ on the
+     * plan list) its own blurred compositing layer, re-rasterized on every scroll frame on
+     * iPhone. See docs/decisions-pending/app-performance.md. */
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 40px -24px rgba(0, 0, 0, 0.6);
   }
 

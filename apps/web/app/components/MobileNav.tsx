@@ -118,6 +118,10 @@ export function MobileNavShell({ signOut, pathname }: { signOut: ReactNode; path
               <Link
                 key={tab.href}
                 href={tab.href}
+                // Full prefetch for the four tabs: a tap shows the real page from the client
+                // cache (≤30 s old — experimental.staleTimes.static in next.config.ts), falling
+                // back to the route's loading skeleton if the prefetch hasn't landed yet.
+                prefetch={true}
                 aria-current={active ? "page" : undefined}
                 className={`${TAB_CLASS} ${active ? "text-[var(--color-gold-400)]" : "text-[var(--color-text-faint)]"}`}
               >

@@ -13,6 +13,7 @@ import {
   startOfDayInTz,
   ymdInTz,
   COURSE_THRESHOLDS,
+  queryAll,
   type PostingPlanData,
 } from "@chris/domain";
 
@@ -61,33 +62,40 @@ export async function loadCalendarEvents(opts: {
   const from = startOfDayInTz(opts.startYmd, tz);
   const to = startOfDayInTz(opts.endYmd, tz);
 
-  // Sequential reads — see /docs/DECISIONS.md's PGlite entries.
-  const entries = await prisma.scheduleEntry.findMany({
-    where: { scheduledDate: { gte: from, lt: to } },
-    include: { contentItem: { select: { id: true, title: true, currentState: true } } },
-  });
-  const livePubs = await prisma.publication.findMany({
-    where: {
-      status: { in: ["SUCCESS", "DRAFT"] },
-      OR: [{ publishedAt: { gte: from, lt: to } }, { publishedAt: null, createdAt: { gte: from, lt: to } }],
-    },
-    include: { contentItem: { select: { id: true, title: true, currentState: true } } },
-  });
+  // Two batches (queryAll: together on Neon, one at a time on PGlite — /docs/DECISIONS.md's
+  // PGlite entries): what's in range, then the publications/renders of exactly those items.
+  const [entries, livePubs] = await queryAll([
+    () =>
+      prisma.scheduleEntry.findMany({
+        where: { scheduledDate: { gte: from, lt: to } },
+        include: { contentItem: { select: { id: true, title: true, currentState: true } } },
+      }),
+    () =>
+      prisma.publication.findMany({
+        where: {
+          status: { in: ["SUCCESS", "DRAFT"] },
+          OR: [{ publishedAt: { gte: from, lt: to } }, { publishedAt: null, createdAt: { gte: from, lt: to } }],
+        },
+        include: { contentItem: { select: { id: true, title: true, currentState: true } } },
+      }),
+  ] as const);
   const ids = [...new Set([...entries.map((e) => e.contentItemId), ...livePubs.map((p) => p.contentItemId)])];
-  const allPubs = ids.length
-    ? await prisma.publication.findMany({
-        where: { contentItemId: { in: ids } },
-        orderBy: [{ attempt: "desc" }, { createdAt: "desc" }],
-        select: { contentItemId: true, platform: true, status: true, url: true, errorMessage: true, publishedAt: true, createdAt: true },
-      })
-    : [];
-  const renders = ids.length
-    ? await prisma.render.findMany({
-        where: { contentItemId: { in: ids }, status: "SUCCESS", storageKey: { not: null } },
-        orderBy: { createdAt: "desc" },
-        select: { contentItemId: true, storageKey: true },
-      })
-    : [];
+  const [allPubs, renders] = ids.length
+    ? await queryAll([
+        () =>
+          prisma.publication.findMany({
+            where: { contentItemId: { in: ids } },
+            orderBy: [{ attempt: "desc" }, { createdAt: "desc" }],
+            select: { contentItemId: true, platform: true, status: true, url: true, errorMessage: true, publishedAt: true, createdAt: true },
+          }),
+        () =>
+          prisma.render.findMany({
+            where: { contentItemId: { in: ids }, status: "SUCCESS", storageKey: { not: null } },
+            orderBy: { createdAt: "desc" },
+            select: { contentItemId: true, storageKey: true },
+          }),
+      ] as const)
+    : [[], []];
   const thumbBy = new Map<string, string>();
   for (const r of renders) if (!thumbBy.has(r.contentItemId) && r.storageKey) thumbBy.set(r.contentItemId, r.storageKey);
 

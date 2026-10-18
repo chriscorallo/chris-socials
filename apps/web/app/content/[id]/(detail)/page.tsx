@@ -1,22 +1,23 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary } from "@chris/domain";
-import { DiscardDraftButton } from "./DiscardDraftButton";
-import { requireSession } from "../../../lib/session";
-import { storageMode } from "../../../lib/storage";
-import { formatWhen } from "../../../lib/video-cards";
-import { RawTakeUploader } from "./RawTakeUploader";
-import { ViewerCheck } from "../../components/ViewerCheck";
-import { getViewerCheckForVideo } from "../../../lib/viewer-check";
-import { FlowProgress } from "./FlowProgress";
-import { startEditing } from "./flow-actions";
-import { FootageUpload } from "../../upload/FootageUpload";
-import { prompterCanFilm } from "../../../lib/teleprompter/data";
-import { TeleprompterLink } from "../../components/TeleprompterLink";
-import { NavBar } from "../../components/NavBar";
-import { VideoThumb, DraftBadge } from "../../components/VideoCard";
-import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, BackLink, CollapsiblePanel, StickyActionBar, StatusPill, stateLabel, platformLabel } from "../../components/ui";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll } from "@chris/domain";
+import { DiscardDraftButton } from "../DiscardDraftButton";
+import { requireSession } from "../../../../lib/session";
+import { storageMode } from "../../../../lib/storage";
+import { formatWhen } from "../../../../lib/video-cards";
+import { thumbUrlFor } from "../../../../lib/media-urls";
+import { RawTakeUploader } from "../RawTakeUploader";
+import { ViewerCheck } from "../../../components/ViewerCheck";
+import { getViewerCheckForVideo } from "../../../../lib/viewer-check";
+import { FlowProgress } from "../FlowProgress";
+import { startEditing } from "../flow-actions";
+import { FootageUpload } from "../../../upload/FootageUpload";
+import { prompterCanFilm } from "../../../../lib/teleprompter/data";
+import { TeleprompterLink } from "../../../components/TeleprompterLink";
+import { NavBar } from "../../../components/NavBar";
+import { VideoThumb, DraftBadge } from "../../../components/VideoCard";
+import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, BackLink, CollapsiblePanel, StickyActionBar, StatusPill, stateLabel, platformLabel } from "../../../components/ui";
 import {
   selectForWeek,
   advanceManual,
@@ -45,7 +46,7 @@ import {
   draftCreatorCardAction,
   editScriptAction,
   runAutopilotAction,
-} from "./actions";
+} from "../actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
 // Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
@@ -70,10 +71,11 @@ export default async function ContentDetailPage({
   await requireSession();
   const { id } = await params;
   const { pipelineError, autopilot, draftSaved } = await searchParams;
-  const item = await getContentItem(prisma, id);
+  // The item and its unfinished teleprompter recording, if any
+  // (docs/decisions-pending/segmented-recording-drafts.md) — independent reads, so together on
+  // Neon and one after the other on PGlite (queryAll).
+  const [item, draft] = await queryAll([() => getContentItem(prisma, id), () => getRecordingDraftSummary(prisma, id)] as const);
   if (!item) notFound();
-  // An unfinished teleprompter recording (docs/decisions-pending/segmented-recording-drafts.md).
-  const draft = await getRecordingDraftSummary(prisma, item.id);
 
   const state = item.currentState;
   const isTerminal = state === "ARCHIVED" || state === "CANCELLED";
@@ -330,11 +332,13 @@ export default async function ContentDetailPage({
               fold. Desktop: a big player on the left. */}
           <div className="w-full md:row-span-2">
             {heroKey ? (
+              // Poster frame until Chris taps play — no video bytes on page load (lib/poster.ts).
               <video
                 key={heroKey}
-                src={`/api/media/${heroKey}#t=0.5`}
+                src={`/api/media/${heroKey}`}
+                poster={thumbUrlFor(heroKey)}
                 controls
-                preload="metadata"
+                preload="none"
                 playsInline
                 className="aspect-[9/16] w-full rounded-2xl border border-[var(--color-border)] bg-black object-contain"
               />
@@ -1014,8 +1018,9 @@ export default async function ContentDetailPage({
               {latestRender.storageKey && latestRender.status === "SUCCESS" && (
                 <video
                   src={`/api/media/${latestRender.storageKey}`}
+                  poster={thumbUrlFor(latestRender.storageKey)}
                   controls
-                  preload="metadata"
+                  preload="none"
                   playsInline
                   className="mx-auto mb-3 block max-h-[70dvh] w-auto max-w-full rounded-lg border border-[var(--color-border)] bg-black sm:mx-0 sm:max-h-[480px]"
                 />

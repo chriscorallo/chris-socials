@@ -5,7 +5,10 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { CalEvent, PoolItem } from "../../lib/calendar-data";
 import { formatMinutes, monthDayLabel, weekdayName } from "../../lib/calendar-views";
-import { formatHhmm, parseHhmm, friendlyStateLabel, type ContentState } from "@chris/domain/planning";
+import { formatHhmm, parseHhmm } from "@chris/domain/tz";
+import { friendlyStateLabel } from "@chris/domain/friendly-status";
+import type { ContentState } from "@chris/domain/planning";
+import { thumbUrlFor } from "../../lib/media-urls";
 import { ALL_PLATFORMS, PLATFORM_COLOR, PLATFORM_NAME, PlatformDots, StatusPill } from "./calendar-ui";
 import { moveEvent, scheduleAt, unscheduleEvent } from "./actions";
 import { runAutopilotAction } from "../content/[id]/actions";
@@ -154,11 +157,11 @@ function PostDetail({ e, onDone }: { e: CalEvent; onDone: (msg?: string) => void
     <div>
       <div className="flex gap-4">
         {e.thumbKey ? (
-          <video
-            src={`/api/media/${e.thumbKey}#t=0.5`}
-            preload="metadata"
-            muted
-            playsInline
+          // Poster frame, not the video file (lib/poster.ts).
+          <img
+            src={thumbUrlFor(e.thumbKey)}
+            alt=""
+            decoding="async"
             className="h-[136px] w-[77px] shrink-0 rounded-xl bg-black object-cover"
           />
         ) : (

@@ -26,6 +26,16 @@ const nextConfig: NextConfig = {
   // keeps webpack builds (and any non-workspace install) working too.
   transpilePackages: ["@chris/motion"],
 
+  // The bottom-tab links use prefetch={true} (full route prefetch) so a tab tap shows the real
+  // page instantly. Fully-prefetched pages are kept in the client cache for `static` seconds
+  // (default 5 min) — cut to 30 s so a tab never shows data more than half a minute old (server
+  // actions that revalidate clear it immediately anyway). `dynamic` stays at its default 0.
+  // Experimental but stable since 14.2; remove this block to restore the defaults.
+  // See docs/decisions-pending/app-performance.md.
+  experimental: {
+    staleTimes: { static: 30 },
+  },
+
   // Monorepo: trace server files from the repo root so files outside apps/web can be shipped.
   outputFileTracingRoot: join(__dirname, "..", ".."),
   // Files read from disk at RUNTIME (readFileSync/readdirSync), which the static tracer can't

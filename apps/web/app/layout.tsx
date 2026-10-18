@@ -35,7 +35,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    // data-scroll-behavior="smooth": globals.css sets `scroll-behavior: smooth` (for in-page
+    // anchors like #upload); this tells Next 16 to switch it off during route navigations, so a
+    // tab tap from a scrolled page jumps to the top instead of animating the scroll.
+    <html lang="en" className={inter.variable} data-scroll-behavior="smooth">
       <body className="font-sans antialiased">{children}</body>
     </html>
   );
