@@ -31,7 +31,7 @@ export function plainJobError(raw: string | null | undefined, errorName?: string
     return "Today's AI spending limit has been reached, so the AI step couldn't run. Your work is saved — try again tomorrow, or raise MODEL_SPEND_DAILY_CAP_USD.";
   }
   if (/credit balance|billing|insufficient/i.test(msg)) {
-    return "The AI account is out of credit. Your work is saved — add credit in the Anthropic console and try again.";
+    return "The AI account is out of credit. Your work is saved — add credit (More → AI credit) and try again.";
   }
   if (/api[_ ]?key|authentication|x-api-key|ANTHROPIC|401/i.test(msg)) {
     return "This step needs the AI service, which isn't set up (no Anthropic API key). Your work is saved.";

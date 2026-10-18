@@ -46,11 +46,13 @@ function plainError(err: unknown, step: string): string {
   if (name === "SpendCapExceededError") {
     return "Today's AI spending limit has been reached, so the AI quality check couldn't run. Your edit is saved — try again tomorrow, or raise MODEL_SPEND_DAILY_CAP_USD.";
   }
-  if (/api[_ ]?key|authentication|x-api-key|ANTHROPIC/i.test(msg)) {
-    return "The quality check needs the AI service, which isn't set up (no Anthropic API key). Your edit is saved and rendered — add the key in Settings/env and press Finish again.";
+  // Credit first: Anthropic's out-of-credit message mentions "Anthropic API", which the key
+  // check below would otherwise misread as "no key".
+  if (/credit balance|billing|insufficient|quota/i.test(msg)) {
+    return "The AI account is out of credit, so the quality check couldn't run. Your edit is saved and rendered — add credit (More → AI credit) and press Finish again.";
   }
-  if (/credit balance|billing|insufficient/i.test(msg)) {
-    return "The AI account is out of credit, so the quality check couldn't run. Your edit is saved — add credit in the Anthropic console and press Finish again.";
+  if (/api[_ ]?key|authentication|x-api-key|401/i.test(msg)) {
+    return "The quality check needs the AI service, which isn't set up (no Anthropic API key). Your edit is saved and rendered.";
   }
   return `${step} failed: ${msg}`;
 }
@@ -61,7 +63,7 @@ function plainDesignError(msg: string): string {
     return "Today's AI spending limit has been reached, so the AI couldn't design visuals. Your edit is unchanged — try again tomorrow, or add graphics by hand from the gallery below.";
   }
   if (/credit balance|billing|insufficient|quota/i.test(msg)) {
-    return "The AI account is out of credit, so it couldn't design visuals. Your edit is unchanged — add credit in the Anthropic console and try again, or add graphics by hand from the gallery below.";
+    return "The AI account is out of credit, so it couldn't design visuals. Your edit is unchanged — add credit (More → AI credit) and try again, or add graphics by hand from the gallery below.";
   }
   if (/api[_ ]?key|authentication|x-api-key|ANTHROPIC|401/i.test(msg)) {
     return "Designing visuals needs the AI service, which isn't set up (no Anthropic API key). Your edit is unchanged — you can still add graphics by hand from the gallery below.";
