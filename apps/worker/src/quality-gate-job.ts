@@ -174,7 +174,11 @@ export async function runQualityGateForContentItem(
   type ClaimsVerdict = { result?: string; blockReason?: string | null } | null;
   const scriptVerdict = (scriptVersion?.scriptClaimsGateResult ?? null) as ClaimsVerdict;
   const researchVerdict = (researchPacket?.claimsGateResult ?? null) as ClaimsVerdict;
-  const claimsGateResult = scriptVerdict?.result ? scriptVerdict : researchVerdict;
+  // A latest script a person wrote or pasted in (HUMAN edit, IMPORTED from ChatGPT) that was
+  // never checked must not borrow an older research verdict: its own wording is unchecked.
+  // See docs/decisions-pending/chatgpt-scripts.md.
+  const latestUncheckedNonAgent = !!scriptVersion && scriptVersion.authorType !== "AGENT" && !scriptVerdict?.result;
+  const claimsGateResult = scriptVerdict?.result ? scriptVerdict : latestUncheckedNonAgent ? null : researchVerdict;
   const contract = await db.productionContract.findUnique({ where: { contentItemId } });
   const factCheckExempt = contract?.researchDepth === "NONE" && contract?.factualRisk === "LOW";
   let factualStatus: GateStatus;
@@ -188,9 +192,12 @@ export async function runQualityGateForContentItem(
     factualStatus = "PASS";
   } else {
     factualStatus = "BLOCK";
-    factualBlockReason =
-      "No Claims Gate verdict on record for this item's research or script — run the AI " +
-      "Research -> Script pipeline (or re-gate the edited script) before this can pass.";
+    factualBlockReason = latestUncheckedNonAgent
+      ? scriptVersion!.authorType === "IMPORTED"
+        ? "The script was imported from ChatGPT and its claims haven't been fact-checked yet — check them before this can pass."
+        : "The latest script was edited by hand and hasn't been re-checked by the Claims Gate — re-check it before this can pass."
+      : "No Claims Gate verdict on record for this item's research or script — run the AI " +
+        "Research -> Script pipeline (or re-gate the edited script) before this can pass.";
   }
 
   const brandGuardianReport = scriptVersion?.brandGuardianReport as

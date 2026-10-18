@@ -46,6 +46,8 @@ describe("teleprompter script source", () => {
   it("labels Chris's own edit", () => {
     expect(pickPrompterSource({ scriptVersions: [{ spokenScript: "x", authorType: "HUMAN" }] }).label).toBe("Your script (your edit)");
     expect(pickPrompterSource({ scriptVersions: [{ spokenScript: "x", authorType: "HUMAN" }], scriptVersionCount: 3 }).label).toBe("Your script (v3, your edit)");
+    expect(pickPrompterSource({ scriptVersions: [{ spokenScript: "x", authorType: "IMPORTED" }] }).label).toBe("Your script (from ChatGPT)");
+    expect(pickPrompterSource({ scriptVersions: [{ spokenScript: "x", authorType: "AGENT" }] }).label).toBe("Your script");
   });
 
   it("skips an empty script, then uses the Creator Card (hook + talking points + notes)", () => {

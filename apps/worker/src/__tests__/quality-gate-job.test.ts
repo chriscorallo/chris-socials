@@ -280,6 +280,37 @@ describe("runQualityGateForContentItem (real ffmpeg render, real state machine, 
   );
 
   it(
+    "FACTUAL: an unchecked script imported from ChatGPT (latest version) BLOCKs — it never borrows the older research PASS",
+    async () => {
+      const { item } = await makeRenderedItem();
+      // The research + agent script both passed the Claims Gate; then Chris pasted a ChatGPT
+      // script as the newest version (authorType IMPORTED, no verdict of its own).
+      await prisma.scriptVersion.create({
+        data: {
+          contentItemId: item.id,
+          spokenScript: "Most cards charge over 20% now.",
+          beats: [],
+          intendedPauses: [],
+          emphasizedWords: [],
+          visualBeats: [],
+          requiredFactualCaveats: [],
+          targetRuntimeSeconds: 60,
+          estimatedSpeakingRuntimeSeconds: 3,
+          followUpIdeas: [],
+          authorType: "IMPORTED",
+          revisionNote: "Imported from ChatGPT (pasted by Chris)",
+        },
+      });
+      const cleanVisualQA = new MockModelProvider(() => ({ issues: [], overallImpression: "Clean." }));
+      const result = await runQualityGateForContentItem(prisma, storage, cleanVisualQA, item.id, { actorId: "chris" }, { maxFrames: 2 });
+      expect(result.gates.factual).toBe("BLOCK");
+      expect(result.overallStatus).toBe("BLOCK");
+      expect(result.reasons.join(" ")).toMatch(/imported from ChatGPT/);
+    },
+    30000,
+  );
+
+  it(
     "a BLOCKING Visual QA finding escalates TECHNICAL to BLOCK and routes to QC_REPAIR",
     async () => {
       const { item } = await makeRenderedItem();

@@ -731,7 +731,9 @@ export async function editScriptAction(formData: FormData) {
       actorId: session.user!.id!,
     });
     const packet = await getLatestResearchPacket(prisma, contentItemId);
-    if (!packet) throw new Error("No research packet to check the edited script against.");
+    // No research to check against (e.g. a script imported from ChatGPT): the edit is saved as
+    // a new, unchecked version — the FACTUAL gate still blocks posting until it's checked.
+    if (!packet) throw new Error("Your edit was saved. It hasn't been fact-checked yet — that's still required before posting.");
     const { scriptClaimsGateResult, brandGuardianReport } = await regateEditedScript(getModelProvider(), {
       research: researchPacketFromRow(packet),
       spokenScript,
