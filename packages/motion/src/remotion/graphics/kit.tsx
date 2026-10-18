@@ -73,7 +73,8 @@ export const fill: CSSProperties = { position: "absolute", inset: 0 };
 
 /** Categorical colours for AUTO series/items — brand accents first, then harmonised mixes. */
 export function seriesPalette(p: Palette): string[] {
-  return [p.primary, p.secondary, p.positive, mix(p.primary, p.secondary, 0.5), mix(p.secondary, "#FFFFFF", 0.35), mix(p.positive, p.secondary, 0.5), mix(p.primary, "#FFFFFF", 0.45), p.muted];
+  // Clear, distinct hues after the brand accents (mixing gold and violet reads as khaki).
+  return [p.primary, p.secondary, p.positive, "#60A5FA", "#F472B6", "#2DD4BF", mix(p.primary, "#FFFFFF", 0.45), p.muted];
 }
 
 export function colorOf(ctx: GCtx, token: GraphicColor | undefined, index: number): string {

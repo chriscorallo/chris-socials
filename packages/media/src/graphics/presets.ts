@@ -533,6 +533,8 @@ graphic("bubbles-side-hustles", "Side hustles — effort vs pay", "Bubbles sized
   series: [S("Tutoring", [3, 40, 6]), S("Delivery", [2, 18, 10]), S("Freelance design", [7, 60, 8]), S("Reselling", [5, 25, 5])],
   categories: ["Skill needed", "$/hour"],
 });
+classic("classic-counter", "Number counter (classic)", "One number counting up with a label.", "MONEY", ["counter", "number", "count up", "classic", "big number"], "NUMBER_COUNTER", { value: 1247, from: 0, prefix: "$", suffix: "", decimals: 0, label: "Saved per month" });
+classic("classic-stat-card", "Stat card (classic)", "A glass card with one big value and context.", "MONEY", ["stat", "card", "classic", "number"], "STAT_CARD", { value: "7.2%", label: "Average market return", sublabel: "S&P 500, inflation-adjusted", trend: "UP" });
 classic("classic-bar-chart", "Bar chart (classic)", "2–6 bars with a highlight.", "CHARTS", ["bar chart", "classic", "compare"], "BAR_CHART", {
   title: "Where the money goes",
   bars: [{ label: "Rent", value: 1800 }, { label: "Food", value: 650 }, { label: "Car", value: 520 }, { label: "Fun", value: 300 }],

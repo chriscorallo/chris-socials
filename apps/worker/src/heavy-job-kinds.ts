@@ -35,7 +35,7 @@ export interface HeavyJobArgsByKind {
   /** After an upload: transcribe → track → matte for every take of the item still missing them. */
   ingest: { contentItemId: string; transcribe: boolean; track: boolean; matte: boolean };
   /** "Design visuals with AI" (HUMAN trigger; subject tracking runs first). */
-  "motion-design": { contentItemId: string; replaceExisting?: boolean };
+  "motion-design": { contentItemId: string; replaceExisting?: boolean; focus?: MotionDesignFocus | null };
   /** Measure reference videos' edit style (no model calls): every one waiting, or just `referenceContentIds`.
    * Not tied to a video — its lease is the whole reference library (REFERENCE_LIBRARY_SUBJECT). */
   "reference-analyze": { referenceContentIds?: string[] };
@@ -106,6 +106,21 @@ function str(v: unknown, name: string): string {
 function optStr(v: unknown, name: string): string | undefined {
   return v == null ? undefined : str(v, name);
 }
+/** "Suggest with AI" for one moment of the video (graphics library). */
+export interface MotionDesignFocus {
+  start: number;
+  end: number;
+  phrase?: string | null;
+}
+function optFocus(v: unknown): MotionDesignFocus | null {
+  if (v == null) return null;
+  const f = v as Record<string, unknown>;
+  const start = Number(f.start);
+  const end = Number(f.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end - start > 60) throw new Error("focus must be { start, end } seconds");
+  const phrase = typeof f.phrase === "string" ? f.phrase.slice(0, 300) : null;
+  return { start, end, phrase };
+}
 function optBool(v: unknown, name: string): boolean | undefined {
   if (v == null) return undefined;
   if (typeof v !== "boolean") throw new Error(`${name} must be a boolean`);
@@ -167,7 +182,7 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
       };
       break;
     case "motion-design":
-      out = { contentItemId, replaceExisting: optBool(a.replaceExisting, "replaceExisting") ?? false };
+      out = { contentItemId, replaceExisting: optBool(a.replaceExisting, "replaceExisting") ?? false, focus: optFocus(a.focus) };
       break;
     default:
       throw new Error(`unknown heavy job kind: ${String(kind)}`);

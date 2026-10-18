@@ -10,6 +10,10 @@ import {
   snapVisualTiming,
   MotionDesignerOutputSchema,
   MotionDesignerPropsSchemas,
+  GRAPHIC_CONTRACT_ONLY_KEYS,
+  GRAPHIC_MODEL_ONLY_KEYS,
+  graphicPropsFromModel,
+  graphicsCatalogue,
   type MotionDesignerVisual,
   type DesignVisualsInput,
 } from "../motion-designer-agent";
@@ -74,8 +78,9 @@ describe("Motion Designer output schema", () => {
   it("is an explicit union whose props keys mirror the contract's MotionPropsSchemas", () => {
     for (const t of MOTION_TEMPLATES) {
       const mine = Object.keys((MotionDesignerPropsSchemas[t] as unknown as { shape: object }).shape).sort();
-      const contract = Object.keys((MotionPropsSchemas[t] as unknown as { shape: object }).shape).sort();
-      expect(mine, t).toEqual(contract);
+      let contract = Object.keys((MotionPropsSchemas[t] as unknown as { shape: object }).shape);
+      if (t === "GRAPHIC") contract = [...contract.filter((k) => !(GRAPHIC_CONTRACT_ONLY_KEYS as readonly string[]).includes(k)), ...GRAPHIC_MODEL_ONLY_KEYS];
+      expect(mine, t).toEqual(contract.sort());
     }
   });
 
@@ -232,5 +237,78 @@ describe("designVisualsForTimeline", () => {
     );
     expect(res.visuals).toEqual([]);
     expect(res.rejectedVisuals[0]!.reason).toMatch(/props/);
+  });
+});
+
+describe("graphics library (GRAPHIC template)", () => {
+  const gProps = (over: Record<string, unknown> = {}) => ({
+    preset: "three-key-numbers",
+    component: "STAT_TILES",
+    variant: null,
+    title: null,
+    subtitle: null,
+    body: null,
+    series: null,
+    categories: null,
+    items: [
+      { text: "Saved per year", sub: null, value: 24500, icon: "PIGGY", op: "NONE", state: "NONE" },
+      { text: "Savings rate", sub: null, value: 20, icon: null, op: "NONE", state: "NONE" },
+    ],
+    highlight: null,
+    showTotal: null,
+    range: null,
+    format: null,
+    order: null,
+    screen: null,
+    ...over,
+  });
+  it("the prompt lists the library (components + preset ids)", async () => {
+    const p = provider([]);
+    await designVisualsForTimeline(p, base());
+    expect(p.calls[0]!.userPrompt).toContain("income-3-people-12-months");
+    expect(p.calls[0]!.userPrompt).toContain("VALUE_COLUMNS");
+    expect(graphicsCatalogue().split("\n")).toHaveLength(28);
+  });
+  it("merges the model's content onto the preset and validates it", async () => {
+    const res = await designVisualsForTimeline(provider([v({ template: "GRAPHIC", props: gProps() as never, start: 5, end: 9, importance: 4 })]), base());
+    expect(res.rejectedVisuals).toEqual([]);
+    const g = res.added[0]!;
+    expect(g.template).toBe("GRAPHIC");
+    expect(g.props).toMatchObject({ component: "STAT_TILES", preset: "three-key-numbers", format: { kind: "CURRENCY" } });
+    expect((g.props.items as Array<{ value: number }>).map((i) => i.value)).toEqual([24500, 20]);
+  });
+  it("graphicPropsFromModel ignores unknown presets and keeps the preset's look", () => {
+    const merged = graphicPropsFromModel(gProps({ preset: "nope" }) as never);
+    expect(merged.preset).toBeNull();
+    expect(merged.format).toBeUndefined();
+    const withOrder = graphicPropsFromModel(gProps({ order: "ONE_BY_ONE" }) as never);
+    expect(withOrder.animation).toMatchObject({ order: "ONE_BY_ONE" });
+  });
+  it("FACTUAL: a graphic with an invented number (or an ungrounded derived total) is dropped", async () => {
+    const bad = gProps({ items: [{ text: "Saved", sub: null, value: 31000, icon: null, op: "NONE", state: "NONE" }] });
+    const total = gProps({
+      preset: "income-3-people-12-months",
+      component: "VALUE_COLUMNS",
+      items: null,
+      series: [{ label: "Saving", values: [24500, 24500], icon: null }],
+      showTotal: true,
+    });
+    const res = await designVisualsForTimeline(provider([v({ template: "GRAPHIC", props: bad as never, start: 5, end: 8 }), v({ template: "GRAPHIC", props: total as never, start: 12, end: 16 })]), base());
+    expect(res.added).toEqual([]);
+    expect(res.rejectedVisuals[0]!.reason).toMatch(/FACTUAL: 31000/);
+    expect(res.rejectedVisuals[1]!.reason).toMatch(/FACTUAL: 49000 \(series\[0\] total\)/);
+  });
+  it("invalid component content is rejected with the contract's reason", async () => {
+    const res = await designVisualsForTimeline(provider([v({ template: "GRAPHIC", props: gProps({ preset: null, component: "DONUT", items: [] }) as never, start: 5, end: 8 })]), base());
+    expect(res.added).toEqual([]);
+    expect(res.rejectedVisuals[0]!.reason).toMatch(/props don't fit the GRAPHIC template/);
+  });
+  it("focus: one graphic for one moment; proposals elsewhere are dropped", async () => {
+    const res = await designVisualsForTimeline(
+      provider([v({ template: "GRAPHIC", props: gProps() as never, start: 5, end: 8, importance: 3 }), counter(20, 23, 24500, 5)]),
+      base({ focus: { start: 4.5, end: 9, phrase: "you hit 24,500 dollars" } }),
+    );
+    expect(res.added.map((x) => x.template)).toEqual(["GRAPHIC"]);
+    expect(res.rejectedVisuals[0]!.reason).toMatch(/outside the moment/);
   });
 });

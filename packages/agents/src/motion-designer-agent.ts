@@ -5,7 +5,17 @@ import {
   MotionPropsSchemas,
   SFX_SOUNDS,
   VISUAL_TRANSITIONS,
-  TEMPLATE_FOOTPRINTS,
+  GRAPHIC_COMPONENTS,
+  GRAPHIC_COMPONENT_SPECS,
+  GRAPHIC_ICONS,
+  GRAPHIC_OPS,
+  GRAPHIC_ORDERS,
+  GRAPHIC_PRESETS,
+  GRAPHIC_STATES,
+  GraphicPropsSchema,
+  footprintOf,
+  graphicShownNumbers,
+  presetById,
   TimelineVisualSchema,
   solveVisualPlacements,
   timelineCaptionWords,
@@ -90,7 +100,62 @@ export const MotionDesignerPropsSchemas = {
   TIMELINE: z.object({ events: z.array(z.object({ label: S, sub: S.nullable() }).strict()) }).strict(),
   DEFINITION: z.object({ term: S, definition: S }).strict(),
   TITLE_CARD: z.object({ title: S, subtitle: S.nullable() }).strict(),
+  /**
+   * Composable graphic (graphics library). The model picks a library `preset` (or null) and a
+   * base `component`, and fills the CONTENT; code starts from the preset's props (layout, look,
+   * animation, full-screen) and overlays this content, then validates against the contract.
+   * Null = keep the preset's value.
+   */
+  GRAPHIC: z
+    .object({
+      preset: S.nullable(),
+      component: z.enum(GRAPHIC_COMPONENTS),
+      variant: S.nullable(),
+      title: S.nullable(),
+      subtitle: S.nullable(),
+      body: S.nullable(),
+      series: z.array(z.object({ label: S, values: z.array(N), icon: z.enum(GRAPHIC_ICONS).nullable() }).strict()).nullable(),
+      categories: z.array(S).nullable(),
+      items: z
+        .array(z.object({ text: S, sub: S.nullable(), value: N.nullable(), icon: z.enum(GRAPHIC_ICONS).nullable(), op: z.enum(GRAPHIC_OPS), state: z.enum(GRAPHIC_STATES) }).strict())
+        .nullable(),
+      highlight: z.number().int().nullable(),
+      showTotal: z.boolean().nullable(),
+      range: z.object({ min: N, max: N }).strict().nullable(),
+      format: z.object({ kind: z.enum(["NUMBER", "CURRENCY", "PERCENT"]), signs: z.enum(["NEGATIVE", "ALWAYS"]), suffix: S }).strict().nullable(),
+      order: z.enum(GRAPHIC_ORDERS).nullable(),
+      screen: z.enum(["OVERLAY", "FULL"]).nullable(),
+    })
+    .strict(),
 } satisfies Record<MotionTemplate, z.ZodTypeAny>;
+
+/** GRAPHIC keys that differ between the model schema and the contract: the model gives only the
+ * animation ORDER (`order`); the rest of `animation` comes from the preset. */
+export const GRAPHIC_MODEL_ONLY_KEYS = ["order"] as const;
+export const GRAPHIC_CONTRACT_ONLY_KEYS = ["animation"] as const;
+
+/**
+ * Model GRAPHIC props → contract props: the named preset's props (when it exists and uses the
+ * same component) are the base; the model's non-null content overrides them. Unknown presets
+ * are ignored (the component's defaults are used). Never throws — validation happens after.
+ */
+export function graphicPropsFromModel(m: z.infer<(typeof MotionDesignerPropsSchemas)["GRAPHIC"]>): Record<string, unknown> {
+  const preset = presetById(m.preset);
+  const base: Record<string, unknown> = preset && preset.template === "GRAPHIC" && preset.props.component === m.component ? structuredClone(preset.props) : { component: m.component };
+  const out: Record<string, unknown> = { ...base, component: m.component, preset: preset && base.preset ? preset.id : null };
+  if (m.variant !== null) out.variant = m.variant;
+  for (const k of ["title", "subtitle", "body"] as const) if (m[k] !== null) out[k] = m[k];
+  if (m.series !== null) out.series = m.series.map((s) => ({ label: s.label, values: s.values, icon: s.icon }));
+  if (m.categories !== null) out.categories = m.categories;
+  if (m.items !== null) out.items = m.items;
+  if (m.highlight !== null) out.highlight = m.highlight;
+  if (m.showTotal !== null) out.showTotal = m.showTotal;
+  if (m.range !== null) out.range = m.range;
+  if (m.screen !== null) out.screen = m.screen;
+  if (m.format !== null) out.format = { ...((base.format as object) ?? {}), ...m.format };
+  if (m.order !== null) out.animation = { ...((base.animation as object) ?? {}), order: m.order };
+  return out;
+}
 
 const commonVisualFields = {
   /** OUTPUT timeline seconds — when the phrase it illustrates starts being spoken. */
@@ -127,6 +192,7 @@ export const MotionDesignerVisualSchema = z.discriminatedUnion("template", [
   variant("TIMELINE"),
   variant("DEFINITION"),
   variant("TITLE_CARD"),
+  variant("GRAPHIC"),
 ]);
 export type MotionDesignerVisual = z.infer<typeof MotionDesignerVisualSchema>;
 
@@ -189,6 +255,11 @@ export interface DesignVisualsInput {
   topic?: Omit<MotionTopicInput, "script"> | null;
   /** Chris's learned motion taste (domain getMotionTasteForDesign). Optional; absent = none. */
   motionTaste?: MotionTasteInput | null;
+  /**
+   * "Suggest with AI" for ONE moment (the editor's library): design at most one graphic for
+   * this OUTPUT-timeline window; anything proposed outside it is dropped. Absent = whole video.
+   */
+  focus?: { start: number; end: number; phrase?: string | null } | null;
 }
 
 /** The designer's view of the learned taste profile (see packages/domain motion-taste.ts). */
@@ -328,6 +399,14 @@ export function numberIsGrounded(shown: number, allowed: number[]): boolean {
  * (decimals, highlight index, callout coordinates, a counter starting at 0) are not shown
  * numbers and are excluded. */
 export function numbersShownBy(template: MotionTemplate, props: Record<string, unknown>): Array<{ value: number; field: string }> {
+  if (template === "GRAPHIC") {
+    // Composable graphics list what they draw (incl. derived totals/shares) — one definition
+    // shared with the renderer's data model; digits inside their text are parsed here.
+    const parsed = GraphicPropsSchema.safeParse(props);
+    if (!parsed.success) return [];
+    const shown = graphicShownNumbers(parsed.data);
+    return [...shown.numbers, ...shown.texts.flatMap((t) => extractNumbers(t.text).map((value) => ({ value, field: t.field })))];
+  }
   const out: Array<{ value: number; field: string }> = [];
   const skip = new Set(["decimals", "highlightIndex", "pointTo", "style", "trend", "winner", "icon", "depth3d", "highlightLast"]);
   const walk = (v: unknown, path: string, key: string) => {
@@ -435,7 +514,28 @@ const TEMPLATE_GUIDE: Record<MotionTemplate, string> = {
   TIMELINE: "2-5 dated/ordered events (label <=16, sub)",
   DEFINITION: "a term Chris defines (term, definition <=140)",
   TITLE_CARD: "cinematic full-frame chapter/hook moment, background dimmed (title, subtitle) — HERO/MEDIUM only, max 1",
+  GRAPHIC:
+    "the composable graphics library — pick a `preset` id from the library below (its layout, look and animation come with it) and fill the CONTENT with this video's numbers/labels; or preset null + any `component`. Use it for multi-entity comparisons (VALUE_COLUMNS, VERSUS, ENTITY_CARDS), month-by-month values (MONTH_GRID), cash flow ups/downs (WATERFALL), formulas (FORMULA), grouped/stacked bars with negatives (BAR_GROUP), multi-series lines (LINE_AREA), donuts, gauges, progress, steps, checklists, rankings, tables, quotes, lower thirds, CTAs",
 };
+
+/** Compact library catalogue for the prompt: per component, what it reads + its preset ids. */
+export function graphicsCatalogue(): string {
+  return GRAPHIC_COMPONENTS.map((c) => {
+    const spec = GRAPHIC_COMPONENT_SPECS[c];
+    const u = spec.uses;
+    const reads = [
+      u.series ? `series ${u.series.count[0]}-${u.series.count[1]} × values ${u.series.values[0]}-${u.series.values[1]}` : null,
+      u.categories ? `categories ≤${u.categories[1]}` : null,
+      u.items ? `items ${u.items.count[0]}-${u.items.count[1]}${u.items.value ? " with value" : ""}${u.items.op ? " + op" : ""}${u.items.state ? " + state" : ""}` : null,
+      u.body ? "body text" : null,
+      u.total ? "showTotal" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const presets = GRAPHIC_PRESETS.filter((p) => p.template === "GRAPHIC" && p.props.component === c).map((p) => p.id);
+    return `- ${c} (${spec.blurb}; variants ${spec.variants.map(([v]) => v).join("/")}; reads ${reads || "title"}): ${presets.join(", ")}`;
+  }).join("\n");
+}
 
 function researchSection(research: MotionResearchInput | null, allowed: number[]): string {
   if (!research) return "No research packet — this video makes no researched numeric claims. Show NO numbers at all.";
@@ -484,6 +584,9 @@ function buildUserPrompt(
     ? formatTimestampedTranscript(phrases)
     : "(no word timings — you cannot time visuals to speech; return no visuals)";
   const catalogue = MOTION_TEMPLATES.map((t) => `- ${t}: ${TEMPLATE_GUIDE[t]}`).join("\n");
+  const focus = input.focus
+    ? `\n\n## Focus — ONE graphic for this moment\n\nChris asked for a suggestion at ${input.focus.start.toFixed(2)}–${input.focus.end.toFixed(2)} s${input.focus.phrase ? ` ("${input.focus.phrase}")` : ""}. Return at most ONE visual, timed inside this window. Prefer a GRAPHIC preset that fits what he is saying, filled with his numbers.`
+    : "";
   return `## Video
 
 Production tier: ${input.tier}
@@ -517,6 +620,10 @@ ${onScreenSection(input.timeline, keep)}
 ## Templates
 
 ${catalogue}
+
+## Graphics library (template GRAPHIC: component — preset ids)
+
+${graphicsCatalogue()}${focus}
 
 ## Task
 
@@ -556,7 +663,9 @@ export async function designVisualsForTimeline(
   const keep = input.replaceExisting ? [] : timeline.visuals;
   // Learned taste may lower the ceiling by one (STRONG "fewer graphics" only) — never raise it.
   const tasteDelta = Math.min(0, Math.round(input.motionTaste?.capDelta ?? 0));
-  const cap = Math.max(0, Math.max(Math.min(1, tierCap(input.tier, duration)), tierCap(input.tier, duration) + tasteDelta) - keep.length);
+  const fullCap = Math.max(0, Math.max(Math.min(1, tierCap(input.tier, duration)), tierCap(input.tier, duration) + tasteDelta) - keep.length);
+  // A focused suggestion is one graphic for one moment (still within the tier's restraint).
+  const cap = input.focus ? Math.min(1, Math.max(1, fullCap)) : fullCap;
   const avoid = new Set(input.motionTaste?.avoidTemplates ?? []);
 
   // Theme: an existing one is kept unless the design replaces everything (Chris's override
@@ -598,8 +707,13 @@ export async function designVisualsForTimeline(
   let titleCards = keep.filter((v) => v.template === "TITLE_CARD").length;
 
   for (const v of result.output.visuals) {
-    // 1. Contract validation of props (bounds, array sizes).
-    const parsed = MotionPropsSchemas[v.template].safeParse(v.props);
+    if (input.focus && (v.end < input.focus.start - 0.5 || v.start > input.focus.end + 0.5)) {
+      rejected.push(rejection(v, `outside the moment Chris asked about (${input.focus.start.toFixed(1)}–${input.focus.end.toFixed(1)}s)`));
+      continue;
+    }
+    // 1. Contract validation of props (bounds, array sizes). GRAPHIC: preset + model content.
+    const rawProps = v.template === "GRAPHIC" ? graphicPropsFromModel(v.props) : v.props;
+    const parsed = MotionPropsSchemas[v.template].safeParse(rawProps);
     if (!parsed.success) {
       rejected.push(rejection(v, `props don't fit the ${v.template} template: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`));
       continue;
@@ -700,7 +814,7 @@ export async function designVisualsForTimeline(
       props: a.props,
       start: a.start,
       end: a.end,
-      placement: { mode: "AUTO", x: 0.5, y: TEMPLATE_FOOTPRINTS[a.v.template].preferY, scale: 1 },
+      placement: { mode: "AUTO", x: 0.5, y: footprintOf(a.v.template, a.props).preferY, scale: 1 },
       palette: a.v.palette,
       enter: a.v.enter,
       exit: a.v.exit,

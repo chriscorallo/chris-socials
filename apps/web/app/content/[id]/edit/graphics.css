@@ -1,0 +1,502 @@
+/* Graphics library + graphic edit sheet (GraphicLibrary.tsx, GraphicEditor.tsx). Phone-first:
+   the Visuals sheet at 393 px wide is the primary target; the desktop inspector reuses it. */
+
+.gl {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ---- search */
+.gl-search {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  margin: -2px 0 0;
+  padding: 2px 0 6px;
+  background: linear-gradient(var(--ed-panel, #0e0e12) 80%, transparent);
+}
+.gl-search-icon {
+  position: absolute;
+  left: 11px;
+  color: var(--color-text-faint);
+  pointer-events: none;
+}
+.gl-search .gl-search-input.ed-input {
+  padding-left: 34px;
+  padding-right: 34px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 16px; /* no iOS zoom on focus */
+}
+.gl-clear {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+}
+
+/* ---- suggestions */
+.gl-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 213, 74, 0.18);
+  background: linear-gradient(160deg, rgba(255, 213, 74, 0.07), rgba(167, 139, 250, 0.05));
+}
+.gl-suggest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gl-ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffe08a;
+  background: rgba(255, 213, 74, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 213, 74, 0.3);
+  min-height: 30px;
+}
+.gl-ai-btn:disabled {
+  opacity: 0.6;
+}
+.gl-phrase {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gl-suggest-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 2px;
+  margin: 0 -10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  scrollbar-width: none;
+}
+.gl-suggest-row::-webkit-scrollbar {
+  display: none;
+}
+.gl-sug {
+  flex: none;
+  width: 128px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--ed-panel-2);
+  border: 1px solid var(--ed-line);
+}
+.gl-sug:active {
+  transform: scale(0.97);
+}
+.gl-sug-art {
+  display: block;
+  height: 84px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #15151c;
+}
+.gl-sug-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gl-sug-why {
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: #ffe08a;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---- category chips */
+.gl-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin: 0 -2px;
+  padding: 0 2px 2px;
+  scrollbar-width: none;
+}
+.gl-chips::-webkit-scrollbar {
+  display: none;
+}
+.gl-chip.ed-chip-btn {
+  flex: none;
+  white-space: nowrap;
+  min-height: 32px;
+}
+
+/* ---- grid */
+.gl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.gl-card {
+  position: relative;
+  min-width: 0;
+}
+.gl-card-main {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px 8px;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid var(--ed-line);
+  background: var(--ed-panel-2);
+  transition: border-color 0.15s, transform 0.12s;
+}
+.gl-card-main:hover {
+  border-color: rgba(255, 213, 74, 0.4);
+}
+.gl-card-main:active {
+  transform: scale(0.97);
+}
+.gl-card-art {
+  display: block;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #15151c;
+  margin-bottom: 4px;
+}
+.gl-poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.gl-poster-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 35%, #2a2733, #121117);
+}
+.gl-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.22;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.44em;
+}
+.gl-card-base {
+  font-size: 10.5px;
+  color: var(--color-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gl-card-fav,
+.gl-card-play {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(10, 10, 14, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.gl-card-fav {
+  top: 9px;
+  right: 9px;
+}
+.gl-card-play {
+  top: 9px;
+  left: 9px;
+}
+.gl-empty {
+  padding: 18px 6px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+/* ---- preview dialog */
+.gl-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 12px;
+}
+@media (min-width: 640px) {
+  .gl-dialog-backdrop {
+    align-items: center;
+  }
+}
+.gl-dialog {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  width: min(520px, 100%);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 14px;
+  border-radius: 20px;
+  background: #121217;
+  border: 1px solid var(--ed-line-strong, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  outline: none;
+}
+.gl-dialog-stage {
+  flex: none;
+  width: 180px;
+  height: 320px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(ellipse 60% 40% at 50% 60%, #3a3f47, #1d2026 70%);
+}
+.gl-dialog-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+.gl-dialog-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding-right: 28px;
+}
+.gl-dialog-desc {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+.gl-dialog-meta,
+.gl-dialog-tags {
+  font-size: 11px;
+  color: var(--color-text-faint);
+}
+.gl-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.gl-dialog-actions .btn {
+  padding: 8px 12px;
+  font-size: 13px;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.gl-dialog-note {
+  margin-top: auto;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--color-text-faint);
+}
+.gl-dialog-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--color-text-muted);
+}
+@media (max-width: 420px) {
+  .gl-dialog-stage {
+    width: 144px;
+    height: 256px;
+  }
+}
+
+/* ---- edit sheet: quick entry, data table, entries */
+.gl-quick.ed-input,
+.ed-m .gl-quick.ed-input {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 74px;
+}
+.gl-quick-hint {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+.gl-quick-warn {
+  font-size: 11.5px;
+  color: #fbbf24;
+}
+.gl-table-wrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.gl-table {
+  border-collapse: separate;
+  border-spacing: 4px;
+}
+.gl-table th,
+.gl-table td {
+  padding: 0;
+  font-weight: 500;
+}
+.gl-th-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--ed-panel, #0e0e12);
+  font-size: 11px;
+  color: var(--color-text-faint);
+  text-align: left;
+}
+.gl-cell.ed-input,
+.ed-m .gl-cell.ed-input {
+  width: 64px;
+  height: 36px;
+  padding: 4px 6px;
+  font-size: 14px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.gl-cat.ed-input {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.gl-row-label.ed-input {
+  width: 108px;
+  text-align: left;
+  font-weight: 600;
+}
+.gl-cell-neg.ed-input {
+  color: #fb7185;
+}
+.gl-cell-bad.ed-input {
+  box-shadow: inset 0 0 0 1.5px #f59e0b;
+}
+.gl-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gl-row-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.gl-row-name {
+  flex: 1 1 100%;
+  font-size: 12px;
+  font-weight: 600;
+}
+.gl-select.ed-input,
+.ed-m .gl-select.ed-input {
+  width: auto;
+  max-width: 140px;
+  height: 36px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.gl-fill {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.gl-fill .gl-cell.ed-input {
+  width: 104px;
+  text-align: left;
+}
+.gl-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.gl-item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.gl-item-top .ed-input {
+  flex: 1;
+  min-width: 0;
+}
+.gl-item-top .gl-item-val.ed-input {
+  flex: none;
+  width: 84px;
+}
+.gl-item-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.gl-item-more > .ed-input:not(.gl-select) {
+  flex: 1 1 100%;
+}
+.gl-item-btns {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.gl-format-ex {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #ffe08a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}

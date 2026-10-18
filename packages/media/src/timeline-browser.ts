@@ -18,3 +18,6 @@ export * from "./visual-interaction";
 export * from "./style-cut";
 export * from "./graphics/contract";
 export * from "./graphics/presets";
+export * from "./graphics/quick-entry";
+export * from "./graphics/search";
+export * from "./graphics/suggest";

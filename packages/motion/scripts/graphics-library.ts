@@ -12,7 +12,8 @@
  * cropped to each graphic's box for the editor gallery (apps/web/public/motion-posters).
  */
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { FFMPEG_PATH, GRAPHIC_PRESETS, type GraphicPreset } from "@chris/media";
 import { findLocalHeadlessShell, getMotionBundle, placementBox, presetVisual, visualFrameWindow } from "../src/index";
@@ -117,6 +118,9 @@ async function main() {
       await ff([...inputs, "-filter_complex", graph, "-frames:v", "1", "-q:v", "3", join(outDir, `sheet-${tag}-${s + 1}.jpg`)]);
     }
   }
+  // Don't leave 40 MB per run behind: the per-process bundle and the raw alpha frames.
+  await rm(join(tmpdir(), `chris-motion-bundle-${process.pid}`), { recursive: true, force: true });
+  for (const p of presets) for (const tag of ["settled", "mid"]) await rm(join(outDir, "frames", `${p.id}__${tag}.raw.png`), { force: true });
   await writeFile(join(outDir, "report.json"), JSON.stringify({ presets: presets.length, failures, ms: Date.now() - started }, null, 2));
 }
 

@@ -503,26 +503,32 @@ export function graphicDesignSize(p: GraphicProps): { width: number; height: num
     case "FORMULA":
       return v === "RECEIPT" ? { width: 780, height: head + nI * 108 + 120 } : { width: 1000, height: head + (nI > 3 ? 440 : 300) + 40 };
     case "VERSUS":
-      return { width: 980, height: head + 230 + Math.max(1, maxVals) * 112 + 40 };
+      // entity header (icon row only when an entity has an icon; note line when one has a note) + metric rows + padding
+      return { width: 980, height: head + (p.series.some((s) => s.icon) ? 124 : 24) + (p.series.some((s) => s.note) ? 38 : 0) + 84 + Math.max(1, maxVals) * 108 + 96 };
     case "ENTITY_CARDS": {
       if (v === "GRID") return { width: 960, height: head + ceil(nI / 2) * 300 + 40 };
       if (v === "PODIUM") return { width: 980, height: head + 620 };
       return { width: 1000, height: head + (nI > 3 ? 2 * 330 : 420) + 40 };
     }
     case "BEFORE_AFTER":
-      return v === "STACKED" ? { width: 780, height: head + 700 } : { width: 1000, height: head + 520 };
+      return v === "STACKED" ? { width: 780, height: head + 700 } : { width: 1000, height: head + (p.items.some((i) => i.icon) ? 520 : 440) };
     case "BAR_GROUP":
-      return v === "HORIZONTAL" ? { width: 940, height: head + Math.max(2, Math.max(p.categories.length, maxVals)) * (nS > 1 ? 104 : 86) + 110 } : { width: 960, height: head + 700 };
+      return v === "HORIZONTAL" ? { width: 940, height: head + (nS > 1 ? 62 : 0) + Math.max(1, Math.max(p.categories.length, maxVals)) * (nS > 1 ? 66 + nS * 42 : 104) + 76 } : { width: 960, height: head + 700 };
     case "LINE_AREA":
       return { width: 960, height: head + 640 + (nS > 1 ? 70 : 0) };
     case "WATERFALL":
       return { width: 980, height: head + 720 };
-    case "DONUT":
-      return v === "HALF" ? { width: 940, height: head + 560 + ceil(nI / 2) * 64 } : { width: 960, height: head + 560 + ceil(nI / 2) * 64 };
+    case "DONUT": {
+      // Percent data summing to 100 shows one number per slice → a compact 2-column legend;
+      // otherwise value + share need a full-width row (beside the donut, under a half donut).
+      const share = p.format.kind === "PERCENT" && Math.abs(p.items.reduce((a, i) => a + Math.max(0, i.value ?? 0), 0) - 100) < 0.6;
+      if (v === "HALF") return { width: 940, height: head + 560 + (share ? ceil(nI / 2) * 64 : nI * 84) };
+      return share ? { width: 960, height: head + 600 + ceil(nI / 2) * 64 } : { width: 960, height: head + Math.max(440, nI * 84) + 90 };
+    }
     case "PROGRESS":
-      return v === "BARS" ? { width: 920, height: head + Math.max(1, nI) * 140 + 50 } : { width: nI <= 1 ? 600 : 980, height: head + 470 };
+      return v === "BARS" ? { width: 920, height: head + Math.max(1, nI) * (p.items.some((i) => i.sub) ? 156 : 120) + 58 } :{ width: nI <= 1 ? 600 : 980, height: head + 470 };
     case "GAUGE":
-      return { width: 800, height: head + 560 };
+      return { width: 800, height: head + 590 };
     case "SCATTER":
       return { width: 940, height: head + 780 };
     case "STEPS":
@@ -538,14 +544,19 @@ export function graphicDesignSize(p: GraphicProps): { width: number; height: num
     case "KINETIC":
       return { width: 960, height: 560 };
     case "QUOTE":
-      return v === "BUBBLE" ? { width: 880, height: 520 } : { width: 920, height: 600 };
+      {
+        const bl = (p.body ?? "").length;
+        if (v === "BUBBLE") return { width: 880, height: bl <= 50 ? 380 : bl <= 120 ? 460 : 560 };
+        if (v === "NOTE") return { width: 920, height: bl <= 60 ? 400 : bl <= 130 ? 480 : 600 };
+        return { width: 920, height: bl <= 80 ? 540 : bl <= 150 ? 620 : 700 };
+      }
     case "LOWER_THIRD":
       return { width: 900, height: 230 };
     case "ANNOTATION":
       if (v === "ARROW") return { width: 560, height: 360 };
-      if (v === "UNDERLINE") return { width: 640, height: 200 };
+      if (v === "UNDERLINE") return { width: 640, height: p.title ? 300 : 200 };
       if (v === "BOX") return { width: 640, height: 420 };
-      return { width: 480, height: 480 };
+      return { width: 520, height: p.title ? 610 : 520 };
     case "STICKER":
       return { width: 560, height: 560 };
     case "MAP_PIN":
@@ -604,7 +615,9 @@ export function numberPlan(value: number, fmt: Pick<GraphicFormat, "compact" | "
   }
   const unit = divisor === 1e9 ? "B" : divisor === 1e6 ? "M" : divisor === 1e3 ? "k" : "";
   const scaled = a / divisor;
-  const decimals = fmt.decimals ?? Math.min(divisor === 1 ? 2 : 1, decimalsNeeded(scaled, divisor === 1 ? 2 : 1));
+  // Exact values keep their digits ($4.5k); rounded compact values stay clean ($610k, $24.5k).
+  const exact = decimalsNeeded(scaled, 2);
+  const decimals = fmt.decimals ?? (divisor === 1 ? Math.min(2, exact) : exact <= 1 ? exact : scaled >= 100 ? 0 : 1);
   return { divisor, unit, decimals };
 }
 
