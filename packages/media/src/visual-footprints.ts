@@ -1,4 +1,5 @@
 import type { MotionTemplate } from "./motion-contract";
+import { GRAPHIC_COMPONENT_SPECS, GraphicPropsSchema, graphicDesignSize, isFullScreenGraphic } from "./graphics/contract";
 
 /**
  * Nominal on-screen footprint of every motion template at `placement.scale = 1` on a
@@ -43,7 +44,22 @@ export const TEMPLATE_FOOTPRINTS: Record<MotionTemplate, TemplateFootprint> = {
   TIMELINE: { width: 760, height: 800, kind: "BOX", preferY: 0.36 },
   DEFINITION: { width: 880, height: 440, kind: "BOX", preferY: 0.34 },
   TITLE_CARD: { width: 1080, height: 1920, kind: "FULL_FRAME", preferY: 0.5 },
+  /** Nominal only — a GRAPHIC's real box depends on its component + data: use footprintOf. */
+  GRAPHIC: { width: 960, height: 760, kind: "BOX", preferY: 0.38 },
 };
+
+/**
+ * The footprint of a visual: the template's fixed box, or — for a composable GRAPHIC — the
+ * box its component lays out in for THIS data (graphicDesignSize), FULL_FRAME when it is a
+ * full-screen scene. Invalid GRAPHIC props fall back to the nominal box (they don't render).
+ */
+export function footprintOf(template: MotionTemplate, props?: unknown): TemplateFootprint {
+  if (template !== "GRAPHIC" || props === undefined) return TEMPLATE_FOOTPRINTS[template];
+  const r = GraphicPropsSchema.safeParse(props);
+  if (!r.success) return TEMPLATE_FOOTPRINTS.GRAPHIC;
+  if (isFullScreenGraphic(r.data)) return { width: 1080, height: 1920, kind: "FULL_FRAME", preferY: 0.5 };
+  return { ...graphicDesignSize(r.data), kind: "BOX", preferY: GRAPHIC_COMPONENT_SPECS[r.data.component].preferY };
+}
 
 /** The engine never shrinks an AUTO visual below this fraction of its requested scale. */
 export const MIN_AUTO_SCALE_FACTOR = 0.7;
@@ -53,8 +69,9 @@ export function footprintPx(
   template: MotionTemplate,
   scale: number,
   canvas: { width: number; height: number },
+  props?: unknown,
 ): { width: number; height: number } {
-  const fp = TEMPLATE_FOOTPRINTS[template];
+  const fp = footprintOf(template, props);
   if (fp.kind === "FULL_FRAME") return { width: canvas.width, height: canvas.height };
   const k = canvas.width / 1080;
   return { width: Math.round(fp.width * scale * k), height: Math.round(fp.height * scale * k) };

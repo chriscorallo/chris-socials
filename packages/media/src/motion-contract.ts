@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GraphicPropsSchema } from "./graphics/contract";
 
 /**
  * Motion graphics + sound design contract (PURE — browser-safe; no Node/Remotion imports).
@@ -35,6 +36,9 @@ export const MOTION_TEMPLATES = [
   "TIMELINE",
   "DEFINITION",
   "TITLE_CARD",
+  /** The composable graphics system (graphics/contract.ts): any of the ~28 parametric base
+   * components with fully data-driven props; the 150+ library presets are values of it. */
+  "GRAPHIC",
 ] as const;
 export type MotionTemplate = (typeof MOTION_TEMPLATES)[number];
 
@@ -107,6 +111,8 @@ export const MotionPropsSchemas = {
   DEFINITION: z.object({ term: Label, definition: z.string().min(1).max(140) }),
   /** Cinematic full-frame chapter/title moment (background softly blurred/dimmed). */
   TITLE_CARD: z.object({ title: Short, subtitle: Label.nullable().default(null) }),
+  /** Composable graphic: base component + universal data model (graphics/contract.ts). */
+  GRAPHIC: GraphicPropsSchema,
 } satisfies Record<MotionTemplate, z.ZodTypeAny>;
 
 export type MotionProps<T extends MotionTemplate> = z.infer<(typeof MotionPropsSchemas)[T]>;

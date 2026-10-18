@@ -16,3 +16,5 @@ export * from "./visual-footprints";
 export * from "./visual-placement";
 export * from "./visual-interaction";
 export * from "./style-cut";
+export * from "./graphics/contract";
+export * from "./graphics/presets";

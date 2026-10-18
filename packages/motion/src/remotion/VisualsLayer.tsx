@@ -1,7 +1,8 @@
 import type { ComponentType, ReactNode } from "react";
 import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import type { MotionTemplate, MotionTheme, TimelineVisual, VisualInteraction } from "@chris/media/timeline";
-import { TEMPLATE_DESIGN_SIZE, parseVisuals, placementBox, visualFrameWindow, type ParsedVisual } from "../timing";
+import { designSizeOf, isFullFrameVisual, parseVisuals, placementBox, visualFrameWindow, type ParsedVisual } from "../timing";
+import { GraphicTemplate } from "./graphics/Graphic";
 import { MotionAssetsContext, useMotionFonts } from "./fonts";
 import { enterExitStyle } from "./motion";
 import { MotionThemeProvider, useVisualMotionStyle } from "./motion-theme-context";
@@ -28,6 +29,7 @@ const TEMPLATES: Record<MotionTemplate, ComponentType<TemplateComponentProps<any
   TIMELINE: TimelineTemplate,
   DEFINITION: Definition,
   TITLE_CARD: TitleCard,
+  GRAPHIC: GraphicTemplate,
 };
 
 export interface VisualsLayerProps extends Record<string, unknown> {
@@ -69,7 +71,7 @@ export function VisualItem({
   const { fps } = useVideoConfig();
   const v = pv.visual;
   const win = visualFrameWindow(v, fps);
-  const box = placementBox(pv.template, v.placement, canvas);
+  const box = placementBox(pv.template, v.placement, canvas, pv.props);
   // Theme styling (motion-themes): palette + motion feel + icon style + themed AUTO transitions.
   const ms = useVisualMotionStyle(pv.template, v);
   const { palette, enter, exit } = ms;
@@ -90,9 +92,9 @@ export function VisualItem({
     hitAtFrame: interaction?.hitAtFrame ?? null,
     scene: interaction?.scene ?? null,
   };
-  const design = TEMPLATE_DESIGN_SIZE[pv.template];
+  const design = designSizeOf(pv.template, pv.props);
   const look = interaction?.look;
-  if (pv.template === "TITLE_CARD") {
+  if (pv.template === "TITLE_CARD" || isFullFrameVisual(pv.template, pv.props)) {
     return (
       <AbsoluteFill style={{ opacity: style.opacity, filter: style.filter === "none" ? undefined : style.filter }}>
         <SceneIntegration id={v.id} template={pv.template} integration={{ ...v.integration, shadow: false }} look={look}>

@@ -1,6 +1,6 @@
 import { Composition, type CalculateMetadataFunction } from "remotion";
-import { MOTION_TEMPLATES } from "@chris/media/timeline";
-import { sampleVisual } from "../samples";
+import { GRAPHIC_PRESETS, MOTION_TEMPLATES } from "@chris/media/timeline";
+import { presetVisual, sampleVisual } from "../samples";
 import { VisualsLayer, type VisualsLayerProps } from "./VisualsLayer";
 
 export type LayerInputProps = VisualsLayerProps;
@@ -22,7 +22,13 @@ const fromProps: CalculateMetadataFunction<LayerInputProps> = ({ props }) => ({
 });
 
 /** Composition ids. `VisualsLayer` = whole timeline; `VisualClip` = one visual from frame 0. */
-export const COMPOSITION_IDS = { layer: "VisualsLayer", clip: "VisualClip", preview: (t: string) => `Preview-${t.replace(/_/g, "-")}` } as const;
+export const COMPOSITION_IDS = {
+  layer: "VisualsLayer",
+  clip: "VisualClip",
+  preview: (t: string) => `Preview-${t.replace(/_/g, "-")}`,
+  /** One composition per library preset (posters, contact sheet, quality loop). */
+  preset: (id: string) => `Preset-${id}`,
+} as const;
 
 export function Root() {
   return (
@@ -40,6 +46,19 @@ export function Root() {
           height={1920}
           fps={30}
           durationInFrames={120}
+        />
+      ))}
+      {GRAPHIC_PRESETS.map((p) => (
+        <Composition
+          key={p.id}
+          id={COMPOSITION_IDS.preset(p.id)}
+          component={VisualsLayer}
+          defaultProps={{ ...DEFAULTS, visuals: [presetVisual(p, 0, p.seconds)], fps: 30, durationInFrames: Math.round(p.seconds * 30) }}
+          calculateMetadata={fromProps}
+          width={1080}
+          height={1920}
+          fps={30}
+          durationInFrames={Math.round(p.seconds * 30)}
         />
       ))}
     </>
