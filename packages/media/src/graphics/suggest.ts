@@ -78,7 +78,7 @@ function graphicFrom(presetId: string, patch: (p: GraphicProps) => GraphicProps)
 }
 
 function item(text: string, value: number | null, prev?: GraphicItem): GraphicItem {
-  return { text, value, sub: null, icon: prev?.icon ?? null, color: prev?.color ?? "AUTO", op: prev?.op ?? "NONE", state: prev?.state ?? "NONE" };
+  return { text, value, sub: null, icon: prev?.icon ?? null, color: prev?.color ?? "AUTO", op: prev?.op ?? "NONE", state: prev?.state ?? "NONE", side: prev?.side ?? "NONE", meta: prev?.meta ?? null };
 }
 
 function money(fmt: GraphicProps["format"], kind: DetectedNumber["kind"]): GraphicProps["format"] {

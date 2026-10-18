@@ -183,7 +183,7 @@ function blankSeries(label: string, values: number[], prev?: GraphicSeries): Gra
   return { label, values, icon: prev?.icon ?? null, color: prev?.color ?? "AUTO", note: prev?.note ?? null, texts: [] };
 }
 function blankItem(text: string, value: number | null, prev?: GraphicItem): GraphicItem {
-  return { text, value, icon: prev?.icon ?? null, color: prev?.color ?? "AUTO", op: prev?.op ?? "NONE", state: prev?.state ?? "NONE", sub: prev?.sub ?? null };
+  return { text, value, icon: prev?.icon ?? null, color: prev?.color ?? "AUTO", op: prev?.op ?? "NONE", state: prev?.state ?? "NONE", sub: prev?.sub ?? null, side: prev?.side ?? "NONE", meta: prev?.meta ?? null };
 }
 
 /**
