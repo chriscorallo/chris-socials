@@ -10,6 +10,7 @@ import { PLATFORM_SHORT_LABEL } from "../../../../lib/editor/platform-profiles";
 import { useEditor, type SheetId } from "./context";
 import { useIsPlaying, usePlayheadValue } from "./playback";
 import { MockToggle, PlatformSwitch, WarningsList, enterReframe } from "./Preview";
+
 import { FullscreenButton, StageCanvas } from "./Fullscreen";
 import { MobileTimeline } from "./MobileTimeline";
 import { Sheet } from "./Sheet";
@@ -127,13 +128,18 @@ export function MobileShell({
 // ---------------------------------------------------------------------------------------
 
 function MobileStage({ sheetOpen }: { sheetOpen: boolean }) {
-  const { ui, setUi, warnings } = useEditor();
+  const { ui, setUi, warnings, reportGlitch, toast } = useEditor();
   return (
     <section className="ed-m-stage" aria-label="Preview">
+      {/* The app switch + warnings float beside the 9:16 picture instead of taking a row above
+          it: the preview gets that height (it was ~27% of an iPhone screen). The full switch
+          is in the Platforms sheet. */}
       {!sheetOpen && (
-        <div className="ed-m-stagehead">
-          <PlatformSwitch compact value={ui.platformView} onChange={(v) => setUi({ platformView: v })} />
-          {ui.platformView !== "ALL" && <MockToggle />}
+        <div className="ed-m-stagetools">
+          <button type="button" className="ed-m-chip ed-m-chip-plain" onClick={() => setUi({ sheet: "platforms" })} aria-label="Preview as an app">
+            <Icon name="phone" size={14} />
+            {ui.platformView === "ALL" ? "All" : PLATFORM_SHORT_LABEL[ui.platformView]}
+          </button>
           <button
             type="button"
             className={`ed-m-chip ${warnings.length ? "ed-m-chip-warn" : "ed-m-chip-ok"}`}
@@ -143,9 +149,24 @@ function MobileStage({ sheetOpen }: { sheetOpen: boolean }) {
             <Icon name={warnings.length ? "warn" : "check"} size={14} />
             {warnings.length ? warnings.length : "Fits"}
           </button>
+          {ui.platformView !== "ALL" && <MockToggle />}
         </div>
       )}
-      <StageCanvas className="ed-m-canvasbox" padX={24} padY={12}>
+      {!sheetOpen && (
+        <button
+          type="button"
+          className="ed-m-glitch"
+          aria-label="Something glitched — save what just happened"
+          title="Something glitched? Tap right after — it saves the last 20 seconds for diagnosis"
+          onClick={() => {
+            reportGlitch();
+            toast("Thanks — saved what just happened. It's under More → Editor diagnostics.");
+          }}
+        >
+          <Icon name="flag" size={15} />
+        </button>
+      )}
+      <StageCanvas className="ed-m-canvasbox" padX={24} padY={8}>
         {ui.reframe ? (
           <button type="button" className="ed-m-pill" onClick={() => setUi({ reframe: false })}>
             <Icon name="check" size={15} /> Done reframing

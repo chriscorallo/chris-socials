@@ -37,6 +37,13 @@ export class VercelBlobStorageAdapter implements StorageAdapter {
     return Buffer.concat(chunks);
   }
 
+  /** The blob's bytes as a web stream (the app streams editor-preview files same-origin when the
+   * browser can't read the presigned URL cross-origin), or null if missing. */
+  async stream(key: string): Promise<ReadableStream<Uint8Array> | null> {
+    const result = await get(key, { access: "private" });
+    return result && result.statusCode === 200 ? result.stream : null;
+  }
+
   /** Streams a blob to a local file without buffering it all in memory (raw takes can be
    * hundreds of MB). */
   async downloadToFile(key: string, filePath: string): Promise<void> {

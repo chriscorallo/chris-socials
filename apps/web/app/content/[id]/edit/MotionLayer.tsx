@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TEMPLATE_FOOTPRINTS, resolveGrade, visualRect, type TimelineVisual, type VisualInteraction } from "@chris/media/timeline";
 import { trackAt } from "@chris/motion/pure";
 import { PREVIEW_FPS } from "./preview-fps";
@@ -34,15 +34,19 @@ export { PREVIEW_FPS } from "./preview-fps";
  * (no WebGL / cross-origin media / too slow) everything draws in front with a small note.
  */
 export function MotionLayer({ w, h }: { w: number; h: number }) {
-  const { doc, placement, engine, interactions, assets } = useEditor();
+  const { doc, placement, engine, interactions, assets, bakedIds } = useEditor();
   const playing = useIsPlaying(engine);
-  // Frame-quantised: the Player seeks exactly while paused and only re-syncs on drift while
-  // playing, so whole frames are all it needs (and React re-renders at most once per frame).
-  // No graphics → no per-frame re-render of this layer at all.
-  const t = usePlayheadValue(engine, (x) => (doc.visuals.length ? Math.round(x * PREVIEW_FPS) / PREVIEW_FPS : 0));
+  // Graphics the compositor already draws from bakes are not mounted live at all.
+  const live = useMemo(() => (bakedIds.size ? placement.visuals.filter((v) => !bakedIds.has(v.id)) : placement.visuals), [placement.visuals, bakedIds]);
+  // Frame-quantised and frame-locked: the Player renders exactly the editor's frame (React
+  // re-renders at most once per frame). No live graphics → no per-frame re-render at all.
+  const t = usePlayheadValue(engine, (x) => (live.length ? Math.round(x * PREVIEW_FPS) / PREVIEW_FPS : 0));
+  // Lite (no CSS/SVG filters — WebKit runs them on the CPU) while playing or scrubbing; the full
+  // look returns once the playhead has rested for half a second.
+  const settled = useSettled(t, playing);
   const timeline = useMemo(
-    () => ({ visuals: placement.visuals, canvas: doc.canvas, clips: doc.clips, motionTheme: doc.motionTheme }),
-    [placement.visuals, doc.canvas, doc.clips, doc.motionTheme],
+    () => ({ visuals: live, canvas: doc.canvas, clips: doc.clips, motionTheme: doc.motionTheme }),
+    [live, doc.canvas, doc.clips, doc.motionTheme],
   );
   const [depthFailed, setDepthFailed] = useState<string | null>(null);
   const behindWindows = useMemo(
@@ -52,9 +56,12 @@ export function MotionLayer({ w, h }: { w: number; h: number }) {
   const anyMatte = assets.some((a) => !!a.matteUrl);
   const g = resolveGrade(doc.grade);
   const gradeOn = g.brightness !== 0 || g.contrast !== 1 || g.saturation !== 1 || g.temperature !== 0;
-  if (!doc.visuals.length) return null;
-  const common = { timeline, currentTime: t, playing, width: w, height: h, fps: PREVIEW_FPS, fontBaseUrl: "/api/fonts", interactions };
-  const split = behindWindows.length > 0 && anyMatte && !depthFailed;
+  if (!live.length) return null;
+  // 3D scenes are NOT premounted at open: in WebKit their WebGL setup blocks the page for
+  // seconds (measured 2× 4 s right after opening) — bakes replace them instead.
+  const common = { timeline, currentTime: t, playing, width: w, height: h, fps: PREVIEW_FPS, fontBaseUrl: "/api/fonts", interactions, lite: !settled, premount3d: false };
+  // The compositor has no <video> for the person cut-out: behind-you graphics draw in front.
+  const split = behindWindows.length > 0 && anyMatte && !depthFailed && engine.kind === "video";
   const behindNow = behindWindows.some((x) => t >= x.start && t < x.end);
   if (!split) {
     return (
@@ -81,6 +88,17 @@ export function MotionLayer({ w, h }: { w: number; h: number }) {
       </div>
     </>
   );
+}
+
+/** True once the playhead has rested (paused, unchanged) for `ms`. */
+function useSettled(t: number, playing: boolean, ms = 500): boolean {
+  const [settledAt, setSettledAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (playing) return;
+    const id = window.setTimeout(() => setSettledAt(t), ms);
+    return () => window.clearTimeout(id);
+  }, [t, playing, ms]);
+  return !playing && settledAt === t;
 }
 
 /** Where a visual is DRAWN at output time t: its tracked centre (follow/camera) or its placement. */

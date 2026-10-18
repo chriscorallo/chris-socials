@@ -11,6 +11,7 @@ export const HEAVY_JOB_TITLE: Record<string, string> = {
   "subject-track": "Finding you in the frame",
   "person-matte": "Cutting you out for graphics behind you",
   "preview-proxy": "Preparing a fast preview of your footage",
+  "graphics-bake": "Preparing your graphics for a smooth preview",
   ingest: "Analyzing your footage",
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",

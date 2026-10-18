@@ -14,6 +14,7 @@ export const HEAVY_JOB_KINDS = [
   "subject-track",
   "person-matte",
   "preview-proxy",
+  "graphics-bake",
   "ingest",
   "motion-design",
   "reference-analyze",
@@ -57,6 +58,10 @@ export interface HeavyJobArgsByKind {
   "person-matte": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
   /** Editor preview assets (720p proxy + filmstrip + peaks) for takes still missing them. */
   "preview-proxy": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
+  /** Editor preview: render the video's PENDING GraphicBake rows (each graphic at half size,
+   * stacked alpha) — docs/decisions-pending/editor-rebuild.md. Own lease subject
+   * (`bake:<id>`) so it never blocks a Finish render of the same video. */
+  "graphics-bake": { contentItemId: string };
   /** After an upload: transcribe → preview proxy → track → matte for every take of the item still
    * missing them. `proxy` defaults to true (older callers don't pass it). */
   ingest: { contentItemId: string; transcribe: boolean; track: boolean; matte: boolean; proxy?: boolean };
@@ -153,6 +158,7 @@ export function heavyJobSubject(kind: HeavyJobKind, args: unknown): string {
     const a = args as HeavyJobArgsByKind["viewer-review"];
     if (a.referenceContentId) return referenceVideoSubject(a.referenceContentId);
   }
+  if (kind === "graphics-bake") return `bake:${(args as { contentItemId: string }).contentItemId}`;
   return (args as { contentItemId: string }).contentItemId;
 }
 
@@ -174,6 +180,7 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   "subject-track": "Finding you in the frame",
   "person-matte": "Cutting you out for graphics behind you",
   "preview-proxy": "Preparing a fast preview of your footage",
+  "graphics-bake": "Preparing your graphics for a smooth preview",
   ingest: "Analyzing your footage",
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
@@ -321,6 +328,7 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
       break;
     case "quality-gate":
     case "auto-repair":
+    case "graphics-bake":
       out = { contentItemId };
       break;
     case "transcribe":

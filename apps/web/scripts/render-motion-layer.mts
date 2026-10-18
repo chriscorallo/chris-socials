@@ -10,7 +10,7 @@
  * dedicated worker process does.
  */
 import { readFile, writeFile } from "node:fs/promises";
-import { renderVisualsLayer } from "@chris/motion";
+import { renderVisualBake, renderVisualsLayer } from "@chris/motion";
 
 const [input, output] = process.argv.slice(2);
 if (!input || !output) {
@@ -18,6 +18,7 @@ if (!input || !output) {
   process.exit(2);
 }
 const args = JSON.parse(await readFile(input, "utf8"));
-const result = await renderVisualsLayer(args);
+// `op: "bake"` = one graphic for the editor preview (docs/decisions-pending/editor-rebuild.md).
+const result = args.op === "bake" ? await renderVisualBake(args) : await renderVisualsLayer(args);
 await writeFile(output, JSON.stringify(result));
 process.exit(0);

@@ -31,6 +31,16 @@ export function getLocalStorage(): LocalFsStorageAdapter | null {
   return localAdapter;
 }
 
+/** A stored object's bytes as a stream (blob mode; local mode serves from disk itself). */
+export async function streamFromStorage(key: string): Promise<ReadableStream<Uint8Array> | null> {
+  if (!blobAdapter) return null;
+  try {
+    return await blobAdapter.stream(key);
+  } catch {
+    return null;
+  }
+}
+
 /** Copies a stored object to a local file path, streaming where the backend allows it. */
 export async function downloadToFile(key: string, filePath: string): Promise<void> {
   if (blobAdapter) return blobAdapter.downloadToFile(key, filePath);

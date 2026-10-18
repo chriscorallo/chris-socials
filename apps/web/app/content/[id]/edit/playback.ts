@@ -12,6 +12,9 @@ import {
   type TimelineZoom,
 } from "@chris/media/timeline";
 import type { EditorAsset, EditorDoc } from "../../../../lib/editor/types";
+import type { EditorHealth } from "../../../../lib/editor/health";
+import { CompositorEngine } from "../../../../lib/editor/engine/compositor";
+import { browserEngineCaps, chooseEngine, engineOverride, type EngineChoice } from "../../../../lib/editor/engine/select";
 import { assignPlayers, isContinuation, shouldStartStandby, standbyRate, standbyReady, standbySeekTarget, WARM_LEAD_S } from "../../../../lib/editor/player-pool";
 
 export { assignPlayers, PLAYER_POOL } from "../../../../lib/editor/player-pool";
@@ -41,7 +44,13 @@ export { assignPlayers, PLAYER_POOL } from "../../../../lib/editor/player-pool";
 
 type Listener = () => void;
 
-export class PlaybackEngine {
+/** Either preview engine — they share one public surface (docs/decisions-pending/editor-rebuild.md). */
+export type PlaybackEngine = VideoPoolEngine | CompositorEngine;
+
+export class VideoPoolEngine {
+  readonly kind = "video" as const;
+  /** Telemetry (video element events, presented frames). */
+  health: EditorHealth | null = null;
   time = 0;
   playing = false;
   /** Mutes the preview's sound (full-screen mute button); the edit itself is untouched. */
@@ -121,6 +130,11 @@ export class PlaybackEngine {
       };
       this.watchFrames(el, key);
       el.addEventListener("loadeddata", onReady);
+      for (const ev of ["waiting", "stalled", "error", "loadeddata"] as const)
+        el.addEventListener(ev, () => {
+          this.health?.event("video", { ev, el: key, rs: el.readyState, ct: Math.round(el.currentTime * 100) / 100 });
+          if (ev === "loadeddata") this.health?.mark("firstFrame");
+        });
       el.addEventListener("seeked", () => {
         // Scrubbing: seeks that arrived while this one was in flight were coalesced — apply
         // only the latest (a new currentTime aborts the running seek, so setting it on every
@@ -157,6 +171,7 @@ export class PlaybackEngine {
     if (typeof v.requestVideoFrameCallback !== "function") return;
     const onFrame = (_now: number, meta: { mediaTime: number }) => {
       v.requestVideoFrameCallback!(onFrame);
+      if (this.playing && key === this.activeKey) this.health?.framePresented();
       if (!this.playing || this.previewOverride || key !== this.activeKey) return;
       const i = this.activeIndex;
       const clip = this.doc.clips[i];
@@ -215,6 +230,15 @@ export class PlaybackEngine {
   getTime = () => this.time;
   getPlaying = () => this.playing;
 
+  /** The <video> engine's audio is the elements' own; side players make their own context. */
+  audioContext(): AudioContext | null {
+    return null;
+  }
+
+  info(): Record<string, string | number | boolean | null> {
+    return { warm: this.warmEnabled, players: this.players.size };
+  }
+
   get totalDuration() {
     return this.duration;
   }
@@ -239,6 +263,7 @@ export class PlaybackEngine {
     if (this.time >= this.duration - 0.02) this.time = 0;
     this.previewOverride = null;
     this.playing = true;
+    this.health?.setPlaying(true);
     this.lastTs = performance.now();
     this.startActive(true);
     this.unlockFromGesture();
@@ -256,6 +281,7 @@ export class PlaybackEngine {
   pause() {
     if (!this.playing) return;
     this.playing = false;
+    this.health?.setPlaying(false);
     cancelAnimationFrame(this.raf);
     for (const p of this.players.values()) {
       p.pause();
@@ -593,9 +619,20 @@ export class PlaybackEngine {
   }
 }
 
+/**
+ * Picks the engine for this editor session: the compositor where WebCodecs + WebGL2 exist and
+ * every take the edit uses has its preview proxy; the <video> pool otherwise (selection is
+ * pure — lib/editor/engine/select.ts; `?engine=video` forces the fallback).
+ */
+export function pickEngine(doc: EditorDoc, assets: Map<string, EditorAsset>): EngineChoice {
+  if (typeof window === "undefined") return { engine: "video", reason: "server" };
+  const used = [...new Set(doc.clips.map((c) => c.mediaAssetId))].map((id) => assets.get(id)).filter((a): a is EditorAsset => !!a);
+  return chooseEngine({ caps: browserEngineCaps(), assets: used, override: engineOverride() });
+}
+
 /** Creates the engine once per editor mount and keeps it in sync with the doc. */
-export function usePlaybackEngine(doc: EditorDoc, assets: Map<string, EditorAsset>): PlaybackEngine {
-  const [engine] = useState(() => new PlaybackEngine(doc, assets));
+export function usePlaybackEngine(doc: EditorDoc, assets: Map<string, EditorAsset>, choice: EngineChoice): PlaybackEngine {
+  const [engine] = useState<PlaybackEngine>(() => (choice.engine === "compositor" ? new CompositorEngine(doc, assets) : new VideoPoolEngine(doc, assets)));
   useEffect(() => {
     engine.setDoc(doc, assets);
   }, [engine, doc, assets]);

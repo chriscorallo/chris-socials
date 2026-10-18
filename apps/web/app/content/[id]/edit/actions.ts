@@ -1,7 +1,7 @@
 "use server";
 
-import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, getHeavyJob, getGraphicPrefs, setGraphicFavorite, recordGraphicPresetUse, parsePreviewMeta, PREVIEW_META_VERSION, type ContentState, type GraphicPrefs } from "@chris/domain";
-import { EditTimelineSchema, type EditTimeline, type PlacementWarning } from "@chris/media/timeline";
+import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, getHeavyJob, getGraphicPrefs, setGraphicFavorite, recordGraphicPresetUse, parsePreviewMeta, PREVIEW_META_VERSION, requestGraphicBakes, pruneGraphicBakes, type ContentState, type GraphicPrefs, type GraphicBakeState } from "@chris/domain";
+import { EditTimelineSchema, graphicBakeKey, type EditTimeline, type PlacementWarning, type GraphicBakeInput } from "@chris/media/timeline";
 import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
 import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
@@ -391,6 +391,40 @@ export async function ensurePreviewProxiesAction(contentItemId: string): Promise
   if (missing === 0) return { started: false };
   const r = await runHeavyJob("preview-proxy", { contentItemId }, { actorId: session.user!.id!, background: true });
   return r.status === "started" || r.status === "done" ? { started: true } : { started: false, message: r.message };
+}
+
+/**
+ * Baked preview graphics (docs/decisions-pending/editor-rebuild.md): the editor sends the
+ * graphics it shows (each with the inputs that decide its pixels); missing ones are queued and a
+ * background `graphics-bake` job renders them. Returns every key's state. The key is recomputed
+ * here from the input (a row is only ever filled with what its key names). Never throws.
+ */
+export async function graphicBakesAction(
+  contentItemId: string,
+  wanted: Array<{ key: string; input: GraphicBakeInput }>,
+): Promise<{ states: GraphicBakeState[]; started: boolean; message?: string }> {
+  const session = await requireSession();
+  try {
+    const ok = wanted
+      .slice(0, 30)
+      .filter((w) => JSON.stringify(w.input).length < 60_000 && graphicBakeKey(w.input) === w.key)
+      .map((w) => ({ key: w.key, input: w.input as unknown as Record<string, unknown> }));
+    if (ok.length < Math.min(30, wanted.length)) console.warn(`[graphic-bakes] ${wanted.length - ok.length} of ${wanted.length} requests rejected (key mismatch or too large)`);
+    const { states, needsJob } = await requestGraphicBakes(prisma, contentItemId, ok);
+    let started = false;
+    let message: string | undefined;
+    if (needsJob) {
+      const r = await runHeavyJob("graphics-bake", { contentItemId }, { actorId: session.user!.id!, background: true });
+      // "busy" = a bake job for this video is already running (polls land here) — fine.
+      started = r.status === "started" || r.status === "done" || r.status === "busy";
+      if (r.status === "refused") message = r.message;
+    }
+    const stale = await pruneGraphicBakes(prisma, contentItemId).catch(() => [] as string[]);
+    for (const k of stale) await storage.delete(k).catch(() => undefined);
+    return { states, started, message };
+  } catch (err) {
+    return { states: [], started: false, message: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** The editor's assets as they are now (picks up proxies made since the editor opened). */

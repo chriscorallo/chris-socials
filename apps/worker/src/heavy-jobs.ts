@@ -8,6 +8,7 @@ import { transcribeMediaAsset, transcribeContentItemTakes, type TranscribeJobRes
 import { ensureSubjectTracks, type SubjectAnalyzer, type SubjectTrackJobResult } from "./subject-track-job";
 import { ensurePersonMattes, type MatteComputer, type PersonMatteJobResult } from "./person-matte-job";
 import { ensurePreviewProxies, type PreviewMaker, type PreviewProxyJobResult } from "./preview-proxy-job";
+import { bakeGraphicsForContentItem } from "./graphics-bake-job";
 import { designMotionForContentItem } from "./motion-design-job";
 import { analyzePendingReferenceVideos } from "./reference-analysis-job";
 import { maybeAutoStyleCut, type StyleCutOutcome } from "./style-cut-job";
@@ -202,6 +203,17 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       const target = a.mediaAssetIds ? { mediaAssetIds: a.mediaAssetIds } : { contentItemId: a.contentItemId };
       const results = await ensurePreviewProxies(db, storage, target, actor, { make: ctx.makePreview, force: a.force });
       return outcomeOf("proxy", results, "Preview proxy failed", (n) => `Prepared fast previews for ${plural(n, "take")}.`);
+    }
+
+    case "graphics-bake": {
+      const a = args as HeavyJobArgsByKind["graphics-bake"];
+      progress(5, "Preparing your graphics for a smooth preview…", "bake");
+      const r = await bakeGraphicsForContentItem(db, storage, a.contentItemId, {
+        load: ctx.motion?.load,
+        onProgress: (done, total) => progress(5 + (90 * done) / Math.max(1, total), "Preparing your graphics for a smooth preview…", "bake"),
+      });
+      const ok = r.failed === 0;
+      return { ok, result: r, error: ok ? undefined : `${r.failed} graphic(s) couldn't be prepared (the preview shows them live).`, message: `Prepared ${plural(r.baked, "graphic")}.` };
     }
 
     case "ingest":

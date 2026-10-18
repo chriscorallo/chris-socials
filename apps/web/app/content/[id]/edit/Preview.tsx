@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as RPointerEvent, type RefObject } from "react";
+
+const noopSubscribe = () => () => undefined;
 import { anchorOffsetFor, cropGeometry, filmstripTileAt, layoutTimelineText, locateOutputTime, resolveGrade, timelineDuration, type TimelineCrop, type TimelineText, type TimelineVisual } from "@chris/media/timeline";
 import { updateClip, updateZoom, updateText, updateCaptions, setCover } from "../../../../lib/editor/timeline-ops";
 import { panAfterDrag, formatTime, vignetteGradient } from "../../../../lib/editor/preview-math";
@@ -57,6 +59,7 @@ export function Preview() {
           {ui.platformView !== "ALL" && <MockToggle />}
         </div>
         <div className="flex items-center gap-1.5">
+          <GlitchButton />
           <FullscreenButton className="ed-fs-enter-inline" />
           <button
             type="button"
@@ -100,6 +103,24 @@ export function enterReframe(
   if (!on && loc?.clipIndex !== idx) engine.seek(starts + 0.01);
   engine.pause();
   setUi({ reframe: !on });
+}
+
+/** "Something glitched": saves the last ~20 s of editor health for diagnosis (desktop header). */
+function GlitchButton() {
+  const { reportGlitch, toast } = useEditor();
+  return (
+    <button
+      type="button"
+      className="ed-toolbtn"
+      title="Something glitched? Click right after — it saves the last 20 seconds for diagnosis"
+      onClick={() => {
+        reportGlitch();
+        toast("Thanks — saved what just happened. It's under More → Editor diagnostics.");
+      }}
+    >
+      <Icon name="flag" size={14} /> Glitch?
+    </button>
+  );
 }
 
 /** Shows / hides the app UI mock over the preview (platform tabs). */
@@ -277,6 +298,8 @@ export function Canvas({ w, h, view = false, viewPlatform = null }: { w: number;
   const gradeOn = g.brightness !== 0 || g.contrast !== 1 || g.saturation !== 1 || g.temperature !== 0;
   const vignette = vignetteGradient(g.vignette);
   const [dragging, setDragging] = useState(false);
+  // The media layer is client-only (the engine is chosen in the browser).
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [guides, setGuides] = useState({ v: false, h: false });
   const [draggingVisual, setDraggingVisual] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -549,17 +572,32 @@ export function Canvas({ w, h, view = false, viewPlatform = null }: { w: number;
       onPointerUp={view ? undefined : onPointerEnd}
       onPointerCancel={view ? undefined : onPointerEnd}
     >
-      <GradeDefs grade={doc.grade} />
-      {/* video layer: clip crop → punch-in zoom (engine) → grade (exact SVG filter) */}
-      <div className="ed-layer" style={{ filter: gradeOn ? "url(#ed-grade)" : undefined }}>
-        <div className="ed-layer" ref={zoomLayerRef} style={{ willChange: "transform" }}>
-          <PosterLayer w={w} h={h} />
-          {slots.map((key) => (
-            <video key={key} ref={engine.playerRef(key)} preload="auto" playsInline disablePictureInPicture disableRemotePlayback style={{ opacity: 0 }} aria-label="Preview video" />
-          ))}
-        </div>
-      </div>
-      {vignette && <div className="ed-layer pointer-events-none" style={{ background: vignette }} />}
+      {engine.kind === "compositor" ? (
+        // Compositor engine: footage (crop → zoom → grade → vignette) + baked graphics in ONE
+        // WebGL canvas, drawn on the engine's clock. The sprite poster shows until the first
+        // decoded frame (the canvas starts transparent).
+        <>
+          <div className="ed-layer" ref={zoomLayerRef}>
+            <PosterLayer w={w} h={h} />
+          </div>
+          {mounted && <canvas ref={engine.canvasRef} className="ed-layer" style={{ width: w, height: h, opacity: 0 }} aria-label="Preview video" />}
+        </>
+      ) : (
+        <>
+          <GradeDefs grade={doc.grade} />
+          {/* video layer: clip crop → punch-in zoom (engine) → grade (exact SVG filter) */}
+          <div className="ed-layer" style={{ filter: gradeOn ? "url(#ed-grade)" : undefined }}>
+            <div className="ed-layer" ref={zoomLayerRef} style={{ willChange: "transform" }}>
+              <PosterLayer w={w} h={h} />
+              {mounted &&
+                slots.map((key) => (
+                  <video key={key} ref={engine.playerRef(key)} preload="auto" playsInline disablePictureInPicture disableRemotePlayback style={{ opacity: 0 }} aria-label="Preview video" />
+                ))}
+            </div>
+          </div>
+          {vignette && <div className="ed-layer pointer-events-none" style={{ background: vignette }} />}
+        </>
+      )}
       {/* motion graphics: over the graded picture, under texts/captions — the renderer's order */}
       <MotionLayer w={w} h={h} />
 

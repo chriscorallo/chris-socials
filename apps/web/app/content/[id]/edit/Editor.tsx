@@ -26,7 +26,9 @@ import { PLATFORM_IDS } from "../../../../lib/editor/platform-profiles";
 import { formatTime } from "../../../../lib/editor/preview-math";
 import type { EditorAsset, EditorDoc, EditorMusicAsset, Selection } from "../../../../lib/editor/types";
 import { EditorContext, type EditorContextValue, type EditorStyleCut, type EditorUi } from "./context";
-import { usePlaybackEngine } from "./playback";
+import { pickEngine, usePlaybackEngine } from "./playback";
+import { useGraphicBakes } from "./bakes";
+import { EditorHealth, installHealth, newSessionId, sendHealthReport } from "../../../../lib/editor/health";
 import { usePreviewAudio } from "./preview-audio";
 import { useFootageInteractions } from "./interaction";
 import { FONT_FACE_CSS, browserMeasureText, useFontsVersion } from "./measure";
@@ -79,7 +81,41 @@ export function Editor({ item, planId, initialDoc, assets: initialAssets, music:
   const durations = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.duration])), [assets]);
   const [state, dispatch] = useReducer(editorReducer, undefined, () => initEditorState(initialDoc, durations));
   const doc = state.doc;
-  const engine = usePlaybackEngine(doc, assetMap);
+  // Preview engine for this session (compositor where possible — lib/editor/engine/select.ts).
+  const [engineChoice] = useState(() => pickEngine(initialDoc, new Map(initialAssets.map((a) => [a.id, a]))));
+  const engine = usePlaybackEngine(doc, assetMap, engineChoice);
+  // Editor health telemetry (real-device measurements — lib/editor/health.ts).
+  const [health] = useState(() => new EditorHealth({ sessionId: newSessionId(), contentItemId: item.id }));
+  useEffect(() => {
+    engine.health = health;
+    health.engine = engine.kind;
+    health.engineInfo = { reason: engineChoice.reason };
+    const detach = installHealth(health);
+    // Diagnostics hook (the measurement harness drives/inspects the preview through it).
+    (window as unknown as { __edEngine?: unknown }).__edEngine = engine;
+    health.mark("interactive");
+    const info = window.setInterval(() => Object.assign(health.engineInfo, engine.info()), 2000);
+    return () => {
+      window.clearInterval(info);
+      detach();
+    };
+  }, [engine, health, engineChoice]);
+  useEffect(() => {
+    const used = new Set(doc.clips.map((c) => c.mediaAssetId));
+    const takes = assets.filter((a) => used.has(a.id));
+    health.edit = {
+      clips: doc.clips.length,
+      visuals: doc.visuals.length,
+      texts: doc.texts.length,
+      zooms: doc.zooms.length,
+      captions: doc.captions.enabled,
+      music: !!doc.audio.music,
+      durationS: Math.round(timelineDuration(doc) * 10) / 10,
+      takes: takes.length,
+      proxied: takes.every((a) => a.proxied),
+      source: takes.map((a) => `${a.width ?? "?"}x${a.height ?? "?"}`).join(",").slice(0, 60),
+    };
+  }, [doc, assets, health]);
   const [ui, setUiState] = useState<EditorUi>({ reframe: false, platformView: "ALL", tab: "look", pxPerSec: 60, sheet: null, editingTextId: null, platformMock: true, fullscreen: false });
   const layout = useEditorLayout();
   const touch = !layout.desktop;
@@ -125,7 +161,16 @@ export function Editor({ item, planId, initialDoc, assets: initialAssets, music:
   );
   const solvePlacements = useCallback((d: EditorDoc) => solveVisualPlacements(d, placementOptions).visuals, [placementOptions]);
   // Motion v2: anchor/camera tracks, emphasis hits and scene looks — same pure engine as the render.
-  const { interactions, interactionCtx } = useFootageInteractions(item.id, doc, placement.visuals, assets);
+  const { interactions, interactionCtx, analysis } = useFootageInteractions(item.id, doc, placement.visuals, assets);
+  // Graphics pre-rendered by the real renderer, composited by the compositor engine.
+  // (Asked for once the footage analysis is in: scene stats change the graphics' look/key.)
+  const bakedIds = useGraphicBakes(engine, item.id, placement.visuals, interactions, doc.canvas, doc.motionTheme, analysis !== null);
+  useEffect(() => {
+    health.edit.baked = bakedIds.size;
+  }, [bakedIds, health]);
+  const reportGlitch = useCallback(() => {
+    sendHealthReport(health.report("glitch"));
+  }, [health]);
 
   // Fast preview: takes without a proxy get one in the background; once it exists the editor
   // switches to it (the engine swaps the source only while paused). Polls gently, stops after
@@ -491,6 +536,8 @@ export function Editor({ item, planId, initialDoc, assets: initialAssets, music:
     loadSavedVersion,
     styleCut,
     setStyleCut,
+    bakedIds,
+    reportGlitch,
   };
 
   const duration = timelineDuration(doc);

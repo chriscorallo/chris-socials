@@ -39,6 +39,7 @@ const PATHS: Record<string, string> = {
   upload: "M12 16V4M7 9l5-5 5 5M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15",
   wave: "M3 12h2M7 8v8M11 5v14M15 9v6M19 7v10M21 12h0",
   pin: "M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10zM12 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  flag: "M5 21V4M5 4h11l-2 4 2 4H5",
   magnet:"M6 3v8a6 6 0 0 0 12 0V3h-4v8a2 2 0 0 1-4 0V3zM6 7h4M14 7h4",
 };
 

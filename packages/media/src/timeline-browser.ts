@@ -18,6 +18,7 @@ export * from "./visual-placement";
 export * from "./visual-interaction";
 export * from "./style-cut";
 export * from "./preview-plan";
+export * from "./graphic-bake";
 export * from "./graphics/contract";
 export * from "./graphics/presets";
 export * from "./graphics/quick-entry";
