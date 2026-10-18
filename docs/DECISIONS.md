@@ -7339,7 +7339,12 @@ Ops note: the laptop's disk was at 99–100 % during this work (≈ 81 GB in ~/L
 ≈ 37 GB in `.claude/worktrees`); a Kokoro download failed once with ENOSPC. Nothing was deleted.
 
 
-## Person cut-out on demand, not on every upload (2026-10-18)
+## Person cut-out on demand, not on every upload (2026-10-18) — REVERTED same day
+
+**Reverted:** this was a misreading — Chris's "make it free" applied ONLY to the mini-movie
+studio. `PERSON_MATTE` override removed from production, so uploads cut him out automatically
+again (the default). The editor's "Behind me" still starts a cut-out if one is missing (harmless
+fallback). Original (now superseded) note follows.
 
 Chris: "make it free and don't lose quality as much as possible." The person matte (MODNet) was
 the slowest, costliest step of every cloud upload (~5–8¢/take) yet only matters when a graphic
