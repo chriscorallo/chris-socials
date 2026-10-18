@@ -3,6 +3,8 @@ import {
   prisma,
   getActivePostingPlan,
   listPlannedVideos,
+  listOpenRecordingDrafts,
+  type RecordingDraftSummary,
   listPlanImports,
   countVideosNeedingScripts,
   addDaysYmd,
@@ -46,6 +48,7 @@ export default async function PlanPage({
   const plan = await getActivePostingPlan(prisma);
   const all = await listPlannedVideos(prisma, { tz: APP_TZ });
   const imports = await listPlanImports(prisma, 5);
+  const drafts = new Map((await listOpenRecordingDrafts(prisma, all.map((v) => v.id))).map((d) => [d.contentItemId, d]));
   const planContexts = await prisma.planContext.count();
   const needScripts = all.length ?await countVideosNeedingScripts(prisma, { tz: APP_TZ, fromYmd: addDaysYmd(today, -7) }) : 0;
 
@@ -214,7 +217,7 @@ export default async function PlanPage({
                     </h2>
                     <ul className="panel divide-y divide-[var(--color-border)]">
                       {g.items.map((v) => (
-                        <PlanRow key={v.id} v={v} today={today} urgent={g.key === "overdue" || g.key === "today" || g.key === "week"} />
+                        <PlanRow key={v.id} v={v} today={today} urgent={g.key === "overdue" || g.key === "today" || g.key === "week"} draft={drafts.get(v.id) ?? null} />
                       ))}
                     </ul>
                   </section>
@@ -274,8 +277,9 @@ function Seg({ href, on, children }: { href: string; on: boolean; children: Reac
   );
 }
 
-function PlanRow({ v, today, urgent }: { v: PlannedVideo; today: string; urgent: boolean }) {
-  const st = plannedVideoStatus(v.state);
+function PlanRow({ v, today, urgent, draft }: { v: PlannedVideo; today: string; urgent: boolean; draft: RecordingDraftSummary | null }) {
+  // A discarded recording draft leaves an ingested video with no takes: it needs footage again.
+  const st = plannedVideoStatus(v.takes === 0 && (v.state === "MEDIA_INGESTED" || v.state === "TAKE_SELECTED") ? "FILMED" : v.state);
   const { hook } = splitDescription(v.description);
   return (
     <li className="flex items-center gap-3 px-4 py-3" data-testid="plan-row">
@@ -289,14 +293,18 @@ function PlanRow({ v, today, urgent }: { v: PlannedVideo; today: string; urgent:
           {v.title}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          <Badge tone={st.tone}>{st.label}</Badge>
-          {v.takes > 0 && <span className="text-[12px] text-[var(--color-text-faint)]">{v.takes} take{v.takes === 1 ? "" : "s"}</span>}
+          {draft ? <Badge tone="gold">Draft · {draft.parts} {draft.parts === 1 ? "part" : "parts"}</Badge> : <Badge tone={st.tone}>{st.label}</Badge>}
+          {v.takes > 0 && !draft && <span className="text-[12px] text-[var(--color-text-faint)]">{v.takes} take{v.takes === 1 ? "" : "s"}</span>}
           <span className="truncate text-[12px] text-[var(--color-text-faint)]">{v.platforms.map((p) => (p === "TIKTOK" ? "TikTok" : p === "INSTAGRAM" ? "Reels" : "Shorts")).join(" · ")}</span>
         </div>
         {hook && st.action.kind === "UPLOAD" && <p className="mt-1 line-clamp-1 text-[13px] text-[var(--color-text-muted)]">“{hook}”</p>}
       </div>
       <div className="shrink-0">
-        {st.action.kind === "UPLOAD" ? (
+        {draft ? (
+          <Link href={`/film/teleprompter?id=${v.id}&from=plan`} className="btn btn-primary !min-h-[38px] !px-3.5 !text-[13.5px]" data-testid="plan-continue">
+            Continue
+          </Link>
+        ) : st.action.kind === "UPLOAD" ? (
           <div className="flex items-center gap-1.5">
             <TeleprompterLink id={v.id} variant="icon" from="plan" />
             <PlanItemUpload contentItemId={v.id} mode={storageMode} label="Upload" compact quiet={!urgent} />

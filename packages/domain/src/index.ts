@@ -7,6 +7,7 @@ export * from "./manual-transition";
 export * from "./content-stage";
 export * from "./footage-first";
 export * from "./starter-edit";
+export * from "./recording-session";
 export * from "./friendly-status";
 export * from "./render-variant";
 export * from "./audit";

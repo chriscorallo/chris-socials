@@ -529,3 +529,123 @@ describe("clipAudioFades (de-click at splices)", () => {
     expect(clipAudioFades(clips, 3, 1)).toBe(",afade=t=in:st=0:d=0.008");
   });
 });
+
+describe("buildStyleCut — several parts of one recording (segmented teleprompter recording)", () => {
+  // Three parts, each with its own dead air at the start and end and pauses inside.
+  const parts = [
+    { id: "part-a", ...speech({ sentences: 3, pauses: [0.9, 0.4], lead: 1.1, tail: 1.6, seed: 11 }) },
+    { id: "part-b", ...speech({ sentences: 2, pauses: [1.3], lead: 0.8, tail: 2.2, seed: 12 }) },
+    { id: "part-c", ...speech({ sentences: 4, pauses: [0.5, 1.0, 0.3], lead: 1.5, tail: 1.2, seed: 13 }) },
+  ];
+  const seqInput = (withSilences = true) => ({
+    base: base(),
+    takes: parts.map((p) => ({ mediaAssetId: p.id, words: p.words, durationSeconds: p.duration, silences: withSilences ? silencesOf(p.words, p.duration) : null })),
+  });
+  const ok = (r: ReturnType<typeof buildStyleCut>) => {
+    if (!r.ok) throw new Error(r.message);
+    return r;
+  };
+
+  it("keeps the parts in order and cuts at every join", () => {
+    const r = ok(buildStyleCut(seqInput()));
+    const order = r.timeline.clips.map((c) => c.mediaAssetId);
+    // Contiguous runs per part, in recording order.
+    const runs = order.filter((id, i) => i === 0 || order[i - 1] !== id);
+    expect(runs).toEqual(["part-a", "part-b", "part-c"]);
+    expect(r.shots.filter((s) => s.cutBefore === "JOIN")).toHaveLength(2);
+    expect(r.shots[0]!.cutBefore).toBe("START");
+    expect(r.stats.parts).toBe(3);
+    expect(r.stats.joinCuts).toBe(2);
+    expect(r.summary).toMatch(/^Joined your 3 parts/);
+    // Within a part, clips move forward through the source.
+    for (const p of parts) {
+      const cs = r.timeline.clips.filter((c) => c.mediaAssetId === p.id);
+      for (let i = 1; i < cs.length; i++) expect(cs[i]!.sourceStart).toBeGreaterThanOrEqual(cs[i - 1]!.sourceEnd - 1e-9);
+    }
+  });
+
+  it("trims the dead air at the start and end of EVERY part (each join is tight)", () => {
+    const r = ok(buildStyleCut(seqInput()));
+    for (const p of parts) {
+      const cs = r.timeline.clips.filter((c) => c.mediaAssetId === p.id);
+      const first = cs[0]!;
+      const last = cs[cs.length - 1]!;
+      const lead = p.words[0]!.start - first.sourceStart;
+      const tail = last.sourceEnd - p.words[p.words.length - 1]!.end;
+      expect(lead).toBeGreaterThanOrEqual(0.05);
+      expect(lead).toBeLessThanOrEqual(0.2);
+      expect(tail).toBeGreaterThanOrEqual(0.2);
+      expect(tail).toBeLessThanOrEqual(0.4);
+    }
+    // Dead air cut at the joins = the end of part a + both ends of b + the start of c.
+    expect(r.stats.joinTrimmedS).toBeGreaterThan(4);
+    expect(r.stats.headTrimmedS).toBeGreaterThan(0.9);
+    expect(r.stats.tailTrimmedS).toBeGreaterThan(0.8);
+  });
+
+  it("never cuts mid-word, in any part", () => {
+    const r = ok(buildStyleCut(seqInput()));
+    for (const p of parts) {
+      const cs = r.timeline.clips.filter((c) => c.mediaAssetId === p.id);
+      for (const w of p.words) {
+        expect(cs.filter((c) => w.start >= c.sourceStart - 1e-9 && w.end <= c.sourceEnd + 1e-9)).toHaveLength(1);
+        expect(cs.filter((c) => c.sourceStart > w.start + 1e-9 && c.sourceStart < w.end - 1e-9)).toHaveLength(0);
+      }
+    }
+  });
+
+  it("removes pauses inside each part", () => {
+    const r = ok(buildStyleCut(seqInput()));
+    expect(r.stats.pausesRemoved).toBeGreaterThanOrEqual(3);
+    expect(r.stats.outputDurationS).toBeLessThan(r.stats.sourceDurationS - 8);
+  });
+
+  it("captions follow the joins: every word once, in spoken order, timed on the output timeline", () => {
+    const r = ok(buildStyleCut(seqInput()));
+    const byAsset = Object.fromEntries(parts.map((p) => [p.id, p.words]));
+    const shown = timelineCaptionWords(r.timeline, byAsset);
+    expect(shown.map((w) => w.word)).toEqual(parts.flatMap((p) => p.words.map((w) => w.word)));
+    for (let i = 1; i < shown.length; i++) expect(shown[i]!.start).toBeGreaterThanOrEqual(shown[i - 1]!.start - 1e-9);
+    // Each word sits at its source offset inside its clip's output window.
+    const starts = clipStartTimes(r.timeline);
+    for (const w of shown) {
+      const [asset, idx] = w.key.split(":");
+      const src = byAsset[asset!]![Number(idx)]!;
+      const ci = r.timeline.clips.findIndex((c) => c.mediaAssetId === asset && src.start >= c.sourceStart - 1e-9 && src.end <= c.sourceEnd + 1e-9);
+      const c = r.timeline.clips[ci]!;
+      expect(w.start).toBeCloseTo(starts[ci]! + (src.start - c.sourceStart), 3);
+    }
+    expect(timelineDuration(r.timeline)).toBeCloseTo(r.stats.outputDurationS, 3);
+  });
+
+  it("framing alternation continues across joins (never the same framing twice in a row)", () => {
+    const r = ok(buildStyleCut(seqInput()));
+    for (let i = 1; i < r.timeline.clips.length; i++) expect(r.timeline.clips[i]!.crop.zoom).not.toBe(r.timeline.clips[i - 1]!.crop.zoom);
+  });
+
+  it("every clip is whole frames; the result is a valid timeline; same inputs → same key", () => {
+    const r = ok(buildStyleCut(seqInput()));
+    for (const c of r.timeline.clips) expect(Math.abs(clipDuration(c) * 30 - Math.round(clipDuration(c) * 30))).toBeLessThan(1e-4);
+    expect(EditTimelineSchema.safeParse(r.timeline).success).toBe(true);
+    expect(ok(buildStyleCut(seqInput())).inputsKey).toBe(r.inputsKey);
+    expect(ok(buildStyleCut(seqInput(false))).inputsKey).not.toBe(r.inputsKey);
+  });
+
+  it("a one-part list is exactly the single-take cut", () => {
+    const p = parts[0]!;
+    const single = buildStyleCut({ base: base(), mediaAssetId: p.id, words: p.words, durationSeconds: p.duration, silences: silencesOf(p.words, p.duration) });
+    const listed = buildStyleCut({ base: base(), takes: [{ mediaAssetId: p.id, words: p.words, durationSeconds: p.duration, silences: silencesOf(p.words, p.duration) }] });
+    expect(JSON.stringify(listed)).toBe(JSON.stringify(single));
+  });
+
+  it("a part without words is kept whole; no words anywhere → needs captions", () => {
+    const input = seqInput();
+    input.takes[1] = { ...input.takes[1]!, words: [] };
+    const r = ok(buildStyleCut(input));
+    const b = r.timeline.clips.filter((c) => c.mediaAssetId === "part-b");
+    expect(b).toHaveLength(1);
+    expect(b[0]!.sourceStart).toBe(0);
+    const none = buildStyleCut({ base: base(), takes: parts.map((p) => ({ mediaAssetId: p.id, words: [], durationSeconds: p.duration })) });
+    expect(none.ok).toBe(false);
+  });
+});

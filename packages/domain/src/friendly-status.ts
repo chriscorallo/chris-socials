@@ -109,12 +109,13 @@ export function homeGroupFor(state: ContentState): HomeGroup {
  *  - EDIT: open the editor
  *  - UPLOAD: the video's own upload box
  *  - FILM: the Film page
+ *  - CONTINUE_FILMING: an open recording draft → the teleprompter, to film the rest
  *  - SCHEDULE: pick a date (the video page's schedule panel)
  *  - VIEW_POST: the live post (or the video page when there's no URL)
  *  - FIX: something is blocked — the video page explains what
  *  - OPEN: nothing for Chris to do with one tap — open the video page
  */
-export type NextActionKind = "START_EDIT" | "EDIT" | "UPLOAD" | "FILM" | "SCHEDULE" | "VIEW_POST" | "FIX" | "OPEN";
+export type NextActionKind = "START_EDIT" | "EDIT" | "UPLOAD" | "FILM" | "CONTINUE_FILMING" | "SCHEDULE" | "VIEW_POST" | "FIX" | "OPEN";
 
 export interface NextAction {
   kind: NextActionKind;
@@ -125,7 +126,19 @@ export interface NextAction {
   needsYou: boolean;
 }
 
-export function nextActionFor(state: ContentState): NextAction {
+export function nextActionFor(state: ContentState, draft?: { parts: number; seconds: number } | null): NextAction {
+  // Recording in parts with the teleprompter and not finished: keep filming (never "Edit" —
+  // the parts so far aren't the video). docs/decisions-pending/segmented-recording-drafts.md
+  if (draft) {
+    const s = Math.max(0, Math.round(draft.seconds));
+    const time = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    return {
+      kind: "CONTINUE_FILMING",
+      label: "Continue filming",
+      hint: `Draft — ${draft.parts} ${draft.parts === 1 ? "part" : "parts"}, ${time} filmed. Film the rest, then tap Finish.`,
+      needsYou: true,
+    };
+  }
   switch (state) {
     case "IDEA":
       return { kind: "OPEN", label: "Plan it", hint: "An idea — open it to turn it into a video.", needsYou: true };

@@ -1,4 +1,4 @@
-import { prisma, homeGroupFor, nextActionFor, type ContentState, type HomeGroup, type NextAction } from "@chris/domain";
+import { prisma, homeGroupFor, nextActionFor, listOpenRecordingDrafts, type ContentState, type HomeGroup, type NextAction } from "@chris/domain";
 import { APP_TZ } from "./calendar-data";
 
 /** Everything a video card shows: thumbnail source, plain status, the one next action. */
@@ -14,6 +14,8 @@ export interface VideoCardData {
   when: string | null;
   postUrl: string | null;
   updatedAt: Date;
+  /** An open teleprompter recording draft ("3 parts · 0:41 filmed"), or null. */
+  draft: { parts: number; seconds: number } | null;
 }
 
 export function formatWhen(d: Date): string {
@@ -37,7 +39,9 @@ export async function loadVideoCards(opts: { states?: ContentState[]; limit?: nu
       publications: { where: { status: "SUCCESS", url: { not: null } }, orderBy: { createdAt: "desc" }, take: 1, select: { url: true, publishedAt: true } },
     },
   });
+  const drafts = new Map((await listOpenRecordingDrafts(prisma, rows.map((r) => r.id))).map((d) => [d.contentItemId, d]));
   return rows.map((r) => {
+    const draft = drafts.get(r.id) ?? null;
     const key = r.renders[0]?.storageKey ?? r.mediaAssets[0]?.storageKey ?? null;
     const pub = r.publications[0];
     let when: string | null = null;
@@ -48,11 +52,12 @@ export async function loadVideoCards(opts: { states?: ContentState[]; limit?: nu
       title: r.title,
       state: r.currentState,
       group: homeGroupFor(r.currentState),
-      next: nextActionFor(r.currentState),
+      next: nextActionFor(r.currentState, draft),
       thumbUrl: key ? `/api/media/${key}` : null,
       when,
       postUrl: pub?.url ?? null,
       updatedAt: r.updatedAt,
+      draft: draft ? { parts: draft.parts, seconds: draft.seconds } : null,
     };
   });
 }

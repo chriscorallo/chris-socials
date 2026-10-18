@@ -10,10 +10,10 @@ function safeName(name: string): string {
 }
 
 /** Local mode: stream the raw file body to PUT /api/upload (XHR for upload progress). */
-function uploadLocal(contentItemId: string, file: File, onProgress: (pct: number) => void): Promise<void> {
+function uploadLocal(contentItemId: string, file: File, onProgress: (pct: number) => void, segment?: SegmentUpload | null): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const params = new URLSearchParams({ contentItemId, filename: file.name });
+    const params = new URLSearchParams({ contentItemId, filename: file.name, ...segmentParams(segment) });
     xhr.open("PUT", `/api/upload?${params}`);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (e) => {
@@ -34,6 +34,24 @@ function uploadLocal(contentItemId: string, file: File, onProgress: (pct: number
   });
 }
 
+/** A segment of a teleprompter recording draft (docs/decisions-pending/segmented-recording-drafts.md):
+ * registration is idempotent by `segmentKey`, so a retried upload never makes a duplicate take. */
+export interface SegmentUpload {
+  recordingSessionId: string;
+  segmentKey: string;
+  segmentIndex: number;
+  segmentSeconds?: number | null;
+  scriptStart?: number | null;
+  scriptEnd?: number | null;
+}
+
+function segmentParams(segment?: SegmentUpload | null): Record<string, string> {
+  if (!segment) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(segment)) if (v != null) out[k] = String(v);
+  return out;
+}
+
 /**
  * Uploads one raw take into a content item, by deployment storage mode: local disk via the
  * streaming route, or browser-direct to private Vercel Blob in production (Vercel functions
@@ -44,9 +62,10 @@ export async function uploadRawTake(
   file: File,
   mode: "blob" | "local",
   onProgress: (percent: number, phase: "uploading" | "processing") => void,
+  segment?: SegmentUpload | null,
 ): Promise<void> {
   if (mode === "local") {
-    await uploadLocal(contentItemId, file, (p) => onProgress(p, p >= 100 ? "processing" : "uploading"));
+    await uploadLocal(contentItemId, file, (p) => onProgress(p, p >= 100 ? "processing" : "uploading"), segment);
     return;
   }
   const storageKey = `raw/${contentItemId}/${Date.now()}-${safeName(file.name)}`;
@@ -64,6 +83,7 @@ export async function uploadRawTake(
     originalFilename: file.name,
     mimeType: file.type,
     sizeBytes: file.size,
+    ...(segment ? { segment: segmentParams(segment) } : {}),
   });
   if ("error" in result) throw new Error(result.error);
 }

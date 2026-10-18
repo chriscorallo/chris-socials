@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary } from "@chris/domain";
+import { DiscardDraftButton } from "./DiscardDraftButton";
 import { requireSession } from "../../../lib/session";
 import { storageMode } from "../../../lib/storage";
 import { formatWhen } from "../../../lib/video-cards";
@@ -14,7 +15,7 @@ import { FootageUpload } from "../../upload/FootageUpload";
 import { prompterCanFilm } from "../../../lib/teleprompter/data";
 import { TeleprompterLink } from "../../components/TeleprompterLink";
 import { NavBar } from "../../components/NavBar";
-import { VideoThumb } from "../../components/VideoCard";
+import { VideoThumb, DraftBadge } from "../../components/VideoCard";
 import { PageShell, Panel, SectionHeading, Badge, Button, ButtonLink, BackLink, CollapsiblePanel, StickyActionBar, StatusPill, stateLabel, platformLabel } from "../../components/ui";
 import {
   selectForWeek,
@@ -64,13 +65,15 @@ export default async function ContentDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ pipelineError?: string; autopilot?: string }>;
+  searchParams: Promise<{ pipelineError?: string; autopilot?: string; draftSaved?: string }>;
 }) {
   await requireSession();
   const { id } = await params;
-  const { pipelineError, autopilot } = await searchParams;
+  const { pipelineError, autopilot, draftSaved } = await searchParams;
   const item = await getContentItem(prisma, id);
   if (!item) notFound();
+  // An unfinished teleprompter recording (docs/decisions-pending/segmented-recording-drafts.md).
+  const draft = await getRecordingDraftSummary(prisma, item.id);
 
   const state = item.currentState;
   const isTerminal = state === "ARCHIVED" || state === "CANCELLED";
@@ -80,7 +83,9 @@ export default async function ContentDetailPage({
   const musicAssets = item.mediaAssets.filter((a) => a.kind === "MUSIC");
   const manualTransitions = listManualTransitions(state);
   // Waiting on footage → the simple upload box (straight into the editor afterwards).
-  const needsFootage = state === "READY_TO_FILM" || state === "FILMED";
+  // (Also a video whose recording draft was discarded: ingested, but no takes left.)
+  const footageGone = (state === "MEDIA_INGESTED" || state === "TAKE_SELECTED") && rawTakes.length === 0;
+  const needsFootage = state === "READY_TO_FILM" || state === "FILMED" || footageGone;
   // Not filmed yet (no takes) → "Film with teleprompter" (docs/decisions-pending/teleprompter.md).
   const canPrompt = prompterCanFilm(state) && rawTakes.length === 0;
   const latestResearch = item.researchPackets[0];
@@ -101,7 +106,9 @@ export default async function ContentDetailPage({
   const heroKey = goodRender?.storageKey ?? heroTake?.storageKey ?? null;
   const viewerCheck = goodRender ? await getViewerCheckForVideo(item.id).catch(() => null) : null;
   const livePost = item.publications.find((p) => p.status === "SUCCESS" && p.url);
-  const next = nextActionFor(state);
+  // What the page shows: a draft is still being filmed; a discarded draft left no footage.
+  const shownState = draft ? "READY_TO_FILM" : footageGone ? "FILMED" : state;
+  const next = nextActionFor(footageGone ? "FILMED" : state, draft);
   const when =
     (state === "SCHEDULED" || state === "READY") && item.scheduleEntry
       ? `Scheduled for ${formatWhen(item.scheduleEntry.scheduledDate)}`
@@ -238,6 +245,16 @@ export default async function ContentDetailPage({
       if (livePost?.url) secondary.push(secForm(runCaptureSnapshots, "Update stats", "Updating…"));
       break;
   }
+  if (footageGone && !draft) {
+    primary = linkAct("#upload", "Upload footage");
+    secondary.length = 0;
+  }
+  if (draft) {
+    // Still filming in parts: the only next step is to film the rest (or throw the draft away).
+    primary = linkAct(`/film/teleprompter?id=${item.id}`, "Continue filming");
+    secondary.length = 0;
+    secondary.push(<DiscardDraftButton key="discard" contentItemId={item.id} recordingSessionId={draft.recordingSessionId} parts={draft.parts} />);
+  }
 
   const mediaPanel = (
           <Panel id="media">
@@ -334,14 +351,16 @@ export default async function ContentDetailPage({
           <div className="min-w-0">
             <h1 className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[28px]">{item.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-muted)] sm:text-[14px]">
-              <StatusPill state={state} />
+              {draft ? <DraftBadge /> : <StatusPill state={shownState} />}
               {when && <span>{when}</span>}
             </div>
+            {draftSaved && draft && <p className="mt-2 text-[13.5px] text-[var(--color-emerald-400)]" data-testid="draft-saved">Draft saved — come back anytime to film the rest.</p>}
             {!when && <p className="mt-2 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-[15px]">{next.hint}</p>}
           </div>
 
           <div className="col-span-2 flex min-w-0 flex-col gap-4 self-start md:col-span-1 md:col-start-2">
-            <FlowProgress state={state} />
+            {/* A draft is still being filmed: light "Film", not "Edit" (display only). */}
+            <FlowProgress state={shownState} />
             {primary && (
               <div className="flex flex-col gap-2.5">
                 {primary.big}
@@ -374,7 +393,7 @@ export default async function ContentDetailPage({
         <div className="flex flex-col gap-5">
           {/* Only the input the CURRENT step needs is open on the page. */}
           {canPrompt && !needsFootage && <TeleprompterLink id={item.id} />}
-          {needsFootage && (
+          {needsFootage && !draft && (
             <Panel id="upload" className="panel-action scroll-mt-24">
               <SectionHeading eyebrow="Upload" title="Upload your footage" />
               <p className="-mt-2 mb-4 text-[14px] text-[var(--color-text-muted)]">

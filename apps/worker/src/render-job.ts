@@ -6,6 +6,7 @@ import {
   startRendering,
   recordRenderAttempt,
   parseTranscriptWords,
+  readStarterSequence,
   type PrismaClient,
 } from "@chris/domain";
 import { EditPlanOutputSchema, type EditPlanOutput } from "@chris/agents";
@@ -410,14 +411,25 @@ export function timelineForPlan(
   const canvas =
     plan.targetDimensions ??
     (dims ? { width: dims.width - (dims.width % 2), height: dims.height - (dims.height % 2) } : undefined);
-  return {
-    timeline: planToTimeline(plan, {
-      mediaAssetId: ctx.selectedMediaAssetId,
-      sourceWordsAvailable: ctx.sourceWordsAvailable,
-      canvas,
-    }),
-    source: "EDIT_PLAN",
-  };
+  const timeline = planToTimeline(plan, {
+    mediaAssetId: ctx.selectedMediaAssetId,
+    sourceWordsAvailable: ctx.sourceWordsAvailable,
+    canvas,
+  });
+  // A multi-part teleprompter recording's starter edit (`plan.sequence`): one whole clip per
+  // part, in recording order (docs/decisions-pending/segmented-recording-drafts.md).
+  const sequence = readStarterSequence(rawPlan);
+  if (sequence) {
+    timeline.clips = sequence.takes.map((t, i) => ({
+      id: `clip-${i + 1}`,
+      mediaAssetId: t.mediaAssetId,
+      sourceStart: 0,
+      sourceEnd: t.durationSeconds,
+      crop: { zoom: 1, panX: 0, panY: 0 },
+      volume: 1,
+    }));
+  }
+  return { timeline, source: "EDIT_PLAN" };
 }
 
 /**

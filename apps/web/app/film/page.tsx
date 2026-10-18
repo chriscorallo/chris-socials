@@ -5,6 +5,8 @@ import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, SectionHeading, Button, EmptyState } from "../components/ui";
 import { markFilmed } from "./actions";
 import { TeleprompterLink } from "../components/TeleprompterLink";
+import { DraftBadge } from "../components/VideoCard";
+import { listPrompterDraftPicks } from "../../lib/teleprompter/data";
 
 const SETUP_LABELS: Record<string, string> = {
   DESK: "Desk",
@@ -42,6 +44,8 @@ export default async function FilmQueuePage({
     take: 100,
   });
 
+  const drafts = await listPrompterDraftPicks(prisma);
+  const draftIds = new Set(drafts.map((d) => d.id));
   const groups = new Map<string, typeof ready>();
   for (const item of ready) {
     const setup = item.creatorCard?.setup ?? "UNSPECIFIED";
@@ -69,6 +73,28 @@ export default async function FilmQueuePage({
             Film with teleprompter
           </Link>
         </div>
+
+        {drafts.length > 0 && (
+          <Panel className="mb-5 !border-[var(--color-gold-500)]/45">
+            <SectionHeading eyebrow={`${drafts.length} draft${drafts.length === 1 ? "" : "s"}`} title="Finish filming" />
+            <ul className="-mx-2 flex flex-col" data-testid="film-drafts">
+              {drafts.map((d) => (
+                <li key={d.id}>
+                  <Link href={`/film/teleprompter?id=${d.id}&from=film`} className="flex min-h-[56px] items-center justify-between gap-3 rounded-lg px-2 py-2 active:bg-white/[0.05]">
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2">
+                        <DraftBadge />
+                        <span className="truncate text-[15px] font-medium">{d.title}</span>
+                      </span>
+                      <span className="mt-0.5 block text-[12.5px] text-[var(--color-text-faint)]">{d.label}</span>
+                    </span>
+                    <span className="shrink-0 text-[13px] font-medium text-[var(--color-gold-400)]">Continue ›</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
 
         {filmed && <p className="mb-4 text-[15px] text-[var(--color-emerald-400)] sm:text-sm">Marked {filmed} as filmed — upload the footage below.</p>}
         {error && <p className="mb-4 text-sm text-[var(--color-rose-400)]">{error}</p>}
@@ -131,7 +157,7 @@ export default async function FilmQueuePage({
               <EmptyState>Nothing waiting for upload.</EmptyState>
             ) : (
               <ul className="-mx-2 flex flex-col">
-                {awaitingUpload.map((item) => (
+                {awaitingUpload.filter((item) => !draftIds.has(item.id)).map((item) => (
                   <li key={item.id}>
                     <Link
                       href={`/content/${item.id}#upload`}

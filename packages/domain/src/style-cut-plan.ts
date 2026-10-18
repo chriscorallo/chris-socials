@@ -32,7 +32,11 @@ export interface StoredStyleCut {
   target: Record<string, unknown>;
   /** Measured silences (s) — cached so a re-apply needn't decode the take again. */
   silences?: Array<{ start: number; end: number }> | null;
+  /** The take cut (the first part, for a multi-part recording). */
   mediaAssetId: string;
+  /** Multi-part recording: every part, in order, and each part's measured silences. */
+  mediaAssetIds?: string[];
+  silencesByAsset?: Record<string, Array<{ start: number; end: number }> | null>;
 }
 
 export function readStoredStyleCut(plan: unknown): StoredStyleCut | null {

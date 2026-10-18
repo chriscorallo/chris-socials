@@ -1,7 +1,15 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prisma, createMediaAsset, analyzeMediaAsset } from "@chris/domain";
+import {
+  prisma,
+  createMediaAsset,
+  analyzeMediaAsset,
+  assertSegmentUploadAllowed,
+  attachRecordingSegment,
+  findRegisteredSegment,
+  type SegmentMeta,
+} from "@chris/domain";
 import { probeMedia } from "@chris/media";
 import { after } from "next/server";
 import { transcribeMediaAsset } from "@chris/worker/transcribe-job";
@@ -43,9 +51,21 @@ export async function registerUploadedRawTake(input: {
   localPath: string;
   actorId: string;
   kind?: UploadKind;
+  /** A segment of a teleprompter recording draft (docs/decisions-pending/segmented-recording-drafts.md). */
+  segment?: SegmentMeta | null;
 }) {
   const kind = input.kind ?? "RAW_TAKE";
-  const asset = await createMediaAsset(
+  const segment = kind === "RAW_TAKE" ? (input.segment ?? null) : null;
+  if (segment) {
+    // A retried upload of a segment that already landed: the first registration wins.
+    const existing = await registeredSegmentAsset(segment);
+    if (existing) {
+      if (existing.storageKey !== input.storageKey) await storage.delete(input.storageKey).catch(() => undefined);
+      return existing;
+    }
+    await assertSegmentUploadAllowed(prisma, { recordingSessionId: segment.recordingSessionId, contentItemId: input.contentItemId });
+  }
+  const created = await createMediaAsset(
     prisma,
     {
       contentItemId: input.contentItemId,
@@ -57,6 +77,32 @@ export async function registerUploadedRawTake(input: {
     },
     { actorId: input.actorId },
   );
+  const asset = created;
+  if (segment) {
+    let attached: Awaited<ReturnType<typeof attachRecordingSegment>>;
+    try {
+      attached = await attachRecordingSegment(
+        prisma,
+        {
+          ...segment,
+          mediaAssetId: created.id,
+          originalFilename: input.originalFilename,
+          sizeBytes: input.sizeBytes,
+        },
+        { actorId: input.actorId },
+      );
+    } catch (err) {
+      // The draft closed meanwhile (finished/discarded): don't leave a stray take behind.
+      await prisma.mediaAsset.delete({ where: { id: created.id } }).catch(() => undefined);
+      await storage.delete(input.storageKey).catch(() => undefined);
+      throw err;
+    }
+    if (attached.duplicateOf && attached.duplicateOf !== created.id) {
+      await prisma.mediaAsset.delete({ where: { id: created.id } }).catch(() => undefined);
+      await storage.delete(input.storageKey).catch(() => undefined);
+      return prisma.mediaAsset.findUniqueOrThrow({ where: { id: attached.duplicateOf } });
+    }
+  }
 
   const probed = await probeMedia(input.localPath);
   await analyzeMediaAsset(
@@ -123,6 +169,34 @@ export async function registerUploadedRawTake(input: {
     });
   }
   return asset;
+}
+
+/** The take of a segment that's already registered (retried upload), or null. */
+export async function registeredSegmentAsset(segment: Pick<SegmentMeta, "recordingSessionId" | "clientKey">) {
+  const seg = await findRegisteredSegment(prisma, segment.recordingSessionId, segment.clientKey);
+  return seg?.mediaAsset ?? null;
+}
+
+/** Parses the segment fields an upload carries (query params / registration input). */
+export function parseSegmentMeta(get: (k: string) => string | null | undefined): SegmentMeta | null {
+  const recordingSessionId = get("recordingSessionId")?.trim();
+  const clientKey = get("segmentKey")?.trim();
+  if (!recordingSessionId || !clientKey) return null;
+  const num = (k: string) => {
+    const v = get(k);
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const idx = num("segmentIndex");
+  return {
+    recordingSessionId,
+    clientKey: clientKey.slice(0, 100),
+    segmentIndex: idx != null && Number.isInteger(idx) ? idx : null,
+    durationSeconds: num("segmentSeconds"),
+    scriptPositionStart: num("scriptStart"),
+    scriptPositionEnd: num("scriptEnd"),
+  };
 }
 
 export async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {

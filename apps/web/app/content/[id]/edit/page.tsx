@@ -69,13 +69,28 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
 
   const [takeSelection, rawAssets, musicRows] = await Promise.all([
     prisma.takeSelection.findUnique({ where: { id: plan.takeSelectionId }, select: { selectedMediaAssetId: true } }),
-    prisma.mediaAsset.findMany({ where: { contentItemId: id, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } }),
+    prisma.mediaAsset.findMany({
+      where: { contentItemId: id, kind: "RAW_TAKE" },
+      orderBy: { createdAt: "asc" },
+      include: { recordingSegment: { select: { segmentIndex: true, recordingSessionId: true } } },
+    }),
     prisma.mediaAsset.findMany({ where: { contentItemId: id, kind: "MUSIC" }, orderBy: { createdAt: "desc" } }),
   ]);
 
+  // Parts of a teleprompter recording are listed in recording order as "Part 1, Part 2…"
+  // (docs/decisions-pending/segmented-recording-drafts.md); other takes keep their file name.
+  const partNo = new Map<string, number>();
+  for (const sid of new Set(rawAssets.map((a) => a.recordingSegment?.recordingSessionId).filter(Boolean))) {
+    const slots = rawAssets.flatMap((a, k) => (a.recordingSegment?.recordingSessionId === sid ? [k] : []));
+    const ordered = slots.map((k) => rawAssets[k]!).sort((x, y) => x.recordingSegment!.segmentIndex - y.recordingSegment!.segmentIndex);
+    ordered.forEach((a, k) => {
+      rawAssets[slots[k]!] = a;
+      partNo.set(a.id, k + 1);
+    });
+  }
   const assets: EditorAsset[] = rawAssets.map((a, i) => ({
     id: a.id,
-    name: a.originalFilename.replace(/\.[^.]+$/, ""),
+    name: partNo.has(a.id) ? `Part ${partNo.get(a.id)}` : a.originalFilename.replace(/\.[^.]+$/, ""),
     url: `/api/media/${a.storageKey}`,
     duration: a.durationSeconds ?? 0,
     width: a.width,

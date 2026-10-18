@@ -12,6 +12,17 @@ Prisma migration when that phase starts, per `CLAUDE.md`'s "no schema change wit
 migrations" rule. Introducing a table earlier than the phase that needs it is avoided
 deliberately — undriven schema invites design mistakes made without real usage context.
 
+## Segmented recording + drafts (2026-10-18)
+
+| Entity | Purpose | Key fields |
+|---|---|---|
+| `RecordingSession` | The draft of a video filmed in parts with the teleprompter (at most one DRAFT per video) | `contentItemId, status (DRAFT/FINISHED/DISCARDED), scriptPosition, scriptFingerprint?, createdBy, finishedAt?, discardedAt?` |
+| `RecordingSegment` | One recorded part, permanent (deleting a part marks it DELETED and removes only its media) | `recordingSessionId, clientKey (unique per session — idempotent registration), segmentIndex, status (ACTIVE/DELETED), mediaAssetId? (unique, SET NULL), durationSeconds?, scriptPositionStart/End?, deletedAt?` |
+
+While a session is DRAFT the starter edit / style cut / take selector are refused; after Finish
+the starter edit's `plan.sequence` lists every active part in order. See
+`docs/decisions-pending/segmented-recording-drafts.md` and `packages/domain/src/recording-session.ts`.
+
 ## Phase 8 — concrete schema (implemented now, in addition to Phase 0-7's)
 
 | Entity | Purpose | Key fields |

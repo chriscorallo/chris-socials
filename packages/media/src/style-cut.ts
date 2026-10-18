@@ -209,8 +209,9 @@ export interface StyleCutShot {
   sourceStart: number;
   sourceEnd: number;
   framing: StyleCutFramingName;
-  /** "PAUSE" = the cut before this shot removed a pause; "RHYTHM" = framing change only. */
-  cutBefore: "START" | "PAUSE" | "RHYTHM";
+  /** "PAUSE" = the cut before this shot removed a pause; "RHYTHM" = framing change only;
+   * "JOIN" = the first shot of the next part of a multi-part recording. */
+  cutBefore: "START" | "PAUSE" | "RHYTHM" | "JOIN";
 }
 
 export interface StyleCutStats {
@@ -236,6 +237,11 @@ export interface StyleCutStats {
   faceTracked: boolean;
   /** "AUDIO" = pauses measured from the sound; "WHISPER" = from word timings only (wider pads). */
   speechTiming: "AUDIO" | "WHISPER";
+  /** Multi-part recordings only: parts joined, cuts at the joins, dead air trimmed at the joins
+   * (each part's own start/end). */
+  parts?: number;
+  joinCuts?: number;
+  joinTrimmedS?: number;
 }
 
 export type StyleCutResult =
@@ -401,21 +407,59 @@ export function speechMap(
   return { mode: "WHISPER", start: words[0]!.start, end: words[words.length - 1]!.end, pauses };
 }
 
-/**
- * Pure. Builds the style cut. Same inputs → identical output (and `inputsKey`).
- */
-export function buildStyleCut(input: StyleCutInput): StyleCutResult {
-  const opts: StyleCutOptions = { ...DEFAULT_STYLE_CUT_OPTIONS, ...input.options };
-  const target = input.target ?? DEFAULT_STYLE_CUT_TARGET;
-  const duration = input.durationSeconds;
-  if (!(duration > 0)) return { ok: false, reason: "NO_DURATION", message: "This take has no length yet — wait for it to finish processing." };
-  const words = cleanWords(input.words, duration);
-  if (words.length === 0) {
-    return { ok: false, reason: "NO_TRANSCRIPT", message: "Style cut needs captions first — they appear once your words are transcribed." };
-  }
+/** One take of a multi-part recording (segmented teleprompter recording), in playback order. */
+export interface StyleCutTakeInput {
+  mediaAssetId: string;
+  words: TranscriptWord[] | null | undefined;
+  durationSeconds: number;
+  subjectTrack?: SubjectTrack | null;
+  sourceSize?: { width: number; height: number } | null;
+  silences?: Array<{ start: number; end: number }> | null;
+}
 
+/**
+ * A style cut of SEVERAL takes played in order — the segments of one recording session
+ * (record → pause → record …). Each take is cut on its own (dead air at its start and end
+ * trimmed, pauses inside it removed) and the results are concatenated in order; every join is
+ * a cut, and the framing alternation continues across joins.
+ */
+export interface StyleCutSequenceInput {
+  base: EditTimeline;
+  takes: StyleCutTakeInput[];
+  target?: StyleCutTarget;
+  options?: Partial<StyleCutOptions>;
+}
+
+/** Shot of a multi-take cut: which take it comes from. */
+export interface StyleCutSequenceShot extends StyleCutShot {
+  mediaAssetId: string;
+  takeIndex: number;
+}
+
+interface TakeCut {
+  shots: StyleCutShot[];
+  speech: SpeechMap;
+  start: number;
+  end: number;
+  pausesRemoved: number;
+  pauseSecondsRemoved: number;
+}
+
+/**
+ * Pure: steps 1–3 for one take. `shotOffset` = shots already placed before this take (framing
+ * continues across joins); `firstTake` = this take opens the video (the opening-shot rules).
+ */
+function cutOneTake(
+  words: TranscriptWord[],
+  duration: number,
+  silences: Array<{ start: number; end: number }> | null,
+  opts: StyleCutOptions,
+  target: StyleCutTarget,
+  shotOffset: number,
+  firstTake: boolean,
+): TakeCut {
   // ---- 1+2. Speech segments: dead air trimmed, long pauses shortened ----------------------
-  const speech = speechMap(words, duration, input.silences ?? null);
+  const speech = speechMap(words, duration, silences);
   const audio = speech.mode === "AUDIO";
   // Whisper's word ends run early (see speech-activity.ts) — without measured silences, pad more.
   const minTailPad = audio ? opts.minTailPadS : Math.max(opts.minTailPadS, opts.whisperTailPadS);
@@ -443,7 +487,7 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
     if (cutOut <= seg.start || cutIn >= end) return;
     // A short pause that would make a too-short shot stays (unless it's a long silence).
     const shotSoFar = cutOut - seg.start;
-    const minHere = segments.length === 0 ? minFirstShot : minShot;
+    const minHere = firstTake && segments.length === 0 ? minFirstShot : minShot;
     if (gap < opts.alwaysCutGapS && shotSoFar < minHere) return;
     segments.push({ start: seg.start, end: cutOut, firstPause: seg.firstPause, lastPause: pi - 1 });
     removed.add(pi);
@@ -496,7 +540,7 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
     let cursor = s.start;
     const remaining = () => s.end - cursor;
     for (let guard = 0; opts.rhythmCuts && guard < 500; guard++) {
-      const isFirstShot = shots.length === 0 && cuts.length === 0;
+      const isFirstShot = firstTake && shots.length === 0 && cuts.length === 0;
       const rem = remaining();
       // The opening shot aims at the target first-cut time; every other shot is split only
       // when it would run past p75, aiming at the median.
@@ -526,26 +570,36 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
     }
     const edges = [s.start, ...cuts, s.end];
     for (let k = 0; k < edges.length - 1; k++) {
+      const first = shots.length === 0 && k === 0;
       shots.push({
         sourceStart: edges[k]!,
         sourceEnd: edges[k + 1]!,
-        framing: framingForShot(shots.length),
-        cutBefore: shots.length === 0 ? "START" : k === 0 && si > 0 ? "PAUSE" : "RHYTHM",
+        framing: framingForShot(shotOffset + shots.length),
+        cutBefore: first ? (firstTake ? "START" : "JOIN") : k === 0 && si > 0 ? "PAUSE" : "RHYTHM",
       });
     }
   });
+  return { shots, speech, start, end, pausesRemoved, pauseSecondsRemoved };
+}
 
-  // ---- 4. Framing per shot (face-centred punch-ins) ---------------------------------------
-  const canvas = input.base.canvas;
-  const src = input.sourceSize && input.sourceSize.width > 0 && input.sourceSize.height > 0 ? input.sourceSize : canvas;
-  const captionTop = clamp(input.base.captions.y - 0.06, 0.4, 0.95);
-  const track = input.subjectTrack && input.subjectTrack.some((s) => s.box) ? input.subjectTrack : null;
+interface ShotGeometry {
+  mediaAssetId: string;
+  track: SubjectTrack | null;
+  src: { width: number; height: number };
+}
+
+/** Pure: step 4 — clips with face-centred punch-ins; never the same framing twice in a row
+ * (across take joins too). Mutates `shots[i].framing` to the framing actually used. */
+function framedClips(shots: StyleCutShot[], geo: ShotGeometry[], base: EditTimeline): TimelineClip[] {
+  const canvas = base.canvas;
+  const captionTop = clamp(base.captions.y - 0.06, 0.4, 0.95);
   const clips: TimelineClip[] = shots.map((shot, i) => {
-    const face = track ? faceOverShot(track, shot.sourceStart, shot.sourceEnd) : null;
-    const crop = cropFor(shot.framing, face, src, canvas, captionTop)!;
+    const g = geo[i]!;
+    const face = g.track ? faceOverShot(g.track, shot.sourceStart, shot.sourceEnd) : null;
+    const crop = cropFor(shot.framing, face, g.src, canvas, captionTop)!;
     return {
       id: `clip-${i + 1}`,
-      mediaAssetId: input.mediaAssetId,
+      mediaAssetId: g.mediaAssetId,
       sourceStart: r6(shot.sourceStart),
       sourceEnd: r6(shot.sourceEnd),
       crop,
@@ -561,10 +615,11 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
   // later one moves to the other punch-in (or WIDE).
   for (let i = 1; i < clips.length; i++) {
     if (Math.abs(clips[i]!.crop.zoom - clips[i - 1]!.crop.zoom) < 1e-6) {
+      const g = geo[i]!;
       for (const f of STYLE_CUT_FRAMINGS) {
         if (Math.abs(f.zoom - clips[i - 1]!.crop.zoom) < 1e-6) continue;
-        const face = track ? faceOverShot(track, shots[i]!.sourceStart, shots[i]!.sourceEnd) : null;
-        const crop = cropFor(f.name, face, src, canvas, captionTop, false);
+        const face = g.track ? faceOverShot(g.track, shots[i]!.sourceStart, shots[i]!.sourceEnd) : null;
+        const crop = cropFor(f.name, face, g.src, canvas, captionTop, false);
         if (crop) {
           clips[i]!.crop = crop;
           shots[i]!.framing = f.name;
@@ -573,28 +628,83 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
       }
     }
   }
+  return clips;
+}
 
-  // ---- 5. Timeline --------------------------------------------------------------------------
-  const timeline = EditTimelineSchema.parse({
-    ...input.base,
+function styleCutTimeline(base: EditTimeline, clips: TimelineClip[]): EditTimeline {
+  return EditTimelineSchema.parse({
+    ...base,
     clips,
     texts: [],
     zooms: [],
     visuals: [],
     sfx: [],
     coverFrameSeconds: null,
-    captions: { ...input.base.captions, enabled: true },
-    audio: { ...input.base.audio, normalize: true },
+    captions: { ...base.captions, enabled: true },
+    audio: { ...base.audio, normalize: true },
   });
+}
 
-  // ---- Stats + summary ----------------------------------------------------------------------
+function profileNoteFor(target: StyleCutTarget): string {
+  return target.source.kind === "REFERENCES"
+    ? `Paced like your ${target.source.sampleSize} reference ${target.source.sampleSize === 1 ? "video" : "videos"}${target.source.creatorCount > 1 ? ` (${target.source.creatorCount} creators)` : ""}.`
+    : target.source.sampleSize > 0
+      ? `Standard short-form pacing — only ${target.source.sampleSize} reference ${target.source.sampleSize === 1 ? "video is" : "videos are"} measured so far; add a few more to match your creators.`
+      : "Standard short-form pacing — add reference videos to match your creators.";
+}
+
+function shotStats(shots: StyleCutShot[], target: StyleCutTarget) {
   const lens = shots.map((s) => s.sourceEnd - s.sourceStart);
   const sorted = [...lens].sort((a, b) => a - b);
   const outputDurationS = lens.reduce((a, b) => a + b, 0);
-  const pauseCuts = shots.filter((s) => s.cutBefore === "PAUSE").length;
-  const rhythmCuts = shots.filter((s) => s.cutBefore === "RHYTHM").length;
   const inner = lens.length > 2 ? lens.slice(1, -1) : lens; // the first/last shot are special
   const shotsInBand = inner.length ? inner.filter((l) => l >= target.shotP25S - 1e-6 && l <= target.shotP75S + 1e-6).length / inner.length : 1;
+  return { lens, sorted, outputDurationS, shotsInBand };
+}
+
+function trackOrNull(t: SubjectTrack | null | undefined): SubjectTrack | null {
+  return t && t.some((s) => s.box) ? t : null;
+}
+
+/**
+ * Pure. Builds the style cut — of one take (`StyleCutInput`), or of several takes played in
+ * order (`StyleCutSequenceInput`, the segments of one recording). Same inputs → identical
+ * output (and `inputsKey`). A one-take sequence is exactly the single-take cut.
+ */
+export function buildStyleCut(input: StyleCutInput | StyleCutSequenceInput): StyleCutResult {
+  if ("takes" in input) {
+    const only = input.takes.length === 1 ? input.takes[0]! : null;
+    if (!only) return buildSequenceCut(input);
+    return buildStyleCut({ base: input.base, target: input.target, options: input.options, ...only });
+  }
+  const opts: StyleCutOptions = { ...DEFAULT_STYLE_CUT_OPTIONS, ...input.options };
+  const target = input.target ?? DEFAULT_STYLE_CUT_TARGET;
+  const duration = input.durationSeconds;
+  if (!(duration > 0)) return { ok: false, reason: "NO_DURATION", message: "This take has no length yet — wait for it to finish processing." };
+  const words = cleanWords(input.words, duration);
+  if (words.length === 0) {
+    return { ok: false, reason: "NO_TRANSCRIPT", message: "Style cut needs captions first — they appear once your words are transcribed." };
+  }
+
+  const { shots, speech, start, end, pausesRemoved, pauseSecondsRemoved } = cutOneTake(words, duration, input.silences ?? null, opts, target, 0, true);
+
+  // ---- 4. Framing per shot (face-centred punch-ins) ---------------------------------------
+  const canvas = input.base.canvas;
+  const src = input.sourceSize && input.sourceSize.width > 0 && input.sourceSize.height > 0 ? input.sourceSize : canvas;
+  const track = trackOrNull(input.subjectTrack);
+  const clips = framedClips(
+    shots,
+    shots.map(() => ({ mediaAssetId: input.mediaAssetId, track, src })),
+    input.base,
+  );
+
+  // ---- 5. Timeline --------------------------------------------------------------------------
+  const timeline = styleCutTimeline(input.base, clips);
+
+  // ---- Stats + summary ----------------------------------------------------------------------
+  const { lens, sorted, outputDurationS, shotsInBand } = shotStats(shots, target);
+  const pauseCuts = shots.filter((s) => s.cutBefore === "PAUSE").length;
+  const rhythmCuts = shots.filter((s) => s.cutBefore === "RHYTHM").length;
   const stats: StyleCutStats = {
     sourceDurationS: r3(duration),
     outputDurationS: r3(outputDurationS),
@@ -624,12 +734,7 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
   parts.push(stats.startsAfterS <= 0.2 ? "starts on your first word" : `starts ${fmtS(stats.startsAfterS)} before your first word`);
   parts.push(`ends ${fmtS(stats.endsAfterLastWordS)} after your last`);
   const summary = parts.join(" · ");
-  const profileNote =
-    target.source.kind === "REFERENCES"
-      ? `Paced like your ${target.source.sampleSize} reference ${target.source.sampleSize === 1 ? "video" : "videos"}${target.source.creatorCount > 1 ? ` (${target.source.creatorCount} creators)` : ""}.`
-      : target.source.sampleSize > 0
-        ? `Standard short-form pacing — only ${target.source.sampleSize} reference ${target.source.sampleSize === 1 ? "video is" : "videos are"} measured so far; add a few more to match your creators.`
-        : "Standard short-form pacing — add reference videos to match your creators.";
+  const profileNote = profileNoteFor(target);
 
   const inputsKey = `v${STYLE_CUT_VERSION}-${hash(
     JSON.stringify({
@@ -646,6 +751,119 @@ export function buildStyleCut(input: StyleCutInput): StyleCutResult {
   )}`;
 
   return { ok: true, version: STYLE_CUT_VERSION, timeline, shots, stats, target, summary, profileNote, inputsKey };
+}
+
+/**
+ * Pure: the multi-take cut. A take with no transcribed words is kept whole (without words we
+ * can't tell speech from dead air — it might be a deliberate silent beat); a take with no
+ * length is skipped. At least one take must have words.
+ */
+function buildSequenceCut(input: StyleCutSequenceInput): StyleCutResult {
+  const opts: StyleCutOptions = { ...DEFAULT_STYLE_CUT_OPTIONS, ...input.options };
+  const target = input.target ?? DEFAULT_STYLE_CUT_TARGET;
+  const takes = input.takes.filter((t) => t.durationSeconds > 0);
+  if (takes.length === 0) return { ok: false, reason: "NO_DURATION", message: "These parts have no length yet — wait for them to finish processing." };
+  const cleaned = takes.map((t) => cleanWords(t.words, t.durationSeconds));
+  if (cleaned.every((w) => w.length === 0)) {
+    return { ok: false, reason: "NO_TRANSCRIPT", message: "Style cut needs captions first — they appear once your words are transcribed." };
+  }
+  const canvas = input.base.canvas;
+  const shots: StyleCutSequenceShot[] = [];
+  const geo: ShotGeometry[] = [];
+  let pausesRemoved = 0;
+  let pauseSecondsRemoved = 0;
+  let headTrimmedS = 0;
+  let tailTrimmedS = 0;
+  let joinTrimmedS = 0;
+  let startsAfterS = 0;
+  let endsAfterLastWordS = 0;
+  let allAudio = true;
+  let anyTrack = false;
+  takes.forEach((t, ti) => {
+    const words = cleaned[ti]!;
+    const src = t.sourceSize && t.sourceSize.width > 0 && t.sourceSize.height > 0 ? t.sourceSize : canvas;
+    const track = trackOrNull(t.subjectTrack);
+    if (track) anyTrack = true;
+    const first = shots.length === 0;
+    const last = ti === takes.length - 1;
+    let takeShots: StyleCutShot[];
+    let head = 0;
+    let tail = 0;
+    if (words.length === 0) {
+      const whole = q(t.durationSeconds, "floor") || t.durationSeconds;
+      takeShots = [{ sourceStart: 0, sourceEnd: whole, framing: framingForShot(shots.length), cutBefore: first ? "START" : "JOIN" }];
+      allAudio = false;
+    } else {
+      const c = cutOneTake(words, t.durationSeconds, t.silences ?? null, opts, target, shots.length, first);
+      takeShots = c.shots;
+      pausesRemoved += c.pausesRemoved;
+      pauseSecondsRemoved += c.pauseSecondsRemoved;
+      head = c.start;
+      tail = Math.max(0, t.durationSeconds - c.end);
+      if (c.speech.mode !== "AUDIO") allAudio = false;
+      if (first) startsAfterS = Math.max(0, c.speech.start - c.start);
+      if (last) endsAfterLastWordS = Math.max(0, c.end - c.speech.end);
+    }
+    if (first) headTrimmedS = head;
+    else joinTrimmedS += head;
+    if (last) tailTrimmedS = tail;
+    else joinTrimmedS += tail;
+    for (const s of takeShots) {
+      shots.push({ ...s, mediaAssetId: t.mediaAssetId, takeIndex: ti });
+      geo.push({ mediaAssetId: t.mediaAssetId, track, src });
+    }
+  });
+
+  const clips = framedClips(shots, geo, input.base);
+  const timeline = styleCutTimeline(input.base, clips);
+  const { lens, sorted, outputDurationS, shotsInBand } = shotStats(shots, target);
+  const stats: StyleCutStats = {
+    sourceDurationS: r3(takes.reduce((a, t) => a + t.durationSeconds, 0)),
+    outputDurationS: r3(outputDurationS),
+    pausesRemoved,
+    pauseSecondsRemoved: r3(pauseSecondsRemoved),
+    headTrimmedS: r3(headTrimmedS),
+    tailTrimmedS: r3(tailTrimmedS),
+    cuts: shots.length - 1,
+    pauseCuts: shots.filter((s) => s.cutBefore === "PAUSE").length,
+    rhythmCuts: shots.filter((s) => s.cutBefore === "RHYTHM").length,
+    shotMedianS: r2(quantile(sorted, 0.5)),
+    shotP25S: r2(quantile(sorted, 0.25)),
+    shotP75S: r2(quantile(sorted, 0.75)),
+    firstCutS: shots.length > 1 ? r2(lens[0]!) : null,
+    shotsInBand: r2(shotsInBand),
+    startsAfterS: r2(startsAfterS),
+    endsAfterLastWordS: r2(endsAfterLastWordS),
+    faceTracked: anyTrack,
+    speechTiming: allAudio ? "AUDIO" : "WHISPER",
+    parts: takes.length,
+    joinCuts: shots.filter((s) => s.cutBefore === "JOIN").length,
+    joinTrimmedS: r3(joinTrimmedS),
+  };
+
+  const parts: string[] = [`Joined your ${takes.length} parts${joinTrimmedS >= 0.1 ? ` (${fmtS(joinTrimmedS)} of dead air cut at the joins)` : ""}`];
+  if (pausesRemoved > 0) parts.push(`removed ${pausesRemoved} ${pausesRemoved === 1 ? "pause" : "pauses"} (${fmtS(pauseSecondsRemoved)})`);
+  if (stats.cuts > 0) parts.push(`${stats.cuts} ${stats.cuts === 1 ? "cut" : "cuts"}, one every ${fmtS(outputDurationS / shots.length)}`);
+  parts.push(stats.startsAfterS <= 0.2 ? "starts on your first word" : `starts ${fmtS(stats.startsAfterS)} before your first word`);
+  parts.push(`ends ${fmtS(stats.endsAfterLastWordS)} after your last`);
+
+  const inputsKey = `v${STYLE_CUT_VERSION}-seq-${hash(
+    JSON.stringify({
+      takes: takes.map((t, ti) => ({
+        a: t.mediaAssetId,
+        d: r3(t.durationSeconds),
+        w: cleaned[ti]!.map((w) => [w.word, r3(w.start), r3(w.end)]),
+        t: trackOrNull(t.subjectTrack)?.map((s) => [r3(s.t), s.box ? [r3(s.box.x), r3(s.box.y), r3(s.box.w), r3(s.box.h)] : null]) ?? null,
+        s: t.sourceSize ?? null,
+        z: t.silences ? t.silences.map((x) => [r3(x.start), r3(x.end)]) : null,
+      })),
+      g: { ...target, source: undefined },
+      o: opts,
+      c: [canvas.width, canvas.height, input.base.captions.y],
+    }),
+  )}`;
+
+  return { ok: true, version: STYLE_CUT_VERSION, timeline, shots, stats, target, summary: parts.join(" · "), profileNote: profileNoteFor(target), inputsKey };
 }
 
 function fmtS(s: number): string {

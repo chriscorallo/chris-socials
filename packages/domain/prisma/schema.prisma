@@ -167,6 +167,7 @@ model ContentItem {
   experimentVariants     ExperimentVariant[]
   adversarialCritiques   AdversarialCritique[]
   viewerReviews          ViewerReview[]
+  recordingSessions      RecordingSession[]
 
   // Plan import provenance (2026-10-17): which imported plan created this item, if any.
   planImportId String?
@@ -486,6 +487,8 @@ model MediaAsset {
 
   contentItem    ContentItem     @relation(fields: [contentItemId], references: [id])
   takeSelections TakeSelection[] @relation("SelectedTake")
+  // Set when this take is one segment of a teleprompter recording session (one row at most).
+  recordingSegment RecordingSegment?
 
   @@index([contentItemId])
 }
@@ -1380,4 +1383,73 @@ model PlanContextVersion {
 
   @@unique([planContextId, version])
   @@index([planContextId, contentHash])
+}
+
+// --- Segmented recording + drafts (2026-10-18) ---
+// The teleprompter's "Record here" records a video as SEGMENTS (record → pause → record …,
+// like TikTok/Reels). A RecordingSession is the draft attached to the video: DRAFT while Chris
+// is still filming (it survives the phone dying — every segment is uploaded as soon as it's
+// recorded), FINISHED when he taps Finish (the starter edit + style cut then use ALL active
+// segments in order), DISCARDED when he throws the draft away. Rows are never deleted.
+// A RecordingSegment row is the permanent record of one segment; "Delete last segment" /
+// "Discard draft" mark it DELETED and remove its media (MediaAsset row + file — SECURITY.md:
+// media may go, history stays: mediaAssetId becomes null, the segment row + AuditLog remain).
+// See docs/decisions-pending/segmented-recording-drafts.md.
+enum RecordingSessionStatus {
+  DRAFT
+  FINISHED
+  DISCARDED
+}
+
+enum RecordingSegmentStatus {
+  ACTIVE
+  DELETED
+}
+
+model RecordingSession {
+  id                String                 @id @default(cuid())
+  contentItemId     String
+  status            RecordingSessionStatus @default(DRAFT)
+  /// Teleprompter progress (0..1 through the script) where Chris paused last — "Continue"
+  /// reopens the script there.
+  scriptPosition    Float                  @default(0)
+  /// Fingerprint of the script text the position belongs to (a changed script restarts at 0).
+  scriptFingerprint String?
+  createdBy         String
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  finishedAt        DateTime?
+  discardedAt       DateTime?
+
+  contentItem ContentItem        @relation(fields: [contentItemId], references: [id])
+  segments    RecordingSegment[]
+
+  @@index([contentItemId, status])
+}
+
+model RecordingSegment {
+  id                  String                 @id @default(cuid())
+  recordingSessionId  String
+  /// Client-generated id for this segment — registering the same segment twice (an upload
+  /// retried after a lost response) returns the first registration instead of a duplicate.
+  clientKey           String
+  /// Order within the session (monotonic; a deleted segment's index is never reused).
+  segmentIndex        Int
+  status              RecordingSegmentStatus @default(ACTIVE)
+  mediaAssetId        String?                @unique
+  /// Recorded length as the phone measured it (the MediaAsset's probed duration is canonical).
+  durationSeconds     Float?
+  /// Teleprompter progress at the segment's start / end (0..1).
+  scriptPositionStart Float?
+  scriptPositionEnd   Float?
+  originalFilename    String?
+  sizeBytes           Int?
+  createdAt           DateTime               @default(now())
+  deletedAt           DateTime?
+
+  session    RecordingSession @relation(fields: [recordingSessionId], references: [id])
+  mediaAsset MediaAsset?      @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+
+  @@unique([recordingSessionId, clientKey])
+  @@index([recordingSessionId, segmentIndex])
 }
