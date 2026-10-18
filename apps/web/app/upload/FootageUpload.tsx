@@ -4,12 +4,10 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadRawTake } from "../../lib/upload-client";
 import { createFootageItem } from "./actions";
-import { captionStatus, startEditingNow, markFilmedForUpload } from "../content/[id]/flow-actions";
+import { markFilmedForUpload } from "../content/[id]/flow-actions";
+import { useOpenEditor, FinishingCard } from "./OpenEditor";
 
 type Row = { name: string; percent: number; status: "waiting" | "uploading" | "processing" | "done" | "error"; error?: string };
-
-/** How long the upload screen waits for captions before opening the editor anyway. */
-const CAPTION_WAIT_MS = 90_000;
 
 /**
  * The one obvious place to upload: pick videos from Photos/Files, the app creates the video
@@ -26,34 +24,8 @@ export function FootageUpload({ mode, contentItemId }: { mode: "blob" | "local";
   const [title, setTitle] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [finishing, setFinishing] = useState<null | { phase: "captions" | "opening"; ready: number; total: number; progress?: string | null }>(null);
-  const skipRef = useRef(false);
+  const { finishing, openEditor, skip } = useOpenEditor();
   const busy = finishing != null || rows.some((r) => r.status === "uploading" || r.status === "processing" || r.status === "waiting");
-
-  /** Uploads are in: wait for captions (capped, skippable), make the starter edit, open the editor. */
-  async function openEditor(id: string) {
-    skipRef.current = false;
-    const started = Date.now();
-    setFinishing({ phase: "captions", ready: 0, total: 0 });
-    while (!skipRef.current && Date.now() - started < CAPTION_WAIT_MS) {
-      let st: Awaited<ReturnType<typeof captionStatus>>;
-      try {
-        st = await captionStatus(id);
-      } catch {
-        break;
-      }
-      setFinishing({ phase: "captions", ready: st.ready, total: st.total, progress: st.progress });
-      if (!st.waiting) break;
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    setFinishing((f) => ({ phase: "opening", ready: f?.ready ?? 0, total: f?.total ?? 0 }));
-    const res = await startEditingNow(id);
-    if ("error" in res) {
-      router.push(`/content/${id}?pipelineError=${encodeURIComponent(res.error)}`);
-      return;
-    }
-    router.push(`/content/${id}/edit`);
-  }
 
   async function handle(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -114,26 +86,7 @@ export function FootageUpload({ mode, contentItemId }: { mode: "blob" | "local";
           {busy ? "Keep this screen open until it finishes." : "From Photos, Files or the camera. Several takes of the same video at once is fine."}
         </span>
       </label>
-      {finishing && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-[var(--color-gold-500)]/40 bg-[var(--color-gold-500)]/[0.08] p-4" aria-live="polite">
-          <div className="flex items-center gap-3">
-            <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--color-gold-400)] border-t-transparent" aria-hidden />
-            <div className="min-w-0">
-              <p className="text-[16px] font-semibold">{finishing.phase === "captions" ? "Getting your captions ready…" : "Opening the editor…"}</p>
-              <p className="text-[13px] text-[var(--color-text-muted)]">
-                {finishing.phase === "captions"
-                  ? (finishing.progress ?? "Listening to your video so captions are on when the editor opens. Usually under a minute.")
-                  : "Your video goes straight into the editor."}
-              </p>
-            </div>
-          </div>
-          {finishing.phase === "captions" && (
-            <button type="button" onClick={() => (skipRef.current = true)} className="btn btn-ghost w-full">
-              Open the editor now (captions appear later)
-            </button>
-          )}
-        </div>
-      )}
+      {finishing && <FinishingCard finishing={finishing} onSkip={skip} />}
       {error && <p className="text-sm text-[var(--color-rose-400)]">{error}</p>}
       {rows.length > 0 && (
         <ul className="flex flex-col gap-2.5 text-[13px]" aria-live="polite">
