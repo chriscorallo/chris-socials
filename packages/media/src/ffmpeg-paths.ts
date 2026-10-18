@@ -14,5 +14,8 @@ if (!resolvedFfmpegPath) {
   );
 }
 
-export const FFMPEG_PATH: string = resolvedFfmpegPath;
+// FFMPEG_BIN overrides the static build — the cloud worker sets it to the system ffmpeg, because
+// the Linux ffmpeg-static build has no FreeType (no `drawtext`: storyboard sheets and on-screen
+// text overlays failed in the Sandbox with "No such filter: 'drawtext'").
+export const FFMPEG_PATH: string = process.env.FFMPEG_BIN || resolvedFfmpegPath;
 export const FFPROBE_PATH: string = ffprobeStatic.path;

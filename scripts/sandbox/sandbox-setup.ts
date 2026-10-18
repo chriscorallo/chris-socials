@@ -39,6 +39,9 @@ export const CHROME_APT_PACKAGES = [
   "fonts-liberation",
   "ca-certificates",
   "curl",
+  // Full ffmpeg (FreeType/libass) for drawtext — the static build lacks it. run-job.sh points
+  // FFMPEG_BIN at it when present.
+  "ffmpeg",
 ];
 
 export const SANDBOX_IMAGE = "vercel/sandbox/node:24";
