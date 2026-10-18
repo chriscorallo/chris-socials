@@ -35,7 +35,7 @@ export const WEB_PRESETS: GraphicPreset[] = [
       variant: "TYPING",
       tone: "DARK",
       title: "is it too late to invest at 30",
-      items: [I("is it too late to invest at 30 reddit"), I("is it too late to invest at 30 with no savings"), I("is it too late to start a roth at 30")],
+      items: [I("is it too late to invest at 30 forum"), I("is it too late to invest at 30 with no savings"), I("is it too late to start a roth at 30")],
       highlight: 0,
     },
     { seconds: 6, enterSfx: "CLICK" },
@@ -570,7 +570,7 @@ export const WEB_PRESETS: GraphicPreset[] = [
       title: "They wrote about it",
       items: [
         I("The 26-year-old who saved $100k on a normal salary", null, { meta: "The Morning Ledger" }),
-        I("Creator turns budgeting into must-watch content", null, { meta: "Weekly Signal" }),
+        I("Creator turns budgeting into must-watch content", null, { meta: "Weekly Tally" }),
         I("Why your 20s are your biggest financial advantage", null, { meta: "City Paper" }),
       ],
     },
@@ -586,7 +586,7 @@ export const WEB_PRESETS: GraphicPreset[] = [
     {
       variant: "AS_SEEN",
       title: "As seen in",
-      items: [I("The Ledger"), I("Money Weekly"), I("signal"), I("The Brief"), I("Northside"), I("Quarterly")],
+      items: [I("The Ledger"), I("Money Weekly"), I("sidebar"), I("The Brief"), I("Northside"), I("Quarterly")],
     },
     { seconds: 4.5, featured: true },
   ),

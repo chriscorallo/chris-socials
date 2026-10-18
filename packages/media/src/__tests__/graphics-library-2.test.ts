@@ -65,6 +65,24 @@ describe("library 2 — contract (additive, backward compatible)", () => {
       expect(s.width * s.height, p.id).toBeGreaterThan(0);
     }
   });
+  it("brand-safe: no real platform/brand names in anything a library-2 preset puts on screen", () => {
+    // Tags may carry platform words (search); names/descriptions/props (what's shown or read
+    // as the graphic) must not.
+    const brands = /\b(lambo(rghini)?|tesla|starbucks|netflix|amazon|google|iphone|apple|spotify|venmo|uber|lyft|tiktok|youtube|instagram|reddit|linkedin|twitter|costco|chipotle|disney|nike|airbnb|facebook|whatsapp|snapchat|zelle|cash ?app|paypal|chase bank|vanguard|fidelity|robinhood|coinbase|gmail|outlook|safari|chrome|facetime|imessage|siri|android|samsung|bing|wikipedia|new york times|wsj|forbes|cnbc|bloomberg|cnn|espn|hulu|hbo|doordash|grubhub|peloton|walmart|mcdonald'?s|rolex|gucci|prius|toyota|bmw|porsche)\b/i;
+    const hits: string[] = [];
+    const walk = (v: unknown, path: string, id: string): void => {
+      if (typeof v === "string") {
+        if (brands.test(v)) hits.push(`${id} ${path}: ${v}`);
+      } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${path}[${i}]`, id));
+      else if (v && typeof v === "object") for (const [key, x] of Object.entries(v)) walk(x, `${path}.${key}`, id);
+    };
+    for (const p of GRAPHIC_PRESETS.slice(171)) {
+      walk(p.props, "props", p.id);
+      walk(p.name, "name", p.id);
+      walk(p.description, "description", p.id);
+    }
+    expect(hits).toEqual([]);
+  });
   it("text in meta fields is on screen, so the factual gate sees it", () => {
     const p = parse({ component: "NOTIFICATION", meta: "now", items: [{ text: "Deposit", sub: "You received $4,000", meta: "Bank" }] });
     const shown = graphicShownNumbers(p);

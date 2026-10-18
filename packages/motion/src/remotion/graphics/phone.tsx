@@ -673,7 +673,7 @@ function VideoCall({ ctx, t }: { ctx: GCtx; t: Tone }) {
   const icn = t.dark ? "#FFFFFF" : "#15151C";
   const { no } = callColors(ctx, t);
   return (
-    <div style={{ ...fill, borderRadius: 60, overflow: "hidden", background: `linear-gradient(160deg, ${mix(a, "#101018", 0.55)} 0%, ${mix(b, "#08080C", 0.7)} 100%)`, boxShadow: `0 40px 90px ${rgba("#000000", 0.45)}, inset 0 0 0 1.5px ${rgba("#FFFFFF", 0.1)}`, opacity: prog(ctx.frame, 0, sec(ctx, 0.25)) }}>
+    <div style={{ ...fill, borderRadius: 60, overflow: "hidden", background: `linear-gradient(160deg, ${mix(a, "#1A1C26", 0.78)} 0%, ${mix(b, "#08080C", 0.86)} 100%)`, boxShadow: `0 40px 90px ${rgba("#000000", 0.45)}, inset 0 0 0 1.5px ${rgba("#FFFFFF", 0.1)}`, opacity: prog(ctx.frame, 0, sec(ctx, 0.25)) }}>
       <div style={{ ...fill, background: `radial-gradient(ellipse 70% 45% at 50% 40%, ${rgba("#FFFFFF", 0.16)} 0%, transparent 70%), linear-gradient(180deg, ${rgba("#000000", 0.35)} 0%, transparent 22%, transparent 70%, ${rgba("#000000", 0.45)} 100%)` }} />
       <div style={{ position: "absolute", left: W / 2 - 160, top: H * 0.4 - 160, width: 320, height: 320, ...css(seqStyle(ctx, seq, 0, 0, { style: ctx.anim.enter === "RISE" ? "POP" : ctx.anim.enter })) }}>
         <div style={{ position: "absolute", inset: -14, borderRadius: "50%", border: `5px solid ${rgba(ctx.p.positive, 0.35 + 0.5 * talk)}`, transform: `scale(${r4(1 + 0.03 * talk)})` }} />

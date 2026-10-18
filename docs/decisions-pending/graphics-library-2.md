@@ -68,7 +68,8 @@ The Motion Designer's strict model schema is unchanged (prompt version unchanged
 the preset's per-entry `side`/`meta` are kept by position. The library catalogue in its prompt
 is generated, so it now lists the new components and presets; the GRAPHIC guide line says to use
 platform-style UI only when Chris refers to it and never to invent quotes/posts/messages or use
-real brand names.
+real brand names. The ICON_3D enum (contract **and** the model's strict schema + guide line) gains
+the 13 new objects, so the model is never told about icons its schema would reject.
 
 ## Decision 3 — Brand-safe, no impersonation (hard rule)
 
@@ -119,9 +120,57 @@ never system emoji. Full-screen scenes honour `tone` (soft light studio backdrop
 frame, no React state/effects, no per-element blur, modest node counts) — the editor Player and
 the server render draw the same components, so preview = render.
 
-## Verification
+## Counts
 
-(see "Evidence" below — filled in at the end of the pass)
+| | Before | Library 2 | Total |
+|---|---|---|---|
+| GRAPHIC base components | 28 | +33 | 61 (+ 14 classic templates) |
+| ICON_3D objects | 10 | +13 | 23 |
+| Presets | 171 | +279 (263 GRAPHIC + 16 3D) | 450 |
+| Categories | 10 | +7 | 17 |
+
+New presets per family: social 56, phone & apps 61, search/web/news/media 46, life & places 53,
+hooks/reactions/FX 47, 3D objects 16. Library chips at the end of the pass: Social posts 48 ·
+Phone & apps 61 · Search & web 27 · News & media 19 · Hooks & quizzes 28 · Reactions & FX 27 ·
+Life & places 47 (+ 6 in Lists & tables) · 3D objects 30.
+
+## Evidence (verification)
+
+- **Real renderer, every new preset:** `packages/motion/scripts/graphics-library.ts <out> --from=171
+  --mid --posters=apps/web/public/motion-posters` (new `--from` flag) rendered all 279 presets
+  (settled + mid-animation) through Remotion — **0 failures**, 113 s. Every settled frame and a
+  sample of mid sheets were reviewed by eye (plus close crops at phone size). Fixes from that
+  review: the video-call tile no longer takes an olive tint from the caller's name; brand names
+  removed from preset copy ("Lambo", "reddit" in a search suggestion, "signal" as an outlet);
+  one over-long pin subtitle shortened. Each family builder had already iterated its own frames
+  (both tones, long text) before integration.
+- **Posters:** 279 new posters (all 450 now exist; folder 5.4 MB).
+- **MP4 samples** (alpha layer over a stand-in, frames checked): text thread (typing dots →
+  bubbles → receipt), search typing + autocomplete + tap, breaking-news bar with looping ticker,
+  100K follower milestone (odometer + confetti).
+- **Editor at 393×852** (throwaway PGlite on 55491, `next dev` on 3471, Playwright): library
+  shows "Search 450 graphics…"; every new category chip lists its presets with real posters
+  (0 broken, 0 drawn fallbacks); searches "google", "text message", "breaking news", "tweet",
+  "subscribe" return the right graphics first; inserting a text thread opens its edit sheet with
+  Look (Auto/Dark/Light), contact/status/receipt fields, quick entry ("6 messages") and a Them/Me
+  picker per message; 0 page errors.
+- **Tests:** `pnpm typecheck`, `pnpm lint`, `pnpm test` green (1896 passed). New:
+  `packages/media/src/__tests__/graphics-library-2.test.ts` (bounds, ≥200 new presets, original
+  order intact, old props parse, tone defaults, canvas fit, meta in the factual list, **a
+  brand-safety scan of every new preset's on-screen copy**, quick-entry dialects + round-trip,
+  14 search synonyms, transcript suggestions incl. "subscriptions" ≠ subscribe); editor tests for
+  the chat dialect, side alternation and inserting every new preset; the existing headless test
+  renders every preset (incl. all new ones) at entrance/mid/settled/exit with no NaN.
+
+## Not verified / known gaps
+
+- Real iPhone playback of the heaviest new presets in the live Player (Chromium emulation only);
+  particle/rain/confetti presets are capped at ≤ 40 particles but weren't profiled on a device.
+- The motion designer was only exercised with the mock provider (no model call).
+- Some fixed UI words are not editable (Decline/Accept, Snooze/Stop, Get/Open, "Subscribed").
+- Short presets reach their settled look early (the 34 % "mid" frame is often already built).
+- Two family files duplicate layout constants between the sizer (`families/*.ts`) and the
+  component (phone chat metrics, life month table) — edit them together.
 
 ## Renderer / deploy note
 

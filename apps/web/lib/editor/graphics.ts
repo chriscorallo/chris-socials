@@ -208,7 +208,7 @@ export function quickHint(p: Pick<GraphicProps, "component">): string {
   const u = GRAPHIC_COMPONENT_SPECS[p.component].uses;
   if (u.quick === "CHAT") return "Me: running late | Mom: again?? | Me: rent went up $300";
   if (u.quick === "LINES") return "1. Rent prices 120K | 2. #budget — Trending in Finance 48K";
-  if (u.quick === "QUERY") return p.component === "SEARCH_BAR" ? "is a 401k worth it | is a 401k worth it reddit | is a 401k a scam" : "Question? | Option A 62 | Option B 38";
+  if (u.quick === "QUERY") return p.component === "SEARCH_BAR" ? "is a 401k worth it | is a 401k worth it for me | is a 401k a scam" : "Question? | Option A 62 | Option B 38";
   return u.series ? "Employee: 4k x12 | Freelance: 2k, 6k, 0, 8k | Owner: 0, 5k, -15k, 100k" : "Rent 1800, Food 650, Car 520";
 }
 

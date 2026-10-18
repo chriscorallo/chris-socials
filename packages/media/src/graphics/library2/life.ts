@@ -38,7 +38,7 @@ export const LIFE_PRESETS: GraphicPreset[] = [
   preset("map-pin-rent", "Where the rent went", "A light pin drop for a neighbourhood callout.", "LIFE", ["map", "pin", "location", "rent", "neighborhood", "los angeles"], "MAP_NAV", {
     variant: "PIN",
     title: "Venice Beach",
-    subtitle: "$3,400 for a one-bedroom",
+    subtitle: "$3,400 for a 1-bed",
     tone: "LIGHT",
   }, { seconds: 3.5, enterSfx: "SOFT_POP" }),
   preset("map-flight-red-eye", "Red-eye to New York", "A flight arc between two cities with a plane gliding along it.", "LIFE", ["map", "flight", "travel", "plane", "trip", "airport"], "MAP_NAV", {

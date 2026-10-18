@@ -4,7 +4,7 @@
  * `Preset-<id>` compositions — the same components the server render and the editor preview
  * draw).
  *
- *   pnpm --filter @chris/motion exec tsx scripts/graphics-library.ts <outDir> [--only=id1,id2] [--posters=<dir>] [--mid]
+ *   pnpm --filter @chris/motion exec tsx scripts/graphics-library.ts <outDir> [--only=id1,id2] [--from=171] [--posters=<dir>] [--mid]
  *
  * Writes, per preset, a SETTLED frame (fully built, just before the exit) and with --mid a
  * MID-animation frame, composited over a dim "talking head" stand-in; then contact sheets
@@ -50,7 +50,9 @@ async function main() {
   const postersArg = args.find((a) => a.startsWith("--posters="))?.slice(10);
   const posters = postersArg ? resolve(postersArg) : null;
   const mid = args.includes("--mid");
-  const presets = GRAPHIC_PRESETS.filter((p) => !only || only.includes(p.id));
+  // --from=<n>: only library entries from index n on (e.g. --from=171 = library 2).
+  const from = Number(args.find((a) => a.startsWith("--from="))?.slice(7) ?? 0);
+  const presets = GRAPHIC_PRESETS.filter((p, i) => i >= from && (!only || only.includes(p.id)));
   await mkdir(join(outDir, "frames"), { recursive: true });
   if (posters) await mkdir(posters, { recursive: true });
 
