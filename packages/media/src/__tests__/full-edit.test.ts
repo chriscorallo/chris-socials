@@ -98,7 +98,7 @@ describe("full edit — hook bot", () => {
   const { words, silences } = take(lines);
   const S = buildSentences(words, silences);
   const all = new Set(S.map((s) => s.id));
-  const score = (clean = () => true) =>
+  const score = (clean: (s: FESentence) => boolean = () => true) =>
     scoreHookCandidates(S, { relevance: new Map(S.map((s) => [s.id, 0.6])), cleanEdges: clean, eligible: all, takeEndS: words[words.length - 1]!.end });
 
   it("picks the concrete, surprising line (a real number + stakes) over the slow setup, with evidence", () => {

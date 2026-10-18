@@ -30,7 +30,7 @@ const profile = {
 const target = media.styleCutTargetFromProfile(profile);
 const sizes = { width: probe.width, height: probe.height };
 let tl;
-let out: Record<string, unknown> = {};
+let out: Record<string, unknown>;
 if (args.includes("--cuts")) {
   const r = media.buildStyleCut({ base, mediaAssetId: "take", words, durationSeconds: probe.durationSeconds, subjectTrack: track, sourceSize: sizes, silences: audio.silences, target });
   if (!r.ok) throw new Error(r.message);
