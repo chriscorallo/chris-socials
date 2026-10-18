@@ -10,6 +10,8 @@ build/
 .env
 .env.local
 .env.*.local
+# the Mac film render worker's secrets (scripts/mac/com.chris.film-worker.plist)
+.env.film-worker
 *.local
 
 # generated

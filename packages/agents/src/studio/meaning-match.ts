@@ -141,27 +141,40 @@ export const CONCEPT_RULES: ConceptRule[] = [
     id: "BASELINE_RISES",
     when: /\b(rais(e|ed|es|ing)|lift(s|ed)?|bump(ed)?|went up|goes up|higher|rose|ris(e|es|ing))\b[^.?!]*\b(baseline|floor|new normal|standard of living)\b|\b(baseline|floor|new normal|standard of living)\b[^.?!]*\b(ris(e|es|ing)|rose|went up|goes up|higher|raised)\b/i,
     check: (c) => {
-      const baselines = idsOfKind(c.film, ["BASELINE"]);
-      if (!baselines.length) return "there is no BASELINE in the cast at all — nothing on screen is a floor/level";
-      const rising = baselines.filter((id) => changes(c, (a, w) => a.actor === id && a.do === "SET" && a.param === "level" && typeof a.to === "number" && a.to > (w.get(id)?.level ?? 0)));
-      if (!rising.length) return "no baseline/floor rises during the line (needs a SET level going UP on the BASELINE)";
+      // BASELINE = the glowing level plane (v1); PLATFORM = the solid floor that RAISEs and lifts
+      // what rides on it (v1.1 — the literal "the floor under your life goes up").
+      const baselines = idsOfKind(c.film, ["BASELINE", "PLATFORM"]);
+      if (!baselines.length) return "there is no BASELINE or PLATFORM in the cast at all — nothing on screen is a floor/level";
+      const levelTo = (a: NonNullable<StudioShot["actions"]>[number]): number | null =>
+        a.do === "SET" && a.param === "level" && typeof a.to === "number" ? a.to : a.do === "RAISE" && typeof a.to === "number" ? a.to : null;
+      const rising = baselines.filter((id) => changes(c, (a, w) => a.actor === id && (levelTo(a) ?? -Infinity) > (w.get(id)?.level ?? 0)));
+      if (!rising.length) return "no baseline/floor rises during the line (needs a RAISE on a PLATFORM, or a SET level going UP on the BASELINE)";
       if (!rising.some((id) => onScreen(c, id))) return "the rising baseline is not on screen/in frame while it's said";
       const things = idsOfKind(c.film, ["BUILDING", "CAR", "CARD", "CARD_FAN"]).filter((id) => c.before.get(id)?.everEntered || c.before.get(id)?.visible);
       if (things.length && !things.some((id) => onScreen(c, id))) return "the floor rises alone — the things that raised it (apartment, car, subscriptions) aren't in frame, so it doesn't read as YOUR lifestyle rising";
       // A baseline is the floor your life stands on: if it rises THROUGH the apartment and the car
       // (they stay on the ground) it reads as a glow passing by, not as the floor going up.
       const target = Math.max(...rising.map((id) => {
-        const a = (c.shot.actions ?? []).find((x) => x.actor === id && x.do === "SET" && x.param === "level");
-        return a && a.do === "SET" && typeof a.to === "number" ? a.to : 0;
+        const a = (c.shot.actions ?? []).find((x) => x.actor === id && levelTo(x) !== null);
+        return a ? (levelTo(a) ?? 0) : 0;
       }));
       const visibleThings = things.filter((id) => onScreen(c, id));
-      const carried = visibleThings.filter((id) => (c.shot.actions ?? []).some((a) => a.actor === id && a.do === "MOVE" && a.to[1] >= target * 0.6));
+      // carried = moved up with it, or riding on the rising floor (cast `parent` chain)
+      const ridesOn = (id: string): boolean => {
+        let p = c.film.cast.find((x) => x.id === id)?.parent;
+        for (let i = 0; p && i < 8; i++) {
+          if (rising.includes(p)) return true;
+          p = c.film.cast.find((x) => x.id === p)?.parent;
+        }
+        return false;
+      };
+      const carried = visibleThings.filter((id) => ridesOn(id) || (c.shot.actions ?? []).some((a) => a.actor === id && a.do === "MOVE" && a.to[1] >= target * 0.6));
       if (visibleThings.length && target > 0.3 && !carried.length) return `the baseline rises to ${target} m THROUGH the ${visibleThings.join(" and ")} while they stay on the ground — it reads as a glow passing by, not as the floor under your life going up`;
       return null;
     },
     replacement: {
       description: "The glowing YOUR BASELINE plane rises from the floor UNDER the apartment and the car and lifts them with it (they ride on it, in frame) to the height the raise used to stand — the floor itself going up.",
-      catalogRefs: ["actor:BASELINE", "action:SET.level", "action:MOVE", "actor:BUILDING", "actor:CAR", "camera:CRANE_UP"],
+      catalogRefs: ["recipe:raise-baseline", "actor:PLATFORM", "action:RAISE", "actor:BASELINE", "action:SET.level", "action:MOVE", "actor:BUILDING", "actor:CAR", "camera:CRANE_UP"],
       dslHint: '{"do":"SET","actor":"baseline","param":"level","to":1.8,"at":{"word":"raised"},"duration":1.6} plus {"do":"MOVE","actor":"building","to":[x,1.8,z],"at":{"word":"raised"},"duration":1.6} and the same for the car; camera CRANE_UP on the baseline wide enough (distance ≥ 11) to keep both in frame.',
     },
   },

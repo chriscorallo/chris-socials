@@ -15,6 +15,7 @@
     "@chris/media": "workspace:*",
     "@chris/motion": "workspace:*",
     "@chris/platforms": "workspace:*",
+    "@chris/cinema": "workspace:*",
     "@chris/worker": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@vercel/blob": "2.8.2",

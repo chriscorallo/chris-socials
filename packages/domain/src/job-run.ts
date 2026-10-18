@@ -129,7 +129,12 @@ export function heavyJobRunKind(contentItemId: string): string {
   return `${HEAVY_JOB_KIND_PREFIX}${contentItemId}`;
 }
 
-export type HeavyJobMode = "inline" | "sandbox";
+/** inline = in the web process; sandbox = a Vercel Sandbox; worker = Chris's Mac render worker
+ * (apps/worker/src/film-worker.ts) picks it up from the queue. */
+export type HeavyJobMode = "inline" | "sandbox" | "worker";
+
+/** Who may run a queued job: "mac" = only the Mac render worker; anything else (or unset) = the cloud/web. */
+export type HeavyJobTarget = "mac" | "cloud";
 
 export interface HeavyJobProgress {
   /** 0..100 */
@@ -153,6 +158,8 @@ export interface HeavyJobSummary {
   sandboxStopped?: boolean;
   /** The job's typed result (on success; partial results may be present on failure). */
   result?: unknown;
+  /** Queued for a specific kind of worker (see HeavyJobTarget). Unset = cloud/web. */
+  target?: HeavyJobTarget;
 }
 
 /** A heavy job can also wait for a free cloud worker (QUEUED) — see acquireHeavyJobLease. */
@@ -322,7 +329,17 @@ export interface ClaimedHeavyJob {
  */
 export async function claimQueuedHeavyJob(
   prisma: PrismaClient,
-  options: { maxConcurrentSandboxes?: number; kinds?: string[]; staleAfterMs?: number; now?: Date; sandboxName?: string | null } = {},
+  options: {
+    maxConcurrentSandboxes?: number;
+    kinds?: string[];
+    staleAfterMs?: number;
+    now?: Date;
+    sandboxName?: string | null;
+    /** "mac": only jobs queued for the Mac render worker; otherwise those are never claimed. */
+    target?: HeavyJobTarget;
+    /** Only these lease subjects (e.g. one film's chunks). */
+    subjects?: string[];
+  } = {},
 ): Promise<ClaimedHeavyJob | null> {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('heavy-jobs'))::text AS locked`;
@@ -342,7 +359,11 @@ export async function claimQueuedHeavyJob(
     const next = active.find((r) => {
       if (r.status !== "QUEUED" || r.startedAt.getTime() < now.getTime() - HEAVY_JOB_QUEUE_EXPIRES_MS || busyItems.has(r.kind)) return false;
       const s = (r.summary ?? null) as HeavyJobSummary | null;
-      return !!s && (!options.kinds || options.kinds.includes(s.jobKind));
+      if (!s) return false;
+      const forMac = s.target === "mac";
+      if (options.target === "mac" ? !forMac : forMac) return false;
+      if (options.subjects && !options.subjects.includes(s.contentItemId)) return false;
+      return !options.kinds || options.kinds.includes(s.jobKind);
     });
     if (!next) return null;
     const s = next.summary as unknown as HeavyJobSummary;
@@ -352,6 +373,87 @@ export async function claimQueuedHeavyJob(
     if (n === 0) return null;
     return { jobRunId: next.id, jobKind: s.jobKind, contentItemId: s.contentItemId, args: s.args, actorId: s.actorId };
   });
+}
+
+/**
+ * Records a heavy job as QUEUED regardless of capacity — for work that is split into parts
+ * (a film's render chunks) or that waits for a specific worker (target "mac"). Same lease rule
+ * as acquireHeavyJobLease: a subject that already has a RUNNING/QUEUED job is BUSY (returns it).
+ */
+export async function enqueueHeavyJob(
+  prisma: PrismaClient,
+  input: { subject: string; jobKind: string; args: unknown; mode: HeavyJobMode; actorId: string; target?: HeavyJobTarget; message?: string; now?: Date },
+): Promise<{ queued: true; jobRunId: string } | { queued: false; reason: "BUSY"; activeJobRunId: string }> {
+  const kind = heavyJobRunKind(input.subject);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('heavy-jobs'))::text AS locked`;
+    const now = input.now ?? new Date();
+    const existing = await tx.jobRun.findFirst({ where: { kind, status: { in: ["RUNNING", "QUEUED"] } }, orderBy: { startedAt: "desc" } });
+    const fresh = existing && (existing.status === "QUEUED" ? existing.startedAt.getTime() > now.getTime() - HEAVY_JOB_QUEUE_EXPIRES_MS : existing.startedAt.getTime() > now.getTime() - HEAVY_JOB_STALE_AFTER_MS);
+    if (existing && fresh) return { queued: false as const, reason: "BUSY" as const, activeJobRunId: existing.id };
+    const summary: HeavyJobSummary = {
+      jobKind: input.jobKind,
+      contentItemId: input.subject,
+      args: input.args,
+      mode: input.mode,
+      actorId: input.actorId,
+      progress: { pct: 0, message: input.message ?? (input.target === "mac" ? "Waiting for your Mac…" : "Waiting for a free cloud worker…"), stage: "queued", updatedAt: now.toISOString() },
+      sandboxName: null,
+      ...(input.target ? { target: input.target } : {}),
+    };
+    const row = await tx.jobRun.create({ data: { kind, status: "QUEUED", startedAt: now, summary: summary as never } });
+    return { queued: true as const, jobRunId: row.id };
+  });
+}
+
+/** Status of several heavy jobs at once (a film's chunks). */
+export async function getHeavyJobs(prisma: PrismaClient, ids: string[]): Promise<HeavyJobView[]> {
+  if (!ids.length) return [];
+  const rows = await prisma.jobRun.findMany({ where: { id: { in: ids } } });
+  return rows.map((r) => parseHeavyJobRun(r)).filter((v): v is HeavyJobView => v !== null);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Render workers (Chris's Mac): presence by heartbeat, no schema change — one JobRun row per
+// worker session, kind `render-worker:<workerId>`, RUNNING while alive, summary.lastSeen updated.
+// ---------------------------------------------------------------------------------------------
+
+export const RENDER_WORKER_KIND_PREFIX = "render-worker:";
+/** A worker that hasn't checked in for this long is offline. */
+export const RENDER_WORKER_ONLINE_WITHIN_MS = 90_000;
+
+export interface RenderWorkerInfo {
+  workerId: string;
+  host: string;
+  gpu: boolean;
+  kinds: string[];
+  lastSeen: string;
+  busyJobRunId?: string | null;
+}
+
+export async function recordRenderWorkerHeartbeat(prisma: PrismaClient, info: Omit<RenderWorkerInfo, "lastSeen">, now = new Date()): Promise<string> {
+  const kind = `${RENDER_WORKER_KIND_PREFIX}${info.workerId}`;
+  const summary = JSON.stringify({ ...info, lastSeen: now.toISOString() });
+  const row = await prisma.jobRun.findFirst({ where: { kind, status: "RUNNING" }, orderBy: { startedAt: "desc" } });
+  if (row) {
+    await prisma.$executeRaw`UPDATE "JobRun" SET "summary" = COALESCE("summary", '{}'::jsonb) || ${summary}::jsonb WHERE "id" = ${row.id}`;
+    return row.id;
+  }
+  const created = await prisma.jobRun.create({ data: { kind, status: "RUNNING", startedAt: now, summary: JSON.parse(summary) as never } });
+  return created.id;
+}
+
+export async function markRenderWorkerOffline(prisma: PrismaClient, workerId: string): Promise<void> {
+  await prisma.jobRun.updateMany({ where: { kind: `${RENDER_WORKER_KIND_PREFIX}${workerId}`, status: "RUNNING" }, data: { status: "SUCCEEDED", finishedAt: new Date() } });
+}
+
+export async function listOnlineRenderWorkers(prisma: PrismaClient, options: { withinMs?: number; now?: Date } = {}): Promise<RenderWorkerInfo[]> {
+  const now = options.now ?? new Date();
+  const within = options.withinMs ?? RENDER_WORKER_ONLINE_WITHIN_MS;
+  const rows = await prisma.jobRun.findMany({ where: { kind: { startsWith: RENDER_WORKER_KIND_PREFIX }, status: "RUNNING" }, orderBy: { startedAt: "desc" }, take: 20 });
+  return rows
+    .map((r) => r.summary as unknown as RenderWorkerInfo)
+    .filter((s) => s && typeof s.lastSeen === "string" && now.getTime() - Date.parse(s.lastSeen) <= within);
 }
 
 /** Shallow-merges `patch` into a heavy job's summary (jsonb `||` in one statement — no lost

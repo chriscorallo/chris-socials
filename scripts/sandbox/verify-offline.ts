@@ -8,13 +8,16 @@
  *
  *   SANDBOX_ENV_FILE=… pnpm exec tsx scripts/sandbox/verify-offline.ts [--snapshot snap_…] [--local] [--vcpus 8] [--env K=V …]
  *
- * --local runs the same offline render on this machine (sanity check of the job, no sandbox).
+ * Then a short MINI-MOVIE (the catalog's "raise-baseline" recipe with one narrated line): Kokoro
+ * narration + Whisper word sync + score/mix, the picture rendered in 2 chunks with swangle WebGL,
+ * concatenated frame-exact and muxed (`run-job.sh film-render --offline`).
+ * --local runs the same offline jobs on this machine (sanity check of the jobs, no sandbox).
  * Outputs: .sandbox-build/verify/{clip.mp4,job.json,out.mp4,result.json,frames/*.png,report.json}
  */
 import { Sandbox } from "@vercel/sandbox";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
@@ -77,6 +80,15 @@ function timelineFor(head: { x: number; y: number; w: number; h: number }) {
   };
 }
 
+/** A 4 s mini-movie: the raise-baseline recipe, narrated (exercises Kokoro, Whisper, mix, chunks, concat). */
+async function cinemaJob() {
+  const { VISUAL_CATALOG, catalogExampleFilm } = (await import(join(REPO, "packages/cinema/src/pure.ts"))) as typeof import("../../packages/cinema/src/pure");
+  const film = catalogExampleFilm(VISUAL_CATALOG.find((e) => e.id === "recipe:raise-baseline")!);
+  film.narration = { engine: "KOKORO", voice: "af_heart" };
+  film.scenes[0]!.shots[0]!.line = "You raised your baseline.";
+  return { film, tier: "PREVIEW", chunks: 2, outDir: "film" };
+}
+
 async function main() {
   await mkdir(join(DIR, "frames"), { recursive: true });
   const clip = join(DIR, "clip.mp4");
@@ -84,6 +96,8 @@ async function main() {
   const head = await headBox(clip);
   const job = { output: "out.mp4", encode: { preset: "medium", crf: 20 }, assets: [{ id: "take", file: "clip.mp4", subjectTrack: head.track }], timeline: timelineFor(head) };
   await writeFile(join(DIR, "job.json"), JSON.stringify(job, null, 2));
+  const filmJob = await cinemaJob();
+  await writeFile(join(DIR, "film.json"), JSON.stringify(filmJob, null, 2));
   console.log(`stand-in ready (${((await readFile(clip)).byteLength / 1e6).toFixed(2)} MB); head box ${JSON.stringify({ x: +head.x.toFixed(3), y: +head.y.toFixed(3), w: +head.w.toFixed(3), h: +head.h.toFixed(3) })}`);
 
   const report: Record<string, unknown> = {};
@@ -92,6 +106,9 @@ async function main() {
     const t = Date.now();
     const r = await runOffline("render", join(DIR, "job.json"));
     report.local = { ms: Date.now() - t, result: r };
+    const t2 = Date.now();
+    const f = (await runOffline("film-render", join(DIR, "film.json"))) as { result: { output: string } };
+    report.localFilm = { ms: Date.now() - t2, result: f };
   } else {
     const snapshotId = flag("--snapshot") ?? process.env.RENDER_SANDBOX_SNAPSHOT_ID ?? (JSON.parse(await readFile(join(BUILD_DIR, "snapshot.json"), "utf8")) as { snapshotId: string }).snapshotId;
     const vcpus = Number(flag("--vcpus") ?? 8);
@@ -107,6 +124,7 @@ async function main() {
         { path: `${dir}/clip.mp4`, content: await readFile(clip) },
         { path: `${dir}/job.json`, content: Buffer.from(JSON.stringify(job)) },
         { path: `${dir}/one.json`, content: Buffer.from(JSON.stringify({ file: "clip.mp4", output: "matte.mp4" })) },
+        { path: `${dir}/film.json`, content: Buffer.from(JSON.stringify(filmJob)) },
       ]);
       report.uploadMs = Date.now() - t1;
       const exec = async (kind: string, file: string) => {
@@ -122,8 +140,11 @@ async function main() {
       report.render = await exec("render", "job.json");
       report.transcribe = await exec("transcribe", "one.json");
       report.subjectTrack = await exec("subject-track", "one.json");
+      report.film = await exec("film-render", "film.json");
       const t2 = Date.now();
-      for (const f of ["out.mp4", "result.json", "matte-take.mp4"]) {
+      const filmOut = `film/${(report.film as { result: { output: string } }).result.output}`;
+      await mkdir(join(DIR, "film"), { recursive: true });
+      for (const f of ["out.mp4", "result.json", "matte-take.mp4", filmOut]) {
         const buf = await sandbox.readFileToBuffer({ path: `${dir}/${f}` });
         if (buf) await writeFile(join(DIR, f), buf);
       }
@@ -136,6 +157,7 @@ async function main() {
     }
   }
   // Frames to look at: number behind the head, the 3D icon.
+  if (existsSync(join(DIR, "film"))) for (const f of (await readdir(join(DIR, "film"))).filter((x) => x.endsWith(".mp4"))) await ff(["-ss", "3", "-i", join(DIR, "film", f), "-frames:v", "1", join(DIR, "frames", "film-3.0.png")]);
   for (const t of [0.6, 1.6, 2.8, 4.6, 5.4]) await ff(["-ss", String(t), "-i", join(DIR, "out.mp4"), "-frames:v", "1", join(DIR, "frames", `f-${t.toFixed(1)}.png`)]);
   await ff(["-ss", "2.8", "-i", join(DIR, "out.mp4"), "-vf", "crop=1080:900:0:0,scale=540:-2", "-frames:v", "1", join(DIR, "frames", "head-crop-2.8.png")]);
   await writeFile(join(DIR, "report.json"), JSON.stringify(report, null, 2));

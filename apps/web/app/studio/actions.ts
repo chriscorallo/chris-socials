@@ -21,6 +21,7 @@ import {
 } from "@chris/agents/studio";
 import { requireSession } from "../../lib/session";
 import { demoCrewOn, getStudioDeps, localAiStatus } from "../../lib/studio/runtime";
+import { attachStudioRender } from "../../lib/film-jobs";
 
 /**
  * Mini-movie Studio actions. No model is ever called from here: creative steps are Chris's
@@ -125,6 +126,8 @@ export async function sendToVideosAction(filmId: string): Promise<{ ok: true; co
   const a = await actor();
   try {
     const r = await sendFilmToVideos(prisma, new PrismaFilmStore(prisma), filmId, a);
+    // the engine attaches the finished render to that video (take → no-cuts edit → render; never re-renders)
+    await attachStudioRender(filmId, r.contentItemId, a).catch((err) => console.error(JSON.stringify({ level: "warn", event: "studio_attach_render_failed", filmId, message: err instanceof Error ? err.message : String(err) })));
     revalidatePath(`/studio/${filmId}`);
     revalidatePath("/content");
     return { ok: true, contentItemId: r.contentItemId };

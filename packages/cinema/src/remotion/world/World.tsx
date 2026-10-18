@@ -7,6 +7,7 @@ import type { LookDef } from "../../looks";
 import { ACTOR_COMPONENTS, presence } from "./actors";
 import { radialTexture, studioEnvironment } from "./materials";
 import { PostFX } from "./post";
+import { HorizonGlow, Room, Skyline } from "./sets";
 
 /**
  * One frame of the 3D world: set (floor, cyclorama, haze, dust), lights, camera, actors (+ their
@@ -191,7 +192,7 @@ function Actors({ state, look, seed, quality, mirror }: { state: FrameState; loo
         if (!C) return null;
         const p = presence(s);
         if (p.hidden) return null;
-        if (mirror && (s.kind === "BASELINE" || s.kind === "LIGHT_SHAFT" || s.kind === "NUMBER_WALL")) return null;
+        if (mirror && (s.kind === "BASELINE" || s.kind === "LIGHT_SHAFT" || s.kind === "NUMBER_WALL" || s.kind === "FORK_PATH" || s.kind === "DIVIDER" || s.kind === "TEXT_3D")) return null;
         return (
           <group key={s.id} position={[s.position[0], s.position[1] + p.y, s.position[2]]} rotation={s.rotation} scale={s.scale * p.scale}>
             <C s={s} look={look} seed={seed + s.id.length * 131} mirror={mirror} quality={quality} />
@@ -201,6 +202,9 @@ function Actors({ state, look, seed, quality, mirror }: { state: FrameState; loo
     </>
   );
 }
+
+/** Soft contact shadow under grounded objects (radius, meters at scale 1). */
+const BLOB_RADIUS: Partial<Record<string, number>> = { COIN_STACK: 1.4, CAR: 1.5, BUILDING: 1.6, PEDESTAL: 1.4, FIGURE: 0.45, HOUSE: 1.6, BUCKET: 1.0, HOURGLASS: 0.6, BALANCE: 0.8, METER: 0.6, SNOWBALL: 0.9 };
 
 export function World({ state, look, seed, tier }: { state: FrameState; look: LookDef; seed: number; tier: Tier }) {
   const { gl, scene } = useThree();
@@ -222,6 +226,9 @@ export function World({ state, look, seed, tier }: { state: FrameState; look: Lo
       <Lights l={state.lights} look={look} quality={quality} />
       <Cyclorama look={look} glow={state.lights.backGlow} focus={focus} kind={state.set.kind} />
       <Floor look={look} gloss={gloss} kind={state.set.kind} />
+      {state.set.kind === "CITY_NIGHT" && <Skyline seed={seed} look={look} />}
+      {state.set.kind === "ROOM" && <Room look={look} />}
+      {state.set.kind === "HORIZON" && <HorizonGlow look={look} />}
       {gloss > 0 && (
         <group scale={[1, -1, 1]} position={[0, -0.006, 0]}>
           <Actors state={state} look={look} seed={seed} quality={quality} mirror />
@@ -229,9 +236,9 @@ export function World({ state, look, seed, tier }: { state: FrameState; look: Lo
       )}
       <Actors state={state} look={look} seed={seed} quality={quality} />
       {state.actors
-        .filter((a) => a.visible && (a.kind === "COIN_STACK" || a.kind === "CAR" || a.kind === "BUILDING" || a.kind === "PEDESTAL") && a.position[1] < 0.05)
+        .filter((a) => a.visible && a.kind in BLOB_RADIUS && a.position[1] < 0.05)
         .map((a) => (
-          <Shadowblob key={`sh-${a.id}`} x={a.position[0]} z={a.position[2]} r={(a.kind === "BUILDING" ? 1.6 : a.kind === "CAR" ? 1.5 : 1.4) * a.scale * presence(a).scale} opacity={0.75} />
+          <Shadowblob key={`sh-${a.id}`} x={a.position[0]} z={a.position[2]} r={BLOB_RADIUS[a.kind]! * a.scale * presence(a).scale} opacity={0.75} />
         ))}
       {(state.set.particles ?? 0) > 0 && <Dust amount={state.set.particles ?? 0} seed={seed} time={state.time} focus={focus} color={look.goldLight} />}
       <PostFX state={state} tier={tier} />

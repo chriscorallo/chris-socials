@@ -1,0 +1,74 @@
+{
+  "seconds": 148,
+  "log": [
+    {
+      "t": 0,
+      "step": "WRITE",
+      "status": "NEEDS_CHATGPT",
+      "note": "Your crew is ready — ask ChatGPT to write the film."
+    },
+    {
+      "t": 6,
+      "step": "REVIEW",
+      "status": "NEEDS_CHATGPT",
+      "note": "Storyboard is ready — ask ChatGPT for the crew's review."
+    },
+    {
+      "t": 12,
+      "step": "REVIEW",
+      "status": "NEEDS_CHATGPT",
+      "note": "Storyboard is ready — ask ChatGPT for the crew's review."
+    },
+    {
+      "t": 13,
+      "step": "STORYBOARD_REVIEW",
+      "status": "NEEDS_CHRIS",
+      "note": "The crew approved the storyboard — your turn."
+    },
+    {
+      "t": 145,
+      "step": "DONE",
+      "status": "READY",
+      "note": "Your film is ready."
+    }
+  ],
+  "counters": {
+    "roundTrips": 3,
+    "repairs": 0,
+    "storyboards": 2,
+    "renders": 1,
+    "localAiCalls": 0
+  },
+  "render": {
+    "tier": "FINAL",
+    "state": null,
+    "width": 1080,
+    "chunks": 1,
+    "frames": 10,
+    "height": 1920,
+    "renderId": "fr-15cd3e2116ad2785",
+    "videoKey": "films/fr-15cd3e2116ad2785/the-raise-studio-final.mp4",
+    "videoUrl": "/api/films/file?key=films%2Ffr-15cd3e2116ad2785%2Fthe-raise-studio-final.mp4",
+    "msByStage": {
+      "review": 2428,
+      "picture": 85321,
+      "prepare": 34054,
+      "assemble": 6846
+    },
+    "posterUrl": "/api/films/file?key=films%2Ffr-15cd3e2116ad2785%2Fposter.jpg",
+    "frameCount": 964,
+    "loudnessLufs": -14,
+    "mediaAssetId": null,
+    "renderStatus": null,
+    "truePeakDbtp": -1.5,
+    "contentItemId": null,
+    "contactSheetUrl": "/api/films/file?key=films%2Ffr-15cd3e2116ad2785%2Freview%2Fcontact-sheet.jpg",
+    "durationSeconds": 32.133333
+  },
+  "contentItem": {
+    "id": "cmvdleogt001szuaoc1x9po1q",
+    "state": "RENDERED",
+    "format": "MINI_MOVIE"
+  },
+  "storyboardStills": 10
+}

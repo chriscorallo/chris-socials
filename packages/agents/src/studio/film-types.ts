@@ -16,6 +16,8 @@ export interface StudioActor {
   visible?: boolean;
   params?: Record<string, unknown>;
   note?: string;
+  /** DSL v1.1: rides on another actor (a PLATFORM's top) and moves/rises with it. */
+  parent?: string;
 }
 
 export type StudioAction =
@@ -27,7 +29,14 @@ export type StudioAction =
   | { do: "SET"; actor: string; at: StudioAnchor; param: string; to: unknown; duration?: number }
   | { do: "FLOW"; actor: string; at: StudioAnchor; into: string; amount: number; duration?: number }
   | { do: "PULSE"; actor: string; at: StudioAnchor; strength?: number; duration?: number }
-  | { do: "GLOW"; actor: string; at: StudioAnchor; to: number; duration?: number };
+  | { do: "GLOW"; actor: string; at: StudioAnchor; to: number; duration?: number }
+  // DSL v1.1 (packages/cinema src/catalog.ts describes each one)
+  | { do: "SHIFT"; actor: string; at: StudioAnchor; by: Vec3; duration?: number }
+  | { do: "POSE"; actor: string; at: StudioAnchor; pose: string; duration?: number }
+  | { do: "WALK"; actor: string; at: StudioAnchor; to: Vec3; pace?: number; run?: boolean; duration?: number }
+  | { do: "CLIMB"; actor: string; at: StudioAnchor; on: string; from?: number; to?: number; duration?: number }
+  | { do: "PATH"; actor: string; at: StudioAnchor; points: Vec3[]; orient?: boolean; duration?: number }
+  | { do: "OPEN" | "CLOSE" | "FILL" | "DRAIN" | "GROW" | "BREAK" | "TIP" | "FLIP" | "UNROLL" | "REVEAL" | "RAISE" | "LOWER" | "SPIN"; actor: string; at: StudioAnchor; to?: number; duration?: number };
 
 export interface StudioCameraPose {
   distance?: number;

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { resolveTranscriptionCacheDir } from "@chris/media/transcription";
+import { DEFAULT_SENTENCE_PAUSE, splitForSpeech } from "./speech-text";
 
 /**
  * Local narration with Kokoro-82M (open weights, Apache-2.0 — hexgrad/Kokoro-82M; ONNX export
@@ -94,23 +95,42 @@ export interface SynthesizedLine {
 }
 
 /** Speaks one line to a WAV (silence-trimmed). Cached by path: an existing file is reused. */
-export async function synthesizeLine(text: string, outPath: string, voice: string, speed = 1, opts: KokoroOptions & { force?: boolean } = {}): Promise<SynthesizedLine> {
+/**
+ * Speaks one line to a WAV (silence-trimmed). Sentences are voiced one at a time with
+ * `sentencePause` seconds of silence between them, and `[pause]` / `[pause 0.6]` markers add
+ * explicit beats (see speech-text.ts). Cached by path: an existing file is reused.
+ */
+export async function synthesizeLine(text: string, outPath: string, voice: string, speed = 1, opts: KokoroOptions & { force?: boolean; sentencePause?: number } = {}): Promise<SynthesizedLine> {
   if (!opts.force && existsSync(outPath)) {
     const { probeDurationSeconds } = await import("../audio/ffmpeg");
     return { path: outPath, durationSeconds: await probeDurationSeconds(outPath), sampleRate: KOKORO_SAMPLE_RATE };
   }
   const tts = await loadKokoro(opts);
-  const raw = await tts.generate(text, { voice, speed });
-  const trimmed = trimSilence(raw.audio, raw.sampling_rate);
+  const segments = splitForSpeech(text, opts.sentencePause ?? DEFAULT_SENTENCE_PAUSE);
+  const parts: Float32Array[] = [];
+  let sr = KOKORO_SAMPLE_RATE;
+  for (const seg of segments) {
+    const raw = await tts.generate(seg.text, { voice, speed });
+    sr = raw.sampling_rate;
+    parts.push(trimSilence(raw.audio, sr, 0.03));
+    if (seg.pauseAfter > 0) parts.push(new Float32Array(Math.round(seg.pauseAfter * sr)));
+  }
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const audio = new Float32Array(total);
+  let o = 0;
+  for (const p of parts) {
+    audio.set(p, o);
+    o += p.length;
+  }
   await mkdir(dirname(outPath), { recursive: true });
-  await writeFile(outPath, encodeWav(trimmed, raw.sampling_rate));
-  return { path: outPath, durationSeconds: trimmed.length / raw.sampling_rate, sampleRate: raw.sampling_rate };
+  await writeFile(outPath, encodeWav(audio, sr));
+  return { path: outPath, durationSeconds: audio.length / sr, sampleRate: sr };
 }
 
-export function lineAudioPath(dir: string, shotId: string, voice: string, speed: number, text: string): string {
+export function lineAudioPath(dir: string, shotId: string, voice: string, speed: number, text: string, extra = ""): string {
   // content-addressed so editing a line re-synthesizes only that line
   let h = 2166136261;
-  const s = `${voice}|${speed}|${text}`;
+  const s = `${voice}|${speed}|${text}${extra ? `|${extra}` : ""}`;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);

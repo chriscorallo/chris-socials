@@ -15,6 +15,10 @@ export const HEAVY_JOB_TITLE: Record<string, string> = {
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
   "viewer-review": "Watching it like a new viewer",
+  "film-render": "Rendering your mini-movie",
+  "film-render-chunk": "Rendering part of your mini-movie",
+  "film-storyboard": "Sketching the storyboard",
+  "film-voice-align": "Syncing your narration",
 };
 
 /** "Rendering your video… 40%" */

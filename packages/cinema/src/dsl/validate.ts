@@ -1,5 +1,6 @@
 import type { z } from "zod";
-import { ACTOR_KINDS, FilmSchema, type Anchor, type Film, type Shot } from "./schema";
+import { ACTION_TYPES, ACTOR_KINDS, FIGURE_POSES, FilmSchema, VERBS, type Anchor, type Film, type Shot, type Verb } from "./schema";
+import { VERB_TARGETS } from "../kinds";
 import { closestWords, findWordIndex, levenshtein, tokenizeLine } from "./words";
 
 /**
@@ -35,7 +36,8 @@ const FIELD_HINTS: Array<{ test: RegExp; hint: string }> = [
   { test: /\.(at|until|strikeAt)$/, hint: 'An anchor is seconds from the shot start (e.g. 1.2), "start", "end", {"word":"raise"} or {"fraction":0.5}.' },
   { test: /\.kind$/, hint: `Actor kinds: ${ACTOR_KINDS.join(", ")}.` },
   { test: /\.lens\.focalLength$/, hint: "Focal length in mm: 24 = wide, 35 = natural, 50 = normal, 85 = portrait, 135+ = compressed telephoto." },
-  { test: /\.do$/, hint: "Action types: ENTER, EXIT, MOVE, TURN, SCALE, SET, FLOW, PULSE, GLOW." },
+  { test: /\.do$/, hint: `Action types: ${ACTION_TYPES.join(", ")}. See the visual catalog (VISUAL_CATALOG) for what each one depicts.` },
+  { test: /\.pose$/, hint: `Poses: ${FIGURE_POSES.join(", ")}.` },
 ];
 
 function zodIssues(error: z.ZodError): FilmIssue[] {
@@ -94,6 +96,32 @@ export function validateFilm(input: unknown): ValidateFilmResult {
   const targetRef = (t: unknown, path: string) => {
     if (typeof t === "string" && t !== "target") actorRef(t, path);
   };
+  const kindOf = new Map(film.cast.map((a) => [a.id, a.kind]));
+
+  // parents: exist, not self, no cycles
+  film.cast.forEach((a, i) => {
+    if (!a.parent) return;
+    if (a.parent === a.id) {
+      errors.push({ path: `cast[${i}].parent`, message: `Actor "${a.id}" can't ride on itself.` });
+      return;
+    }
+    actorRef(a.parent, `cast[${i}].parent`);
+    const seen = new Set<string>([a.id]);
+    let cur: string | undefined = a.parent;
+    while (cur) {
+      if (seen.has(cur)) {
+        errors.push({ path: `cast[${i}].parent`, message: `Parent chain of "${a.id}" loops back on itself.`, hint: "A rides on B, B rides on A is impossible — remove one parent." });
+        break;
+      }
+      seen.add(cur);
+      cur = film.cast.find((c) => c.id === cur)?.parent;
+    }
+  });
+  film.cast.forEach((a, i) => {
+    if ((a.kind === "FIGURE" || a.kind === "CROWD") && typeof a.params?.pose === "string" && !(FIGURE_POSES as readonly string[]).includes(a.params.pose)) {
+      errors.push({ path: `cast[${i}].params.pose`, message: `Unknown pose "${a.params.pose}".`, hint: `Poses: ${FIGURE_POSES.join(", ")}.` });
+    }
+  });
 
   const shotIds = new Set<string>();
   const sceneIds = new Set<string>();
@@ -142,6 +170,26 @@ export function validateFilm(input: unknown): ValidateFilmResult {
       (shot.actions ?? []).forEach((a, ai) => {
         actorRef(a.actor, `${p}.actions[${ai}].actor`);
         if (a.do === "FLOW") actorRef(a.into, `${p}.actions[${ai}].into`);
+        const kind = kindOf.get(a.actor);
+        if (kind && (VERBS as readonly string[]).includes(a.do)) {
+          const verb = a.do as Verb;
+          const tgt = VERB_TARGETS[verb][kind];
+          if (!tgt) {
+            const ok = Object.keys(VERB_TARGETS[verb]);
+            errors.push({ path: `${p}.actions[${ai}].do`, message: `${verb} doesn't apply to a ${kind} ("${a.actor}").`, hint: `${verb} works on: ${ok.join(", ")}. For anything else use SET with the param name.` });
+          } else if (tgt.default === null && (a as { to?: number }).to === undefined) {
+            errors.push({ path: `${p}.actions[${ai}].to`, message: `${verb} on a ${kind} needs "to" (the new ${tgt.param}).` });
+          }
+        }
+        if (a.do === "CLIMB") {
+          actorRef(a.on, `${p}.actions[${ai}].on`);
+          const host = kindOf.get(a.on);
+          if (host && host !== "STAIRS" && host !== "LADDER") errors.push({ path: `${p}.actions[${ai}].on`, message: `CLIMB needs a STAIRS or LADDER to climb; "${a.on}" is a ${host}.` });
+          if (kind && kind !== "FIGURE") warnings.push({ path: `${p}.actions[${ai}].actor`, message: `Only a FIGURE has climbing limbs; a ${kind} will just slide up the path.` });
+        }
+        if ((a.do === "WALK" || a.do === "POSE") && kind && kind !== "FIGURE" && !(a.do === "POSE" && kind === "CROWD")) {
+          warnings.push({ path: `${p}.actions[${ai}].actor`, message: `${a.do} is meant for a FIGURE${a.do === "POSE" ? " or CROWD" : ""}; a ${kind} will ${a.do === "WALK" ? "just glide" : "ignore it"}.` });
+        }
         checkAnchor(shot, a.at, `${p}.actions[${ai}].at`, errors);
       });
       (shot.text ?? []).forEach((t, ti) => {

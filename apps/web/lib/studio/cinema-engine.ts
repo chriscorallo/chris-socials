@@ -34,19 +34,10 @@ import {
  *    args/result shape the studio expects; wire `dispatch` to runHeavyJob.
  */
 
-const AUDITION = ["af_heart", "af_bella", "am_michael", "am_fenrir", "am_puck", "bm_fable", "bm_george"] as const;
-const VOICE_LABELS: Record<string, string> = {
-  af_heart: "Heart — warm, clear (US)",
-  af_bella: "Bella — bright (US)",
-  am_michael: "Michael — calm, low (US)",
-  am_fenrir: "Fenrir — deep, dramatic (US)",
-  am_puck: "Puck — lively (US)",
-  bm_fable: "Fable — storyteller (UK)",
-  bm_george: "George — measured (UK)",
-};
-
+/** The engine's curated narrators (KOKORO_VOICES: chosen from all 28 Kokoro English voices by
+ * the model card's grades + a measured audition; ▶ samples in packages/cinema/assets/voice-samples). */
 export const STUDIO_VOICES: NarratorVoice[] = [
-  ...AUDITION.map((id) => ({ id, label: VOICE_LABELS[id]!, engine: "KOKORO" as const, sampleUrl: `/api/studio/voices/${id}` })),
+  ...cinema.KOKORO_VOICES.map((v) => ({ id: v.id, label: `${v.label} — ${v.vibe.split(/[.—]/)[0]!.trim().toLowerCase()} (${v.accent})`, engine: "KOKORO" as const, sampleUrl: `/api/studio/voices/${v.id}`, note: v.vibe })),
   { id: "chris", label: "My voice — record the lines", engine: "CHRIS", sampleUrl: null, note: "You record each line on your phone; the engine syncs the picture to your words." },
 ];
 

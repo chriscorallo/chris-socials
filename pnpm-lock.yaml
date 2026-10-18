@@ -132,6 +132,9 @@ importers:
       '@chris/agents':
         specifier: workspace:*
         version: link:../../packages/agents
+      '@chris/cinema':
+        specifier: workspace:*
+        version: link:../../packages/cinema
       '@chris/domain':
         specifier: workspace:*
         version: link:../../packages/domain

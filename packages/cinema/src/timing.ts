@@ -76,6 +76,20 @@ export function estimateLineClip(line: string): LineClip {
  */
 export function alignWords(tokens: LineToken[], heard: LineClip["words"], clipDuration: number): Array<{ start: number; end: number; interpolated: boolean }> {
   const h = heard.map((w) => ({ ...w, norm: normalizeWord(w.word) })).filter((w) => w.norm.length > 0);
+  const match = alignTokenMatches(tokens, h);
+  const out: Array<{ start: number; end: number; interpolated: boolean }> = new Array(tokens.length);
+  for (let k = 0; k < tokens.length; k++) {
+    const mk = match[k];
+    if (mk !== null && mk !== undefined) out[k] = { start: h[mk]!.start, end: h[mk]!.end, interpolated: false };
+  }
+  return interpolateGaps(out, clipDuration);
+}
+
+/**
+ * Needleman–Wunsch alignment of script tokens to recognized words (already filtered to words
+ * with a non-empty norm). Returns, per token, the index of the heard word it matched (or null).
+ */
+export function alignTokenMatches(tokens: LineToken[], h: Array<{ norm: string }>): Array<number | null> {
   const n = tokens.length;
   const m = h.length;
   const sim = (a: string, b: string): number => {
@@ -108,12 +122,12 @@ export function alignWords(tokens: LineToken[], heard: LineClip["words"], clipDu
     } else if (s === score[i - 1]![j]! + GAP) i--;
     else j--;
   }
-  const out: Array<{ start: number; end: number; interpolated: boolean }> = new Array(n);
-  for (let k = 0; k < n; k++) {
-    const mk = match[k];
-    if (mk !== null && mk !== undefined) out[k] = { start: h[mk]!.start, end: h[mk]!.end, interpolated: false };
-  }
-  // interpolate gaps between known neighbors (or the clip edges)
+  return match;
+}
+
+/** Fills unmatched slots by spreading them evenly between their matched neighbors (or the clip edges). */
+export function interpolateGaps(out: Array<{ start: number; end: number; interpolated: boolean } | undefined>, clipDuration: number): Array<{ start: number; end: number; interpolated: boolean }> {
+  const n = out.length;
   let k = 0;
   while (k < n) {
     if (out[k]) {
@@ -132,7 +146,7 @@ export function alignWords(tokens: LineToken[], heard: LineClip["words"], clipDu
     }
     k = e;
   }
-  return out;
+  return out as Array<{ start: number; end: number; interpolated: boolean }>;
 }
 
 const round = (x: number) => Math.round(x * 1e6) / 1e6;

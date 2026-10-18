@@ -1,7 +1,8 @@
 import { prisma, getHeavyJob } from "@chris/domain";
 import { isHeavyJobKind } from "@chris/worker/heavy-job-kinds";
 import type { EngineJob, RenderResult, StoryboardResult } from "@chris/agents/studio";
-import { runHeavyJob, reconcileHeavyJob } from "../heavy-jobs";
+import { reconcileHeavyJob } from "../heavy-jobs";
+import { startFilmJob } from "../film-jobs";
 import type { HeavyDispatch } from "./cinema-engine";
 
 /**
@@ -20,7 +21,12 @@ export function heavyFilmDispatch(actorId: string): HeavyDispatch {
     has: (kind) => isHeavyJobKind(kind),
     async start(kind, args) {
       if (!isHeavyJobKind(kind)) return null;
-      const r = await runHeavyJob(kind as never, args as never, { actorId, background: true });
+      // $0 routing (apps/web/lib/film-jobs.ts): Chris's Mac render worker when it's online (or
+      // this Mac in local dev); storyboards may use the cloud's included credit; a full render
+      // never starts in the cloud on its own — it waits for the Mac, and the film page offers
+      // "Render in the cloud (~$X)" (moveFilmJobToCloud) as an explicit choice.
+      let r = await startFilmJob(kind, args as never, { actorId, where: "auto" });
+      if (r.status === "needs-choice") r = await startFilmJob(kind, args as never, { actorId, where: "mac" });
       if (r.status === "refused") throw new Error(r.message);
       if (!r.jobRunId) throw new Error("The worker didn't return a job id.");
       return { jobId: r.jobRunId };
