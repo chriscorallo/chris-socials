@@ -136,10 +136,11 @@ describe("Motion Designer theme + taste", () => {
     expect(r.added.map((v) => v.template)).toEqual(["BAR_CHART"]);
   });
 
-  it("prompt registry: MOTION_DESIGNER is v1.1.0 with a rollback to 1.0.0", () => {
+  it("prompt registry: MOTION_DESIGNER is v1.2.0 (graphics library) with a rollback to 1.1.0", () => {
     const p = getAgentPrompt("MOTION_DESIGNER");
-    expect(p.frontmatter.version).toBe("1.1.0");
-    expect(p.frontmatter.rollback_version).toBe("1.0.0");
+    expect(p.frontmatter.version).toBe("1.2.0");
+    expect(p.frontmatter.rollback_version).toBe("1.1.0");
+    expect(p.body).toContain("graphics library");
     expect(p.frontmatter.required_context).toContain("MotionTasteProfile");
     expect(p.body).toContain("Motion theme");
   });

@@ -76,7 +76,9 @@ async function main() {
     const id = `Preset-${p.id}`;
     try {
       const composition = await selectComposition({ serveUrl, id, puppeteerInstance: browser, logLevel: "error", chromiumOptions: { gl: rendererGl() } });
-      const frames: Array<[string, number]> = [["settled", Math.max(0, win.durationInFrames - win.exitFrames - 4)]];
+      // Transitions are about the covered moment (their "settled" end is the clean frame again).
+      const isTransition = p.template === "GRAPHIC" && p.props.component === "TRANSITION";
+      const frames: Array<[string, number]> = [["settled", isTransition ? Math.round(win.durationInFrames * 0.42) : Math.max(0, win.durationInFrames - win.exitFrames - 4)]];
       if (mid) frames.push(["mid", Math.round(win.durationInFrames * 0.34)]);
       for (const [tag, frame] of frames) {
         const raw = join(outDir, "frames", `${p.id}__${tag}.raw.png`);

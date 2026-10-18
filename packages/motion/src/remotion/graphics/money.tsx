@@ -1,4 +1,4 @@
-import { seriesTotal, valueColumnsCell } from "@chris/media/timeline";
+import { monthGridCols, seriesTotal, valueColumnsCell } from "@chris/media/timeline";
 import { graphicSequence, listSequence } from "../../graphics-timing";
 import { heroGradient } from "../templates/text";
 import { GIcon } from "./icons";
@@ -22,6 +22,7 @@ import {
   r1,
   rgba,
   seqStyle,
+  sharedPlan,
   springAt,
   tile,
   valueColor,
@@ -83,6 +84,7 @@ export function ValueColumns({ ctx }: { ctx: GCtx }) {
           const lab = seqStyle(ctx, seq, g, 0, { style: "RISE" });
           const cardIn = enterStyle(ctx, seq.at(g, 0), seq.len, { style: "FADE" });
           const total = seriesTotal(s);
+          const colPlan = sharedPlan(ctx, s.values);
           const totalIdx = s.values.length + 1;
           const totalStart = seq.at(g, totalIdx);
           const tv = fmtValue(ctx, counted(ctx, totalStart, total), total);
@@ -95,7 +97,7 @@ export function ValueColumns({ ctx }: { ctx: GCtx }) {
               {s.values.map((v, i) => {
                 const st = seqStyle(ctx, seq, g, 1 + i);
                 const shown = counted(ctx, seq.at(g, 1 + i), v, 0, 1.2, seq.len);
-                const t = fmtValue(ctx, shown, v);
+                const t = fmtValue(ctx, shown, v, colPlan);
                 const cellText = s.texts[i];
                 const color = v === 0 && !cellText ? p.muted : valueColor(ctx, v, p.ink);
                 const w = Math.abs(v) / maxAbs;
@@ -142,7 +144,7 @@ export function ValueColumns({ ctx }: { ctx: GCtx }) {
 export function MonthGrid({ ctx }: { ctx: GCtx }) {
   const { props, p, frame, fps } = ctx;
   const cal = ctx.variant === "CALENDAR";
-  const cols = cal ? 4 : 6;
+  const cols = monthGridCols(ctx.variant, Math.max(1, ...props.series.map((s) => s.values.length)));
   const cellH = cal ? 150 : 118;
   const gap = 12;
   const pad = 40;
@@ -164,6 +166,7 @@ export function MonthGrid({ ctx }: { ctx: GCtx }) {
           const lab = seqStyle(ctx, seq, g, 0, { style: "SLIDE" });
           const total = seriesTotal(s);
           const tv = fmtValue(ctx, counted(ctx, seq.groupDone(g) - seq.len, total), total);
+          const gridPlan = sharedPlan(ctx, s.values);
           return (
             <div key={g}>
               {labels ? (
@@ -178,7 +181,7 @@ export function MonthGrid({ ctx }: { ctx: GCtx }) {
                 const c = i % cols;
                 const r = Math.floor(i / cols);
                 const st = seqStyle(ctx, seq, g, 1 + i, { style: ctx.anim.enter === "RISE" ? "POP" : ctx.anim.enter });
-                const t = fmtValue(ctx, counted(ctx, seq.at(g, 1 + i), v, 0, 1.2, seq.len), v);
+                const t = fmtValue(ctx, counted(ctx, seq.at(g, 1 + i), v, 0, 1.2, seq.len), v, gridPlan);
                 const isH = props.series.length === 1 && hlCell === i;
                 const em = isH ? emphasisAt(ctx, seq.at(g, 1 + i) + seq.len) : null;
                 const color = v === 0 ? p.muted : valueColor(ctx, v, p.ink);

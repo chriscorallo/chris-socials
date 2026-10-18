@@ -255,6 +255,7 @@ function SuggestionCard({ s, onAdd }: { s: GraphicSuggestion; onAdd: () => void 
 
 function PreviewDialog({ p, fav, onClose, onAdd, onFav, motionTheme }: { p: GraphicPreset; fav: boolean; onClose: () => void; onAdd: () => void; onFav: () => void; motionTheme: MotionTheme | null }) {
   const visual = useMemo(() => presetVisual(p, 0, p.seconds), [p]);
+  const [small] = useState(() => typeof window !== "undefined" && window.innerWidth <= 420);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     ref.current?.focus();
@@ -267,7 +268,7 @@ function PreviewDialog({ p, fav, onClose, onAdd, onFav, motionTheme }: { p: Grap
     <div className="gl-dialog-backdrop" onClick={onClose}>
       <div className="gl-dialog" role="dialog" aria-modal="true" aria-label={`Preview: ${p.name}`} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
         <div className="gl-dialog-stage">
-          <PresetPlayer visual={visual} width={180} height={320} motionTheme={motionTheme} />
+          <PresetPlayer visual={visual} width={small ? 144 : 180} height={small ? 256 : 320} motionTheme={motionTheme} />
         </div>
         <div className="gl-dialog-body">
           <p className="gl-dialog-name">{p.name}</p>

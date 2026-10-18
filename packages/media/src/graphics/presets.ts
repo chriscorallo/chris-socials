@@ -727,7 +727,7 @@ graphic("lower-third-minimal", "Lower third — minimal", "A thin rule and two l
   subtitle: "Federal Reserve, 2023",
 });
 classic("classic-kinetic", "Kinetic punch (classic)", "Words punch in, key words hit harder.", "TEXT", ["kinetic", "punch", "classic", "words"], "KINETIC_TEXT", { text: "Your savings rate matters more than your salary", emphasis: ["savings", "rate"], style: "PUNCH" });
-classic("classic-typewriter", "Typewriter (classic)", "Letters type out.", "TEXT", ["typewriter", "type", "classic"], "KINETIC_TEXT", { text: "Here's the part nobody tells you", emphasis: ["nobody"], style: "TYPEWRITER" });
+classic("classic-typewriter", "Typewriter (classic)", "Letters type out.", "TEXT", ["typewriter", "type", "classic"], "KINETIC_TEXT", { text: "The part nobody tells you", emphasis: ["nobody"], style: "TYPEWRITER" });
 classic("classic-title-card", "Title card", "Cinematic full-frame chapter title.", "TEXT", ["title", "chapter", "cinematic", "intro"], "TITLE_CARD", { title: "The 50/30/20 Rule", subtitle: "Chapter two" });
 classic("classic-definition", "Definition", "A term and what it means.", "TEXT", ["definition", "term", "meaning", "explain", "glossary"], "DEFINITION", { term: "Expense ratio", definition: "The yearly fee a fund charges, as a percent of what you have invested in it." });
 
@@ -818,9 +818,9 @@ graphic("hourly-vs-salary-columns", "Hourly vs salary — a month", "Two columns
 }, { seconds: 6 });
 graphic("four-jobs-columns", "Four careers, five years", "Four columns of yearly income.", "COMPARISONS", ["career", "jobs", "income", "years", "comparison"], "VALUE_COLUMNS", {
   title: "Income in the first five years",
-  series: [S("Teacher", [45, 47, 49, 51, 53]), S("Nurse", [68, 71, 74, 77, 80]), S("Engineer", [85, 92, 101, 110, 118]), S("Founder", [0, 12, 40, 95, 160])],
+  series: [S("Teacher", [k(45), k(47), k(49), k(51), k(53)]), S("Nurse", [k(68), k(71), k(74), k(77), k(80)]), S("Engineer", [k(85), k(92), k(101), k(110), k(118)]), S("Founder", [0, k(12), k(40), k(95), k(160)])],
   categories: ["Y1", "Y2", "Y3", "Y4", "Y5"],
-  format: { ...USD, suffix: "k" },
+  format: USD,
   animation: BY_GROUP,
 }, { seconds: 7 });
 graphic("weekly-spend-strip", "Weekly spending strip", "Seven days as cells.", "MONEY", ["weekly", "daily", "spending", "week"], "MONTH_GRID", {

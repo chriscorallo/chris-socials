@@ -8,6 +8,7 @@ import {
   type GraphicColor,
   type GraphicFormat,
   type GraphicProps,
+  type NumberPlan,
 } from "@chris/media/timeline";
 import { Easing } from "remotion";
 import { EASE_OUT, clamp01, feelEase, prog, springAt } from "../motion";
@@ -110,11 +111,39 @@ export function counted(ctx: GCtx, start: number, final: number, from = 0, lenMu
 
 /** Formatted value; the unit/decimals are planned from the FINAL value so a count-up never
  * switches format mid-count. */
-export function fmtValue(ctx: GCtx, shown: number, final: number = shown): { text: string; negative: boolean } {
-  const plan = numberPlan(final, ctx.fmt);
+export function fmtValue(ctx: GCtx, shown: number, final: number = shown, shared?: NumberPlan | null): { text: string; negative: boolean } {
+  let plan = shared ?? numberPlan(final, ctx.fmt);
+  if (shared && shared.decimals > 0) {
+    // Shared unit, own digits: "$4k" next to "$4.5k" (never "$4.0k").
+    const x = Math.abs(final) / shared.divisor;
+    let d = 0;
+    while (d < shared.decimals && Math.abs(Math.round(x * 10 ** d) - x * 10 ** d) > 1e-6) d++;
+    plan = { ...shared, decimals: d };
+  }
   const r = formatGraphicNumber(shown, ctx.fmt, plan);
   // Integer finals count in integers of their unit ("1k 2k 3k 4k"), never "2.7k".
   return { text: r.text, negative: final < 0 ? true : r.negative };
+}
+
+/**
+ * One format for a set of values shown together (a column, a month grid): never "$2,750" next
+ * to "$2.8k". Small values in the set keep everything in full digits; otherwise the largest
+ * value's unit with at most one decimal (an honest rounding).
+ */
+export function sharedPlan(ctx: GCtx, values: number[]): NumberPlan | null {
+  const nz = values.filter((v) => v !== 0 && Number.isFinite(v));
+  if (!nz.length || ctx.fmt.decimals !== null || ctx.fmt.compact !== "AUTO" || ctx.fmt.kind === "PERCENT") return null;
+  const max = Math.max(...nz.map(Math.abs));
+  const base = numberPlan(max, ctx.fmt);
+  const need = (x: number, d: number) => {
+    for (let k = 0; k <= d; k++) if (Math.abs(Math.round(x * 10 ** k) - x * 10 ** k) < 1e-6) return k;
+    return d;
+  };
+  if (base.divisor > 1 && nz.some((v) => Math.abs(v) < base.divisor) && max < 1e5) {
+    return { divisor: 1, unit: "", decimals: Math.max(...nz.map((v) => need(Math.abs(v), 2))) };
+  }
+  if (base.divisor === 1) return { ...base, decimals: Math.max(...nz.map((v) => need(Math.abs(v), 2))) };
+  return { ...base, decimals: Math.max(...nz.map((v) => Math.min(1, need(Math.abs(v) / base.divisor, 2)))) };
 }
 
 export function valueColor(ctx: GCtx, value: number, base: string): string {

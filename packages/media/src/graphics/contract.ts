@@ -490,7 +490,7 @@ export function graphicDesignSize(p: GraphicProps): { width: number; height: num
     case "BIG_NUMBER":
       return v === "FROM_TO" ? { width: 980, height: 300 + head + (p.subtitle ? 0 : 0) } : { width: 860, height: 280 + head };
     case "MONTH_GRID": {
-      const cols = v === "CALENDAR" ? 4 : 6;
+      const cols = monthGridCols(v, maxVals);
       const block = (n: number) => (nS > 1 || p.showTotal ? 62 : 0) + ceil(Math.max(1, n) / cols) * ((v === "CALENDAR" ? 150 : 118) + 12) - 12;
       const body = p.series.reduce((a, s) => a + block(s.values.length) + 22, 0);
       return { width: 980, height: head + body + 58 };
@@ -570,6 +570,12 @@ export function graphicDesignSize(p: GraphicProps): { width: number; height: num
   }
 }
 
+/** MONTH_GRID columns: calendar 4; a strip of 5–8 values (a week) stays on one row, else 6. */
+export function monthGridCols(variant: string, maxValues: number): number {
+  if (variant === "CALENDAR") return 4;
+  return maxValues >= 5 && maxValues <= 8 ? maxValues : 6;
+}
+
 /** VALUE_COLUMNS row height (a full-screen scene has room for taller rows). */
 export function valueColumnsCell(rows: number, full: boolean): number {
   if (full) return rows > 8 ? 74 : rows > 5 ? 88 : 104;
@@ -630,8 +636,11 @@ export interface FormattedNumber {
 export function formatGraphicNumber(value: number, fmt: GraphicFormat, plan: NumberPlan = numberPlan(value, fmt)): FormattedNumber {
   const negative = value < 0 && Math.abs(value) >= 0.5 * 10 ** -plan.decimals * plan.divisor;
   const a = Math.abs(value) / plan.divisor;
+  // Zero is "$0", never "$0k" (a shared unit or a count-up starting from 0).
+  const zero = Math.round(a * 10 ** plan.decimals) === 0;
+  if (zero) plan = { divisor: plan.divisor, unit: "", decimals: 0 };
   const core = a.toLocaleString("en-US", { minimumFractionDigits: plan.decimals, maximumFractionDigits: plan.decimals });
-  const sign = negative ? MINUS : fmt.signs === "ALWAYS" && value > 0 ? "+" : "";
+  const sign = zero ? "" : negative ? MINUS : fmt.signs === "ALWAYS" && value > 0 ? "+" : "";
   const money = fmt.kind === "CURRENCY" ? fmt.currency : "";
   const pct = fmt.kind === "PERCENT" ? "%" : "";
   return { text: `${sign}${fmt.prefix}${money}${core}${plan.unit}${pct}${fmt.suffix}`, negative };

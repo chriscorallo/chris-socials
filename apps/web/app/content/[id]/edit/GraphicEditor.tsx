@@ -250,9 +250,10 @@ function DataTable({ p, set }: { p: GraphicProps; set: (next: GraphicProps, key:
   const sp = u.series!;
   const cols = Math.max(0, ...p.series.map((s) => s.values.length));
   const [fill, setFill] = useState<Record<number, string>>({});
-  const rowWord = sp.label === "ENTITY" ? "person" : sp.label === "ROW" ? "row" : "series";
+  const n = p.series.length;
+  const rowWord = sp.label === "ENTITY" ? (n === 1 ? "person" : "people") : sp.label === "ROW" ? (n === 1 ? "row" : "rows") : "series";
   return (
-    <Section title={`Data · ${p.series.length} ${rowWord}${p.series.length === 1 ? "" : sp.label === "ENTITY" ? "s" : p.series.length === 1 ? "" : "s"} × ${cols}`}>
+    <Section title={`Data · ${n} ${rowWord} × ${cols}`}>
       <div className="gl-table-wrap">
         <table className="gl-table">
           {u.categories && (

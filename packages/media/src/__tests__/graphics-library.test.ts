@@ -12,6 +12,7 @@ import {
   detectNumbers,
   footprintOf,
   formatGraphicValue,
+  formatGraphicNumber,
   graphicDesignSize,
   graphicShownNumbers,
   numberPlan,
@@ -101,6 +102,9 @@ describe("number formatting", () => {
     expect(formatGraphicValue(7.25, { ...DEFAULT_GRAPHIC_FORMAT, kind: "PERCENT" })).toBe("7.25%");
     expect(formatGraphicValue(4000, { ...USD, compact: "NONE" })).toBe("$4,000");
     expect(formatGraphicValue(500, { ...USD, suffix: "/mo" })).toBe("$500/mo");
+    expect(formatGraphicNumber(0, USD, { divisor: 1000, unit: "k", decimals: 0 }).text).toBe("$0");
+    expect(formatGraphicNumber(0, { ...USD, signs: "ALWAYS" }, { divisor: 1000, unit: "k", decimals: 0 }).text).toBe("$0");
+    expect(formatGraphicValue(609985, USD)).toBe("$610k");
   });
   it("plans count-up format from the final value", () => {
     const plan = numberPlan(4000, USD);

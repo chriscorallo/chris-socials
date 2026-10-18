@@ -409,8 +409,10 @@
   font-size: 12px;
   color: var(--color-text-muted);
 }
-.gl-row-label.ed-input {
-  width: 108px;
+.gl-row-label.ed-input,
+.ed-m .gl-row-label.ed-input {
+  width: 124px;
+  font-size: 13px;
   text-align: left;
   font-weight: 600;
 }
