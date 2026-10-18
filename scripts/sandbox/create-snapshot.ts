@@ -116,7 +116,9 @@ async function main() {
     if (run.includes("restore")) await restoreRunner(sandbox);
     if (run.includes("warmup")) await warmup(sandbox);
     // drawtext (storyboard sheets, on-screen text) must work — the static ffmpeg lacks it.
-    await sh(sandbox, "/usr/bin/ffmpeg -hide_banner -filters 2>/dev/null | grep -q ' drawtext ' && echo drawtext-ok");
+    // Check through run-job.sh itself (same shell options jobs run with), not a separate test.
+    const ff = await sh(sandbox, `${SANDBOX_ROOT}/bin/run-job.sh print-ffmpeg`);
+    if (!ff.includes("FFMPEG_BIN=/usr/bin/ffmpeg")) throw new Error(`run-job.sh would not use the system ffmpeg (drawtext): ${ff.trim()}`);
     await smoke(sandbox);
     await sh(sandbox, `echo ${built.version} > ${SANDBOX_ROOT}/SNAPSHOT_VERSION && du -sh /vercel/sandbox/runner /vercel/sandbox/cache`);
     if (keep) {
