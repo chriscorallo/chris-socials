@@ -187,6 +187,12 @@ export function PersonCutout({ w, h, behindWindows, gradeOn, onUnsupported }: { 
     raf = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(raf);
+      // The canvas (and its WebGL context) survives a resize — free this run's GPU objects so a
+      // long session (sheets opening, full screen) doesn't pile up programs and textures.
+      tex.forEach((t) => gl.deleteTexture(t));
+      gl.deleteBuffer(buf);
+      for (const s of gl.getAttachedShaders(prog) ?? []) gl.deleteShader(s);
+      gl.deleteProgram(prog);
       matte.pause();
       matte.removeAttribute("src");
       matte.load();

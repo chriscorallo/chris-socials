@@ -16,7 +16,7 @@ import {
   subjectRegionsForWindow,
 } from "../visual-placement";
 import type { SubjectTrack } from "../subject-track-core";
-import { combinedSafeZone } from "../platform-profiles";
+import { PLACEMENT_SAFE_ZONE } from "../platform-profiles";
 import type { Rect } from "../safe-zones";
 
 const CANVAS = { width: 1080, height: 1920 };
@@ -51,7 +51,7 @@ function headPx(box: { x: number; y: number; w: number; h: number }): Rect {
   return { x: box.x * 1080, y: box.y * 1920, width: box.w * 1080, height: box.h * 1920 };
 }
 
-const safe = placementSafeArea(CANVAS, combinedSafeZone());
+const safe = placementSafeArea(CANVAS, PLACEMENT_SAFE_ZONE);
 
 function insideSafe(r: Rect): boolean {
   return r.x >= safe.x - 1 && r.y >= safe.y - 1 && r.x + r.width <= safe.x + safe.width + 1 && r.y + r.height <= safe.y + safe.height + 1;

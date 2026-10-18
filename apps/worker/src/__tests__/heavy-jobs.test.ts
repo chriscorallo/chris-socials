@@ -7,7 +7,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { prisma, createContentItem, createMediaAsset, acquireHeavyJobLease, getHeavyJob } from "@chris/domain";
 import { MockTranscriptionProvider } from "@chris/agents";
-import { FFMPEG_PATH, LocalFsStorageAdapter, type PersonMatteResult, type SubjectTrackAnalysis } from "@chris/media";
+import { FFMPEG_PATH, LocalFsStorageAdapter, planPreviewAssets, type PersonMatteResult, type SubjectTrackAnalysis, type PreviewAssetsResult } from "@chris/media";
+import { recordPreviewAssets } from "@chris/domain";
 import { executeHeavyJob, runHeavyJobRecorded, createProgressWriter } from "../heavy-jobs";
 import { parseHeavyJobArgs, heavyJobNeedsModel } from "../heavy-job-kinds";
 import { parseCli, loadEnvFile } from "../job-runner";
@@ -64,9 +65,20 @@ describe("heavy jobs", () => {
     return { outPath: out, width: 288, height: 512, fps: 30, frames: 30, coverage: 0.4, ms: 5, model: "fake-modnet" } as PersonMatteResult;
   };
 
+  const makePreview = async (_src: string, outDir: string, src: { width: number; height: number; fps: number | null; durationSeconds: number }): Promise<PreviewAssetsResult> => {
+    const proxyPath = join(outDir, "proxy.mp4");
+    const filmstripPath = join(outDir, "filmstrip.jpg");
+    await writeFile(proxyPath, Buffer.from("proxy"));
+    await writeFile(filmstripPath, Buffer.from("jpg"));
+    return { proxyPath, filmstripPath, plan: planPreviewAssets(src), peaks: { perSecond: 20, values: [0, 10, 200] }, ms: 3 };
+  };
+
   it("validates args across the process boundary", () => {
     expect(parseHeavyJobArgs("render", { contentItemId: "a", thenQualityGate: true, extra: 1 })).toEqual({ contentItemId: "a", thenQualityGate: true });
-    expect(parseHeavyJobArgs("ingest", { contentItemId: "a", transcribe: true })).toEqual({ contentItemId: "a", transcribe: true, track: false, matte: false });
+    expect(parseHeavyJobArgs("ingest", { contentItemId: "a", transcribe: true })).toEqual({ contentItemId: "a", transcribe: true, track: false, matte: false, proxy: true });
+    expect(parseHeavyJobArgs("ingest", { contentItemId: "a", proxy: false })).toMatchObject({ proxy: false });
+    expect(parseHeavyJobArgs("preview-proxy", { contentItemId: "a", mediaAssetIds: ["m"], force: true })).toEqual({ contentItemId: "a", mediaAssetIds: ["m"], force: true });
+    expect(heavyJobNeedsModel("preview-proxy", { contentItemId: "a" })).toBe(false);
     expect(() => parseHeavyJobArgs("render", { contentItemId: "" })).toThrow(/contentItemId/);
     expect(() => parseHeavyJobArgs("subject-track", { contentItemId: "a", mediaAssetIds: [1] })).toThrow(/mediaAssetIds/);
     expect(() => parseHeavyJobArgs("transcribe", null)).toThrow();
@@ -76,7 +88,7 @@ describe("heavy jobs", () => {
     expect(heavyJobNeedsModel("ingest", { contentItemId: "a" })).toBe(false);
   });
 
-  it("ingest: transcribes, tracks and mattes every take still missing them, reporting progress", async () => {
+  it("ingest: transcribes, makes the preview proxy, tracks and mattes every take still missing them, reporting progress", async () => {
     const { item, ids } = await makeItemWithTakes(2);
     const updates: string[] = [];
     const outcome = await executeHeavyJob("ingest", { contentItemId: item.id, transcribe: true, track: true, matte: true }, {
@@ -86,6 +98,7 @@ describe("heavy jobs", () => {
       transcriptionProvider: provider,
       analyze,
       computeMatte,
+      makePreview,
       progress: (p) => updates.push(`${p.stage}:${Math.round(p.pct)}`),
     });
     expect(outcome.ok).toBe(true);
@@ -94,14 +107,53 @@ describe("heavy jobs", () => {
       expect(r.transcript).toBe("Hi there.");
       expect(r.subjectTrack).not.toBeNull();
       expect(r.matteStorageKey).toBe(`mattes/${item.id}/${r.id}.mp4`);
+      expect(r.proxyStorageKey).toBe(`proxies/${item.id}/${r.id}.mp4`);
+      expect(r.filmstripStorageKey).toBe(`proxies/${item.id}/${r.id}-filmstrip.jpg`);
     }
+    // order: captions first (the upload screen waits on them), then the fast preview, then the rest
+    const stages = updates.map((u) => u.split(":")[0]);
+    expect(stages.indexOf("proxy")).toBeGreaterThan(stages.lastIndexOf("transcribe"));
+    expect(stages.lastIndexOf("proxy")).toBeLessThan(stages.indexOf("track"));
     expect(updates.filter((u) => u.startsWith("matte")).length).toBe(2);
     const pcts = updates.map((u) => Number(u.split(":")[1]));
     expect([...pcts].sort((a, b) => a - b)).toEqual(pcts); // monotonic
 
     // A second run finds nothing to do.
-    const again = await executeHeavyJob("ingest", { contentItemId: item.id, transcribe: true, track: true, matte: true }, { db: prisma, storage, actor: { actorId: "chris" }, transcriptionProvider: provider, analyze, computeMatte });
-    expect(again.result).toEqual({ transcribe: [], track: [], matte: [], styleCut: [] });
+    const again = await executeHeavyJob("ingest", { contentItemId: item.id, transcribe: true, track: true, matte: true }, { db: prisma, storage, actor: { actorId: "chris" }, transcriptionProvider: provider, analyze, computeMatte, makePreview });
+    expect(again.result).toEqual({ transcribe: [], track: [], matte: [], proxy: [], styleCut: [] });
+  });
+
+  it("preview-proxy: stores proxy + sprite under proxies/<item>/, audit-logged; skips done takes; a failure is per take", async () => {
+    const { item, ids } = await makeItemWithTakes(2);
+    const out = await executeHeavyJob("preview-proxy", { contentItemId: item.id }, { db: prisma, storage, actor: { actorId: "chris" }, makePreview });
+    expect(out.ok).toBe(true);
+    expect(out.message).toBe("Prepared fast previews for 2 takes.");
+    const rows = await prisma.mediaAsset.findMany({ where: { id: { in: ids } } });
+    for (const r of rows) {
+      expect((await storage.get(r.proxyStorageKey!)).toString()).toBe("proxy");
+      expect((r.previewMeta as { proxy: { gopFrames: number } }).proxy.gopFrames).toBe(15);
+    }
+    const audits = await prisma.auditLog.findMany({ where: { entityId: item.id, action: "MEDIA_ASSET_PREVIEW_PROXIED" } });
+    expect(audits).toHaveLength(2);
+    // done takes are skipped; force redoes them
+    const again = await executeHeavyJob("preview-proxy", { contentItemId: item.id }, { db: prisma, storage, actor: { actorId: "chris" }, makePreview });
+    expect((again.result as { proxy: Array<{ status: string }> }).proxy.map((r) => r.status)).toEqual(["SKIPPED", "SKIPPED"]);
+    // a maker failure fails that take only, and the original stays playable (no keys written)
+    const { item: item2, ids: ids2 } = await makeItemWithTakes(1);
+    const broken = await executeHeavyJob("preview-proxy", { contentItemId: item2.id }, {
+      db: prisma,
+      storage,
+      actor: { actorId: "chris" },
+      makePreview: async () => {
+        throw new Error("ffmpeg exited 1: moov atom not found");
+      },
+    });
+    expect(broken.ok).toBe(false);
+    expect((await prisma.mediaAsset.findUniqueOrThrow({ where: { id: ids2[0] } })).proxyStorageKey).toBeNull();
+    // keys must live under the item's proxies/ prefix
+    await expect(
+      recordPreviewAssets(prisma, ids2[0]!, { proxyStorageKey: `raw/${item2.id}/x.mp4`, filmstripStorageKey: `proxies/${item2.id}/x.jpg`, meta: { proxy: planPreviewAssets({ width: 1080, height: 1920, fps: 30, durationSeconds: 1 }).proxy, filmstrip: planPreviewAssets({ width: 1080, height: 1920, fps: 30, durationSeconds: 1 }).filmstrip, peaks: null } }, { actorId: "chris" }),
+    ).rejects.toThrow(/proxies\//);
   });
 
   it("records the outcome on the JobRun: SUCCEEDED with a small result, or FAILED with the reason", async () => {

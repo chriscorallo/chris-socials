@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { clipDuration, clipStartTimes, timelineDuration, type TimelineClip, type TimelineText, type TimelineVisual, type TimelineZoom } from "@chris/media/timeline";
+import { clipDuration, clipStartTimes, timelineDuration, type TimelineClip, type TimelineText, type TimelineVisual, type TimelineZoom, filmstripTileAt } from "@chris/media/timeline";
 import {
   moveClip,
   trimClip,
@@ -669,6 +669,23 @@ const ClipView = memo(function ClipView({
 
 export function Frames({ asset, clip, width, pps, height = VIDEO_H }: { asset: EditorAsset | undefined; clip: TimelineClip; width: number; pps: number; height?: number }) {
   const strip = useFilmstrip(asset);
+  const sprite = asset?.filmstrip;
+  if (sprite) {
+    // Server-made sprite (preview proxy job): one image for the whole take, no decoding here.
+    const s = (height - 10) / sprite.tileH;
+    const frameW = Math.max(12, sprite.tileW * s);
+    const n = Math.min(80, Math.ceil(width / frameW));
+    const size = `${sprite.cols * sprite.tileW * s}px ${sprite.rows * sprite.tileH * s}px`;
+    return (
+      <div className="ed-clip-frames">
+        {Array.from({ length: n }, (_, i) => {
+          const t = Math.min(clip.sourceEnd, clip.sourceStart + ((i + 0.5) * frameW) / pps);
+          const tile = filmstripTileAt(sprite, t);
+          return <div key={i} style={{ width: frameW, backgroundImage: `url(${sprite.url})`, backgroundSize: size, backgroundPosition: `${-tile.x * s}px ${-tile.y * s}px` }} />;
+        })}
+      </div>
+    );
+  }
   if (!strip) return null;
   const frameW = Math.max(24, (height - 10) * strip.aspect);
   const n = Math.min(80, Math.ceil(width / frameW));

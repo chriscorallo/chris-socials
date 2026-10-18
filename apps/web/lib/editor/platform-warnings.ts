@@ -6,8 +6,21 @@ import {
   findTimelineCollisions,
   cropGeometry,
   combinedSafeZone,
+  subjectBoxAt,
+  uiRegionsHit,
+  outsideVisibleWidth,
+  rectToUi,
+  scaleUiRect,
+  uiOverlapArea,
+  visualRect,
+  TEMPLATE_FOOTPRINTS,
+  PLATFORM_UI,
   type MeasureText,
   type TranscriptWord,
+  type SubjectTrack,
+  type TimelineVisual,
+  type UiRegionId,
+  type UiRect,
 } from "@chris/media/timeline";
 import { PLATFORM_PROFILES, PLATFORM_SHORT_LABEL, type PlatformId, type PlatformProfile } from "./platform-profiles";
 import type { EditorDoc, Selection } from "./types";
@@ -27,7 +40,11 @@ export interface Box {
   y1: number;
 }
 
-/** The safe area (canvas px) for a set of platforms — several = the union of every unsafe margin. */
+/**
+ * The conservative margin rectangle (canvas px) for a set of platforms — several = the union of
+ * every unsafe margin. Kept for callers that want one rectangle; the warnings below use the
+ * per-platform UI regions (platform-ui.ts), which are much more precise.
+ */
 export function safeRect(platforms: PlatformId[], W = 1080, H = 1920): Box {
   const kx = W / 1080;
   const ky = H / 1920;
@@ -35,21 +52,31 @@ export function safeRect(platforms: PlatformId[], W = 1080, H = 1920): Box {
   return { x0: m.left * kx, y0: m.top * ky, x1: W - m.right * kx, y1: H - m.bottom * ky };
 }
 
-function outside(r: { x: number; y: number; width: number; height: number }, safe: Box): string[] {
-  const sides: string[] = [];
-  if (r.y < safe.y0 - 0.5) sides.push("top");
-  if (r.y + r.height > safe.y1 + 0.5) sides.push("bottom");
-  if (r.x < safe.x0 - 0.5) sides.push("left");
-  if (r.x + r.width > safe.x1 + 0.5) sides.push("right");
-  return sides;
+const REGION_HINT: Record<UiRegionId, string> = {
+  topBar: "the top bar",
+  rightRail: "the like/comment buttons",
+  bottomText: "the caption & username",
+  progressBar: "the progress bar",
+};
+const EDGE_HINT = "the edge (cut off on tall phones)";
+
+/** Ignore slivers: a few px of a plate grazing a region isn't worth a warning. */
+const MIN_HIT = 0.04;
+
+/** What a rect (canvas px) sits under on one platform, as hint phrases (empty = clear). */
+export function uiHitsFor(rect: UiRect, platform: PlatformId, canvas: { width: number; height: number }): string[] {
+  const out = uiRegionsHit(rect, platform, canvas, { minFraction: MIN_HIT }).map((h) => REGION_HINT[h.region]);
+  if (outsideVisibleWidth(rect, canvas)) out.push(EDGE_HINT);
+  return out;
 }
 
-const SIDE_HINT: Record<string, string> = {
-  top: "the top bar",
-  bottom: "the caption & username area",
-  left: "the left edge",
-  right: "the like/comment buttons",
-};
+/** Joins hint phrases: "a", "a and b", "a, b and c". */
+function joinHints(h: string[]): string {
+  return h.length <= 1 ? (h[0] ?? "") : `${h.slice(0, -1).join(", ")} and ${h[h.length - 1]}`;
+}
+
+/** Share of the face (protected head box) a platform's buttons/caption block would cover. */
+const FACE_COVER_WARN = 0.15;
 
 function snippet(s: string) {
   const t = s.replace(/\s+/g, " ").trim();
@@ -62,28 +89,35 @@ function snippet(s: string) {
  * footprints inside the app's safe zone, duration inside the platform's limits, canvas aspect,
  * and source sharpness (a reframe so tight that < 720 source px span the 1080 canvas).
  */
+export interface WarningExtras {
+  /** Graphics with their placements resolved (AUTO ones solved) — checked against the UI. */
+  visuals?: TimelineVisual[];
+  /** Face tracks per take (EditorAsset.subjectTrack) — a face under the buttons is flagged. */
+  tracks?: Record<string, SubjectTrack | null | undefined>;
+}
+
 export function warningsForPlatform(
   doc: EditorDoc,
   profile: PlatformProfile,
   wordsByAsset: Record<string, TranscriptWord[] | null | undefined>,
   measure: MeasureText,
   sourceSizes: Record<string, { width: number | null; height: number | null }> = {},
+  extras: WarningExtras = {},
 ): PlatformWarning[] {
   const canvas = doc.canvas;
   const W = canvas.width;
   const H = canvas.height;
-  const safe = safeRect([profile.id], W, H);
   const out: PlatformWarning[] = [];
   const p = [profile.id];
   const label = PLATFORM_SHORT_LABEL[profile.id];
 
   for (const t of doc.texts) {
-    const sides = outside(layoutTimelineText(t, canvas, measure).rect, safe);
-    if (sides.length) {
+    const hits = uiHitsFor(rectToUi(layoutTimelineText(t, canvas, measure).rect), profile.id, canvas);
+    if (hits.length) {
       out.push({
         id: `text:${t.id}`,
         platforms: p,
-        message: `“${snippet(t.text)}” sits under ${sides.map((s) => SIDE_HINT[s]).join(" and ")}`,
+        message: `“${snippet(t.text)}” sits under ${joinHints(hits)}`,
         target: { kind: "text", id: t.id },
       });
     }
@@ -91,16 +125,28 @@ export function warningsForPlatform(
 
   if (doc.captions.enabled) {
     const chunks = timelineCaptionChunks(doc, wordsByAsset);
-    const sides = new Set<string>();
-    for (const ch of chunks) for (const s of outside(layoutCaptionChunk(ch, doc.captions, canvas, measure).rect, safe)) sides.add(s);
-    if (sides.size) {
+    const hits = new Set<string>();
+    for (const ch of chunks) for (const h of uiHitsFor(rectToUi(layoutCaptionChunk(ch, doc.captions, canvas, measure).rect), profile.id, canvas)) hits.add(h);
+    if (hits.size) {
       out.push({
         id: "captions",
         platforms: p,
-        message: `Captions sit under ${[...sides].map((s) => SIDE_HINT[s]).join(" and ")}`,
+        message: `Captions sit under ${joinHints([...hits])}`,
         target: { kind: "captions" },
       });
     }
+  }
+
+  for (const v of extras.visuals ?? []) {
+    if (TEMPLATE_FOOTPRINTS[v.template].kind === "FULL_FRAME") continue;
+    const hits = uiHitsFor(rectToUi(visualRect(v, canvas)), profile.id, canvas);
+    if (hits.length) out.push({ id: `visual-ui:${v.id}`, platforms: p, message: `A graphic at ${v.start.toFixed(1)}s sits under ${joinHints(hits)}`, target: { kind: "visual", id: v.id } });
+  }
+
+  // Chris's face under the buttons / caption block (punch-ins move it): sampled per clip.
+  if (extras.tracks) {
+    const flagged = faceUnderUi(doc, profile.id, extras.tracks, sourceSizes);
+    if (flagged) out.push({ id: `face:${profile.id}`, platforms: p, message: `Your face is partly under ${REGION_HINT[flagged.region]} in a clip`, target: { kind: "clip", id: flagged.clipId } });
   }
 
   const D = timelineDuration(doc);
@@ -131,6 +177,41 @@ export function warningsForPlatform(
   return out;
 }
 
+/**
+ * First clip whose framing puts the face (the tracked protected-head box, at 10/50/90 % of the
+ * clip) at least FACE_COVER_WARN under the platform's rail, caption block or top bar.
+ */
+export function faceUnderUi(
+  doc: EditorDoc,
+  platform: PlatformId,
+  tracks: Record<string, SubjectTrack | null | undefined>,
+  sourceSizes: Record<string, { width: number | null; height: number | null }>,
+): { clipId: string; region: UiRegionId } | null {
+  const canvas = doc.canvas;
+  const ui = PLATFORM_UI[platform];
+  const zones: UiRegionId[] = ["rightRail", "bottomText", "topBar"];
+  for (const c of doc.clips) {
+    const track = tracks[c.mediaAssetId];
+    const size = sourceSizes[c.mediaAssetId];
+    if (!track || !size?.width || !size?.height) continue;
+    const g = cropGeometry({ width: size.width, height: size.height }, canvas, c.crop);
+    for (const f of [0.1, 0.5, 0.9]) {
+      const box = subjectBoxAt(track, c.sourceStart + (c.sourceEnd - c.sourceStart) * f);
+      if (!box) continue;
+      const face: UiRect = {
+        x0: box.x * size.width * g.scale - g.offsetX,
+        y0: box.y * size.height * g.scale - g.offsetY,
+        x1: (box.x + box.w) * size.width * g.scale - g.offsetX,
+        y1: (box.y + box.h) * size.height * g.scale - g.offsetY,
+      };
+      const area = Math.max(1, (face.x1 - face.x0) * (face.y1 - face.y0));
+      const region = zones.find((z) => uiOverlapArea(face, scaleUiRect(ui.regions[z], canvas)) / area >= FACE_COVER_WARN);
+      if (region) return { clipId: c.id, region };
+    }
+  }
+  return null;
+}
+
 /** Warnings for several platforms, merged by id, plus platform-independent overlap checks. */
 export function platformWarnings(
   doc: EditorDoc,
@@ -138,10 +219,11 @@ export function platformWarnings(
   wordsByAsset: Record<string, TranscriptWord[] | null | undefined>,
   measure: MeasureText,
   sourceSizes: Record<string, { width: number | null; height: number | null }> = {},
+  extras: WarningExtras = {},
 ): PlatformWarning[] {
   const merged = new Map<string, PlatformWarning>();
   for (const id of platforms) {
-    for (const w of warningsForPlatform(doc, PLATFORM_PROFILES[id], wordsByAsset, measure, sourceSizes)) {
+    for (const w of warningsForPlatform(doc, PLATFORM_PROFILES[id], wordsByAsset, measure, sourceSizes, extras)) {
       const existing = merged.get(w.id);
       if (existing) existing.platforms.push(...w.platforms);
       else merged.set(w.id, { ...w, platforms: [...w.platforms] });

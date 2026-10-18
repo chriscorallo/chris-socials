@@ -1,12 +1,13 @@
 import type { Viewport } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getLatestEditPlan, parseTranscriptWords, parseSubjectTrackRecord, FINISHING_EDIT_STATES, canStartEdit, friendlyStateLabel, readStoredStyleCut } from "@chris/domain";
+import { prisma, getLatestEditPlan, FINISHING_EDIT_STATES, canStartEdit, friendlyStateLabel, readStoredStyleCut } from "@chris/domain";
 import { startEditing } from "../flow-actions";
 import { requireSession } from "../../../../lib/session";
 import { toDatetimeLocal } from "../../../../lib/calendar-week";
 import { storageMode } from "../../../../lib/storage";
-import { TAKE_COLORS, type EditorAsset, type EditorMusicAsset } from "../../../../lib/editor/types";
+import { type EditorMusicAsset } from "../../../../lib/editor/types";
+import { editorAssetsFrom } from "../../../../lib/editor/editor-assets";
 import { initialEditorDoc } from "./lib/initial-timeline";
 import { Editor } from "./Editor";
 
@@ -88,21 +89,8 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
       partNo.set(a.id, k + 1);
     });
   }
-  const assets: EditorAsset[] = rawAssets.map((a, i) => ({
-    id: a.id,
-    name: partNo.has(a.id) ? `Part ${partNo.get(a.id)}` : a.originalFilename.replace(/\.[^.]+$/, ""),
-    url: `/api/media/${a.storageKey}`,
-    duration: a.durationSeconds ?? 0,
-    width: a.width,
-    height: a.height,
-    words: parseTranscriptWords(a.transcriptWords),
-    transcript: a.transcript,
-    color: TAKE_COLORS[i % TAKE_COLORS.length]!,
-    // Where Chris is in the frame (motion-graphics placement) — null until the take is tracked.
-    subjectTrack: parseSubjectTrackRecord(a.subjectTrack),
-    // Person matte (graphics behind Chris) — null until computed.
-    matteUrl: a.matteStorageKey ? `/api/media/${a.matteStorageKey}` : null,
-  }));
+  // Plays the 720p preview proxy when one exists (renders always use the original).
+  const assets = editorAssetsFrom(rawAssets).map((asset) => (partNo.has(asset.id) ? { ...asset, name: `Part ${partNo.get(asset.id)}` } : asset));
   const music: EditorMusicAsset[] = musicRows.map((m) => ({
     id: m.id,
     name: m.originalFilename.replace(/\.[^.]+$/, ""),

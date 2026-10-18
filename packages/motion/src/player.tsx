@@ -20,7 +20,7 @@
  *   them at /api/fonts/<file> for text preview).
  * - It is pointer-transparent; place it absolutely over the video.
  */
-import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import type { EditTimeline, VisualInteraction } from "@chris/media/timeline";
 import { VisualsLayer, type VisualsLayerProps } from "./remotion/VisualsLayer";
@@ -31,6 +31,11 @@ export interface VisualsPreviewProps {
   interactions?: Record<string, VisualInteraction> | null;
   /** Draw only the behind-subject or front visuals (the editor layers a person cutout between). */
   depthFilter?: "ALL" | "FRONT" | "BEHIND_SUBJECT";
+  /**
+   * 3D resolution while PLAYING, as a fraction of what the preview size needs (paused = full).
+   * Default 0.6: the 3D layer is the most expensive thing in the editor on a phone.
+   */
+  playingQuality?: number;
   /** Seconds on the OUTPUT timeline. */
   currentTime: number;
   playing: boolean;
@@ -49,13 +54,27 @@ export function previewDurationFrames(timeline: Pick<EditTimeline, "visuals" | "
   return Math.max(1, Math.ceil(Math.max(clipsEnd, visEnd) * fps));
 }
 
-export function VisualsPreview({ timeline, currentTime, playing, width, height, fps = 30, fontBaseUrl = "/api/fonts", style, interactions = null, depthFilter = "ALL" }: VisualsPreviewProps) {
+export function VisualsPreview({ timeline, currentTime, playing, width, height, fps = 30, fontBaseUrl = "/api/fonts", style, interactions = null, depthFilter = "ALL", playingQuality = 0.6 }: VisualsPreviewProps) {
   const ref = useRef<PlayerRef>(null);
   const canvas = timeline.canvas ?? { width: 1080, height: 1920 };
   const durationInFrames = previewDurationFrames(timeline, fps);
+  // What the 3D canvases need to look sharp at this preview size; less while playing.
+  const screenDpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const maxDpr = Math.round((width / canvas.width) * screenDpr * (playing ? playingQuality : 1) * 100) / 100;
+  // After the editor has settled (idle, or 2 s at most), mount the 3D scenes up front.
+  const [premount3d, setPremount3d] = useState(false);
+  useEffect(() => {
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(() => setPremount3d(true), { timeout: 2000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(() => setPremount3d(true), 1200);
+    return () => window.clearTimeout(id);
+  }, []);
   const inputProps = useMemo<VisualsLayerProps>(
-    () => ({ visuals: timeline.visuals, canvas, fontBaseUrl, clipMode: false, interactions, motionTheme: timeline.motionTheme ?? null, depthFilter }),
-    [timeline.visuals, canvas, fontBaseUrl, interactions, timeline.motionTheme, depthFilter],
+    () => ({ visuals: timeline.visuals, canvas, fontBaseUrl, clipMode: false, interactions, motionTheme: timeline.motionTheme ?? null, depthFilter, previewQuality: { maxDpr, premount3d } }),
+    [timeline.visuals, canvas, fontBaseUrl, interactions, timeline.motionTheme, depthFilter, maxDpr, premount3d],
   );
   const target = Math.max(0, Math.min(durationInFrames - 1, Math.round(currentTime * fps)));
 

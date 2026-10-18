@@ -13,6 +13,7 @@ export const HEAVY_JOB_KINDS = [
   "transcribe",
   "subject-track",
   "person-matte",
+  "preview-proxy",
   "ingest",
   "motion-design",
   "reference-analyze",
@@ -32,8 +33,11 @@ export interface HeavyJobArgsByKind {
   transcribe: { contentItemId: string; mediaAssetId?: string; force?: boolean };
   "subject-track": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
   "person-matte": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
-  /** After an upload: transcribe → track → matte for every take of the item still missing them. */
-  ingest: { contentItemId: string; transcribe: boolean; track: boolean; matte: boolean };
+  /** Editor preview assets (720p proxy + filmstrip + peaks) for takes still missing them. */
+  "preview-proxy": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
+  /** After an upload: transcribe → preview proxy → track → matte for every take of the item still
+   * missing them. `proxy` defaults to true (older callers don't pass it). */
+  ingest: { contentItemId: string; transcribe: boolean; track: boolean; matte: boolean; proxy?: boolean };
   /** "Design visuals with AI" (HUMAN trigger; subject tracking runs first). */
   "motion-design": { contentItemId: string; replaceExisting?: boolean };
   /** Measure reference videos' edit style (no model calls): every one waiting, or just `referenceContentIds`.
@@ -89,6 +93,7 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   transcribe: "Transcribing your takes",
   "subject-track": "Finding you in the frame",
   "person-matte": "Cutting you out for graphics behind you",
+  "preview-proxy": "Preparing a fast preview of your footage",
   ingest: "Analyzing your footage",
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
@@ -156,6 +161,7 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
       break;
     case "subject-track":
     case "person-matte":
+    case "preview-proxy":
       out = { contentItemId, mediaAssetIds: optIds(a.mediaAssetIds, "mediaAssetIds"), force: optBool(a.force, "force") ?? false };
       break;
     case "ingest":
@@ -164,6 +170,7 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
         transcribe: optBool(a.transcribe, "transcribe") ?? false,
         track: optBool(a.track, "track") ?? false,
         matte: optBool(a.matte, "matte") ?? false,
+        proxy: optBool(a.proxy, "proxy") ?? true,
       };
       break;
     case "motion-design":

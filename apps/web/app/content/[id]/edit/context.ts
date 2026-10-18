@@ -25,6 +25,10 @@ export interface EditorUi {
   sheet: SheetId | null;
   /** The text element being typed into (inline editor on desktop, keyboard bar on touch). */
   editingTextId: string | null;
+  /** Draw the selected app's UI mock over the preview (platform tabs). */
+  platformMock: boolean;
+  /** The full-screen view is open (Fullscreen.tsx). */
+  fullscreen: boolean;
 }
 
 /** The "Style cut" state of the version being edited (StyleCutPanel). */

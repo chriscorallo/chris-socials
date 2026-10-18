@@ -7,6 +7,7 @@ import { autoRepairContentItem } from "./auto-repair-job";
 import { transcribeMediaAsset, transcribeContentItemTakes, type TranscribeJobResult } from "./transcribe-job";
 import { ensureSubjectTracks, type SubjectAnalyzer, type SubjectTrackJobResult } from "./subject-track-job";
 import { ensurePersonMattes, type MatteComputer, type PersonMatteJobResult } from "./person-matte-job";
+import { ensurePreviewProxies, type PreviewMaker, type PreviewProxyJobResult } from "./preview-proxy-job";
 import { designMotionForContentItem } from "./motion-design-job";
 import { analyzePendingReferenceVideos } from "./reference-analysis-job";
 import { maybeAutoStyleCut, type StyleCutOutcome } from "./style-cut-job";
@@ -40,6 +41,7 @@ export interface HeavyJobContext {
   transcriptionProvider?: TranscriptionProvider & { model?: string };
   analyze?: SubjectAnalyzer;
   computeMatte?: MatteComputer;
+  makePreview?: PreviewMaker;
   encode?: { preset?: string; crf?: number };
   fontPath?: string;
   /** The JobRun this execution is recorded on (set by runHeavyJobRecorded). */
@@ -187,6 +189,14 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       const target = a.mediaAssetIds ? { mediaAssetIds: a.mediaAssetIds } : { contentItemId: a.contentItemId };
       const results = await ensurePersonMattes(db, storage, target, actor, { compute: ctx.computeMatte, force: a.force });
       return outcomeOf("matte", results, "Person cut-out failed", (n) => `Cut out ${plural(n, "take")}.`);
+    }
+
+    case "preview-proxy": {
+      const a = args as HeavyJobArgsByKind["preview-proxy"];
+      progress(5, "Preparing a fast preview of your footage…", "proxy");
+      const target = a.mediaAssetIds ? { mediaAssetIds: a.mediaAssetIds } : { contentItemId: a.contentItemId };
+      const results = await ensurePreviewProxies(db, storage, target, actor, { make: ctx.makePreview, force: a.force });
+      return outcomeOf("proxy", results, "Preview proxy failed", (n) => `Prepared fast previews for ${plural(n, "take")}.`);
     }
 
     case "ingest":
@@ -386,6 +396,8 @@ async function runIngest(
   const transcribe: Array<ReturnType<typeof slimTranscribe>> = [];
   const track: SubjectTrackJobResult[] = [];
   const matte: PersonMatteJobResult[] = [];
+  const proxy: PreviewProxyJobResult[] = [];
+  const wantProxy = a.proxy !== false;
   const styleCut: StyleCutOutcome[] = [];
   const attempted = new Set<string>();
   for (let pass = 0; pass < 5; pass++) {
@@ -394,7 +406,8 @@ async function runIngest(
       const needs =
         (a.transcribe && t.hasAudio !== false && t.transcriptWords == null && t.transcriptSource !== "MANUAL") ||
         (a.track && t.width != null && t.subjectTrack == null) ||
-        (a.matte && t.width != null && !t.matteStorageKey);
+        (a.matte && t.width != null && !t.matteStorageKey) ||
+        (wantProxy && t.width != null && !t.proxyStorageKey);
       return needs && !attempted.has(t.id);
     });
     if (todo.length === 0) break;
@@ -406,6 +419,13 @@ async function runIngest(
     for (const [i, t] of needT.entries()) {
       progress(5 + (30 * i) / needT.length, `Transcribing what you said${label(i, needT.length)}…`, "transcribe");
       transcribe.push(slimTranscribe(await transcribeMediaAsset(db, storage, t.id, { provider: ctx.transcriptionProvider }, actor)));
+    }
+    // The editor's fast preview next (a 720p proxy with frequent keyframes — the editor opens
+    // right after captions and plays this instead of the camera original).
+    const needP = todo.filter((t) => wantProxy && t.width != null && !t.proxyStorageKey);
+    for (const [i, t] of needP.entries()) {
+      progress(30 + (5 * i) / needP.length, `Preparing a fast preview${label(i, needP.length)}…`, "proxy");
+      proxy.push(...(await ensurePreviewProxies(db, storage, { mediaAssetIds: [t.id] }, actor, { make: ctx.makePreview })));
     }
     const needK = todo.filter((t) => a.track && t.width != null && t.subjectTrack == null);
     for (const [i, t] of needK.entries()) {
@@ -428,10 +448,11 @@ async function runIngest(
     ...transcribe.filter((r) => r.status === "FAILED").map((r) => `transcription: ${r.errorMessage}`),
     ...track.filter((r) => r.status === "FAILED").map((r) => `face tracking: ${r.errorMessage}`),
     ...matte.filter((r) => r.status === "FAILED").map((r) => `cut-out: ${r.errorMessage}`),
+    ...proxy.filter((r) => r.status === "FAILED").map((r) => `fast preview: ${r.errorMessage}`),
   ];
   return {
     ok: failures.length === 0,
-    result: { transcribe, track, matte, styleCut },
+    result: { transcribe, track, matte, proxy, styleCut },
     error: failures.length ? `Some footage analysis failed — ${failures.join("; ")}` : undefined,
     message: failures.length ? "Footage analyzed, with some problems." : "Footage analyzed.",
   };

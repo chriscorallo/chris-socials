@@ -30,12 +30,12 @@ import { usePlaybackEngine } from "./playback";
 import { usePreviewAudio } from "./preview-audio";
 import { useFootageInteractions } from "./interaction";
 import { FONT_FACE_CSS, browserMeasureText, useFontsVersion } from "./measure";
-import { saveFinishingEditAction } from "./actions";
+import { saveFinishingEditAction, ensurePreviewProxiesAction, previewAssetsAction } from "./actions";
 import { MediaBin } from "./MediaBin";
 import { Preview } from "./Preview";
 import { TimelinePanel } from "./TimelinePanel";
 import { Inspector } from "./Inspector";
-import { FinishModal } from "./FinishModal";
+import { FinishModal } from "./lazy-panels";
 import { MobileShell } from "./MobileShell";
 import { useEditorLayout } from "./layout-hooks";
 import { Icon } from "./icons";
@@ -72,14 +72,15 @@ function isTypingTarget(t: EventTarget | null): boolean {
   return false;
 }
 
-export function Editor({ item, planId, initialDoc, assets, music: initialMusic, storageMode, schedule, styleCut: initialStyleCut }: EditorProps) {
+export function Editor({ item, planId, initialDoc, assets: initialAssets, music: initialMusic, storageMode, schedule, styleCut: initialStyleCut }: EditorProps) {
+  const [assets, setAssets] = useState(initialAssets);
   const [styleCut, setStyleCut] = useState<EditorStyleCut>(initialStyleCut);
   const assetMap = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const durations = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.duration])), [assets]);
   const [state, dispatch] = useReducer(editorReducer, undefined, () => initEditorState(initialDoc, durations));
   const doc = state.doc;
   const engine = usePlaybackEngine(doc, assetMap);
-  const [ui, setUiState] = useState<EditorUi>({ reframe: false, platformView: "ALL", tab: "look", pxPerSec: 60, sheet: null, editingTextId: null });
+  const [ui, setUiState] = useState<EditorUi>({ reframe: false, platformView: "ALL", tab: "look", pxPerSec: 60, sheet: null, editingTextId: null, platformMock: true, fullscreen: false });
   const layout = useEditorLayout();
   const touch = !layout.desktop;
   const setUi = useCallback((patch: Partial<EditorUi>) => setUiState((u) => ({ ...u, ...patch })), []);
@@ -99,6 +100,7 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
   const chunks = useMemo(() => timelineCaptionChunks(doc, wordsByAsset), [doc, wordsByAsset]);
   const fontsVersion = useFontsVersion([doc.captions.fontId, ...doc.texts.map((t) => t.fontId)]);
   const sourceSizes = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, { width: a.width, height: a.height }])), [assets]);
+  const faceTracks = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.subjectTrack])), [assets]);
   const [music, setMusic] = useState(initialMusic);
   const audio = usePreviewAudio(engine, doc, wordsByAsset, music, storageMode === "local");
 
@@ -125,14 +127,51 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
   // Motion v2: anchor/camera tracks, emphasis hits and scene looks — same pure engine as the render.
   const { interactions, interactionCtx } = useFootageInteractions(item.id, doc, placement.visuals, assets);
 
+  // Fast preview: takes without a proxy get one in the background; once it exists the editor
+  // switches to it (the engine swaps the source only while paused). Polls gently, stops after
+  // ~6 minutes or when every take has one. Never blocks editing.
+  const needsProxy = assets.some((a) => !a.proxied && a.width != null);
+  useEffect(() => {
+    if (!needsProxy) return;
+    let cancelled = false;
+    let timer = 0;
+    let tries = 0;
+    void ensurePreviewProxiesAction(item.id).catch(() => undefined);
+    const poll = async () => {
+      if (cancelled || ++tries > 36) return;
+      try {
+        const fresh = await previewAssetsAction(item.id);
+        if (cancelled) return;
+        const byId = new Map(fresh.map((a) => [a.id, a]));
+        if (fresh.some((a) => a.proxied)) {
+          setAssets((cur) =>
+            cur.map((a) => {
+              const f = byId.get(a.id);
+              return f && f.proxied && !a.proxied ? { ...a, url: f.url, proxied: true, filmstrip: f.filmstrip, peaks: f.peaks } : a;
+            }),
+          );
+        }
+        if (fresh.every((a) => a.proxied || a.width == null)) return;
+      } catch {
+        /* offline / session expired — try again later */
+      }
+      timer = window.setTimeout(poll, 10_000);
+    };
+    timer = window.setTimeout(poll, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [needsProxy, item.id]);
+
   const warnings = useMemo(
     // Only after fonts load on the client (fontsVersion > 0): layouts need real glyph widths,
     // and the server render must match the first client render (no warnings yet).
     () =>
       fontsVersion > 0
-        ? [...platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, browserMeasureText, sourceSizes), ...visualWarnings(doc, placement.warnings)]
+        ? [...platformWarnings(doc, ui.platformView === "ALL" ? PLATFORM_IDS : [ui.platformView], wordsByAsset, browserMeasureText, sourceSizes, { visuals: placement.visuals, tracks: faceTracks }), ...visualWarnings(doc, placement.warnings)]
         : [],
-    [doc, ui.platformView, wordsByAsset, sourceSizes, fontsVersion, placement],
+    [doc, ui.platformView, wordsByAsset, sourceSizes, faceTracks, fontsVersion, placement],
   );
 
   const toast = useCallback((message: string, tone: Toast["tone"] = "ok") => {
@@ -329,6 +368,15 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
         return;
       }
       if (isTypingTarget(e.target)) return;
+      // Full screen is for watching: transport keys only; Escape closes it.
+      if (ui.fullscreen) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setUi({ fullscreen: false });
+          return;
+        }
+        if (mod || ![" ", "k", "K", "ArrowLeft", "ArrowRight", "j", "J", "l", "L", "Home", "End"].includes(e.key)) return;
+      }
       const step = e.shiftKey ? 1 : 1 / 30;
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -399,7 +447,7 @@ export function Editor({ item, planId, initialDoc, assets, music: initialMusic, 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [engine, save, split, deleteSelection, duplicateSelection, ui.reframe, ui.sheet, setUi]);
+  }, [engine, save, split, deleteSelection, duplicateSelection, ui.reframe, ui.sheet, ui.fullscreen, setUi]);
 
   // Switch the inspector to whatever was just selected.
   const selKey = state.selection ? `${state.selection.kind}:${"id" in state.selection ? state.selection.id : ""}` : "";

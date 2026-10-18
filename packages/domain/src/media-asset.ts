@@ -337,3 +337,66 @@ export async function recordPersonMatte(
   });
   return asset;
 }
+
+// ---------------------------------------------------------------------------------------
+// Editor preview assets (proxy + filmstrip + peaks)
+// ---------------------------------------------------------------------------------------
+
+export function isPreviewStorageKeyFor(contentItemId: string, storageKey: string): boolean {
+  return storageKey.startsWith(`proxies/${contentItemId}/`) && !storageKey.includes("..");
+}
+
+export const PreviewMetaSchema = z.object({
+  proxy: z.object({ width: z.number().int().positive(), height: z.number().int().positive(), fps: z.number().positive(), gopFrames: z.number().int().positive(), videoKbps: z.number().positive() }),
+  filmstrip: z.object({
+    count: z.number().int().positive(),
+    step: z.number().positive(),
+    cols: z.number().int().positive(),
+    rows: z.number().int().positive(),
+    tileW: z.number().int().positive(),
+    tileH: z.number().int().positive(),
+  }),
+  peaks: z.object({ perSecond: z.number().positive(), values: z.array(z.number().int().min(0).max(255)) }).nullable(),
+});
+export type PreviewMeta = z.infer<typeof PreviewMetaSchema>;
+
+/** Stored previewMeta, or null if missing/invalid (never throws — the editor falls back to the original). */
+export function parsePreviewMeta(value: unknown): PreviewMeta | null {
+  const r = PreviewMetaSchema.safeParse(value);
+  return r.success ? r.data : null;
+}
+
+/**
+ * Records a RAW_TAKE's editor preview assets (proxy video + filmstrip sprite under
+ * proxies/<contentItemId>/, plus geometry/peaks). Preview-only: the renderer never reads them.
+ * Audit-logged with the previous keys.
+ */
+export async function recordPreviewAssets(
+  prisma: PrismaClient,
+  mediaAssetId: string,
+  input: { proxyStorageKey: string; filmstripStorageKey: string; meta: PreviewMeta },
+  actor: { actorId: string; actorType?: "HUMAN" | "SYSTEM" | "JOB" },
+  provenance: { ms?: number; sourceCodec?: string | null } = {},
+) {
+  const before = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: mediaAssetId } });
+  if (before.kind !== "RAW_TAKE") throw new Error(`Preview proxies are for raw takes only (asset ${mediaAssetId} is ${before.kind}).`);
+  for (const k of [input.proxyStorageKey, input.filmstripStorageKey]) {
+    if (!isPreviewStorageKeyFor(before.contentItemId, k)) throw new Error(`Preview storage key "${k}" must live under proxies/${before.contentItemId}/.`);
+  }
+  const meta = PreviewMetaSchema.parse(input.meta);
+  const asset = await prisma.mediaAsset.update({
+    where: { id: mediaAssetId },
+    data: { proxyStorageKey: input.proxyStorageKey, filmstripStorageKey: input.filmstripStorageKey, previewMeta: meta as unknown as Prisma.InputJsonValue },
+  });
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: actor.actorType ?? "JOB",
+    action: "MEDIA_ASSET_PREVIEW_PROXIED",
+    entityType: "ContentItem",
+    entityId: asset.contentItemId,
+    before: { mediaAssetId, proxyStorageKey: before.proxyStorageKey, filmstripStorageKey: before.filmstripStorageKey },
+    after: { mediaAssetId, proxyStorageKey: input.proxyStorageKey, filmstripStorageKey: input.filmstripStorageKey },
+    metadata: { ...provenance, proxy: meta.proxy },
+  });
+  return asset;
+}

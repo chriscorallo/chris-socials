@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import { TEMPLATE_FOOTPRINTS, resolveGrade, visualRect, type TimelineVisual, type VisualInteraction } from "@chris/media/timeline";
 import { trackAt } from "@chris/motion/pure";
 import { PREVIEW_FPS } from "./preview-fps";
-import { PersonCutout } from "./PersonCutout";
+// WebGL person cut-out: only edits with behind-you graphics AND a matte ever need it.
+const PersonCutout = dynamic(() => import("./PersonCutout").then((m) => m.PersonCutout), { ssr: false, loading: () => null });
 import { TEMPLATE_LABEL } from "../../../../lib/editor/visuals";
 import { useEditor } from "./context";
 import { useIsPlaying, usePlayheadValue } from "./playback";
@@ -37,7 +38,8 @@ export function MotionLayer({ w, h }: { w: number; h: number }) {
   const playing = useIsPlaying(engine);
   // Frame-quantised: the Player seeks exactly while paused and only re-syncs on drift while
   // playing, so whole frames are all it needs (and React re-renders at most once per frame).
-  const t = usePlayheadValue(engine, (x) => Math.round(x * PREVIEW_FPS) / PREVIEW_FPS);
+  // No graphics → no per-frame re-render of this layer at all.
+  const t = usePlayheadValue(engine, (x) => (doc.visuals.length ? Math.round(x * PREVIEW_FPS) / PREVIEW_FPS : 0));
   const timeline = useMemo(
     () => ({ visuals: placement.visuals, canvas: doc.canvas, clips: doc.clips, motionTheme: doc.motionTheme }),
     [placement.visuals, doc.canvas, doc.clips, doc.motionTheme],
@@ -107,7 +109,9 @@ export function VisualHandles({ w, dragging }: { w: number; dragging: string | n
   const { doc, placement, engine, state, touch, interactions } = useEditor();
   const k = w / doc.canvas.width;
   // Graphics that follow Chris / ride the camera: hit areas follow them while paused.
-  const tq = usePlayheadValue(engine, (x) => Math.round(x * PREVIEW_FPS) / PREVIEW_FPS);
+  // Hit areas only matter when Chris can touch them: frame-accurate while paused, frozen while
+  // playing (a tap pauses first, which re-syncs them) — no 30 re-renders a second during playback.
+  const tq = usePlayheadValue(engine, (x) => (placement.visuals.length && !engine.playing ? Math.round(x * PREVIEW_FPS) / PREVIEW_FPS : -1));
   const key = usePlayheadValue(engine, (t) =>
     placement.visuals
       .filter((v) => t >= v.start && t < v.end)

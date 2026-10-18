@@ -1,6 +1,6 @@
 "use client";
 
-import { StyleCutPanel } from "./StyleCutPanel";
+import { StyleCutPanel, VisualEditor, VisualsPanel, SoundPanel } from "./lazy-panels";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   CAPTION_PRESETS,
@@ -41,8 +41,6 @@ import { useEditor, type InspectorTab } from "./context";
 import { fontFamilyCss, fontStyle } from "./Overlays";
 import { useFilmstrip, frameAt } from "./filmstrip";
 import { Icon } from "./icons";
-import { VisualEditor, VisualsPanel } from "./VisualsPanel";
-import { SoundPanel } from "./SoundPanel";
 
 const SWATCHES = ["#FFFFFF", "#000000", "#FFD54A", "#F3C46A", "#FF5F5F", "#6EE7B0", "#5AA9FF", "#B3A2FF"];
 

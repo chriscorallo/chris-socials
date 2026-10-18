@@ -9,13 +9,12 @@ import { sheetForSelection, spanStartForPlayhead } from "../../../../lib/editor/
 import { PLATFORM_SHORT_LABEL } from "../../../../lib/editor/platform-profiles";
 import { useEditor, type SheetId } from "./context";
 import { useIsPlaying, usePlayheadValue } from "./playback";
-import { Canvas, PlatformSwitch, WarningsList, enterReframe, useFitCanvas } from "./Preview";
+import { MockToggle, PlatformSwitch, WarningsList, enterReframe } from "./Preview";
+import { FullscreenButton, StageCanvas } from "./Fullscreen";
 import { MobileTimeline } from "./MobileTimeline";
 import { Sheet } from "./Sheet";
 import { ClipPanel, TextPanel, ZoomPanel, CaptionsPanel, LookPanel, CoverPanel } from "./Inspector";
-import { VisualsPanel } from "./VisualsPanel";
-import { SoundPanel } from "./SoundPanel";
-import { StyleCutPanel } from "./StyleCutPanel";
+import { VisualsPanel, SoundPanel, StyleCutPanel } from "./lazy-panels";
 import { autoPlaceVisuals } from "../../../../lib/editor/visuals";
 import { TakeCard } from "./MediaBin";
 import { useKeyboardInset } from "./layout-hooks";
@@ -128,14 +127,13 @@ export function MobileShell({
 // ---------------------------------------------------------------------------------------
 
 function MobileStage({ sheetOpen }: { sheetOpen: boolean }) {
-  const { doc, ui, setUi, warnings } = useEditor();
-  const boxRef = useRef<HTMLDivElement>(null);
-  const size = useFitCanvas(boxRef, doc.canvas.width / doc.canvas.height, 24, 12);
+  const { ui, setUi, warnings } = useEditor();
   return (
     <section className="ed-m-stage" aria-label="Preview">
       {!sheetOpen && (
         <div className="ed-m-stagehead">
           <PlatformSwitch compact value={ui.platformView} onChange={(v) => setUi({ platformView: v })} />
+          {ui.platformView !== "ALL" && <MockToggle />}
           <button
             type="button"
             className={`ed-m-chip ${warnings.length ? "ed-m-chip-warn" : "ed-m-chip-ok"}`}
@@ -147,14 +145,15 @@ function MobileStage({ sheetOpen }: { sheetOpen: boolean }) {
           </button>
         </div>
       )}
-      <div className="ed-m-canvasbox" ref={boxRef}>
-        {size.w > 0 && <Canvas w={size.w} h={size.h} />}
-        {ui.reframe && (
+      <StageCanvas className="ed-m-canvasbox" padX={24} padY={12}>
+        {ui.reframe ? (
           <button type="button" className="ed-m-pill" onClick={() => setUi({ reframe: false })}>
             <Icon name="check" size={15} /> Done reframing
           </button>
+        ) : (
+          <FullscreenButton />
         )}
-      </div>
+      </StageCanvas>
     </section>
   );
 }

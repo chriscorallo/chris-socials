@@ -8,8 +8,19 @@ export type EditorDoc = EditTimeline;
 export interface EditorAsset {
   id: string;
   name: string;
-  /** `/api/media/<storageKey>` */
+  /**
+   * What the PREVIEW plays: the take's 720p proxy (`/api/media/<proxyStorageKey>`, a keyframe
+   * every 0.5 s) when one exists, else the original. Renders always use the original.
+   */
   url: string;
+  /** `/api/media/<storageKey>` — the camera original. */
+  originalUrl?: string;
+  /** True when `url` is the preview proxy. */
+  proxied?: boolean;
+  /** Server-made thumbnail sprite (tile i = source time (i + 0.5) * step), or null. */
+  filmstrip?: { url: string; count: number; step: number; cols: number; rows: number; tileW: number; tileH: number } | null;
+  /** Audio peak envelope (0–255, `perSecond` values per second of source), or null. */
+  peaks?: { perSecond: number; values: number[] } | null;
   duration: number;
   width: number | null;
   height: number | null;

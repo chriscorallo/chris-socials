@@ -67,10 +67,11 @@ export function FinishModal({
   const startedAt = useRef(0);
 
   const sizes = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, { width: a.width, height: a.height }])), [assets]);
+  const tracks = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.subjectTrack])), [assets]);
   const readiness = useMemo(
-    () => Object.fromEntries(PLATFORM_IDS.map((p) => [p, warningsForPlatform(doc, PLATFORM_PROFILES[p], wordsByAsset, browserMeasureText, sizes)])) as Record<PlatformId, ReturnType<typeof warningsForPlatform>>,
+    () => Object.fromEntries(PLATFORM_IDS.map((p) => [p, warningsForPlatform(doc, PLATFORM_PROFILES[p], wordsByAsset, browserMeasureText, sizes, { visuals: placement.visuals, tracks })])) as Record<PlatformId, ReturnType<typeof warningsForPlatform>>,
     // fontsVersion: re-measure once webfonts load
-    [doc, wordsByAsset, sizes, fontsVersion],
+    [doc, wordsByAsset, sizes, tracks, placement.visuals, fontsVersion],
   );
 
   useEffect(() => {

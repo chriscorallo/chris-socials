@@ -8,6 +8,8 @@
  * so (`basis`). Sources, checked 2026-10-16, are listed per profile and in
  * docs/decisions-pending/timeline-engine.md.
  */
+import { PLATFORM_UI, derivedSafeZone, type PlatformUi } from "./platform-ui";
+
 export type PlatformId = "INSTAGRAM" | "TIKTOK" | "YOUTUBE";
 
 export interface SafeZonePx {
@@ -48,8 +50,14 @@ export interface PlatformProfile {
   minDurationSeconds: number;
   maxDurationSeconds: number;
   recommendedDurationNote: string;
+  /**
+   * Conservative margin rectangle, DERIVED from `ui.conservative` (derivedSafeZone) — kept for
+   * code that wants a single rectangle. Warnings and the editor mock use `ui`'s regions.
+   */
   safeZone: SafeZonePx;
   safeZoneBasis: string;
+  /** Where the app's UI sits over the video on a reference iPhone (platform-ui.ts). */
+  ui: PlatformUi;
   cover: {
     /** Whether the publish API can pick a cover frame from the video by timestamp. */
     timestampSupported: boolean;
@@ -97,9 +105,10 @@ export const PLATFORM_PROFILES: Record<PlatformId, PlatformProfile> = {
     minDurationSeconds: 3,
     maxDurationSeconds: 15 * 60,
     recommendedDurationNote: "API accepts 3 s - 15 min; Reels that perform tend to be 15-90 s.",
-    // Meta Reels ads guide: keep 14% top, 35% bottom, 6% each side free of key content.
-    safeZone: { top: 269, bottom: 672, left: 65, right: 65 },
-    safeZoneBasis: "Official (Meta Reels ads placement guide: 14% top / 35% bottom / 6% sides) at 1080x1920; Meta publishes no separate organic-Reels figure.",
+    safeZone: derivedSafeZone(PLATFORM_UI.INSTAGRAM),
+    safeZoneBasis:
+      "Derived from Meta's Reels ads safe zone (14% top / 35% bottom / 6% sides, plus the lower-right action area ≈227 px wide below y 1152 in Meta's diagram; checked 2026-10-17). Meta publishes no organic-Reels figure; the editor's mock/warnings use the best-estimate regions in platform-ui.ts.",
+    ui: PLATFORM_UI.INSTAGRAM,
     cover: {
       timestampSupported: true,
       apiField: "thumb_offset",
@@ -141,9 +150,10 @@ export const PLATFORM_PROFILES: Record<PlatformId, PlatformProfile> = {
     maxDurationSeconds: 600,
     recommendedDurationNote:
       "Everyone can post 3 min; some creators 10 min — the real per-creator cap comes from creator_info (max_video_post_duration_sec). Short-form sweet spot 15-60 s.",
-    safeZone: { top: 240, bottom: 660, left: 60, right: 160 },
+    safeZone: derivedSafeZone(PLATFORM_UI.TIKTOK),
     safeZoneBasis:
-      "No official pixel safe zone (TikTok ships overlay templates that vary with caption length). Conservative union of community measurements (top 130-254, bottom 350-707, right 120-242).",
+      "Derived from TikTok's official In-Feed ads safe-zone template (Apr 2025 file: 720x1280 top 160 / bottom 440 / sides 80, right action column from y 560 → 240 / 660 / 60 / 300 px at 1080x1920; checked 2026-10-17). No organic figure is published; it varies with caption length.",
+    ui: PLATFORM_UI.TIKTOK,
     cover: {
       timestampSupported: true,
       apiField: "post_info.video_cover_timestamp_ms",
@@ -186,9 +196,10 @@ export const PLATFORM_PROFILES: Record<PlatformId, PlatformProfile> = {
     minDurationSeconds: 1,
     maxDurationSeconds: 180,
     recommendedDurationNote: "Vertical/square uploads up to 3 min are Shorts.",
-    safeZone: { top: 288, bottom: 672, left: 48, right: 192 },
+    safeZone: derivedSafeZone(PLATFORM_UI.YOUTUBE),
     safeZoneBasis:
-      "Google Ads vertical-video safe area (shown as an image; px values as transcribed consistently by community tools). Ads guidance, not an organic Shorts spec.",
+      "Derived from Google Ads' vertical-video safe zone (official 1080x1920 template: top 288 / bottom 672 / left 48 / right 192, as measured by two independent tools; checked 2026-10-17), left widened to 60 for the side crop on tall phones. Ads guidance, not an organic Shorts spec.",
+    ui: PLATFORM_UI.YOUTUBE,
     cover: {
       timestampSupported: false,
       apiField: null,
@@ -205,6 +216,14 @@ export const PLATFORM_PROFILES: Record<PlatformId, PlatformProfile> = {
     ],
   },
 };
+
+/**
+ * The margin rectangle the graphics auto-placement solver has always used (the union of the
+ * 2026-10-16 margins). Frozen so that refining the platform UI model never moves an auto-placed
+ * graphic in an existing render; switching placement to the region model is a deliberate,
+ * separate change (docs/decisions-pending/editor-smoothness-fullscreen-platform-ui.md).
+ */
+export const PLACEMENT_SAFE_ZONE: SafeZonePx = { top: 288, bottom: 672, left: 65, right: 192 };
 
 /** Union of every platform's chrome — the zone to keep critical text out of for "post everywhere". */
 export function combinedSafeZone(ids: PlatformId[] = ["INSTAGRAM", "TIKTOK", "YOUTUBE"]): SafeZonePx {

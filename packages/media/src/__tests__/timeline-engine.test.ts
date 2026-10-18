@@ -298,7 +298,7 @@ describe("planToTimeline", () => {
     // TOP sits 40px under the safe top.
     expect(layoutTimelineText(h!, canvas, nodeMeasureText).rect.y).toBe(safe.top + 40);
     expect(layoutTimelineText(lt!, canvas, nodeMeasureText).rect.x).toBe(safe.left);
-    expect(t.captions).toMatchObject({ enabled: true, preset: "BOLD_HIGHLIGHT", fontId: "inter-display-extrabold", fontSize: 72, highlightColor: "#FFD84D" });
+    expect(t.captions).toMatchObject({ enabled: true, preset: "BOLD_HIGHLIGHT", fontId: "inter-display-extrabold", fontSize: 64, highlightColor: "#FFD84D" });
     // The LOWER_THIRD sits in the lower caption band, so captions moved out of its way.
     const capRect = { x: 0, y: t.captions.y * 1920 - 50, width: 1080, height: 100 };
     expect(rectsIntersect(capRect, layoutTimelineText(lt!, canvas, nodeMeasureText).rect)).toBe(false);
@@ -331,7 +331,8 @@ describe("platform profiles", () => {
   });
   it("safe zones differ per app and the union is the max of each edge", () => {
     expect(PLATFORM_PROFILES.YOUTUBE.safeZone).not.toEqual(PLATFORM_PROFILES.TIKTOK.safeZone);
-    expect(combinedSafeZone()).toEqual({ top: 288, bottom: 672, left: 65, right: 192 });
+    // Derived from the conservative (official ads) regions in platform-ui.ts.
+    expect(combinedSafeZone()).toEqual({ top: 288, bottom: 672, left: 60, right: 300 });
   });
   it("size-cap retry targets ~92% of the cap and refuses below 300 kbps video", () => {
     const kbps = sizeCapRetryVideoKbps({ maxFileSizeBytes: 300 * 1024 * 1024, durationSeconds: 600, audioKbps: 128 })!;
