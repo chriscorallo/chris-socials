@@ -36,7 +36,7 @@ function pickHero(nudges: Nudge[], inProgress: VideoCardData[]):
   const nudge = nudges.find((n) => n.bucket !== "setup" || n.severity === "critical");
   const waiting = inProgress.find((c) => c.next.needsYou && c.next.kind !== "OPEN");
   // An item already mid-edit beats a generic plan nudge — finishing it is the next step.
-  if (waiting && (waiting.next.kind === "EDIT" || waiting.next.kind === "START_EDIT" || waiting.next.kind === "UPLOAD")) {
+  if (waiting && (waiting.next.kind === "EDIT" || waiting.next.kind === "START_EDIT" || waiting.next.kind === "UPLOAD" || waiting.next.kind === "CONTINUE_FILMING")) {
     return { kind: "video", card: waiting };
   }
   if (nudge) return { kind: "nudge", nudge };

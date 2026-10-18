@@ -14,6 +14,8 @@ export function nextActionHref(id: string, next: NextAction, postUrl: string | n
       return `/content/${id}#upload`;
     case "FILM":
       return "/film";
+    case "CONTINUE_FILMING":
+      return `/film/teleprompter?id=${id}`;
     case "SCHEDULE":
       return `/content/${id}#schedule`;
     case "VIEW_POST":
@@ -83,6 +85,16 @@ export function VideoThumb({ url, title, className = "" }: { url: string | null;
   );
 }
 
+/** "Draft" — an unfinished teleprompter recording (docs/decisions-pending/segmented-recording-drafts.md). */
+export function DraftBadge({ label = "Draft" }: { label?: string }) {
+  return (
+    <span className="inline-flex min-h-[22px] items-center gap-1 rounded-full border border-[var(--color-gold-500)]/50 bg-[var(--color-gold-500)]/[0.12] px-2 text-[12px] font-semibold text-[var(--color-gold-400)]" data-testid="draft-badge">
+      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-gold-400)]" aria-hidden />
+      {label}
+    </span>
+  );
+}
+
 export function VideoCard({ card }: { card: VideoCardData }) {
   return (
     <li className="panel flex min-w-0 gap-3.5 p-3">
@@ -94,7 +106,7 @@ export function VideoCard({ card }: { card: VideoCardData }) {
           {card.title}
         </Link>
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
-          <StatusPill state={card.state} />
+          {card.draft ? <DraftBadge /> : <StatusPill state={card.state} />}
         </div>
         <p className="mt-1.5 line-clamp-2 text-[13px] leading-snug text-[var(--color-text-faint)]">{card.when ?? card.next.hint}</p>
         <div className="mt-auto flex pt-2.5">

@@ -8,6 +8,9 @@ import { DEFAULT_SETTINGS, loadEdit, loadSettings, saveEdit, saveSettings, type 
 import { resolveSavedEdit, textFingerprint, titleForNewVideo, type PrompterSource } from "../../../lib/teleprompter/script-source";
 import { estimateSeconds, formatDuration, speedToWpm, wordCount } from "../../../lib/teleprompter/scroll";
 import type { HandoffTarget } from "../../../lib/teleprompter/handoff";
+import type { PrompterDraft } from "../../../lib/teleprompter/data";
+import { totalSeconds } from "../../../lib/teleprompter/segments";
+import { discardRecordingDraft } from "./actions";
 
 type Screen = "setup" | "record" | "float";
 
@@ -20,12 +23,18 @@ export function Teleprompter({
   video,
   source,
   mode,
+  draft: initialDraft = null,
 }: {
   /** null = a brand-new video (created footage-first when a take is used). */
   video: { id: string; title: string } | null;
   source: PrompterSource;
   mode: "blob" | "local";
+  /** The video's open recording draft (segmented "Record here"), if any. */
+  draft?: PrompterDraft | null;
 }) {
+  const [draft, setDraft] = useState<PrompterDraft | null>(initialDraft);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>("setup");
   const [settings, setSettingsState] = useState<PrompterSettings>(DEFAULT_SETTINGS);
   const [text, setText] = useState(source.text);
@@ -57,6 +66,18 @@ export function Teleprompter({
   const words = wordCount(text);
   const ready = words > 0;
   const uploadManyHref = "/plan/upload";
+  const draftParts = draft?.segments.length ?? 0;
+
+  async function discard() {
+    if (!draft) return;
+    if (!window.confirm(`Discard this draft? ${draftParts === 1 ? "The part you filmed" : `All ${draftParts} parts you filmed`} will be deleted.`)) return;
+    setDiscarding(true);
+    setDiscardError(null);
+    const r = await discardRecordingDraft(draft.contentItemId, draft.recordingSessionId);
+    setDiscarding(false);
+    if ("error" in r) setDiscardError(r.error);
+    else setDraft(null);
+  }
 
   if (screen === "record") {
     // Portal to <body>: the page shell is its own stacking context (z-10), which would keep the
@@ -64,6 +85,9 @@ export function Teleprompter({
     return createPortal(
       <RecordMode
         text={text}
+        fingerprint={textFingerprint(text)}
+        draft={draft}
+        onDraftChange={setDraft}
         settings={settings}
         setSettings={setSettings}
         target={target}
@@ -92,6 +116,24 @@ export function Teleprompter({
 
   return (
     <div className="flex flex-col gap-4">
+      {draft && (
+        <section className="panel flex flex-col gap-3 !border-[var(--color-gold-500)]/50 p-4" data-testid="draft-panel">
+          <div className="min-w-0">
+            <p className="eyebrow">Draft</p>
+            <p className="mt-0.5 text-[17px] font-semibold leading-snug">
+              {draftParts} {draftParts === 1 ? "part" : "parts"} · {formatDuration(totalSeconds(draft.segments))} filmed
+            </p>
+            <p className="mt-0.5 text-[13.5px] text-[var(--color-text-muted)]">Pick up where you stopped — the script opens at the same spot.</p>
+          </div>
+          <button type="button" className="btn btn-primary w-full !min-h-[52px] !text-[16px]" onClick={() => setScreen("record")} disabled={!ready} data-testid="continue-filming">
+            Continue filming
+          </button>
+          <button type="button" className="btn btn-ghost w-full" onClick={() => void discard()} disabled={discarding} data-testid="discard-draft">
+            {discarding ? "Discarding…" : "Discard draft"}
+          </button>
+          {discardError && <p className="text-[13px] text-[var(--color-rose-400)]">{discardError}</p>}
+        </section>
+      )}
       {!video && (
         <label className="block">
           <span className="field-label">What&apos;s this video about? (optional)</span>
@@ -124,8 +166,8 @@ export function Teleprompter({
 
       <div className="grid gap-3">
         <ModeCard
-          title="Record here"
-          body="Camera and script on one screen. The script sits right under the front camera so your eyes stay on the lens."
+          title={draft ? "Continue in Record here" : "Record here"}
+          body="Camera and script on one screen, right under the front lens. Record in parts — pause anytime, finish now or later."
           onClick={() => setScreen("record")}
           disabled={!ready}
           primary

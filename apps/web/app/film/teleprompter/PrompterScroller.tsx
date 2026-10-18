@@ -6,6 +6,10 @@ import { advanceProgress, progressAfterDrag, progressPerSecond, scrollOffset, wo
 export interface PrompterHandle {
   reset: () => void;
   progress: () => number;
+  /** Jump to a position (0..1) — resuming a recording draft, or "back a line". */
+  setProgress: (p: number) => void;
+  /** Rendered text height and one line's height (px), for line-based rewinds. */
+  metrics: () => { contentHeight: number; linePx: number };
 }
 
 /**
@@ -53,6 +57,14 @@ export function PrompterScroller({
         ended.current = false;
       },
       progress: () => progress.current,
+      setProgress: (p: number) => {
+        progress.current = Math.min(1, Math.max(0, Number.isFinite(p) ? p : 0));
+        ended.current = progress.current >= 1;
+      },
+      metrics: () => {
+        const fp = live.current.fontPx;
+        return { contentHeight: Math.max(0, (textRef.current?.offsetHeight ?? 0) - fp * 1.3), linePx: fp * 1.3 };
+      },
     };
     if (typeof handleRef === "function") handleRef(h);
     else if (handleRef) (handleRef as { current: PrompterHandle | null }).current = h;

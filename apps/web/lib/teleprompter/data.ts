@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@chris/domain";
-import { listPlannedVideos, ymdInTz, addDaysYmd } from "@chris/domain";
+import { listPlannedVideos, ymdInTz, addDaysYmd, getOpenRecordingSession, listOpenRecordingDrafts, draftLabel } from "@chris/domain";
 import { PRE_FILM_STATES } from "@chris/domain/plan-import";
 import { pickPrompterSource, splitPlanDescription, type PrompterSource } from "./script-source";
 
@@ -50,6 +50,69 @@ export async function loadPrompterVideo(prisma: PrismaClient, id: string): Promi
     canFilm: prompterCanFilm(item.currentState),
     takes: item._count.mediaAssets,
   };
+}
+
+/** One recorded segment of a draft, as the prompter shows it. */
+export interface DraftSegmentInfo {
+  id: string;
+  /** The client key the segment was uploaded under. */
+  key: string;
+  index: number;
+  seconds: number;
+  /** Playable URL of the uploaded segment (for "Preview"). */
+  url: string;
+  scriptStart: number | null;
+  scriptEnd: number | null;
+}
+
+/** An open recording draft (docs/decisions-pending/segmented-recording-drafts.md). */
+export interface PrompterDraft {
+  recordingSessionId: string;
+  contentItemId: string;
+  scriptPosition: number;
+  scriptFingerprint: string | null;
+  segments: DraftSegmentInfo[];
+  updatedAt: string;
+}
+
+export async function loadPrompterDraft(prisma: PrismaClient, contentItemId: string): Promise<PrompterDraft | null> {
+  const s = await getOpenRecordingSession(prisma, contentItemId);
+  if (!s) return null;
+  return {
+    recordingSessionId: s.id,
+    contentItemId: s.contentItemId,
+    scriptPosition: s.scriptPosition,
+    scriptFingerprint: s.scriptFingerprint,
+    updatedAt: s.updatedAt.toISOString(),
+    segments: s.segments
+      .filter((g) => g.mediaAsset)
+      .map((g) => ({
+        id: g.id,
+        key: g.clientKey,
+        index: g.segmentIndex,
+        seconds: g.mediaAsset!.durationSeconds ?? g.durationSeconds ?? 0,
+        url: `/api/media/${g.mediaAsset!.storageKey}`,
+        scriptStart: g.scriptPositionStart,
+        scriptEnd: g.scriptPositionEnd,
+      })),
+  };
+}
+
+export interface PrompterDraftPick {
+  id: string;
+  title: string;
+  label: string;
+}
+
+/** "Continue: …" — every video with an open recording draft, most recently touched first. */
+export async function listPrompterDraftPicks(prisma: PrismaClient): Promise<PrompterDraftPick[]> {
+  const drafts = await listOpenRecordingDrafts(prisma);
+  if (drafts.length === 0) return [];
+  const items = await prisma.contentItem.findMany({ where: { id: { in: drafts.map((d) => d.contentItemId) } }, select: { id: true, title: true } });
+  return drafts.flatMap((d) => {
+    const it = items.find((i) => i.id === d.contentItemId);
+    return it ? [{ id: it.id, title: it.title, label: draftLabel(d) }] : [];
+  });
 }
 
 export interface PrompterPick {

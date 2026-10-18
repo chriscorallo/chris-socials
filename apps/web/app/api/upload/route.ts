@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { auth } from "../../../auth";
-import { prisma } from "@chris/domain";
+import { prisma, assertSegmentUploadAllowed } from "@chris/domain";
 import { getLocalStorage, safeFilename } from "../../../lib/storage";
-import { registerUploadedRawTake, withTempDir, rawTakeStorageKey, musicStorageKey, parseUploadKind, uploadMimeAllowed } from "../../../lib/ingest-upload";
+import { registerUploadedRawTake, withTempDir, rawTakeStorageKey, musicStorageKey, parseUploadKind, uploadMimeAllowed, parseSegmentMeta, registeredSegmentAsset } from "../../../lib/ingest-upload";
 
 export const maxDuration = 300;
 
@@ -52,6 +52,19 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error }, { status: 415 });
   }
 
+  // A segment of a teleprompter recording draft: a retry of one that already landed returns it
+  // without reading the body again; a closed draft is refused before streaming anything.
+  const segment = kind === "RAW_TAKE" ? parseSegmentMeta((k) => url.searchParams.get(k)) : null;
+  if (segment) {
+    const existing = await registeredSegmentAsset(segment);
+    if (existing) return NextResponse.json({ mediaAssetId: existing.id, duplicate: true });
+    try {
+      await assertSegmentUploadAllowed(prisma, { recordingSessionId: segment.recordingSessionId, contentItemId });
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Refused." }, { status: 409 });
+    }
+  }
+
   const name = safeFilename(originalFilename);
   const storageKey = kind === "MUSIC" ? musicStorageKey(contentItemId, name) : rawTakeStorageKey(contentItemId, name);
 
@@ -71,6 +84,7 @@ export async function PUT(request: Request) {
         localPath: tempPath,
         actorId: session.user!.id!,
         kind,
+        segment,
       });
     });
     return NextResponse.json({ mediaAssetId: asset.id });

@@ -44,6 +44,8 @@ import {
   parseUploadKind,
   uploadKeyPrefix,
   uploadMimeAllowed,
+  parseSegmentMeta,
+  registeredSegmentAsset,
   type UploadKind,
 } from "../../../lib/ingest-upload";
 import { getModelProvider } from "../../../lib/model-provider";
@@ -199,10 +201,17 @@ export async function registerBlobUpload(input: {
   sizeBytes: number;
   /** "MUSIC" registers a music bed (audio only, key under music/<item>/); default a raw take. */
   kind?: UploadKind;
+  /** A segment of a teleprompter recording draft (same fields as the local route's query). */
+  segment?: Record<string, string | number | null | undefined>;
 }): Promise<{ mediaAssetId: string } | { error: string }> {
   const session = await requireSession();
   try {
     const kind = parseUploadKind(input.kind);
+    const segment = kind === "RAW_TAKE" && input.segment ? parseSegmentMeta((k) => (input.segment![k] == null ? null : String(input.segment![k]))) : null;
+    if (segment) {
+      const existing = await registeredSegmentAsset(segment);
+      if (existing) return { mediaAssetId: existing.id };
+    }
     if (!input.storageKey.startsWith(uploadKeyPrefix(kind, input.contentItemId))) {
       throw new Error("Storage key does not belong to this content item.");
     }
@@ -212,7 +221,7 @@ export async function registerBlobUpload(input: {
     const asset = await withTempDir(async (dir) => {
       const localPath = join(dir, safeFilename(input.originalFilename));
       await downloadToFile(input.storageKey, localPath);
-      return registerUploadedRawTake({ ...input, kind, localPath, actorId: session.user!.id! });
+      return registerUploadedRawTake({ ...input, kind, localPath, actorId: session.user!.id!, segment });
     });
     return { mediaAssetId: asset.id };
   } catch (err) {

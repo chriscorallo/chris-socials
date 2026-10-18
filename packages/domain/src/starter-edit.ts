@@ -1,6 +1,7 @@
 import type { ContentState, MediaAsset, PrismaClient } from "@prisma/client";
 import { recordTakeSelection, getLatestTakeSelection } from "./take-selection";
 import { recordEditPlan, getLatestEditPlan, FINISHING_EDIT_STATES } from "./edit-plan";
+import { assertNoOpenRecordingDraft, getFinishedRecordingSequence } from "./recording-session";
 
 /**
  * "Upload → straight into the editor, no AI required."
@@ -20,6 +21,11 @@ import { recordEditPlan, getLatestEditPlan, FINISHING_EDIT_STATES } from "./edit
  *    so the editor and the renderer convert it with `planToTimeline` at LOAD time — captions
  *    therefore appear as soon as the take's word timings land from the background
  *    transcription (they are switched off only while no word timings exist yet).
+ *
+ *  - A video recorded in PARTS with the teleprompter (a FINISHED RecordingSession): the take is
+ *    the recording, i.e. ALL its active segments in order (`plan.sequence`, converted to one
+ *    clip per part by the worker's `timelineForPlan`). Refused while the recording is still a
+ *    DRAFT — partial parts are not the video (docs/decisions-pending/segmented-recording-drafts.md).
  *
  * "Improve with AI" (the Edit Planner's re-plan from EDIT_PLANNED) still works afterwards.
  * Idempotent: an item that already has an edit plan in an editable state just returns it.
@@ -85,6 +91,41 @@ export function buildStarterPlan(input: { durationSeconds: number; productionTie
   };
 }
 
+/** `plan.sequence` of a multi-part recording: the parts, in playback order. */
+export interface StarterSequence {
+  recordingSessionId: string;
+  takes: Array<{ mediaAssetId: string; durationSeconds: number }>;
+}
+
+export function readStarterSequence(plan: unknown): StarterSequence | null {
+  const seq = (plan as { sequence?: unknown } | null)?.sequence as Partial<StarterSequence> | undefined;
+  if (!seq || typeof seq !== "object" || !Array.isArray(seq.takes) || seq.takes.length === 0) return null;
+  const takes = seq.takes.filter(
+    (t): t is { mediaAssetId: string; durationSeconds: number } =>
+      !!t && typeof t.mediaAssetId === "string" && typeof t.durationSeconds === "number" && t.durationSeconds > 0,
+  );
+  if (takes.length === 0) return null;
+  return { recordingSessionId: typeof seq.recordingSessionId === "string" ? seq.recordingSessionId : "", takes };
+}
+
+/** Pure: the starter plan for a recording — every part whole, in order, captions on.
+ * `segments` describe the first part (the selected take) so the plan stays a valid
+ * EditPlanOutput; the editor/renderer use `sequence`. */
+export function buildSequenceStarterPlan(input: { sequence: StarterSequence; productionTier: "RAW" | "FAST" | "MEDIUM" | "HERO" }) {
+  const takes = input.sequence.takes.map((t) => ({ mediaAssetId: t.mediaAssetId, durationSeconds: Math.round(t.durationSeconds * 1000) / 1000 }));
+  const total = Math.round(takes.reduce((a, t) => a + t.durationSeconds, 0) * 1000) / 1000;
+  const first = buildStarterPlan({ durationSeconds: takes[0]!.durationSeconds, productionTier: input.productionTier, takeCount: 1 });
+  return {
+    ...first,
+    targetDurationSeconds: total,
+    sequence: { recordingSessionId: input.sequence.recordingSessionId, takes },
+    rationale:
+      takes.length === 1
+        ? "Starter edit (no AI): the take you recorded with the teleprompter, with captions. Trim and add text in the editor."
+        : `Starter edit (no AI): your ${takes.length} recorded parts in order, with captions. Trim and add text in the editor.`,
+  };
+}
+
 export async function createStarterEdit(
   prisma: PrismaClient,
   contentItemId: string,
@@ -99,6 +140,8 @@ export async function createStarterEdit(
   if (existing && FINISHING_EDIT_STATES.has(item.currentState)) {
     return { editPlan: existing, created: false as const };
   }
+  // Recording in parts and not finished yet: the parts so far are not the video.
+  await assertNoOpenRecordingDraft(prisma, contentItemId);
   if (item.currentState !== "MEDIA_INGESTED" && item.currentState !== "TAKE_SELECTED") {
     throw new StarterEditNotAvailableError(item.currentState);
   }
@@ -107,6 +150,49 @@ export async function createStarterEdit(
     where: { contentItemId, kind: "RAW_TAKE" },
     orderBy: { createdAt: "asc" },
   });
+
+  // A finished teleprompter recording: all its parts, in order (not "the longest take").
+  const recorded = await getFinishedRecordingSequence(prisma, contentItemId);
+  const parts = recorded
+    ? recorded.mediaAssetIds
+        .map((id) => takes.find((t) => t.id === id))
+        .filter((t): t is (typeof takes)[number] => !!t && (t.durationSeconds ?? 0) > 0)
+    : [];
+  if (recorded && parts.length > 0) {
+    let selection = item.currentState === "TAKE_SELECTED" ? await getLatestTakeSelection(prisma, contentItemId) : null;
+    if (!selection) {
+      selection = await recordTakeSelection(
+        prisma,
+        {
+          contentItemId,
+          selectedMediaAssetId: parts[0]!.id,
+          backupMediaAssetId: null,
+          confidence: 1,
+          reason:
+            parts.length === 1
+              ? "Auto: no AI needed — the take you recorded with the teleprompter."
+              : `Auto: no AI needed — your ${parts.length} recorded parts, in order.`,
+          materialDefects: [],
+        },
+        actor,
+      );
+    }
+    // A single part that IS the selected take is an ordinary one-take starter edit; anything
+    // else (several parts, or an older AI selection of another take) carries `sequence`.
+    const plan =
+      parts.length === 1 && selection.selectedMediaAssetId === parts[0]!.id
+        ? buildStarterPlan({ durationSeconds: parts[0]!.durationSeconds!, productionTier: item.productionContract?.productionTier ?? "FAST", takeCount: 1 })
+        : buildSequenceStarterPlan({
+            sequence: { recordingSessionId: recorded.session.id, takes: parts.map((t) => ({ mediaAssetId: t.id, durationSeconds: t.durationSeconds! })) },
+            productionTier: item.productionContract?.productionTier ?? "FAST",
+          });
+    const editPlan = await recordEditPlan(
+      prisma,
+      { contentItemId, takeSelectionId: selection.id, productionTier: plan.productionTier, targetDurationSeconds: plan.targetDurationSeconds, doNothingElse: false, plan },
+      actor,
+    );
+    return { editPlan, created: true as const };
+  }
 
   let selection = item.currentState === "TAKE_SELECTED" ? await getLatestTakeSelection(prisma, contentItemId) : null;
   let take = selection ? takes.find((t) => t.id === selection!.selectedMediaAssetId) ?? null : null;

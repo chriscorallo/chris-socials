@@ -6,6 +6,7 @@ import {
   getLatestTakeSelection,
   getProductionContract,
   listMediaAssetsForContentItem,
+  assertNoOpenRecordingDraft,
   parseTranscriptWords,
   recordEditPlan,
   recordReplannedEditPlan,
@@ -49,6 +50,8 @@ export async function runPipelineStep(contentItemId: string, actor: Actor) {
 }
 
 export async function runTakeSelectionStep(contentItemId: string, actor: Actor) {
+  // A recording still being filmed in parts isn't the video yet.
+  await assertNoOpenRecordingDraft(prisma, contentItemId);
   const assets = await listMediaAssetsForContentItem(prisma, contentItemId);
   if (assets.length === 0) throw new Error("No raw takes uploaded yet.");
   const brandContext = await getBrandContextText(prisma);
