@@ -1,4 +1,4 @@
-import type { ProductionContract } from "@chris/domain";
+import { PLAN_CONTEXT_BUDGET_CHARS, type ProductionContract } from "@chris/domain";
 import type { ModelProvider } from "./model-provider";
 import { buildSystemPrompt } from "./prompt-context";
 import { ScriptVersionSchema, type ScriptVersion, type ResearchPacket } from "./schemas";
@@ -18,6 +18,26 @@ export interface ScriptAgentInput {
    * — the script must honour them from the first draft. */
   claimsGateRequiredEdits?: string[];
   revision?: ScriptRevisionRequest;
+  /** Optional: Chris's ChatGPT planning conversation (`getActivePlanContext`) — background on
+   * intent, audience and offers, never a source of facts. Clipped to
+   * PLAN_CONTEXT_BUDGET_CHARS.SCRIPT (~1.5K tokens) here, whatever the caller passes. */
+  planContext?: string;
+}
+
+/** The plan-context block, clipped to `maxChars` (getActivePlanContext already budgets it;
+ * this is the agent's own hard cap). Empty input → no block. */
+export function planContextBlock(planContext: string | undefined, maxChars: number): string {
+  const t = planContext?.trim();
+  if (!t) return "";
+  return t.length <= maxChars ? t : `${t.slice(0, Math.max(0, maxChars - 12)).trimEnd()} …[cut]`;
+}
+
+/** Brand context first, then the plan conversation — both stable across a pipeline's calls,
+ * so both go in the provider-cached block before the per-call prompt. */
+export function stableContextWithPlan(brandContext: string, planContext: string | undefined, maxChars: number): string | undefined {
+  const block = planContextBlock(planContext, maxChars);
+  const parts = [brandContext, block].filter((p) => p && p.trim());
+  return parts.length ? parts.join("\n\n---\n\n") : undefined;
 }
 
 function bullets(items: string[]): string {
@@ -87,7 +107,7 @@ export async function runScriptAgent(provider: ModelProvider, input: ScriptAgent
   const result = await provider.completeStructured({
     modelClass,
     systemPrompt,
-    stableContext: input.brandContext || undefined,
+    stableContext: stableContextWithPlan(input.brandContext, input.planContext, PLAN_CONTEXT_BUDGET_CHARS.SCRIPT),
     userPrompt: buildUserPrompt(input),
     schema: ScriptVersionSchema,
     promptId: "SCRIPT",

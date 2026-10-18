@@ -1,0 +1,348 @@
+[
+  {
+    "title": "Dinner ideas",
+    "create_time": 1759000000.12,
+    "update_time": 1759000300.5,
+    "mapping": {
+      "d-root": { "id": "d-root", "message": null, "parent": null, "children": ["d-sys"] },
+      "d-sys": {
+        "id": "d-sys",
+        "message": {
+          "id": "d-sys",
+          "author": { "role": "system", "name": null, "metadata": {} },
+          "create_time": null,
+          "update_time": null,
+          "content": { "content_type": "text", "parts": [""] },
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 0.0,
+          "metadata": { "is_visually_hidden_from_conversation": true },
+          "recipient": "all"
+        },
+        "parent": "d-root",
+        "children": ["d-u1"]
+      },
+      "d-u1": {
+        "id": "d-u1",
+        "message": {
+          "id": "d-u1",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1759000010.0,
+          "update_time": null,
+          "content": { "content_type": "text", "parts": ["Quick dinner ideas with chicken?"] },
+          "status": "finished_successfully",
+          "end_turn": null,
+          "weight": 1.0,
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "d-sys",
+        "children": ["d-a1"]
+      },
+      "d-a1": {
+        "id": "d-a1",
+        "message": {
+          "id": "d-a1",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1759000020.0,
+          "update_time": null,
+          "content": { "content_type": "text", "parts": ["Try a sheet-pan chicken with lemon and potatoes."] },
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 1.0,
+          "metadata": { "model_slug": "gpt-4o" },
+          "recipient": "all"
+        },
+        "parent": "d-u1",
+        "children": []
+      }
+    },
+    "moderation_results": [],
+    "current_node": "d-a1",
+    "plugin_ids": null,
+    "conversation_id": "conv-dinner-0001",
+    "conversation_template_id": null,
+    "gizmo_id": null,
+    "is_archived": false,
+    "safe_urls": [],
+    "default_model_slug": "gpt-4o",
+    "id": "conv-dinner-0001"
+  },
+  {
+    "title": "120-video plan + business model",
+    "create_time": 1760500000.0,
+    "update_time": 1760700000.0,
+    "mapping": {
+      "root": { "id": "root", "message": null, "parent": null, "children": ["sys"] },
+      "sys": {
+        "id": "sys",
+        "message": {
+          "id": "sys",
+          "author": { "role": "system", "name": null, "metadata": {} },
+          "create_time": null,
+          "content": { "content_type": "text", "parts": [""] },
+          "metadata": { "is_visually_hidden_from_conversation": true },
+          "recipient": "all"
+        },
+        "parent": "root",
+        "children": ["ctx"]
+      },
+      "ctx": {
+        "id": "ctx",
+        "message": {
+          "id": "ctx",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": null,
+          "content": {
+            "content_type": "user_editable_context",
+            "user_profile": "The user provided the following information about themselves: SECRET CUSTOM INSTRUCTIONS",
+            "user_instructions": "Be concise."
+          },
+          "metadata": { "is_visually_hidden_from_conversation": true, "user_context_message_data": {} },
+          "recipient": "all"
+        },
+        "parent": "sys",
+        "children": ["u1-original", "u1-edited"]
+      },
+      "u1-original": {
+        "id": "u1-original",
+        "message": {
+          "id": "u1-original",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1760500010.0,
+          "content": { "content_type": "text", "parts": ["ORIGINAL DRAFT QUESTION that I edited later"] },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "ctx",
+        "children": ["a1-original"]
+      },
+      "a1-original": {
+        "id": "a1-original",
+        "message": {
+          "id": "a1-original",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760500020.0,
+          "content": { "content_type": "text", "parts": ["ABANDONED BRANCH ANSWER"] },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "u1-original",
+        "children": []
+      },
+      "u1-edited": {
+        "id": "u1-edited",
+        "message": {
+          "id": "u1-edited",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1760500100.0,
+          "content": {
+            "content_type": "multimodal_text",
+            "parts": [
+              {
+                "content_type": "image_asset_pointer",
+                "asset_pointer": "file-service://file-AbC123",
+                "size_bytes": 204800,
+                "width": 1170,
+                "height": 2532,
+                "fovea": null,
+                "metadata": null
+              },
+              "Here's my current profile screenshot. Help me build a business model and a posting plan for personal finance videos aimed at people in their 20s."
+            ]
+          },
+          "metadata": { "attachments": [{ "id": "file-AbC123", "name": "IMG_0042.PNG" }] },
+          "recipient": "all"
+        },
+        "parent": "ctx",
+        "children": ["thinking"]
+      },
+      "thinking": {
+        "id": "thinking",
+        "message": {
+          "id": "thinking",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760500110.0,
+          "content": { "content_type": "thoughts", "thoughts": [{ "summary": "Planning", "content": "HIDDEN REASONING" }], "source_analysis_msg_id": "x" },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "u1-edited",
+        "children": ["a1"]
+      },
+      "a1": {
+        "id": "a1",
+        "message": {
+          "id": "a1",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760500200.0,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "Love this. Here's the foundation.\n\n## Business Model\nFree short-form videos build trust; a $29/month community and a budgeting course turn that trust into income. Brand deals come later, once the audience is clear.\n\n## Target Audience\nPeople aged 22–30 with a first real paycheck who feel behind on money. They want plain steps, not jargon \ue200cite\ue202turn0search1\ue201.\n\n## Content Pillars\n1. Money basics (budgeting, credit)\n2. Mindset (comparison, spending triggers)\n3. Lifestyle (a day in my money life)\n\n## Posting Cadence\n4 videos a day on TikTok, Reels and Shorts — 9am, 12pm, 5pm, 8pm. Batch film twice a week.\n\n## Monetization\nCommunity first, course second, affiliate links for tools you actually use.\n\n**Offer:** A 30-day \"Money Reset\" challenge inside the community, $29/month."
+            ]
+          },
+          "metadata": { "model_slug": "gpt-5", "citations": [] },
+          "recipient": "all"
+        },
+        "parent": "thinking",
+        "children": ["u2"]
+      },
+      "u2": {
+        "id": "u2",
+        "message": {
+          "id": "u2",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1760600000.0,
+          "content": { "content_type": "text", "parts": ["Great. Make me the first week of the plan as a table with dates starting Monday Oct 19."] },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "a1",
+        "children": ["tool-call"]
+      },
+      "tool-call": {
+        "id": "tool-call",
+        "message": {
+          "id": "tool-call",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760600010.0,
+          "content": { "content_type": "code", "language": "python", "text": "import pandas as pd\nprint('PYTHON TOOL CALL')" },
+          "metadata": {},
+          "recipient": "python"
+        },
+        "parent": "u2",
+        "children": ["tool-out"]
+      },
+      "tool-out": {
+        "id": "tool-out",
+        "message": {
+          "id": "tool-out",
+          "author": { "role": "tool", "name": "python", "metadata": {} },
+          "create_time": 1760600011.0,
+          "content": { "content_type": "execution_output", "text": "TOOL OUTPUT" },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "tool-call",
+        "children": ["a2"]
+      },
+      "a2": {
+        "id": "a2",
+        "message": {
+          "id": "a2",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760600020.0,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "Here's week 1:\n\n| Date | Title | Platforms | Hook |\n|---|---|---|---|\n| Mon 10/19 | 5 money myths that keep you broke | TikTok, Reels, Shorts | Myth #1 is costing you $200 a month |\n| Mon 10/19 | Why I stopped budgeting | All | I quit budgeting and saved more |\n| Tue 10/20 | The 3-account system | All | You only need three bank accounts |\n| Wed 10/21 | How to read your credit report | TikTok | Your credit report has a secret |\n| Thu 10/22 | First paycheck checklist | All | Do these 4 things on payday |\n\nWant me to keep going with week 2?"
+            ]
+          },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "tool-out",
+        "children": ["a2-continued"]
+      },
+      "a2-continued": {
+        "id": "a2-continued",
+        "message": {
+          "id": "a2-continued",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760600021.0,
+          "content": { "content_type": "text", "parts": ["(Times default to your 4 daily slots.)"] },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "a2",
+        "children": ["u3"]
+      },
+      "u3": {
+        "id": "u3",
+        "message": {
+          "id": "u3",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1760700000.0,
+          "content": { "content_type": "text", "parts": ["Yes, week 2 please, as a list."] },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "a2-continued",
+        "children": ["a3-regenerated-old", "a3"]
+      },
+      "a3-regenerated-old": {
+        "id": "a3-regenerated-old",
+        "message": {
+          "id": "a3-regenerated-old",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760700010.0,
+          "content": { "content_type": "text", "parts": ["REGENERATED AWAY week 2 draft"] },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "u3",
+        "children": []
+      },
+      "a3": {
+        "id": "a3",
+        "message": {
+          "id": "a3",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1760700050.0,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "Week 2\n\n- Mon 10/26 — The latte myth, honestly — TikTok, Reels\n- Tue 10/27 — Emergency fund in 90 days — all\n- Wed 10/28 — Credit card points for beginners — all\n- Thu 10/29 — My money morning routine — Shorts\n\nThat keeps the pillars balanced across the week."
+            ]
+          },
+          "metadata": {},
+          "recipient": "all"
+        },
+        "parent": "u3",
+        "children": []
+      }
+    },
+    "moderation_results": [],
+    "current_node": "a3",
+    "plugin_ids": null,
+    "conversation_id": "conv-plan-0001",
+    "conversation_template_id": null,
+    "gizmo_id": null,
+    "is_archived": false,
+    "safe_urls": [],
+    "default_model_slug": "gpt-5",
+    "id": "conv-plan-0001"
+  },
+  {
+    "title": null,
+    "create_time": 1758000000,
+    "mapping": {
+      "x1": {
+        "id": "x1",
+        "parent": null,
+        "children": ["x2"],
+        "message": {
+          "author": { "role": "user" },
+          "content": { "parts": ["Old chat with missing fields and no current_node"] }
+        }
+      },
+      "x2": {
+        "id": "x2",
+        "parent": "x1",
+        "children": [],
+        "message": {
+          "author": { "role": "assistant" },
+          "create_time": 1758000100,
+          "content": { "content_type": "text", "parts": ["Reply without metadata or recipient", null, 42] }
+        }
+      }
+    }
+  },
+  {
+    "title": "Empty chat",
+    "create_time": 1757000000,
+    "mapping": { "only": { "id": "only", "parent": null, "children": [], "message": null } },
+    "current_node": "only"
+  }
+]

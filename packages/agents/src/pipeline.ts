@@ -108,7 +108,7 @@ export function defaultMaxModelCalls(maxScriptRevisions: number): number {
 
 export async function runResearchToScriptPipeline(
   provider: ModelProvider,
-  input: { contract: ProductionContract; brandContext: string; strategyContext?: string },
+  input: { contract: ProductionContract; brandContext: string; strategyContext?: string; planContext?: string },
   options: PipelineOptions = {},
 ): Promise<PipelineResult> {
   const maxRevisions = options.maxScriptRevisions ?? 1;
@@ -135,6 +135,7 @@ export async function runResearchToScriptPipeline(
       brandContext,
       claimsGateRequiredEdits: claimsGateResult.requiredEdits,
       revision,
+      planContext: input.planContext,
     });
   const gateScript = (script: ScriptVersion) => runClaimsGateAgent(budget, { research, brandContext, script });
 

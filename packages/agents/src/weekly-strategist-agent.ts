@@ -1,4 +1,6 @@
+import { PLAN_CONTEXT_BUDGET_CHARS } from "@chris/domain";
 import type { ModelProvider } from "./model-provider";
+import { stableContextWithPlan } from "./script-agent";
 import { buildSystemPrompt } from "./prompt-context";
 import {
   PortfolioAllocationResultSchema,
@@ -28,6 +30,10 @@ interface WeeklyStrategistInput {
   strategicContext?: string;
   /** Target number of videos for the week (default 30). */
   targetPortfolioSize?: number;
+  /** Optional: Chris's ChatGPT planning conversation (`getActivePlanContext`) — his plan,
+   * business model and cadence in his own words. Clipped to
+   * PLAN_CONTEXT_BUDGET_CHARS.WEEKLY_STRATEGIST (~3K tokens). */
+  planContext?: string;
 }
 
 function buildUserPrompt(input: WeeklyStrategistInput): string {
@@ -77,7 +83,7 @@ export async function runWeeklyStrategistAgent(
   const result = await provider.completeStructured({
     modelClass,
     systemPrompt,
-    stableContext: input.brandContext || undefined,
+    stableContext: stableContextWithPlan(input.brandContext, input.planContext, PLAN_CONTEXT_BUDGET_CHARS.WEEKLY_STRATEGIST),
     userPrompt: buildUserPrompt(input),
     schema: PortfolioAllocationResultSchema,
     promptId: "WEEKLY_STRATEGIST",

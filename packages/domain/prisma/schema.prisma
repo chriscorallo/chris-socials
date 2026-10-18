@@ -146,27 +146,27 @@ model ContentItem {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  transitions          ContentStateTransition[]
-  productionContract   ProductionContract?
-  creatorCard          CreatorCard?
-  mediaAssets          MediaAsset[]
-  scheduleEntry        ScheduleEntry?
-  researchPackets      ResearchPacket[]
-  scriptVersions       ScriptVersion[]
-  weeklyPortfolioItems WeeklyPortfolioItem[]
-  takeSelections       TakeSelection[]
-  editPlans            EditPlan[]
-  renders              Render[]
-  qcReports            QCReport[]
-  platformPackages     PlatformPackage[]
-  publications         Publication[]
-  performanceSnapshots PerformanceSnapshot[]
-  comments             Comment[]
+  transitions            ContentStateTransition[]
+  productionContract     ProductionContract?
+  creatorCard            CreatorCard?
+  mediaAssets            MediaAsset[]
+  scheduleEntry          ScheduleEntry?
+  researchPackets        ResearchPacket[]
+  scriptVersions         ScriptVersion[]
+  weeklyPortfolioItems   WeeklyPortfolioItem[]
+  takeSelections         TakeSelection[]
+  editPlans              EditPlan[]
+  renders                Render[]
+  qcReports              QCReport[]
+  platformPackages       PlatformPackage[]
+  publications           Publication[]
+  performanceSnapshots   PerformanceSnapshot[]
+  comments               Comment[]
   performanceEvaluations PerformanceEvaluation[]
-  tasteFeedback        TasteFeedback[]
-  experimentVariants   ExperimentVariant[]
-  adversarialCritiques AdversarialCritique[]
-  viewerReviews        ViewerReview[]
+  tasteFeedback          TasteFeedback[]
+  experimentVariants     ExperimentVariant[]
+  adversarialCritiques   AdversarialCritique[]
+  viewerReviews          ViewerReview[]
 
   // Plan import provenance (2026-10-17): which imported plan created this item, if any.
   planImportId String?
@@ -244,19 +244,19 @@ model ReferenceContent {
   // docs/DECISIONS.md "Reference videos"). All nullable: notes-only rows predate uploads.
   // `mediaStorageKey` is cleared (and `mediaDeletedAt` set) when Chris deletes the file; the
   // measured numbers stay.
-  mediaStorageKey  String?
-  mediaFilename    String?
-  mediaMimeType    String?
-  mediaSizeBytes   Float?
-  mediaUploadedAt  DateTime?
-  mediaDeletedAt   DateTime?
+  mediaStorageKey String?
+  mediaFilename   String?
+  mediaMimeType   String?
+  mediaSizeBytes  Float?
+  mediaUploadedAt DateTime?
+  mediaDeletedAt  DateTime?
   // Deterministic style measurement (no model calls) — `metrics` is ReferenceVideoMetrics
   // (packages/domain/src/style-metrics.ts), validated by zod on every write.
-  analysisStatus   ReferenceAnalysisStatus?
-  analysisError    String?
-  analyzedAt       DateTime?
-  metrics          Json?
-  metricsVersion   Int?
+  analysisStatus  ReferenceAnalysisStatus?
+  analysisError   String?
+  analyzedAt      DateTime?
+  metrics         Json?
+  metricsVersion  Int?
 
   referenceCreator ReferenceCreator       @relation(fields: [referenceCreatorId], references: [id])
   observations     ReferenceObservation[]
@@ -460,13 +460,13 @@ model MediaAsset {
   // Phase 3 analysis fields — added to this same table rather than a separate RawTake
   // table, per /docs/DATA_MODEL.md. Populated by deterministic ffprobe analysis
   // (packages/media's probeMedia) once ingested; null until then.
-  durationSeconds Float?
-  width           Int?
-  height          Int?
-  frameRate       Float?
-  hasAudio        Boolean?
-  videoCodec      String?
-  audioCodec      String?
+  durationSeconds  Float?
+  width            Int?
+  height           Int?
+  frameRate        Float?
+  hasAudio         Boolean?
+  videoCodec       String?
+  audioCodec       String?
   // Transcript — plain text, plus word-level timings when produced by a real transcription
   // provider (or null for a manually typed transcript). See /docs/DECISIONS.md
   // ("Real transcription: local Whisper, word-level timings").
@@ -527,8 +527,8 @@ model EditPlan {
   revisionReason        String?
   createdAt             DateTime       @default(now())
 
-  contentItem   ContentItem   @relation(fields: [contentItemId], references: [id])
-  takeSelection TakeSelection @relation(fields: [takeSelectionId], references: [id])
+  contentItem   ContentItem    @relation(fields: [contentItemId], references: [id])
+  takeSelection TakeSelection  @relation(fields: [takeSelectionId], references: [id])
   renders       Render[]
   viewerReviews ViewerReview[]
 
@@ -558,10 +558,10 @@ model Render {
   errorMessage      String?
   createdAt         DateTime     @default(now())
 
-  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
-  editPlan    EditPlan    @relation(fields: [editPlanId], references: [id])
-  qcReports   QCReport[]
-  variants    RenderVariant[]
+  contentItem   ContentItem     @relation(fields: [contentItemId], references: [id])
+  editPlan      EditPlan        @relation(fields: [editPlanId], references: [id])
+  qcReports     QCReport[]
+  variants      RenderVariant[]
   viewerReviews ViewerReview[]
 
   @@index([contentItemId])
@@ -591,17 +591,17 @@ enum QCSeverity {
 // impossible to average away (see /docs/ARCHITECTURE.md's Authority hierarchy enforcement
 // rules) — this row is that function's persisted output, not an independent judgment call.
 model QCReport {
-  id               String         @id @default(cuid())
-  contentItemId    String
-  renderId         String
-  factualStatus    HardGateStatus
-  technicalStatus  HardGateStatus
-  brandStatus      HardGateStatus
-  creativeStatus   HardGateStatus
-  overallStatus    HardGateStatus
-  reasons          Json
+  id                 String         @id @default(cuid())
+  contentItemId      String
+  renderId           String
+  factualStatus      HardGateStatus
+  technicalStatus    HardGateStatus
+  brandStatus        HardGateStatus
+  creativeStatus     HardGateStatus
+  overallStatus      HardGateStatus
+  reasons            Json
   visualQAImpression String?
-  createdAt        DateTime       @default(now())
+  createdAt          DateTime       @default(now())
 
   contentItem ContentItem @relation(fields: [contentItemId], references: [id])
   render      Render      @relation(fields: [renderId], references: [id])
@@ -630,11 +630,11 @@ model QCIssue {
 // Calendar shell (spec §9 step 19, "Auto-Fill Week") — Phase 1 was a single manually-set date;
 // Phase 5 adds the real per-platform target list the Scheduler/publish job actually reads.
 model ScheduleEntry {
-  id             String   @id @default(cuid())
-  contentItemId  String   @unique
-  scheduledDate  DateTime
-  targetPlatforms Json    @default("[]") // ContentPlatform[] — which platforms to publish to
-  createdAt      DateTime @default(now())
+  id              String   @id @default(cuid())
+  contentItemId   String   @unique
+  scheduledDate   DateTime
+  targetPlatforms Json     @default("[]") // ContentPlatform[] — which platforms to publish to
+  createdAt       DateTime @default(now())
 
   contentItem ContentItem @relation(fields: [contentItemId], references: [id])
 }
@@ -839,44 +839,44 @@ enum BeliefStatus {
 }
 
 model Belief {
-  id                    String       @id @default(cuid())
-  statement             String
-  causalClaim           String? // the interpretation — kept distinct from `statement` (the
+  id                     String           @id @default(cuid())
+  statement              String
+  causalClaim            String? // the interpretation — kept distinct from `statement` (the
   // observation) per spec §26: "separates OBSERVATION from CAUSAL CLAIM."
   isExperimentalEvidence Boolean // true = controlled experiment; false = retrospective/correlational
-  status                BeliefStatus @default(PROPOSED)
-  evidenceIds           Json // string[] of EvidenceEntry ids — required, non-empty at proposal time
-  sampleSize            Int
-  applicablePlatform    ContentPlatform?
-  applicableTopic       String?
-  applicableFormat      String?
-  dateRangeStart        DateTime?
-  dateRangeEnd          DateTime?
-  confidence            Float
-  confounders           Json // string[] — required field (may be empty, never omitted)
-  contradictoryEvidence Json // string[]
-  firstObserved         DateTime?
-  lastEvaluated         DateTime?
-  retestConditions      String?
-  proposedBy            String // actorId
-  reviewedBy            String? // actorId — set only on ACCEPTED/REJECTED
-  reviewedAt            DateTime?
-  createdAt             DateTime     @default(now())
+  status                 BeliefStatus     @default(PROPOSED)
+  evidenceIds            Json // string[] of EvidenceEntry ids — required, non-empty at proposal time
+  sampleSize             Int
+  applicablePlatform     ContentPlatform?
+  applicableTopic        String?
+  applicableFormat       String?
+  dateRangeStart         DateTime?
+  dateRangeEnd           DateTime?
+  confidence             Float
+  confounders            Json // string[] — required field (may be empty, never omitted)
+  contradictoryEvidence  Json // string[]
+  firstObserved          DateTime?
+  lastEvaluated          DateTime?
+  retestConditions       String?
+  proposedBy             String // actorId
+  reviewedBy             String? // actorId — set only on ACCEPTED/REJECTED
+  reviewedAt             DateTime?
+  createdAt              DateTime         @default(now())
 }
 
 // Human Taste Model — spec §7. Raw feedback is evidence; the tag is interpretation — both
 // kept, per TASTE_LEARNER.md ("preserve the original wording alongside the tag").
 model TasteFeedback {
-  id              String          @id @default(cuid())
-  contentItemId   String?
-  artifactType    String // e.g. "EDIT_PLAN", "SCRIPT", "PLATFORM_PACKAGE"
-  rawFeedback     String
-  normalizedTag   String
-  productionTier  ProductionTier?
+  id             String          @id @default(cuid())
+  contentItemId  String?
+  artifactType   String // e.g. "EDIT_PLAN", "SCRIPT", "PLATFORM_PACKAGE"
+  rawFeedback    String
+  normalizedTag  String
+  productionTier ProductionTier?
   // Structured evidence for machine-captured signals (e.g. MOTION_GRAPHIC edit diffs:
   // {template, topic, at, changes, ...}). Null for hand-entered feedback.
-  context         Json?
-  createdAt       DateTime        @default(now())
+  context        Json?
+  createdAt      DateTime        @default(now())
 
   contentItem ContentItem? @relation(fields: [contentItemId], references: [id])
 
@@ -887,15 +887,15 @@ model TasteFeedback {
 // Derived from TasteFeedback, never hand-set — one row per (artifactType, tag, context)
 // combination the Taste Learner has accumulated enough evidence to speak to.
 model ChrisAcceptanceProbability {
-  id            String   @id @default(cuid())
-  artifactType  String
-  tag           String
-  context       Json // {productionTier?, topic?, format?} — the scoping this probability applies to
-  probability   Float
-  sampleSize    Int
-  generalizes   Boolean // per TASTE_LEARNER.md: context-specific vs. appears to generalize
-  confidence    Float
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  artifactType String
+  tag          String
+  context      Json // {productionTier?, topic?, format?} — the scoping this probability applies to
+  probability  Float
+  sampleSize   Int
+  generalizes  Boolean // per TASTE_LEARNER.md: context-specific vs. appears to generalize
+  confidence   Float
+  createdAt    DateTime @default(now())
 
   @@index([artifactType, tag])
 }
@@ -920,16 +920,16 @@ enum ExperimentStatus {
 }
 
 model Experiment {
-  id              String           @id @default(cuid())
-  hypothesis      String
-  status          ExperimentStatus @default(PROPOSED)
-  confounders     Json // string[]
-  minSampleSize   Int
-  minDurationDays Int
+  id               String           @id @default(cuid())
+  hypothesis       String
+  status           ExperimentStatus @default(PROPOSED)
+  confounders      Json // string[]
+  minSampleSize    Int
+  minDurationDays  Int
   portfolioMapping String? // e.g. "exploit" / "adjacent" / "exploration" — see EXPERIMENT_AGENT.md
-  conclusion      String?
-  createdAt       DateTime         @default(now())
-  concludedAt     DateTime?
+  conclusion       String?
+  createdAt        DateTime         @default(now())
+  concludedAt      DateTime?
 
   variants ExperimentVariant[]
 }
@@ -951,13 +951,13 @@ model ExperimentVariant {
 // Weekly Review / Learning Council's output — spec's "WeeklyBrief," the backward-looking
 // counterpart to WeeklyProgrammingThesis's forward-looking plan.
 model WeeklyBrief {
-  id                          String   @id @default(cuid())
-  weekStartDate               DateTime @unique
-  whatHappened                String
-  whatItMeans                 String
-  stillUncertain               Json // string[]
-  recommendationsForNextWeek  Json // string[]
-  createdAt                   DateTime @default(now())
+  id                         String   @id @default(cuid())
+  weekStartDate              DateTime @unique
+  whatHappened               String
+  whatItMeans                String
+  stillUncertain             Json // string[]
+  recommendationsForNextWeek Json // string[]
+  createdAt                  DateTime @default(now())
 }
 
 // Adversarial Evaluator's critique — advisory (spec: "you report risks; the Creative Director
@@ -965,13 +965,13 @@ model WeeklyBrief {
 // evidence rather than a recomputed-and-discarded read, consistent with every other
 // specialist's output in this system.
 model AdversarialCritique {
-  id                         String   @id @default(cuid())
-  artifactType               String
-  artifactId                 String
-  contentItemId              String?
-  concerns                   Json // {description, whyItMatters, evidence}[]
-  noMaterialWeaknessesFound  Boolean
-  createdAt                  DateTime @default(now())
+  id                        String   @id @default(cuid())
+  artifactType              String
+  artifactId                String
+  contentItemId             String?
+  concerns                  Json // {description, whyItMatters, evidence}[]
+  noMaterialWeaknessesFound Boolean
+  createdAt                 DateTime @default(now())
 
   contentItem ContentItem? @relation(fields: [contentItemId], references: [id])
 
@@ -999,16 +999,16 @@ enum AutonomySubsystem {
 // `ceilingLevel` lets a human cap it permanently regardless of count (spec: "may require
 // human review permanently").
 model AutonomyLevel {
-  id                  String            @id @default(cuid())
-  subsystem           AutonomySubsystem
-  productionTier      ProductionTier
-  level               Int               @default(0)
-  approvedOutcomeCount Int              @default(0)
-  ceilingLevel        Int               @default(4)
-  lastEscalatedAt     DateTime?
+  id                   String            @id @default(cuid())
+  subsystem            AutonomySubsystem
+  productionTier       ProductionTier
+  level                Int               @default(0)
+  approvedOutcomeCount Int               @default(0)
+  ceilingLevel         Int               @default(4)
+  lastEscalatedAt      DateTime?
   lastEscalationReason String?
-  updatedAt           DateTime          @updatedAt
-  createdAt           DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  createdAt            DateTime          @default(now())
 
   @@unique([subsystem, productionTier])
 }
@@ -1028,7 +1028,7 @@ enum LlmModelClass {
 // packages/agents/src/pricing.ts; it is a point-in-time calculation, not a live join against
 // a price list, so a later price change never rewrites historical spend.
 model ModelCallLog {
-  id            String         @id @default(cuid())
+  id            String        @id @default(cuid())
   promptId      String
   modelClass    LlmModelClass
   model         String
@@ -1036,10 +1036,10 @@ model ModelCallLog {
   outputTokens  Int?
   costUsd       Float?
   latencyMs     Int
-  success       Boolean        @default(true)
+  success       Boolean       @default(true)
   errorMessage  String?
   contentItemId String?
-  createdAt     DateTime       @default(now())
+  createdAt     DateTime      @default(now())
 
   @@index([promptId])
   @@index([createdAt])
@@ -1327,4 +1327,57 @@ model OAuthToken {
   grant OAuthGrant @relation(fields: [grantId], references: [id])
 
   @@index([grantId, kind])
+}
+
+// --- Plan context (2026-10-17) ---
+// Chris's planning conversation(s) with ChatGPT, brought in from the official data export,
+// a share link, or a paste — private business context for the Script agent / Weekly
+// Strategist / the ChatGPT connector, and for his own reference. Versioned: re-importing an
+// updated conversation adds a PlanContextVersion (never an overwrite); the latest version is
+// the active one. Deleting purges the text (private data) — the AuditLog rows stay.
+// See docs/decisions-pending/plan-context.md.
+model PlanContext {
+  id             String   @id @default(cuid())
+  title          String
+  /// "EXPORT" | "CHAT_HTML" | "SHARE_LINK" | "PASTE" — of the first import.
+  source         String
+  /// ChatGPT's conversation id when known (export / share) — re-imports of the same chat
+  /// become new versions of this row.
+  conversationId String?
+  /// Include in the AI's context (Script agent, Weekly Strategist, ChatGPT connector).
+  useForAi       Boolean  @default(true)
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  versions PlanContextVersion[]
+
+  @@index([conversationId])
+}
+
+model PlanContextVersion {
+  id                    String    @id @default(cuid())
+  planContextId         String
+  version               Int
+  source                String
+  /// File name, share link, or null for a paste.
+  sourceRef             String?
+  conversationId        String?
+  conversationTitle     String?
+  conversationCreatedAt DateTime?
+  conversationUpdatedAt DateTime?
+  /// PlanContextMessage[] — { role: "user" | "assistant" | "unknown", text, at: ISO | null }.
+  messages              Json
+  messageCount          Int
+  charCount             Int
+  wordCount             Int
+  /// sha256 of the normalized messages — re-importing the same conversation is a no-op.
+  contentHash           String
+  createdBy             String
+  createdAt             DateTime  @default(now())
+
+  planContext PlanContext @relation(fields: [planContextId], references: [id], onDelete: Cascade)
+
+  @@unique([planContextId, version])
+  @@index([planContextId, contentHash])
 }

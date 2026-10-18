@@ -248,6 +248,15 @@ via `writeTransition` — see `/docs/DECISIONS.md` and `packages/domain/src/stat
   reasons, word/cut counts and sources, the pre-call estimate), verdictTier, estimatedCostUsd,
   costUsd?, inputTokens?, outputTokens?, jobRunId?, createdBy`. Never read by the hard-gate
   aggregation. See `docs/decisions-pending/viewer-panel.md`.
+- `PlanContext`, `PlanContextVersion` — **post-Phase-8 (2026-10-17)**, migration
+  `20261017230000_plan_context` — Chris's ChatGPT planning conversation(s) (export / share
+  link / paste). `PlanContext`: `title, source, conversationId?, useForAi, createdBy`.
+  `PlanContextVersion` (append-only; a re-import adds a version, the latest is active):
+  `version, source, sourceRef?, conversationId?, conversationTitle?, conversationCreatedAt?,
+  conversationUpdatedAt?, messages (json — {role, text, at}[]), messageCount, charCount,
+  wordCount, contentHash (idempotency), createdBy`. Private; delete purges the text (cascade)
+  and keeps the AuditLog (hashes/counts only). Read by `getActivePlanContext`. See
+  `docs/decisions-pending/plan-context.md`.
 - `PromptDefinition`, `PromptVersion` — **not planned as DB tables** (see
   `/docs/DECISIONS.md` — file-based registry decision); listed here only because §19 names
   them. If a runtime rollback need later justifies a DB-backed registry, add it then.
