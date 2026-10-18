@@ -5271,7 +5271,7 @@ video editing/rendering stays off until he has seen and approved its quality.
 `RENDER_SANDBOX_KINDS` (comma list; unset or `*` = all kinds) gates which heavy-job kinds may
 dispatch to the sandbox; anything else is refused with a plain message and nothing changes.
 Production: `RENDER_SANDBOX_KINDS=reference-analyze`, snapshot
-`snap_QI4JgmijbOrysPMuuZQi07OWiobI` (… + multi-part recordings); `RENDER_SANDBOX_KINDS=*` since Chris approved cloud editing for his quality test.
+`snap_EF2ZKqpsLhpTRXC0xUnOkqOUP5iU` (… + multi-part recordings + preview proxies); `RENDER_SANDBOX_KINDS=*` since Chris approved cloud editing for his quality test.
 Reversible by editing one env var.
 
 
