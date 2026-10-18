@@ -160,3 +160,4 @@ export * from "./chatgpt-connector";
 // (docs/decisions-pending/plan-context.md). Browser-safe parsers at `@chris/domain/plan-context`.
 export * from "./plan-context-db";
 export type { PlanContext as PlanContextRow, PlanContextVersion as PlanContextVersionRow } from "@prisma/client";
+export * from "./graphic-prefs";

@@ -11,6 +11,9 @@ import {
   type TimelineVisual,
   type MotionTheme,
   MotionThemeSchema,
+  GraphicPropsSchema,
+  graphicSummary,
+  presetById,
   VISUAL_INTERACTION_DEFAULTS,
   applyInteractionDefaults,
 } from "@chris/media/timeline";
@@ -55,6 +58,7 @@ export const TEMPLATE_LABEL: Record<MotionTemplate, string> = {
   TIMELINE: "Timeline",
   DEFINITION: "Definition",
   TITLE_CARD: "Title card",
+  GRAPHIC: "Graphic",
 };
 
 export const TEMPLATE_BLURB: Record<MotionTemplate, string> = {
@@ -72,6 +76,7 @@ export const TEMPLATE_BLURB: Record<MotionTemplate, string> = {
   TIMELINE: "Milestones",
   DEFINITION: "Explain a term",
   TITLE_CARD: "Chapter title",
+  GRAPHIC: "From the graphics library",
 };
 
 export const ICON_3D_LABEL: Record<string, string> = {
@@ -120,7 +125,9 @@ export type FieldSpec =
   | { key: string; label: string; kind: "object"; fields: FieldSpec[] }
   | { key: string; label: string; kind: "point" }
   /** Nullable index into a sibling list (e.g. which bar is highlighted). */
-  | { key: string; label: string; kind: "index"; of: string; itemKey: string };
+  | { key: string; label: string; kind: "index"; of: string; itemKey: string }
+  /** Edited by a dedicated editor (GRAPHIC: GraphicEditor.tsx) — the generic form skips it. */
+  | { key: string; label: string; kind: "custom" };
 
 const TITLE: FieldSpec = { key: "title", label: "Title", kind: "text", max: 60, nullable: true, placeholder: "Optional" };
 const UNIT: FieldSpec = { key: "unit", label: "Unit", kind: "text", max: 6, optional: true, placeholder: "$, %, …" };
@@ -232,6 +239,10 @@ export const TEMPLATE_FIELDS: Record<MotionTemplate, FieldSpec[]> = {
     { key: "title", label: "Title", kind: "text", max: 120 },
     { key: "subtitle", label: "Subtitle", kind: "text", max: 60, nullable: true, placeholder: "Optional" },
   ],
+  // Composable graphics have their own editor (data table, quick entry, format, animation).
+  GRAPHIC: ["component", "variant", "preset", "title", "subtitle", "body", "series", "categories", "items", "highlight", "showTotal", "range", "format", "animation", "screen"].map(
+    (key) => ({ key, label: key, kind: "custom" as const }),
+  ),
 };
 
 /** Whether a field puts a number on screen (for the "not fact-checked yet" note). */
@@ -271,6 +282,10 @@ function short(s: unknown, n = 22): string {
 
 /** Track label: template name + a short summary of what it shows. */
 export function visualSummary(v: Pick<TimelineVisual, "template" | "props">): string {
+  if (v.template === "GRAPHIC") {
+    const g = GraphicPropsSchema.safeParse(v.props);
+    return g.success ? graphicSummary(g.data, presetById(g.data.preset)?.name ?? null) : TEMPLATE_LABEL.GRAPHIC;
+  }
   const p = v.props as Record<string, unknown>;
   const name = TEMPLATE_LABEL[v.template];
   let detail = "";

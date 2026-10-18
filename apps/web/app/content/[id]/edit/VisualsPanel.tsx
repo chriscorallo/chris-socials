@@ -38,6 +38,8 @@ import { waitForJob } from "../../../../lib/use-job-progress";
 import { NumField, Section, Seg, Slider, Toggle } from "./Inspector";
 import { TemplateArt } from "./template-art";
 import { InShotSection, ThemePicker } from "./InteractionControls";
+import { GraphicLibrary } from "./GraphicLibrary";
+import { GraphicEditor } from "./GraphicEditor";
 import { Icon } from "./icons";
 
 /**
@@ -66,10 +68,6 @@ export function VisualsHome() {
   return (
     <>
       <AiDesignCard />
-      <ThemePicker />
-      <Section title="Add a graphic">
-        <TemplateGallery />
-      </Section>
       {list.length > 0 && (
         <Section title={`On the timeline (${list.length})`}>
           <ul className="flex flex-col gap-1">
@@ -94,6 +92,10 @@ export function VisualsHome() {
           </ul>
         </Section>
       )}
+      <ThemePicker />
+      <Section title="Add a graphic">
+        <GraphicLibrary />
+      </Section>
     </>
   );
 }
@@ -320,7 +322,7 @@ export function VisualEditor({ v }: { v: TimelineVisual }) {
             <TemplateArt template={v.template} size={34} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-semibold">{TEMPLATE_LABEL[v.template]}</p>
+            <p className="text-[14px] font-semibold">{v.template === "GRAPHIC" ? visualSummary(v).split(" · ")[0] : TEMPLATE_LABEL[v.template]}</p>
             <p className="text-[11.5px] tabular-nums text-[var(--color-text-faint)]">
               {v.start.toFixed(1)}–{v.end.toFixed(1)}s · {(v.end - v.start).toFixed(1)}s on screen
             </p>
@@ -344,14 +346,27 @@ export function VisualEditor({ v }: { v: TimelineVisual }) {
         ))}
       </div>
 
-      <Section title="Content">
-        <PropsForm fields={TEMPLATE_FIELDS[v.template]} value={v.props as Record<string, unknown>} onChange={setProps} />
-        {numbersTouched && (
-          <p className="ed-factual-note">
-            <Icon name="target" size={13} /> Numbers on screen aren&apos;t fact-checked until you run Finish (the quality gate checks on-screen numbers).
-          </p>
-        )}
-      </Section>
+      {v.template === "GRAPHIC" ? (
+        <>
+          <GraphicEditor v={v} onNumbersTouched={() => setNumbersTouched(true)} />
+          {numbersTouched && (
+            <div className="ed-section">
+              <p className="ed-factual-note">
+                <Icon name="target" size={13} /> Numbers on screen aren&apos;t fact-checked until you run Finish (the quality gate checks on-screen numbers, totals included).
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+        <Section title="Content">
+          <PropsForm fields={TEMPLATE_FIELDS[v.template]} value={v.props as Record<string, unknown>} onChange={setProps} />
+          {numbersTouched && (
+            <p className="ed-factual-note">
+              <Icon name="target" size={13} /> Numbers on screen aren&apos;t fact-checked until you run Finish (the quality gate checks on-screen numbers).
+            </p>
+          )}
+        </Section>
+      )}
 
       <Section title="Look">
         <div>
@@ -527,6 +542,8 @@ function Field({ spec, value, all, onChange }: { spec: FieldSpec; value: unknown
         </div>
       );
     }
+    case "custom":
+      return null;
     case "index": {
       const items = Array.isArray(all[spec.of]) ? (all[spec.of] as Array<Record<string, unknown>>) : [];
       const options: Array<[string, string]> = [["none", "None"], ...items.map((it, i) => [String(i), String(it[spec.itemKey] ?? `#${i + 1}`)] as [string, string])];

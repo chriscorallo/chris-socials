@@ -1,4 +1,4 @@
-import type { MotionTemplate, TimelineVisual } from "@chris/media/timeline";
+import { GraphicPropsSchema, footprintOf, presetById, type GraphicPreset, type MotionTemplate, type TimelineVisual } from "@chris/media/timeline";
 
 /**
  * Sample props per template — used by the per-template Preview compositions, the showcase
@@ -63,6 +63,8 @@ export const SAMPLE_PROPS: Record<MotionTemplate, Record<string, unknown>> = {
     definition: "The yearly fee a fund charges, as a percent of what you have invested in it.",
   },
   TITLE_CARD: { title: "The 50/30/20 Rule", subtitle: "Chapter two" },
+  // Chris's own example (the library's flagship preset): Employee · Freelance · Business owner.
+  GRAPHIC: GraphicPropsSchema.parse(presetById("income-3-people-12-months")!.props),
 };
 
 /** Sensible default placement per template for previews/showcase. */
@@ -81,6 +83,7 @@ export const SAMPLE_PLACEMENT: Record<MotionTemplate, { x: number; y: number; sc
   TIMELINE: { x: 0.5, y: 0.32, scale: 1 },
   DEFINITION: { x: 0.5, y: 0.3, scale: 1 },
   TITLE_CARD: { x: 0.5, y: 0.5, scale: 1 },
+  GRAPHIC: { x: 0.5, y: 0.5, scale: 1 },
 };
 
 export function sampleVisual(template: MotionTemplate, start = 0, end = 4, overrides: Partial<TimelineVisual> = {}): TimelineVisual {
@@ -101,6 +104,28 @@ export function sampleVisual(template: MotionTemplate, start = 0, end = 4, overr
     cameraCoupling: 0,
     integration: { shadow: true, lightWrap: false, sceneMatch: true },
     emphasisAt: null,
+    ...overrides,
+  };
+}
+
+/** Full contract props for a library preset (GRAPHIC props parsed with every default filled). */
+export function presetVisualProps(p: GraphicPreset): Record<string, unknown> {
+  const props = structuredClone(p.props);
+  return p.template === "GRAPHIC" ? (GraphicPropsSchema.parse(props) as unknown as Record<string, unknown>) : props;
+}
+
+/** A library preset as a visual (previews, posters, the contact sheet, tests). */
+export function presetVisual(p: GraphicPreset, start = 0, end = p.seconds, overrides: Partial<TimelineVisual> = {}): TimelineVisual {
+  const props = presetVisualProps(p);
+  const fp = footprintOf(p.template, props);
+  const base = sampleVisual(p.template, start, end);
+  return {
+    ...base,
+    id: `preset-${p.id}`,
+    props,
+    placement: { mode: "MANUAL", x: p.placement?.x ?? 0.5, y: p.placement?.y ?? (fp.kind === "FULL_FRAME" ? 0.5 : SAMPLE_PLACEMENT[p.template].y), scale: p.placement?.scale ?? 1 },
+    palette: p.palette ?? "BRAND",
+    enterSfx: p.enterSfx === undefined ? "WHOOSH" : p.enterSfx,
     ...overrides,
   };
 }

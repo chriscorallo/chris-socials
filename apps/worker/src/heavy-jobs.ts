@@ -208,6 +208,7 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       const r = await designMotionForContentItem(db, storage, needModel(ctx), a.contentItemId, actor, {
         trigger: "HUMAN",
         replaceExisting: a.replaceExisting ?? false,
+        focus: a.focus ?? null,
         analyze: ctx.analyze,
       });
       const result = {

@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, getHeavyJob, type ContentState } from "@chris/domain";
+import { prisma, saveFinishingEdit, scheduleContentItemForPublishing, getLatestEditPlan, recordMotionEditSignals, getHeavyJob, getGraphicPrefs, setGraphicFavorite, recordGraphicPresetUse, type ContentState, type GraphicPrefs } from "@chris/domain";
 import { EditTimelineSchema, type EditTimeline, type PlacementWarning } from "@chris/media/timeline";
 import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
@@ -99,12 +99,14 @@ export interface DesignVisualsStepResult {
 export async function designVisualsAction(input: {
   contentItemId: string;
   replaceExisting?: boolean;
+  /** "Suggest with AI" in the graphics library: one graphic for this moment. */
+  focus?: { start: number; end: number; phrase?: string | null } | null;
 }): Promise<StepResult<DesignVisualsStepResult> | ({ ok: true } & PendingJob)> {
   const session = await requireSession();
   if (heavyJobMode() === "sandbox") {
     // Vercel: face tracking (ONNX) + the Motion Designer run in the cloud worker; the client
     // polls the job, then calls designVisualsResultAction for the saved version.
-    const r = await runHeavyJob("motion-design", { contentItemId: input.contentItemId, replaceExisting: input.replaceExisting ?? false }, { actorId: session.user!.id! });
+    const r = await runHeavyJob("motion-design", { contentItemId: input.contentItemId, replaceExisting: input.replaceExisting ?? false, focus: input.focus ?? null }, { actorId: session.user!.id! });
     if (r.status === "started") return { ok: true, pending: true, jobRunId: r.jobRunId };
     if (r.status === "done") return designResultFromJob(input.contentItemId, r.outcome.ok, r.outcome.result, r.outcome.error ?? null);
     return notStarted(r);
@@ -116,7 +118,7 @@ export async function designVisualsAction(input: {
       getModelProvider(),
       input.contentItemId,
       { actorId: session.user!.id! },
-      { trigger: "HUMAN", replaceExisting: input.replaceExisting ?? false, skipTracking: !isAutoSubjectTrackingEnabled() },
+      { trigger: "HUMAN", replaceExisting: input.replaceExisting ?? false, focus: input.focus ?? null, skipTracking: !isAutoSubjectTrackingEnabled() },
     );
     if (result.status !== "SUCCESS" || !result.editPlanId) {
       return { ok: false, error: plainDesignError(result.errorMessage ?? "unknown error"), state: await stateOf(input.contentItemId).catch(() => undefined) };
@@ -394,4 +396,36 @@ export async function previewAssetsAction(contentItemId: string): Promise<Editor
   await requireSession();
   const rows = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } });
   return editorAssetsFrom(rows);
+}
+
+// ---------------------------------------------------------------------------------------
+// Graphics library: favourites + recently used (per signed-in user). Best-effort — the
+// library works without them, so failures return the empty/unchanged lists.
+// ---------------------------------------------------------------------------------------
+
+export async function graphicPrefsAction(): Promise<GraphicPrefs> {
+  const session = await requireSession();
+  try {
+    return await getGraphicPrefs(prisma, session.user!.id!);
+  } catch {
+    return { favorites: [], recents: [] };
+  }
+}
+
+export async function setGraphicFavoriteAction(presetId: string, favorite: boolean): Promise<GraphicPrefs | null> {
+  const session = await requireSession();
+  try {
+    return await setGraphicFavorite(prisma, session.user!.id!, presetId, favorite);
+  } catch {
+    return null;
+  }
+}
+
+export async function recordGraphicUseAction(presetId: string): Promise<GraphicPrefs | null> {
+  const session = await requireSession();
+  try {
+    return await recordGraphicPresetUse(prisma, session.user!.id!, presetId);
+  } catch {
+    return null;
+  }
 }

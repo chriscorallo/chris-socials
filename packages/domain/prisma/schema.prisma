@@ -1460,3 +1460,21 @@ model RecordingSegment {
   @@unique([recordingSessionId, clientKey])
   @@index([recordingSessionId, segmentIndex])
 }
+
+/// Per-user graphics-library preferences (docs/decisions-pending/animation-library.md): which
+/// library presets Chris starred and which he used recently. One row per (user, preset); a
+/// preset id that no longer exists in the library is ignored by the editor.
+model GraphicPresetPref {
+  id          String    @id @default(cuid())
+  userId      String
+  presetId    String
+  favorite    Boolean   @default(false)
+  useCount    Int       @default(0)
+  lastUsedAt  DateTime?
+  favoritedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, presetId])
+  @@index([userId, lastUsedAt])
+}

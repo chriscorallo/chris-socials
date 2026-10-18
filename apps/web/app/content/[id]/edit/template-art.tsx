@@ -126,6 +126,15 @@ const ART: Record<MotionTemplate, ReactNode> = {
       <path d="M18 30h12" stroke={G} strokeWidth="2" strokeLinecap="round" />
     </>
   ),
+  GRAPHIC: (
+    <>
+      <rect x="7" y="9" width="10" height="30" rx="3" fill="rgba(255,255,255,0.08)" stroke={M} />
+      <rect x="19" y="9" width="10" height="30" rx="3" fill="rgba(255,255,255,0.08)" stroke={M} />
+      <rect x="31" y="9" width="10" height="30" rx="3" fill="rgba(255,213,74,0.18)" stroke={G} />
+      <path d="M10 15h4M10 20h4M10 25h4M22 15h4M22 20h4M34 15h4M34 20h4" stroke={W} strokeWidth="2" strokeLinecap="round" />
+      <path d="M22 25h4" stroke="#FB7185" strokeWidth="2" strokeLinecap="round" />
+    </>
+  ),
 };
 
 export function TemplateArt({ template, size = 48 }: { template: MotionTemplate; size?: number }) {

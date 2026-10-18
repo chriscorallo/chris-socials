@@ -22,7 +22,7 @@ import type { NormBox, SubjectTrack } from "./subject-track-core";
 import { subjectBoxAt } from "./subject-track-core";
 import { clipStartTimes, locateOutputTime, timelineDuration, type EditTimeline } from "./timeline";
 import { cropGeometry, normalizeZooms, zoomStateAt, type ZoomState } from "./timeline-layout";
-import { footprintPx, TEMPLATE_FOOTPRINTS } from "./visual-footprints";
+import { footprintOf, footprintPx } from "./visual-footprints";
 
 type Canvas = { width: number; height: number };
 type Pt = { x: number; y: number };
@@ -168,13 +168,13 @@ const r4 = (v: number) => Math.round(v * 10000) / 10000;
  * - Finally clamped so the box stays on the canvas (36 px margin when anchored).
  */
 export function visualMotionTrack(
-  visual: Pick<TimelineVisual, "template" | "start" | "end" | "placement" | "anchor" | "cameraCoupling">,
+  visual: Pick<TimelineVisual, "template" | "start" | "end" | "placement" | "anchor" | "cameraCoupling"> & { props?: unknown },
   timeline: Pick<EditTimeline, "clips" | "canvas" | "zooms">,
   ctx: InteractionContext,
   fps: number,
 ): VisualMotionTrack | null {
   const canvas = timeline.canvas;
-  const fullFrame = TEMPLATE_FOOTPRINTS[visual.template].kind === "FULL_FRAME";
+  const fullFrame = footprintOf(visual.template, visual.props).kind === "FULL_FRAME";
   const duration = timelineDuration(timeline);
   const { zooms } = normalizeZooms(timeline.zooms, duration);
   const from = Math.max(0, Math.round(visual.start * fps));
@@ -240,7 +240,7 @@ export function visualMotionTrack(
     const m = 36 * (canvas.width / 1080);
     const area = anchored ? { x: m, y: m, width: canvas.width - 2 * m, height: canvas.height - 2 * m } : { x: 0, y: 0, width: canvas.width, height: canvas.height };
     times.forEach((_, i) => {
-      const fp = footprintPx(visual.template, visual.placement.scale * ss[i]!, canvas);
+      const fp = footprintPx(visual.template, visual.placement.scale * ss[i]!, canvas, visual.props);
       const hw = Math.min(fp.width, area.width) / 2;
       const hh = Math.min(fp.height, area.height) / 2;
       xs[i] = Math.min(area.x + area.width - hw, Math.max(area.x + hw, xs[i]!));
@@ -375,10 +375,10 @@ export function sceneLook(stats: SceneStats | null | undefined): SceneLook {
  * The footage region (OUTPUT canvas px) a visual is judged against: its footprint at its
  * placement (full frame for TITLE_CARD), clipped to the canvas.
  */
-export function sceneRegionFor(v: Pick<TimelineVisual, "template" | "placement">, canvas: Canvas): { x: number; y: number; width: number; height: number } {
-  const fp = TEMPLATE_FOOTPRINTS[v.template];
+export function sceneRegionFor(v: Pick<TimelineVisual, "template" | "placement"> & { props?: unknown }, canvas: Canvas): { x: number; y: number; width: number; height: number } {
+  const fp = footprintOf(v.template, v.props);
   if (fp.kind === "FULL_FRAME") return { x: 0, y: 0, width: canvas.width, height: canvas.height };
-  const { width, height } = footprintPx(v.template, v.placement.scale, canvas);
+  const { width, height } = footprintPx(v.template, v.placement.scale, canvas, v.props);
   const x = Math.max(0, Math.round(v.placement.x * canvas.width - width / 2));
   const y = Math.max(0, Math.round(v.placement.y * canvas.height - height / 2));
   return { x, y, width: Math.max(2, Math.min(canvas.width - x, width)), height: Math.max(2, Math.min(canvas.height - y, height)) };

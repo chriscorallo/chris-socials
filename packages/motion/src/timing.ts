@@ -3,6 +3,7 @@ import {
   MotionPropsSchemas,
   TEMPLATE_FOOTPRINTS,
   TimelineVisualSchema,
+  footprintOf,
   type MotionProps,
   type MotionTemplate,
   type TimelineVisual,
@@ -33,6 +34,8 @@ export const AUTO_TRANSITIONS: Record<MotionTemplate, { enter: ConcreteTransitio
   TIMELINE: { enter: "SLIDE", exit: "FADE" },
   DEFINITION: { enter: "BLUR", exit: "BLUR" },
   TITLE_CARD: { enter: "FADE", exit: "BLUR" },
+  // Composable graphics animate their own elements in (sequenced); the container only fades.
+  GRAPHIC: { enter: "FADE", exit: "FADE" },
 };
 
 export function resolveTransition(
@@ -125,6 +128,18 @@ export const TEMPLATE_DESIGN_SIZE: Record<MotionTemplate, { width: number; heigh
   MOTION_TEMPLATES.map((t) => [t, { width: TEMPLATE_FOOTPRINTS[t].width, height: TEMPLATE_FOOTPRINTS[t].height }]),
 ) as Record<MotionTemplate, { width: number; height: number }>;
 
+/** The designed box of THIS visual: the template's, or a GRAPHIC's component box for its data. */
+export function designSizeOf(template: MotionTemplate, props?: unknown): { width: number; height: number } {
+  if (template !== "GRAPHIC") return TEMPLATE_DESIGN_SIZE[template];
+  const fp = footprintOf(template, props);
+  return { width: fp.width, height: fp.height };
+}
+
+/** Full-frame visuals (TITLE_CARD, full-screen GRAPHIC scenes) ignore placement and fill the canvas. */
+export function isFullFrameVisual(template: MotionTemplate, props?: unknown): boolean {
+  return footprintOf(template, props).kind === "FULL_FRAME";
+}
+
 /** Safe margin (px at unit scale) a placed box is kept inside. */
 export const PLACEMENT_MARGIN = 36;
 
@@ -156,12 +171,13 @@ export function placementBox(
   template: MotionTemplate,
   placement: Pick<TimelineVisual["placement"], "x" | "y" | "scale">,
   canvas: { width: number; height: number },
+  props?: unknown,
 ): PlacementBox {
   const unit = canvasUnit(canvas);
-  if (template === "TITLE_CARD") {
+  if (template === "TITLE_CARD" || isFullFrameVisual(template, props)) {
     return { left: 0, top: 0, width: canvas.width, height: canvas.height, scale: 1, cx: canvas.width / 2, cy: canvas.height / 2, clamped: false };
   }
-  const d = TEMPLATE_DESIGN_SIZE[template];
+  const d = designSizeOf(template, props);
   const margin = PLACEMENT_MARGIN * unit;
   let scale = unit * placement.scale;
   const fit = Math.min((canvas.width - 2 * margin) / d.width, (canvas.height - 2 * margin) / d.height);

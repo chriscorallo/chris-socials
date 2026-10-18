@@ -37,7 +37,7 @@ import { timelineCaptionChunks } from "./timeline-captions";
 import type { TranscriptWord } from "./caption-chunking";
 import type { TimelineVisual } from "./motion-contract";
 import { bodyRegionFromHead, subjectBoxAt, type NormBox, type SubjectTrack } from "./subject-track-core";
-import { footprintPx, MIN_AUTO_SCALE_FACTOR, TEMPLATE_FOOTPRINTS } from "./visual-footprints";
+import { footprintOf, footprintPx, MIN_AUTO_SCALE_FACTOR } from "./visual-footprints";
 
 export interface PlacementOptions {
   /** MediaAsset id -> its subject track (null/absent = not analysed yet). */
@@ -186,10 +186,10 @@ export function placementSafeArea(canvas: { width: number; height: number }, zon
 }
 
 /** A visual's on-canvas footprint (centre x/y + template size x scale), px. */
-export function visualRect(v: Pick<TimelineVisual, "template" | "placement">, canvas: { width: number; height: number }): Rect {
-  const fp = TEMPLATE_FOOTPRINTS[v.template];
+export function visualRect(v: Pick<TimelineVisual, "template" | "placement"> & { props?: unknown }, canvas: { width: number; height: number }): Rect {
+  const fp = footprintOf(v.template, v.props);
   if (fp.kind === "FULL_FRAME") return { x: 0, y: 0, width: canvas.width, height: canvas.height };
-  const { width, height } = footprintPx(v.template, v.placement.scale, canvas);
+  const { width, height } = footprintPx(v.template, v.placement.scale, canvas, v.props);
   return {
     x: Math.round(v.placement.x * canvas.width - width / 2),
     y: Math.round(v.placement.y * canvas.height - height / 2),
@@ -403,7 +403,7 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
       if (overlapsInTime(t, v)) hard.push({ name: `text "${t.text.slice(0, 24)}"`, rect: textRect(t, canvas, options.measure) });
     }
     for (const p of placed) {
-      if (p.v.id !== v.id && overlapsInTime(p.v, v) && TEMPLATE_FOOTPRINTS[p.v.template].kind !== "FULL_FRAME") {
+      if (p.v.id !== v.id && overlapsInTime(p.v, v) && footprintOf(p.v.template, p.v.props).kind !== "FULL_FRAME") {
         hard.push({ name: `visual ${p.v.id}`, rect: p.rect });
       }
     }
@@ -415,7 +415,7 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
     if (v.placement.mode !== "MANUAL") continue;
     const rect = visualRect(v, canvas);
     const { subject, hard } = windowObstacles(v);
-    if (TEMPLATE_FOOTPRINTS[v.template].kind !== "FULL_FRAME") {
+    if (footprintOf(v.template, v.props).kind !== "FULL_FRAME") {
       if (subject.head && v.depth !== "BEHIND_SUBJECT" && intersectionArea(rect, subject.head) > 0) {
         warnings.push({
           visualId: v.id,
@@ -451,7 +451,7 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
     .sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
 
   for (const v of autos) {
-    const fp = TEMPLATE_FOOTPRINTS[v.template];
+    const fp = footprintOf(v.template, v.props);
     const { subject, hard } = windowObstacles(v);
     if (!subject.tracked) {
       warnings.push({
@@ -491,7 +491,7 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
     let best: Candidate | null = null;
     let leastBad: Candidate | null = null;
     for (const factor of SCALE_FACTORS) {
-      const { width: w, height: h } = footprintPx(v.template, factor, canvas);
+      const { width: w, height: h } = footprintPx(v.template, factor, canvas, v.props);
       if (w > safe.width || h > safe.height) continue;
       const xs = gridCentres(safe.x + w / 2, safe.x + safe.width - w / 2, step, safe.x + safe.width / 2);
       const ys = gridCentres(safe.y + h / 2, safe.y + safe.height - h / 2, step, null);
@@ -648,7 +648,7 @@ function autoDepthSpot(
   const hairTop = ell.cy - ell.ry;
   const maxCover = AUTO_DEPTH_MAX_COVER[v.template as "NUMBER_COUNTER" | "KINETIC_TEXT"];
   for (const factor of [1, 0.9, 0.8]) {
-    const { width: w, height: h } = footprintPx(v.template, factor, canvas);
+    const { width: w, height: h } = footprintPx(v.template, factor, canvas, v.props);
     if (w > safe.width || h > safe.height) continue;
     const bandH = h * gb.height;
     let cy = hairTop - 0.62 * bandH - h * gb.top + h / 2;

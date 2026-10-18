@@ -67,6 +67,8 @@ export interface MotionDesignJobOptions {
   analyze?: SubjectAnalyzer;
   /** Skip subject tracking entirely (placement falls back to assumed framing + warnings). */
   skipTracking?: boolean;
+  /** One graphic for one moment ("Suggest with AI" in the editor's graphics library). */
+  focus?: { start: number; end: number; phrase?: string | null } | null;
 }
 
 function asArray<T>(v: unknown): T[] {
@@ -166,6 +168,7 @@ export async function designMotionForContentItem(
       tier: row.productionTier,
       brandContext,
       replaceExisting: options.replaceExisting,
+      focus: options.focus ?? null,
       measure: nodeMeasureText,
       topic: topicInput,
       motionTaste: motionTaste ? { context: motionTaste.context, capDelta: motionTaste.capDelta, avoidTemplates: motionTaste.avoidTemplates } : null,
