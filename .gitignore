@@ -36,3 +36,10 @@ packages/domain/.pglite-*/
 
 # local ML model cache (transformers.js Whisper — see packages/media/src/transcription)
 .cache/
+
+# Chris's own videos dropped in the repo root (reference / proof films) — never commit media
+/*.mp4
+/*.MP4
+/*.mov
+/*.MOV
+/*.m4v
