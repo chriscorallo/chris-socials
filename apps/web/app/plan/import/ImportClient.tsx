@@ -24,6 +24,7 @@ import {
   type TableMapping,
   type ValidatedRow,
 } from "@chris/domain/plan-import";
+import { parsePlanSegments } from "@chris/domain/plan-context";
 import type { PlatformCadence, PlanPlatform } from "@chris/domain/planning";
 import { cleanUpPlanWithAi, createPlanFromImport, fetchGoogleSheet } from "../actions";
 
@@ -46,22 +47,30 @@ export function ImportClient({
   existing,
   enabledPlatforms,
   cadences,
+  fromConversation,
 }: {
   today: string;
   existing: ExistingPlanned[];
   enabledPlatforms: PlanPlatform[];
   cadences: PlatformCadence[] | null;
+  /** "Update my plan from this conversation" (/plan/context): the chosen messages' text,
+   * each parsed on its own, straight into the preview. */
+  fromConversation?: { title: string; texts: string[] } | null;
 }) {
+  // Rows found in a saved ChatGPT conversation open the preview directly.
+  const [initial] = useState(() => (fromConversation?.texts.length ? parsePlanSegments(fromConversation.texts, { today, startDate: today, enabledPlatforms }) : null));
   const [tab, setTab] = useState<Tab>("paste");
   const [text, setText] = useState("");
   const [sheetLink, setSheetLink] = useState("");
   const [busy, setBusy] = useState<null | string>(null);
   const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<Source | null>(null);
+  const [source, setSource] = useState<Source | null>(() =>
+    initial?.rows.length && fromConversation ? { kind: "TEXT", ref: `ChatGPT conversation: ${fromConversation.title}`.slice(0, 500), raw: fromConversation.texts.join("\n\n") } : null,
+  );
   const [table, setTable] = useState<TableState | null>(null);
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [rows, setRows] = useState<Row[] | null>(() => (initial?.rows.length ? initial.rows : null));
   const [startDate, setStartDate] = useState(today);
-  const [usesRelative, setUsesRelative] = useState(false);
+  const [usesRelative, setUsesRelative] = useState(() => initial?.usesRelativeDates ?? false);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
@@ -502,6 +511,8 @@ function sourceLabel(s: Source): string {
       return "Google Sheet";
     case "AI_CLEANUP":
       return "Cleaned up with AI";
+    case "TEXT":
+      return s.ref ? (s.ref.startsWith("ChatGPT conversation") ? s.ref : `File · ${s.ref}`) : "Pasted plan";
     default:
       return s.ref ? `File · ${s.ref}` : "Pasted plan";
   }

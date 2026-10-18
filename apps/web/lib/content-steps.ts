@@ -12,6 +12,7 @@ import {
   recordPlatformPackage,
   recordTakeSelection,
   isScriptVersionFilmable,
+  getPlanContextForAgent,
   type ContentState,
 } from "@chris/domain";
 import {
@@ -40,7 +41,9 @@ export async function runPipelineStep(contentItemId: string, actor: Actor) {
   const contract = await getProductionContract(prisma, contentItemId);
   if (!contract) throw new Error("No Production Contract found for this item — issue one first.");
   const brandContext = await getBrandContextText(prisma);
-  const result = await runResearchToScriptPipeline(getModelProvider(), { contract, brandContext }, { contentItemId });
+  // Chris's ChatGPT planning conversation (optional, ~1.5K tokens) — intent, never facts.
+  const planContext = await getPlanContextForAgent(prisma, "SCRIPT");
+  const result = await runResearchToScriptPipeline(getModelProvider(), { contract, brandContext, planContext }, { contentItemId });
   await applyPipelineResult(prisma, contentItemId, toPipelineResultInput(result), actor);
   return result;
 }

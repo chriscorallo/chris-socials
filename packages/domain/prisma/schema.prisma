@@ -1247,3 +1247,56 @@ model ViewerReview {
   @@index([referenceContentId, createdAt])
   @@index([renderId])
 }
+
+// --- Plan context (2026-10-17) ---
+// Chris's planning conversation(s) with ChatGPT, brought in from the official data export,
+// a share link, or a paste — private business context for the Script agent / Weekly
+// Strategist / the ChatGPT connector, and for his own reference. Versioned: re-importing an
+// updated conversation adds a PlanContextVersion (never an overwrite); the latest version is
+// the active one. Deleting purges the text (private data) — the AuditLog rows stay.
+// See docs/decisions-pending/plan-context.md.
+model PlanContext {
+  id             String   @id @default(cuid())
+  title          String
+  /// "EXPORT" | "CHAT_HTML" | "SHARE_LINK" | "PASTE" — of the first import.
+  source         String
+  /// ChatGPT's conversation id when known (export / share) — re-imports of the same chat
+  /// become new versions of this row.
+  conversationId String?
+  /// Include in the AI's context (Script agent, Weekly Strategist, ChatGPT connector).
+  useForAi       Boolean  @default(true)
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  versions PlanContextVersion[]
+
+  @@index([conversationId])
+}
+
+model PlanContextVersion {
+  id                    String    @id @default(cuid())
+  planContextId         String
+  version               Int
+  source                String
+  /// File name, share link, or null for a paste.
+  sourceRef             String?
+  conversationId        String?
+  conversationTitle     String?
+  conversationCreatedAt DateTime?
+  conversationUpdatedAt DateTime?
+  /// PlanContextMessage[] — { role: "user" | "assistant" | "unknown", text, at: ISO | null }.
+  messages              Json
+  messageCount          Int
+  charCount             Int
+  wordCount             Int
+  /// sha256 of the normalized messages — re-importing the same conversation is a no-op.
+  contentHash           String
+  createdBy             String
+  createdAt             DateTime  @default(now())
+
+  planContext PlanContext @relation(fields: [planContextId], references: [id], onDelete: Cascade)
+
+  @@unique([planContextId, version])
+  @@index([planContextId, contentHash])
+}

@@ -150,3 +150,8 @@ export * from "./style-cut-plan";
 // (docs/decisions-pending/viewer-panel.md). Never a hard-gate input.
 export * from "./viewer-review";
 export type { ViewerReview as ViewerReviewRow } from "@prisma/client";
+// Plan context (2026-10-17) — Chris's ChatGPT planning conversation(s), versioned; the
+// `getActivePlanContext` API feeds the Script agent / Weekly Strategist / ChatGPT connector
+// (docs/decisions-pending/plan-context.md). Browser-safe parsers at `@chris/domain/plan-context`.
+export * from "./plan-context-db";
+export type { PlanContext as PlanContextRow, PlanContextVersion as PlanContextVersionRow } from "@prisma/client";

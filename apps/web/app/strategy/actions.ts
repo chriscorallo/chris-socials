@@ -11,6 +11,7 @@ import {
   approveIdeaProposal,
   rejectIdeaProposal,
   buildStrategicContext,
+  getPlanContextForAgent,
 } from "@chris/domain";
 import {
   getBrandContextText,
@@ -102,6 +103,8 @@ export async function generatePortfolio(formData: FormData) {
       editingBudgetMinutesPerWeek: 300,
       strategicContext: await buildStrategicContext(prisma),
       brandContext,
+      // Chris's ChatGPT planning conversation (optional, ~3K tokens).
+      planContext: await getPlanContextForAgent(prisma, "WEEKLY_STRATEGIST"),
     });
 
     // Allocations + any brand-new idea proposals, all PROPOSED only; journaled once.

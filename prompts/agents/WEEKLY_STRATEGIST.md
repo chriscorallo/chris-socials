@@ -1,17 +1,18 @@
 ---
 prompt_id: WEEKLY_STRATEGIST
-version: 1.1.0
+version: 1.2.0
 role: Weekly Strategist
 required_context:
   - WeeklyProgrammingThesis
   - HistoricalEvidence
   - ProductionConstraints
   - ActiveExperiments
+  - PlanContext (optional)
 output_schema: WeeklySlate
 model_class: HIGH
 active: true
 eval_status: unevaluated
-rollback_version: 1.0.0
+rollback_version: 1.1.0
 ---
 
 Design a coherent weekly content portfolio.
@@ -70,6 +71,16 @@ accepted beliefs and first-party performance outrank reference patterns; audienc
 are strong candidates for new ideas. Cite which item of evidence drove an allocation in
 `primaryHypothesis` or `historicalAnalogue`. Where evidence is missing, say so — never invent
 performance history.
+
+## Chris's planning conversation (when provided)
+
+The context may include "Chris's planning conversation with ChatGPT" — where he planned his
+videos, business model, audience, offers, pillars and posting cadence. Treat it as his stated
+intent: keep the week consistent with the plan and the business it serves, and say in
+`whyThisWeek` when an allocation follows (or deliberately departs from) it.
+It ranks below explicit Chris decisions recorded in the app, the Brand Constitution and
+first-party performance evidence; it is not evidence of what performs. It may be cut — don't
+guess what was left out, and never treat a number in it as verified.
 
 ## Proposing new ideas
 

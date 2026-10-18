@@ -46,7 +46,8 @@ export default async function PlanPage({
   const plan = await getActivePostingPlan(prisma);
   const all = await listPlannedVideos(prisma, { tz: APP_TZ });
   const imports = await listPlanImports(prisma, 5);
-  const needScripts = all.length ? await countVideosNeedingScripts(prisma, { tz: APP_TZ, fromYmd: addDaysYmd(today, -7) }) : 0;
+  const planContexts = await prisma.planContext.count();
+  const needScripts = all.length ?await countVideosNeedingScripts(prisma, { tz: APP_TZ, fromYmd: addDaysYmd(today, -7) }) : 0;
 
   const weekEnd = addDaysYmd(mondayOfYmd(today), 7); // exclusive: next Monday
   // "This week" is rolling (next 7 days) so it is never empty on a Saturday.
@@ -124,6 +125,20 @@ export default async function PlanPage({
             <span className="btn btn-primary !min-h-[40px] shrink-0 !px-3.5 !text-[14px]">Get scripts</span>
           </Link>
         )}
+
+        <Link
+          href="/plan/context"
+          className="panel mb-4 flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 active:opacity-70"
+          data-testid="plan-context-link"
+        >
+          <span className="min-w-0">
+            <span className="block text-[15px] font-semibold leading-snug">{planContexts > 0 ? "Your ChatGPT conversation" : "Bring in your ChatGPT conversation"}</span>
+            <span className="block text-[13px] text-[var(--color-text-muted)]">
+              {planContexts > 0 ? "Read it, search it, update your plan from it" : "The chat where you planned it all — keep the full context here"}
+            </span>
+          </span>
+          <span className="shrink-0 text-[13.5px] text-[var(--color-gold-400)]">{planContexts > 0 ? "Open" : "Bring in"}</span>
+        </Link>
 
         {all.length === 0 ? (
           <Panel padding="p-5 sm:p-6">
