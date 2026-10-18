@@ -13,6 +13,7 @@ import { analyzePendingReferenceVideos } from "./reference-analysis-job";
 import { maybeAutoStyleCut, type StyleCutOutcome } from "./style-cut-job";
 import { reviewReferenceAsViewer, reviewRenderAsViewer } from "./viewer-review-job";
 import { HEAVY_JOB_LABEL, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "./heavy-job-kinds";
+import { runFilmRender, runFilmRenderChunk, runFilmStoryboard, runFilmVoiceAlign, type CinemaEngine, type FilmJobContext } from "./film-jobs";
 
 /**
  * Runs one heavy job against a real database + storage. The SAME function runs in-process
@@ -46,6 +47,10 @@ export interface HeavyJobContext {
   fontPath?: string;
   /** The JobRun this execution is recorded on (set by runHeavyJobRecorded). */
   jobRunId?: string;
+  /** Mini-movie engine injection (tests); default the real @chris/cinema. */
+  cinema?: CinemaEngine;
+  /** Mini-movie job options (tests: a fast poll, a scratch dir, a fake registration render). */
+  film?: Pick<FilmJobContext, "pollMs" | "workRoot" | "renderItem">;
 }
 
 export interface HeavyJobOutcome {
@@ -252,6 +257,21 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
         error: failed.length ? `Couldn't measure ${plural(failed.length, "video")}: ${failed.map((f) => f.error).join("; ").slice(0, 600)}` : undefined,
         message: (r.measured.length === 0 ? "Nothing waiting to measure." : `Measured ${plural(okCount, "video")}${failed.length ? `, ${failed.length} failed` : ""}.`) + rest,
       };
+    }
+
+    case "film-render":
+    case "film-render-chunk":
+    case "film-storyboard":
+    case "film-voice-align": {
+      const fctx: FilmJobContext = { db, storage, actor, jobRunId: ctx.jobRunId, progress, engine: ctx.cinema, ...ctx.film };
+      try {
+        if (kind === "film-render") return await runFilmRender(args as HeavyJobArgsByKind["film-render"], fctx);
+        if (kind === "film-render-chunk") return await runFilmRenderChunk(args as HeavyJobArgsByKind["film-render-chunk"], fctx);
+        if (kind === "film-storyboard") return await runFilmStoryboard(args as HeavyJobArgsByKind["film-storyboard"], fctx);
+        return await runFilmVoiceAlign(args as HeavyJobArgsByKind["film-voice-align"], fctx);
+      } catch (err) {
+        return { ok: false, result: { errorName: err instanceof Error ? err.name : "Error" }, error: errMsg(err), message: "The mini-movie job couldn't finish." };
+      }
     }
 
     case "viewer-review": {

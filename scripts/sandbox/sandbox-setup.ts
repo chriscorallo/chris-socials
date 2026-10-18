@@ -135,11 +135,13 @@ export async function restoreRunner(sandbox: Sandbox) {
       "rm -rf motion-bundle/public && cp -r packages/media/assets motion-bundle/public",
       `node -e "fetch(process.argv[1]).then(async (r) => { if (!r.ok) throw new Error(r.status); require('fs').writeFileSync(process.argv[2], Buffer.from(await r.arrayBuffer())); })" ${ULTRAFACE_URL} packages/media/assets/models/ultraface/version-RFB-640.onnx`,
       "cp packages/media/assets/models/ultraface/version-RFB-640.onnx motion-bundle/public/models/ultraface/",
+      // the mini-movie bundle's public dir is the same assets (runners built before it existed have no cinema-bundle)
+      "if [ -d cinema-bundle ]; then rm -rf cinema-bundle/public && cp -r packages/media/assets cinema-bundle/public; fi",
       "node packages/motion/scripts/generate-sfx.mjs >/dev/null",
       "sha256sum --quiet -c MANIFEST.sha256",
       // Source maps aren't shipped (size); Remotion opens them when it symbolicates an error —
       // empty ones keep the real error message visible.
-      "for f in motion-bundle/*.js; do [ -f \"$f.map\" ] || echo '{\"version\":3,\"sources\":[],\"names\":[],\"mappings\":\"\"}' > \"$f.map\"; done",
+      "for f in motion-bundle/*.js cinema-bundle/*.js; do [ -f \"$f\" ] || continue; [ -f \"$f.map\" ] || echo '{\"version\":3,\"sources\":[],\"names\":[],\"mappings\":\"\"}' > \"$f.map\"; done",
     ].join(" && "),
   );
   await sh(sandbox, `cd ${SANDBOX_ROOT} && npm install --omit=dev --no-audit --no-fund --loglevel=error 2>&1 | tail -5`);

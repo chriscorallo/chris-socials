@@ -79,6 +79,8 @@ async function main(): Promise<number> {
   // The motion engine, as a literal import so the bundler includes it (render-job.ts loads it
   // through a non-literal specifier on purpose, for the web app's sake).
   (globalThis as { __chrisMotionLoader?: () => Promise<unknown> }).__chrisMotionLoader = async () => import("@chris/motion");
+  // The mini-movie engine, likewise (film-jobs.ts loads it through this hook).
+  (globalThis as { __chrisCinemaLoader?: () => Promise<unknown> }).__chrisCinemaLoader = async () => import("@chris/cinema");
 
   if (cli.kind === "warmup") {
     const { warmup } = await import("./offline");
@@ -134,7 +136,7 @@ async function main(): Promise<number> {
   // left. Without the model key only non-AI jobs are taken (the web app starts the others).
   const self = process.env.SANDBOX_SELF_NAME ?? null;
   const deadline = Number(process.env.SANDBOX_DEADLINE_MS) || 0;
-  const kinds = process.env.ANTHROPIC_API_KEY ? undefined : ["ingest", "transcribe", "subject-track", "person-matte", "reference-analyze"];
+  const kinds = process.env.ANTHROPIC_API_KEY ? undefined : ["ingest", "transcribe", "subject-track", "person-matte", "reference-analyze", "film-render-chunk", "film-storyboard", "film-voice-align", "film-render"];
   for (let n = 0; self && deadline - Date.now() > 15 * 60_000 && n < 20; n++) {
     const { claimQueuedHeavyJob } = await import("@chris/domain");
     const next = await claimQueuedHeavyJob(prisma, { kinds, sandboxName: self }).catch(() => null);

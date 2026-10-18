@@ -81,8 +81,33 @@ export async function runOffline(kind: string, jobPath: string, progress: Progre
       result = await analyzeReferenceVideoFile(at(job.file));
       break;
     }
+    case "film-render": {
+      // { "film"?: Film | "proof", "tier"?: "DRAFT"|"PREVIEW"|"FINAL", "chunks"?: n, "frames"?: [a,b], "silent"?: bool, "outDir"?: "film" }
+      // Renders a mini-movie end to end with the local pipeline (narration → chunks → assemble).
+      const cinema = await loadCinema();
+      const film = job.film === "proof" || job.film == null ? cinema.PROOF_FILM : (job.film as import("@chris/cinema").Film);
+      const r = await cinema.renderFilm({
+        film,
+        outDir: at(job.outDir ?? "film"),
+        tier: (job.tier as "DRAFT" | "PREVIEW" | "FINAL" | undefined) ?? "PREVIEW",
+        chunks: typeof job.chunks === "number" ? job.chunks : 1,
+        frameRange: Array.isArray(job.frames) ? (job.frames as [number, number]) : undefined,
+        silent: job.silent === true,
+        onProgress: progress,
+      });
+      result = { output: basename(r.output), frames: r.frames, seconds: r.durationSeconds, width: r.width, height: r.height, chunks: r.chunks, stagesMs: r.stagesMs, msPerVideoSecond: r.renderMsPerVideoSecond, mix: r.mix?.final ?? null, host: r.host };
+      break;
+    }
+    case "film-storyboard": {
+      // { "film"?: Film | "proof", "stillsPerShot"?: n, "scale"?: 0.5 } → stills + per-shot timing
+      const cinema = await loadCinema();
+      const film = job.film === "proof" || job.film == null ? cinema.PROOF_FILM : (job.film as import("@chris/cinema").Film);
+      const r = await cinema.renderStoryboard({ film, outDir: at(job.outDir ?? "storyboard"), stillsPerShot: typeof job.stillsPerShot === "number" ? job.stillsPerShot : 1, scale: typeof job.scale === "number" ? job.scale : undefined });
+      result = { shots: r.shots.map((s) => ({ shotId: s.shotId, startSec: s.startSec, endSec: s.endSec, line: s.line, stills: s.stills.map((x) => basename(x.path)) })), ms: r.ms };
+      break;
+    }
     default:
-      throw new Error(`offline mode supports render, transcribe, subject-track, person-matte, reference-analyze (got "${kind}")`);
+      throw new Error(`offline mode supports render, transcribe, subject-track, person-matte, reference-analyze, film-render, film-storyboard (got "${kind}")`);
   }
   const wrapped = { kind, ms: Date.now() - started, result };
   await writeFile(join(jobDir, "result.json"), JSON.stringify(wrapped, null, 2));
@@ -213,7 +238,35 @@ export async function warmup(): Promise<Record<string, unknown>> {
     await rm(dir, { recursive: true, force: true });
   }
   out.whisperMs = Date.now() - s2;
+
+  // Mini-movies: Kokoro (q8 ONNX + tokenizer → TRANSCRIPTION_CACHE_DIR; voices ship in kokoro-js)
+  // and the catalog's sentence-embedding model.
+  const s3 = Date.now();
+  try {
+    const cinema = await loadCinema();
+    const dir2 = await mkdtemp(join(tmpdir(), "chris-warmup-tts-"));
+    try {
+      const line = await cinema.synthesizeLine("Warm up.", join(dir2, "warm.wav"), "af_heart", 1, { force: true });
+      out.kokoroSeconds = Math.round(line.durationSeconds * 100) / 100;
+    } finally {
+      await rm(dir2, { recursive: true, force: true });
+    }
+    out.kokoroMs = Date.now() - s3;
+    const s4 = Date.now();
+    out.catalogMatcher = await cinema.warmCatalogMatcher();
+    out.catalogMatcherMs = Date.now() - s4;
+  } catch (err) {
+    out.cinemaWarmupError = err instanceof Error ? err.message : String(err);
+  }
   return out;
+}
+
+/** The mini-movie engine through the host's loader (job-runner registers a literal import). */
+async function loadCinema(): Promise<typeof import("@chris/cinema")> {
+  const injected = (globalThis as { __chrisCinemaLoader?: () => Promise<typeof import("@chris/cinema")> }).__chrisCinemaLoader;
+  if (injected) return injected();
+  const specifier = ["@chris", "cinema"].join("/");
+  return (await import(/* webpackIgnore: true */ /* @vite-ignore */ specifier)) as typeof import("@chris/cinema");
 }
 
 /** 16 kHz mono 16-bit PCM WAV of a quiet 440 Hz tone. */

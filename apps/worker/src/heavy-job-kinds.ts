@@ -18,7 +18,25 @@ export const HEAVY_JOB_KINDS = [
   "motion-design",
   "reference-analyze",
   "viewer-review",
+  // mini-movie studio (packages/cinema) — see apps/worker/src/film-jobs.ts
+  "film-render",
+  "film-render-chunk",
+  "film-storyboard",
+  "film-voice-align",
 ] as const;
+
+/** The mini-movie kinds (the Mac render worker runs only these). */
+export const FILM_JOB_KINDS = ["film-render", "film-render-chunk", "film-storyboard", "film-voice-align"] as const;
+export type FilmJobKind = (typeof FILM_JOB_KINDS)[number];
+export function isFilmJobKind(v: unknown): v is FilmJobKind {
+  return typeof v === "string" && (FILM_JOB_KINDS as readonly string[]).includes(v);
+}
+
+/** A film is passed inline (the DSL JSON object) or as a storage key of that JSON. */
+export interface FilmSource {
+  film?: unknown;
+  filmKey?: string;
+}
 
 export type HeavyJobKind = (typeof HEAVY_JOB_KINDS)[number];
 
@@ -52,6 +70,45 @@ export interface HeavyJobArgsByKind {
     platform?: "TIKTOK" | "INSTAGRAM" | "YOUTUBE";
     persona?: "COLD" | "FOLLOWER";
   };
+  /** Render a mini-movie (narration → picture in chunks → assembled film) and register it as a
+   * video (a ContentItem's render) unless `register` is false. Idempotent per (film, tier,
+   * narration, idempotencyKey): a finished render is returned, finished chunks are reused. */
+  "film-render": FilmSource & {
+    tier: "PREVIEW" | "FINAL";
+    /** Picture chunks rendered in parallel cloud workers (default: from the length and HEAVY_JOB_MAX_SANDBOXES; 1 on a Mac). */
+    chunks?: number;
+    /** Chris's aligned narration (the `linesKey` a film-voice-align job returned). Required for engine CHRIS. */
+    narrationKey?: string;
+    /** Attach to this existing video instead of creating one. */
+    contentItemId?: string;
+    /** Title for a new video (default: the film's title). */
+    title?: string;
+    register?: boolean;
+    idempotencyKey?: string;
+  };
+  /** One frame range of a film-render (queued by the film-render job; the manifest lives in storage). */
+  "film-render-chunk": { renderId: string; chunkIndex: number; attempt?: number };
+  /** Keyframe stills per shot (cheap; PREVIEW at half size by default) with per-shot timing + the line each covers. */
+  "film-storyboard": FilmSource & { tier?: "DRAFT" | "PREVIEW"; stillsPerShot?: number; shots?: string[]; narrate?: boolean; scale?: number };
+  /** Chris's own narration: align an uploaded recording (storage key) against the film's lines. */
+  "film-voice-align": FilmSource & { recordingKey: string };
+}
+
+/** FNV-1a over a string → 8 hex chars (stable ids for film work; pure). */
+export function stableHash(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  let h2 = 5381;
+  for (let i = 0; i < s.length; i++) h2 = (Math.imul(h2, 33) ^ s.charCodeAt(i)) >>> 0;
+  return (h >>> 0).toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+}
+
+/** The render id of a film-render request: same film + tier + narration + key → same id (idempotency). */
+export function filmRenderId(a: HeavyJobArgsByKind["film-render"]): string {
+  return `fr-${stableHash(JSON.stringify([a.film ?? null, a.filmKey ?? null, a.tier, a.narrationKey ?? null, a.idempotencyKey ?? null, a.contentItemId ?? null]))}`;
 }
 
 /** Lease subject of the reference-analysis job (one at a time for the whole library). */
@@ -69,6 +126,15 @@ export function referenceVideoSubject(referenceContentId: string): string {
  */
 export function heavyJobSubject(kind: HeavyJobKind, args: unknown): string {
   if (kind === "reference-analyze") return REFERENCE_LIBRARY_SUBJECT;
+  if (kind === "film-render") {
+    const a = args as HeavyJobArgsByKind["film-render"];
+    return a.contentItemId ?? `film:${filmRenderId(a)}`;
+  }
+  if (kind === "film-render-chunk") {
+    const a = args as HeavyJobArgsByKind["film-render-chunk"];
+    return `film:${a.renderId}:chunk:${a.chunkIndex}`;
+  }
+  if (kind === "film-storyboard" || kind === "film-voice-align") return `${kind}:${stableHash(JSON.stringify(args))}`;
   if (kind === "viewer-review") {
     const a = args as HeavyJobArgsByKind["viewer-review"];
     if (a.referenceContentId) return referenceVideoSubject(a.referenceContentId);
@@ -98,6 +164,10 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
   "viewer-review": "Watching it like a new viewer",
+  "film-render": "Rendering your mini-movie",
+  "film-render-chunk": "Rendering part of your mini-movie",
+  "film-storyboard": "Sketching the storyboard",
+  "film-voice-align": "Syncing your narration",
 };
 
 export function isHeavyJobKind(v: unknown): v is HeavyJobKind {
@@ -147,6 +217,56 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
   if (kind === "reference-analyze") {
     const ids = optIds(a.referenceContentIds, "referenceContentIds");
     return (ids ? { referenceContentIds: ids } : {}) as HeavyJobArgsByKind[K];
+  }
+  if (kind === "film-render" || kind === "film-storyboard" || kind === "film-voice-align") {
+    const film = a.film;
+    const filmKey = optStr(a.filmKey, "filmKey");
+    if (film == null && !filmKey) throw new Error(`${kind} needs a film (DSL object) or a filmKey`);
+    if (film != null && (typeof film !== "object" || Array.isArray(film))) throw new Error("film must be a film DSL object");
+    if (film != null && JSON.stringify(film).length > 400_000) throw new Error("film is too large (max 400 KB of JSON)");
+    const src: FilmSource = film != null ? { film } : { filmKey };
+    if (kind === "film-render") {
+      const tier = String(a.tier ?? "FINAL");
+      if (tier !== "PREVIEW" && tier !== "FINAL") throw new Error("tier must be PREVIEW or FINAL");
+      const chunks = a.chunks == null ? undefined : Number(a.chunks);
+      if (chunks !== undefined && (!Number.isInteger(chunks) || chunks < 1 || chunks > 32)) throw new Error("chunks must be an integer 1..32");
+      const out: HeavyJobArgsByKind["film-render"] = { ...src, tier };
+      if (chunks !== undefined) out.chunks = chunks;
+      const narrationKey = optStr(a.narrationKey, "narrationKey");
+      if (narrationKey) out.narrationKey = narrationKey;
+      const contentItemId = optStr(a.contentItemId, "contentItemId");
+      if (contentItemId) out.contentItemId = contentItemId;
+      if (typeof a.title === "string" && a.title.trim()) out.title = a.title.trim().slice(0, 120);
+      const register = optBool(a.register, "register");
+      if (register !== undefined) out.register = register;
+      const idem = optStr(a.idempotencyKey, "idempotencyKey");
+      if (idem) out.idempotencyKey = idem;
+      return out as HeavyJobArgsByKind[K];
+    }
+    if (kind === "film-storyboard") {
+      const tier = a.tier == null ? undefined : String(a.tier);
+      if (tier !== undefined && tier !== "DRAFT" && tier !== "PREVIEW") throw new Error("storyboard tier must be DRAFT or PREVIEW");
+      const stills = a.stillsPerShot == null ? undefined : Number(a.stillsPerShot);
+      if (stills !== undefined && (!Number.isInteger(stills) || stills < 1 || stills > 3)) throw new Error("stillsPerShot must be 1..3");
+      const scale = a.scale == null ? undefined : Number(a.scale);
+      if (scale !== undefined && !(scale >= 0.25 && scale <= 1)) throw new Error("scale must be 0.25..1");
+      const out: HeavyJobArgsByKind["film-storyboard"] = { ...src };
+      if (tier) out.tier = tier as "DRAFT" | "PREVIEW";
+      if (stills) out.stillsPerShot = stills;
+      if (scale) out.scale = scale;
+      const shots = optIds(a.shots, "shots");
+      if (shots) out.shots = shots;
+      const narrate = optBool(a.narrate, "narrate");
+      if (narrate !== undefined) out.narrate = narrate;
+      return out as HeavyJobArgsByKind[K];
+    }
+    return { ...src, recordingKey: str(a.recordingKey, "recordingKey") } as HeavyJobArgsByKind[K];
+  }
+  if (kind === "film-render-chunk") {
+    const chunkIndex = Number(a.chunkIndex);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex > 63) throw new Error("chunkIndex must be an integer 0..63");
+    const attempt = a.attempt == null ? undefined : Number(a.attempt);
+    return { renderId: str(a.renderId, "renderId"), chunkIndex, ...(attempt ? { attempt } : {}) } as HeavyJobArgsByKind[K];
   }
   if (kind === "viewer-review") {
     const contentItemId = optStr(a.contentItemId, "contentItemId");

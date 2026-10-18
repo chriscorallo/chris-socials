@@ -59,7 +59,10 @@ export const LOOKS = ["GOLD_STUDIO", "NOIR_NUMBERS"] as const;
 export const LookSchema = z.enum(LOOKS);
 export type Look = z.infer<typeof LookSchema>;
 
-export const SET_KINDS = ["INFINITY_STUDIO", "NUMBERS_VOID"] as const;
+/** INFINITY_STUDIO = dark product-photo studio; NUMBERS_VOID = teal digits void; CITY_NIGHT = the
+ * studio floor with a distant procedural skyline; ROOM = a minimal interior (back wall, window
+ * light); HORIZON = an open plain with a glowing horizon (futures, paths, journeys). */
+export const SET_KINDS = ["INFINITY_STUDIO", "NUMBERS_VOID", "CITY_NIGHT", "ROOM", "HORIZON"] as const;
 export const SetSchema = z
   .object({
     kind: z.enum(SET_KINDS),
@@ -119,6 +122,38 @@ export const ACTOR_KINDS = [
   "COIN_CHART", // a chart as a sculpture: columns of coins; params.values (coins per column), params.split (values of the lower "principal" part), params.progress 0..1 growth, params.spacing
   "NUMBER_WALL", // a wall of drifting glowing digits (NOIR world); params.density
   "LIGHT_SHAFT", // a volumetric-looking beam from above; params.width, params.strength
+  // --- v1.1 vocabulary (additive; see src/catalog.ts for what each one means and when to use it)
+  "FIGURE", // a faceless stylized mannequin person (~1.8 m); params.pose, params.color, params.height
+  "CROWD", // many simple figures (instanced) + optional highlighted one; params.count, params.highlight
+  "PLATFORM", // a solid slab/floor whose top sits at params.level — children (parent) ride on it
+  "STAIRS", // a staircase climbing along +x; params.steps, params.rise, params.run
+  "LADDER", // a vertical ladder; params.height, params.rungs
+  "BALANCE", // a balance scale; params.tilt (-1 left down .. 1 right down), leftLabel/rightLabel, leftCount/rightCount
+  "DOOR", // a door in a frame with light behind it; params.open 0..1, params.label
+  "WALLS", // two walls closing in; params.closed 0..1, params.height
+  "WHEEL", // a hamster wheel / treadmill drum; params.speed (turns/s, integrated), params.radius
+  "SNOWBALL", // a gold snowball that grows as it rolls; params.growth 0..1
+  "TREE", // a procedural tree whose branches grow and sprout gold coin-leaves; params.growth 0..1
+  "BLOCKS", // cubes that keep doubling (1,2,4,8…); params.generations (float)
+  "BUCKET", // a bucket filling with coins and leaking through holes; params.fill 0..1, params.leaks
+  "HOURGLASS", // an hourglass; params.progress 0..1 (sand fallen)
+  "CHAIN", // a chain of links across the frame that can snap; params.broken 0..1, params.links
+  "FORK_PATH", // a road that splits into two futures; params.progress (light travelling), leftLabel/rightLabel, choose
+  "MAGNIFIER", // a magnifying glass that reveals enlarged fine print; params.text, params.reveal 0..1
+  "DOCUMENT", // a contract/statement page with lines and fine print; params.title, params.fine
+  "RECEIPT", // a receipt that unrolls line by line; params.items ["Rent|$300"], params.unroll 0..1, params.total
+  "CALENDAR", // a desk calendar whose pages flip; params.page (float), params.labels
+  "GAUGE", // a dial meter; params.value 0..1, params.label
+  "METER", // a glass tube/thermometer that fills; params.value 0..1, params.label
+  "DIVIDER", // a glowing wall splitting the floor into BEFORE / AFTER halves; params.leftLabel/rightLabel
+  "HOUSE", // a miniature house with lit windows; params.size, params.glow
+  "PHONE", // a smartphone with a lit screen; params.text, params.sub
+  "BANK_CARD", // an original (unbranded) bank card; params.label, params.last4, params.color
+  "BAR_CHART", // 3D bar sculpture; params.values, params.labels, params.progress, params.highlight
+  "LINE_CHART", // 3D ribbon line chart; params.values, params.progress
+  "PIE_CHART", // extruded donut chart; params.values, params.labels, params.progress, params.explode
+  "TEXT_3D", // text standing in the world (layered, extruded look); params.text, params.size, params.style
+  "ARROW", // a 3D trend arrow; params.direction UP|DOWN, params.growth 0..1, params.length
 ] as const;
 export const ActorKindSchema = z.enum(ACTOR_KINDS);
 export type ActorKind = z.infer<typeof ActorKindSchema>;
@@ -138,11 +173,24 @@ export const ActorSchema = z
     params: z.record(z.string(), ParamValueSchema).optional(),
     /** Human note for authors/storyboards; ignored by the renderer. */
     note: z.string().max(200).optional(),
+    /** Ride on another actor: position becomes relative to the parent's top surface (a PLATFORM's
+     * level, a PEDESTAL's top…) and follows it when it moves or rises. No rotation inheritance. */
+    parent: id.optional(),
   })
   .strict();
 export type Actor = z.infer<typeof ActorSchema>;
 
-export const ACTION_TYPES = ["ENTER", "EXIT", "MOVE", "TURN", "SCALE", "SET", "FLOW", "PULSE", "GLOW"] as const;
+export const ACTION_TYPES = [
+  "ENTER", "EXIT", "MOVE", "TURN", "SCALE", "SET", "FLOW", "PULSE", "GLOW",
+  // v1.1
+  "SHIFT", "POSE", "WALK", "CLIMB", "PATH",
+  "OPEN", "CLOSE", "FILL", "DRAIN", "GROW", "BREAK", "TIP", "FLIP", "UNROLL", "REVEAL", "RAISE", "LOWER", "SPIN",
+] as const;
+/** Semantic verbs: each drives the actor kind's own parameter (see VERB_TARGETS in src/kinds.ts). */
+export const VERBS = ["OPEN", "CLOSE", "FILL", "DRAIN", "GROW", "BREAK", "TIP", "FLIP", "UNROLL", "REVEAL", "RAISE", "LOWER", "SPIN"] as const;
+export type Verb = (typeof VERBS)[number];
+export const FIGURE_POSES = ["STAND", "WALK", "RUN", "SIT", "CLIMB", "CHEER", "SLUMP", "THINK", "REACH", "PUSH", "CARRY", "POINT", "BALANCE"] as const;
+export type FigurePose = (typeof FIGURE_POSES)[number];
 export const ENTER_STYLES = ["RISE", "DROP", "GROW", "FADE", "BUILD"] as const;
 export const EXIT_STYLES = ["DISSOLVE", "SINK", "SHRINK", "FADE", "SHATTER"] as const;
 
@@ -166,6 +214,19 @@ export const ActionSchema = z.discriminatedUnion("do", [
   z.object({ do: z.literal("FLOW"), into: id, amount: z.number().positive(), ...actionBase }).strict(),
   z.object({ do: z.literal("PULSE"), strength: z.number().min(0).max(2).optional(), ...actionBase }).strict(),
   z.object({ do: z.literal("GLOW"), to: z.number().min(0).max(3), ...actionBase }).strict(),
+  /** Move BY an offset (relative MOVE): "lift it 1.5 m" = by [0, 1.5, 0]. */
+  z.object({ do: z.literal("SHIFT"), by: Vec3Schema, ...actionBase }).strict(),
+  /** FIGURE/CROWD: blend into a pose. */
+  z.object({ do: z.literal("POSE"), pose: z.enum(FIGURE_POSES), ...actionBase }).strict(),
+  /** FIGURE: walk (or run) to a point, facing the way it goes; duration defaults to distance / pace. */
+  z.object({ do: z.literal("WALK"), to: Vec3Schema, pace: z.number().min(0.3).max(6).optional(), run: z.boolean().optional(), ...actionBase }).strict(),
+  /** FIGURE: climb a STAIRS or LADDER actor from `from` to `to` (0 = bottom, 1 = top). */
+  z.object({ do: z.literal("CLIMB"), on: id, from: z.number().min(0).max(1).optional(), to: z.number().min(0).max(1).optional(), ...actionBase }).strict(),
+  /** Any actor: travel a smooth path through points (world coords). `orient` turns it to face the way it moves. */
+  z.object({ do: z.literal("PATH"), points: z.array(Vec3Schema).min(1).max(24), orient: z.boolean().optional(), ...actionBase }).strict(),
+  /** Semantic verbs (OPEN a door, FILL a gauge, BREAK a chain, RAISE a platform…): drive the kind's own
+   * parameter to `to` (or the verb's natural default — see VERB_TARGETS in src/kinds.ts). */
+  z.object({ do: z.enum(["OPEN", "CLOSE", "FILL", "DRAIN", "GROW", "BREAK", "TIP", "FLIP", "UNROLL", "REVEAL", "RAISE", "LOWER", "SPIN"]), to: z.number().min(-1000).max(1000).optional(), ...actionBase }).strict(),
 ]);
 export type Action = z.infer<typeof ActionSchema>;
 
@@ -329,6 +390,9 @@ export const NarrationSchema = z
     speed: z.number().min(0.7).max(1.3).optional(),
     /** Seconds of silence between consecutive lines (default 0.18). */
     gapSeconds: z.number().min(0).max(2).optional(),
+    /** Natural pauses: a line with several sentences is spoken sentence by sentence with this much
+     * silence between them (default 0.32 s); `[pause]` / `[pause 0.6]` in `say` adds an explicit beat. */
+    sentencePause: z.number().min(0).max(2).optional(),
   })
   .strict();
 

@@ -6,6 +6,9 @@ import { FLOW_FLIGHT } from "../../evaluate";
 import { COIN, COIN_PITCH, stackColumnOffsets, stackSlot } from "../../kinds";
 import type { LookDef } from "../../looks";
 import { goldMaterials, radialTexture, textTexture, windowTexture } from "./materials";
+import type { ActorKind } from "../../dsl/schema";
+import { Crowd, Figure } from "./figure";
+import { Arrow, BankCard, BarChart, Balance, Blocks, Bucket, Calendar, Chain, Divider, DocumentPage, Door, ForkPath, Gauge, Hourglass, House, Ladder, LineChart, Magnifier, Meter, Phone, PieChart, Platform, Receipt, Snowball, Stairs, Text3D, Tree, Walls, Wheel } from "./props";
 
 /**
  * Procedural actors. Each one is a pure function of its ActorState (from the evaluator) —
@@ -491,6 +494,7 @@ export function CardFan({ s, look, mirror }: ActorProps) {
   const n = Math.max(1, Math.round(num(s.params.count, labels.length || 6)));
   const radius = num(s.params.radius, 1.4);
   const glow = num(s.params.glow, 0.6);
+  const cardScale = num(s.params.cardScale, 1);
   const t = s.time;
   return (
     <group>
@@ -500,7 +504,7 @@ export function CardFan({ s, look, mirror }: ActorProps) {
         const y = 0.9 + Math.sin(t * 1.3 + i) * 0.08 + (i % 2) * 0.35;
         // staggered entrance
         const k = clamp01((s.enter - (i / n) * 0.6) / 0.4);
-        const sc = s.enterStyle === "BUILD" || s.enterStyle === "GROW" ? ease("SPRING", k) : 1;
+        const sc = (s.enterStyle === "BUILD" || s.enterStyle === "GROW" ? ease("SPRING", k) : 1) * cardScale;
         if (sc <= 0.001) return null;
         return (
           <group key={i} position={[Math.sin(a) * radius, y, Math.cos(a) * radius]} rotation={[0, a + Math.PI * 0.1, Math.sin(t + i) * 0.06]} scale={sc}>
@@ -626,7 +630,38 @@ export function NumberWall({ s, look, seed }: ActorProps) {
   );
 }
 
-export const ACTOR_COMPONENTS: Record<string, (p: ActorProps) => React.ReactNode> = {
+export const ACTOR_COMPONENTS: Record<ActorKind, (p: ActorProps) => React.ReactNode> = {
+  FIGURE: Figure,
+  CROWD: Crowd,
+  PLATFORM: Platform,
+  STAIRS: Stairs,
+  LADDER: Ladder,
+  BALANCE: Balance,
+  DOOR: Door,
+  WALLS: Walls,
+  WHEEL: Wheel,
+  SNOWBALL: Snowball,
+  TREE: Tree,
+  BLOCKS: Blocks,
+  BUCKET: Bucket,
+  HOURGLASS: Hourglass,
+  CHAIN: Chain,
+  FORK_PATH: ForkPath,
+  MAGNIFIER: Magnifier,
+  DOCUMENT: DocumentPage,
+  RECEIPT: Receipt,
+  CALENDAR: Calendar,
+  GAUGE: Gauge,
+  METER: Meter,
+  DIVIDER: Divider,
+  HOUSE: House,
+  PHONE: Phone,
+  BANK_CARD: BankCard,
+  BAR_CHART: BarChart,
+  LINE_CHART: LineChart,
+  PIE_CHART: PieChart,
+  TEXT_3D: Text3D,
+  ARROW: Arrow,
   COIN_STACK: CoinStack,
   COIN_CHART: CoinChart,
   PEDESTAL: Pedestal,

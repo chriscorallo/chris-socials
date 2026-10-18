@@ -22,13 +22,16 @@
     "./blob-storage": "./src/blob-storage.ts",
     "./heavy-job-kinds": "./src/heavy-job-kinds.ts",
     "./heavy-jobs": "./src/heavy-jobs.ts",
-    "./style-cut-job": "./src/style-cut-job.ts"
+    "./style-cut-job": "./src/style-cut-job.ts",
+    "./film-jobs": "./src/film-jobs.ts"
   },
   "scripts": {
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "film-worker": "tsx src/film-worker.ts"
   },
   "dependencies": {
     "@chris/agents": "workspace:*",
+    "@chris/cinema": "workspace:*",
     "@chris/domain": "workspace:*",
     "@chris/media": "workspace:*",
     "@chris/motion": "workspace:*",

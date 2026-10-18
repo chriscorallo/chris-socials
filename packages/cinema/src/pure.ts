@@ -12,3 +12,8 @@ export * from "./kinds";
 export * from "./ease";
 export * from "./assets/manifest";
 export { PROOF_FILM } from "./films/the-raise";
+export * from "./catalog";
+export * from "./figure-poses";
+export * from "./chunks";
+export * from "./narration/voices";
+export * from "./narration/speech-text";

@@ -315,6 +315,8 @@ const LAUNCH_GRACE_MS = 3 * 60_000;
 export async function reconcileHeavyJob(view: HeavyJobView, now = new Date()): Promise<HeavyJobView> {
   const s = view.summary;
   if (!s || s.mode !== "sandbox") return view;
+  // A running film render has queued its picture chunks: polling it starts their sandboxes.
+  if (view.status === "RUNNING" && s.jobKind === "film-render") await kickQueuedHeavyJobs().catch(() => undefined);
   if (view.status !== "RUNNING") {
     // A queued job, or a finished one that may have freed a slot: move the queue.
     await kickQueuedHeavyJobs().catch(() => undefined);

@@ -1,6 +1,6 @@
 import type { Action, Actor, ActorKind, CameraPose, Ease, EXIT_STYLES, ENTER_STYLES, Look, PostSpec, SetSpec, TextBeat, Transition, Vec3 } from "./dsl/schema";
 import { clamp01, ease, hashString, lerp, smoothNoise } from "./ease";
-import { actorCenterHeight, DEFAULT_PARAMS } from "./kinds";
+import { actorCenterHeight, actorTopHeight, climbLocalPoint, DEFAULT_PARAMS, VERB_TARGETS } from "./kinds";
 import { LOOK_DEFS, mixRigs, type LightRig } from "./looks";
 import { anchorFrame, resolveAnchor, shotAtFrame, type ResolvedFilm, type ResolvedShot, type TimedWord } from "./timing";
 
@@ -39,8 +39,24 @@ interface Pulse {
   strength: number;
 }
 
+interface PoseSeg {
+  start: number;
+  dur: number;
+  to: string;
+}
+
+/** A locomotion window (walk / run / climb): limbs cycle at `cadence` cycles per second. */
+interface Gait {
+  start: number;
+  end: number;
+  mode: "WALK" | "RUN" | "CLIMB";
+  cadence: number;
+}
+
 interface CompiledActor {
   actor: Actor;
+  poses: PoseSeg[];
+  gaits: Gait[];
   base: { position: Vec3; rotation: Vec3; scale: number; params: Record<string, ParamValue>; visible: boolean };
   pos: Segment<Vec3>[];
   rot: Segment<Vec3>[];
@@ -82,6 +98,12 @@ export interface ActorState {
   countRate: number;
   /** Seconds since film start (for idle motion). */
   time: number;
+  /** FIGURE/CROWD pose blend (from -> to, k 0..1). */
+  pose: { from: string; to: string; k: number };
+  /** Locomotion (walk/run/climb cycle, in cycles) and how much it overrides the pose (0..1). */
+  gait: { mode: "WALK" | "RUN" | "CLIMB"; phase: number; weight: number } | null;
+  /** Integral of params.speed over time (turns) — WHEEL rotation. */
+  phase: number;
 }
 
 export interface CameraState {
@@ -133,8 +155,19 @@ export interface FrameState {
   caption: CaptionState | null;
 }
 
-const DEFAULT_DUR: Record<Action["do"], number> = { ENTER: 0.9, EXIT: 0.8, MOVE: 1.4, TURN: 1.2, SCALE: 1.0, SET: 1.2, FLOW: 1.6, PULSE: 0.5, GLOW: 0.8 };
-const DEFAULT_EASE: Record<Action["do"], Ease> = { ENTER: "EASE_OUT", EXIT: "EASE_IN_OUT", MOVE: "CINEMATIC", TURN: "CINEMATIC", SCALE: "EASE_OUT", SET: "EASE_IN_OUT", FLOW: "EASE_IN_OUT", PULSE: "EASE_OUT", GLOW: "EASE_IN_OUT" };
+const VERB_DUR = 1.4;
+const DEFAULT_DUR: Record<Action["do"], number> = {
+  ENTER: 0.9, EXIT: 0.8, MOVE: 1.4, TURN: 1.2, SCALE: 1.0, SET: 1.2, FLOW: 1.6, PULSE: 0.5, GLOW: 0.8,
+  SHIFT: 1.4, POSE: 0.6, WALK: 2, CLIMB: 3, PATH: 3,
+  OPEN: VERB_DUR, CLOSE: VERB_DUR, FILL: VERB_DUR, DRAIN: VERB_DUR, GROW: 2, BREAK: 0.9, TIP: VERB_DUR, FLIP: VERB_DUR, UNROLL: 2, REVEAL: VERB_DUR, RAISE: 1.8, LOWER: 1.8, SPIN: 1,
+};
+const DEFAULT_EASE: Record<Action["do"], Ease> = {
+  ENTER: "EASE_OUT", EXIT: "EASE_IN_OUT", MOVE: "CINEMATIC", TURN: "CINEMATIC", SCALE: "EASE_OUT", SET: "EASE_IN_OUT", FLOW: "EASE_IN_OUT", PULSE: "EASE_OUT", GLOW: "EASE_IN_OUT",
+  SHIFT: "CINEMATIC", POSE: "EASE_IN_OUT", WALK: "LINEAR", CLIMB: "LINEAR", PATH: "EASE_IN_OUT",
+  OPEN: "EASE_IN_OUT", CLOSE: "EASE_IN_OUT", FILL: "EASE_IN_OUT", DRAIN: "EASE_IN_OUT", GROW: "EASE_OUT", BREAK: "EASE_OUT", TIP: "SPRING", FLIP: "EASE_IN_OUT", UNROLL: "EASE_OUT", REVEAL: "EASE_IN_OUT", RAISE: "CINEMATIC", LOWER: "CINEMATIC", SPIN: "EASE_IN_OUT",
+};
+/** Walk / run stride (one full left-right cycle), meters, for a 1.8 m figure. */
+export const STRIDE = { WALK: 1.45, RUN: 2.6 } as const;
 /** Seconds a coin takes to fly from source to target in a FLOW. */
 export const FLOW_FLIGHT = 0.7;
 
@@ -198,6 +231,8 @@ export function compileFilm(rf: ResolvedFilm): CompiledFilm {
       presence: [],
       flows: [],
       pulses: [],
+      poses: [],
+      gaits: [],
     });
   }
   // All actions in absolute time order (stable by authoring order).
@@ -238,6 +273,94 @@ export function compileFilm(rf: ResolvedFilm): CompiledFilm {
       case "PULSE":
         ca.pulses.push({ start, dur, strength: a.strength ?? 1 });
         break;
+      case "SHIFT": {
+        const from = lastFinal(ca.pos, ca.base.position);
+        ca.pos.push({ start, dur, to: [from[0] + a.by[0], from[1] + a.by[1], from[2] + a.by[2]], ease: e });
+        break;
+      }
+      case "POSE":
+        ca.poses.push({ start, dur, to: a.pose });
+        break;
+      case "WALK": {
+        const from = lastFinal(ca.pos, ca.base.position);
+        const dist = Math.hypot(a.to[0] - from[0], a.to[2] - from[2]);
+        const run = a.run === true;
+        const pace = a.pace ?? (run ? 3.2 : 1.25);
+        const d = a.duration ?? Math.max(0.4, dist / pace);
+        ca.pos.push({ start, dur: d, to: a.to, ease: a.ease ?? "LINEAR" });
+        face(ca, start, a.to[0] - from[0], a.to[2] - from[2]);
+        const h = Number(ca.base.params.height ?? 1.8) / 1.8;
+        ca.gaits.push({ start, end: start + d, mode: run ? "RUN" : "WALK", cadence: dist / d / ((run ? STRIDE.RUN : STRIDE.WALK) * h) });
+        break;
+      }
+      case "CLIMB": {
+        const host = actors.get(a.on);
+        if (!host || (host.actor.kind !== "STAIRS" && host.actor.kind !== "LADDER")) break;
+        const kind = host.actor.kind;
+        const u0 = a.from ?? 0;
+        const u1 = a.to ?? 1;
+        const hp = host.base.params;
+        const yaw = deg(host.base.rotation[1]);
+        const sc = host.base.scale;
+        const toWorld = (u: number): Vec3 => {
+          const l = climbLocalPoint(kind, hp, u);
+          const x = l[0] * sc;
+          const z = l[2] * sc;
+          return [host.base.position[0] + x * Math.cos(yaw) + z * Math.sin(yaw), host.base.position[1] + l[1] * sc, host.base.position[2] - x * Math.sin(yaw) + z * Math.cos(yaw)];
+        };
+        const N = 24;
+        ca.pos.push({ start, dur: 0.001, to: toWorld(u0), ease: "LINEAR" });
+        for (let i = 1; i <= N; i++) ca.pos.push({ start: start + (dur * (i - 1)) / N, dur: dur / N, to: toWorld(u0 + ((u1 - u0) * i) / N), ease: "LINEAR" });
+        if (kind === "STAIRS") {
+          const dir = u1 >= u0 ? 1 : -1;
+          face(ca, start, Math.cos(yaw) * dir, -Math.sin(yaw) * dir, 0.001);
+          const steps = Number(hp.steps ?? 8);
+          ca.gaits.push({ start, end: start + dur, mode: "WALK", cadence: (Math.abs(u1 - u0) * steps) / 2 / dur });
+        } else {
+          // we stand on the ladder's +z side and look toward -z
+          face(ca, start, -Math.sin(yaw), -Math.cos(yaw), 0.001);
+          const rungs = Number(hp.rungs ?? 12);
+          ca.gaits.push({ start, end: start + dur, mode: "CLIMB", cadence: (Math.abs(u1 - u0) * rungs) / 2 / dur });
+        }
+        break;
+      }
+      case "PATH": {
+        const from = lastFinal(ca.pos, ca.base.position);
+        const samples = catmullSamples([from, ...a.points], 32);
+        const segLen = samples.slice(1).map((p, i) => Math.hypot(p[0] - samples[i]![0], p[1] - samples[i]![1], p[2] - samples[i]![2]));
+        const total = segLen.reduce((x, y) => x + y, 0) || 1;
+        // eased arc-length parameterization: constant speed along the curve, eased in time
+        let acc = 0;
+        let prevT = start;
+        for (let i = 1; i < samples.length; i++) {
+          acc += segLen[i - 1]!;
+          const tt = start + dur * invEase(e, acc / total);
+          ca.pos.push({ start: prevT, dur: Math.max(1e-4, tt - prevT), to: samples[i]!, ease: "LINEAR" });
+          if (a.orient) face(ca, prevT, samples[i]![0] - samples[i - 1]![0], samples[i]![2] - samples[i - 1]![2], Math.max(0.05, tt - prevT));
+          prevT = tt;
+        }
+        break;
+      }
+      case "OPEN":
+      case "CLOSE":
+      case "FILL":
+      case "DRAIN":
+      case "GROW":
+      case "BREAK":
+      case "TIP":
+      case "FLIP":
+      case "UNROLL":
+      case "REVEAL":
+      case "RAISE":
+      case "LOWER":
+      case "SPIN": {
+        const tgt = VERB_TARGETS[a.do][ca.actor.kind];
+        if (!tgt) break;
+        const to = a.to ?? tgt.default;
+        if (to === null) break;
+        paramSegs(ca, tgt.param).push({ start, dur, to, ease: e });
+        break;
+      }
       case "FLOW": {
         const target = actors.get(a.into);
         ca.flows.push({ into: a.into, start, dur, amount: a.amount });
@@ -287,6 +410,27 @@ function evalActor(ca: CompiledActor, t: number): ActorState {
     if (u >= 0 && u <= 1) pulse = Math.max(pulse, Math.sin(Math.PI * Math.pow(u, 0.6)) * p.strength);
   }
   const r = evalVec(ca.rot, ca.base.rotation, t);
+  // pose blend
+  const basePose = String(ca.base.params.pose ?? "STAND");
+  let pose = { from: basePose, to: basePose, k: 1 };
+  for (const p of ca.poses) {
+    if (t < p.start) break;
+    const k = p.dur <= 0 ? 1 : ease("EASE_IN_OUT", (t - p.start) / p.dur);
+    const cur = pose.k >= 0.5 ? pose.to : pose.from;
+    pose = { from: cur, to: p.to, k };
+  }
+  // locomotion (fades in/out over 0.25 s)
+  let gait: ActorState["gait"] = null;
+  for (const g of ca.gaits) {
+    if (t < g.start - 0.25 || t > g.end + 0.25) continue;
+    const w = Math.min(clamp01((t - g.start + 0.25) / 0.25), clamp01((g.end + 0.25 - t) / 0.25));
+    gait = { mode: g.mode, phase: (Math.max(g.start, Math.min(t, g.end)) - g.start) * g.cadence, weight: w };
+  }
+  // running/walking in place (treadmill, hamster wheel): params.cycle = "RUN" | "WALK" | "CLIMB"
+  const cyc = params.cycle;
+  if (!gait && (cyc === "RUN" || cyc === "WALK" || cyc === "CLIMB")) {
+    gait = { mode: cyc, phase: t * (typeof params.cadence === "number" ? params.cadence : cyc === "RUN" ? 1.4 : 0.9), weight: 1 };
+  }
   return {
     id: ca.actor.id,
     kind: ca.actor.kind,
@@ -303,7 +447,76 @@ function evalActor(ca: CompiledActor, t: number): ActorState {
     flows: [],
     countRate: ca.params.count ? (Number(params.count) - Number(evalParam(ca.params.count, ca.base.params.count ?? 0, t - 0.15))) / 0.15 : 0,
     time: t,
+    pose,
+    gait,
+    phase: integrateSpeed(ca, t),
   };
+}
+
+/** Integral of speed over 0..t (turns): exact for a constant speed, 1/60 s steps while it changes. */
+function integrateSpeed(ca: CompiledActor, t: number): number {
+  const base = typeof ca.base.params.speed === "number" ? ca.base.params.speed : 0;
+  const segs = ca.params.speed;
+  if (!segs?.length) return base * t;
+  const dt = 1 / 60;
+  let acc = 0;
+  for (let x = 0; x < t; x += dt) acc += Number(evalParam(segs, base, Math.min(t, x + dt / 2))) * Math.min(dt, t - x);
+  return acc;
+}
+
+/** Turn an actor to face a direction (x, z) — the shortest way round. */
+function face(ca: CompiledActor, start: number, dx: number, dz: number, dur = 0.35) {
+  if (Math.hypot(dx, dz) < 1e-6) return;
+  const cur = lastFinal(ca.rot, ca.base.rotation);
+  let yaw = (Math.atan2(dx, dz) * 180) / Math.PI;
+  while (yaw - cur[1] > 180) yaw -= 360;
+  while (yaw - cur[1] < -180) yaw += 360;
+  ca.rot.push({ start, dur, to: [cur[0], yaw, cur[2]], ease: "EASE_IN_OUT" });
+}
+
+/** Points along a Catmull-Rom curve through pts (`perSpan` per span). */
+function catmullSamples(pts: Vec3[], perSpan: number): Vec3[] {
+  if (pts.length < 2) return [...pts];
+  const out: Vec3[] = [pts[0]!];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]!;
+    const p1 = pts[i]!;
+    const p2 = pts[i + 1]!;
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]!;
+    for (let k = 1; k <= perSpan; k++) {
+      const u = k / perSpan;
+      const u2 = u * u;
+      const u3 = u2 * u;
+      const c = (a: number, b: number, cc: number, d: number) => 0.5 * (2 * b + (-a + cc) * u + (2 * a - 5 * b + 4 * cc - d) * u2 + (-a + 3 * b - 3 * cc + d) * u3);
+      out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1]), c(p0[2], p1[2], p2[2], p3[2])]);
+    }
+  }
+  return out;
+}
+
+/** Inverse of an ease curve on 0..1 (bisection): the time at which eased progress reaches y. */
+function invEase(kind: Ease, y: number): number {
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (ease(kind, mid) < y) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** An actor's state in WORLD space: its own state plus the chain of parents it rides on. */
+function worldActor(cf: CompiledFilm, ca: CompiledActor, t: number, depth = 0): ActorState {
+  const s = evalActor(ca, t);
+  const pid = ca.actor.parent;
+  if (!pid || depth > 8) return s;
+  const parent = cf.actors.get(pid);
+  if (!parent) return s;
+  const ps = worldActor(cf, parent, t, depth + 1);
+  const top = actorTopHeight(ps.kind, ps.params) * ps.scale;
+  s.position = [ps.position[0] + s.position[0], ps.position[1] + top + s.position[1], ps.position[2] + s.position[2]];
+  return s;
 }
 
 /** World point of an actor's visual center at time t. */
@@ -311,7 +524,7 @@ export function actorPoint(cf: CompiledFilm, idOrPoint: string | Vec3, t: number
   if (Array.isArray(idOrPoint)) return idOrPoint;
   const ca = cf.actors.get(idOrPoint);
   if (!ca) return [0, 0, 0];
-  const s = evalActor(ca, t);
+  const s = worldActor(cf, ca, t);
   return [s.position[0], s.position[1] + actorCenterHeight(s.kind, s.params) * s.scale, s.position[2]];
 }
 
@@ -607,7 +820,7 @@ function captionAt(rf: ResolvedFilm, rs: ResolvedShot, t: number, texts: TextSta
 function flowTarget(cf: CompiledFilm, id: string, t: number): Vec3 {
   const ca = cf.actors.get(id);
   if (!ca) return [0, 0, 0];
-  const s = evalActor(ca, t);
+  const s = worldActor(cf, ca, t);
   const h = ca.actor.kind === "COIN_STACK" ? actorCenterHeight(s.kind, s.params) * 2 : actorCenterHeight(s.kind, s.params);
   return [s.position[0], s.position[1] + h * s.scale, s.position[2]];
 }
@@ -621,7 +834,7 @@ export function evaluateFrame(cf: CompiledFilm, frame: number): FrameState {
   const texts = textsAt(rf, t);
   const actors: ActorState[] = [];
   for (const ca of cf.actors.values()) {
-    const s = evalActor(ca, t);
+    const s = worldActor(cf, ca, t);
     for (const fl of ca.flows) {
       const total = fl.dur + FLOW_FLIGHT;
       if (t >= fl.start && t <= fl.start + total) {
