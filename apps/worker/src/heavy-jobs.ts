@@ -150,7 +150,7 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
     case "quality-gate": {
       const a = args as HeavyJobArgsByKind["quality-gate"];
       progress(10, "Checking facts, brand, picture and sound…", "check");
-      const gate = await runQualityGateForContentItem(db, storage, needModel(ctx), a.contentItemId, actor);
+      const gate = await runQualityGateForContentItem(db, storage, needModel(ctx), a.contentItemId, actor, { lateCheck: a.lateCheck === true });
       const state = await stateOf(db, a.contentItemId);
       return {
         ok: true,

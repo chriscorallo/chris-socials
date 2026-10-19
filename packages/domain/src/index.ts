@@ -27,6 +27,7 @@ export * from "./take-selection";
 export * from "./edit-plan";
 export * from "./render-record";
 export * from "./quality-gate";
+export * from "./quality-override";
 export * from "./platform-package";
 export * from "./preflight";
 export * from "./publication";

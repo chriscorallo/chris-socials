@@ -6,8 +6,19 @@ import { buildSavePayload } from "../../../../lib/editor/reducer";
 import { withResolvedPlacements } from "../../../../lib/editor/visuals";
 import { warningsForPlatform } from "../../../../lib/editor/platform-warnings";
 import { PLATFORM_IDS, PLATFORM_PROFILES, PLATFORM_SHORT_LABEL, type PlatformId } from "../../../../lib/editor/platform-profiles";
-import { saveFinishingEditAction, renderStepAction, qualityGateStepAction, scheduleStepAction, finishJobResultAction } from "./actions";
+import {
+  saveFinishingEditAction,
+  renderStepAction,
+  qualityGateStepAction,
+  scheduleStepAction,
+  finishJobResultAction,
+  qualitySettingsAction,
+  setQualityModeAction,
+  skipAiCheckAction,
+  type QualitySettings,
+} from "./actions";
 import { waitForJob } from "../../../../lib/use-job-progress";
+import { planQualityStep, onAiCheckFailure, skippedDetail } from "../../../../lib/editor/finish-quality";
 import { useEditor } from "./context";
 import { browserMeasureText } from "./measure";
 import { Icon } from "./icons";
@@ -37,6 +48,19 @@ const RUNNING_DETAIL: Record<StepId, string> = {
   schedule: "Scheduling…",
 };
 
+/** Owner override (docs/decisions-pending/quality-override.md). */
+const SKIP_LABEL = "Free technical check (AI check skipped)";
+const SKIP_RUNNING = "Checking the file, length, size, loudness and on-screen text — free…";
+
+type SkipTrigger = "AI_UNAVAILABLE" | "OWNER_CHOICE";
+
+interface PendingConfirm {
+  trigger: SkipTrigger;
+  reason: string | null;
+  unverifiedClaims: string[];
+  skippedChecks: string[];
+}
+
 export function FinishModal({
   itemId,
   itemState,
@@ -59,12 +83,36 @@ export function FinishModal({
   const { doc, wordsByAsset, assets, setUi, focus, fontsVersion, touch, placement } = useEditor();
   const [date, setDate] = useState(defaultDate);
   const [platforms, setPlatforms] = useState<Set<PlatformId>>(new Set(defaultPlatforms.filter((p): p is PlatformId => p in PLATFORM_PROFILES)));
-  const [phase, setPhase] = useState<"form" | "running" | "done" | "stopped">("form");
+  const [phase, setPhase] = useState<"form" | "running" | "done" | "stopped" | "confirm">("form");
   const [steps, setSteps] = useState<Step[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [renderPct, setRenderPct] = useState<number | null>(null);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
+  // "Quality check before scheduling" (Firm / Let me skip it) + can the AI run right now.
+  const [quality, setQuality] = useState<QualitySettings | null>(null);
+  const [skipThis, setSkipThis] = useState(false);
+  const [modeSaving, setModeSaving] = useState(false);
+  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmChecked, setConfirmChecked] = useState(false);
+  /** Set once the video went to READY via the owner override (done screen badge). */
+  const [skippedAi, setSkippedAi] = useState<{ reason: string | null } | null>(null);
+  /** Firm mode stopped because the AI can't run: offer the switch. */
+  const [firmAiBlock, setFirmAiBlock] = useState<string | null>(null);
   const startedAt = useRef(0);
+
+  useEffect(() => {
+    let live = true;
+    qualitySettingsAction()
+      .then((q) => {
+        if (!live) return;
+        setQuality(q);
+        setSkipThis(!q.ai.ready);
+      })
+      .catch(() => live && setQuality({ mode: "FIRM", ai: { ready: true, reason: null } }));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const sizes = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, { width: a.width, height: a.height }])), [assets]);
   const tracks = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.subjectTrack])), [assets]);
@@ -90,13 +138,80 @@ export function FinishModal({
 
   const patch = (id: StepId, p: Partial<Step>) => setSteps((s) => s.map((x) => (x.id === id ? { ...x, ...p } : x)));
 
+  const aiReady = quality?.ai.ready ?? true;
+
+  async function changeMode(mode: QualitySettings["mode"]) {
+    if (!quality || quality.mode === mode) return;
+    setModeSaving(true);
+    const res = await setQualityModeAction(mode).catch(() => null);
+    setModeSaving(false);
+    if (res?.ok) {
+      setQuality({ ...quality, mode });
+      if (mode === "SKIP_ALLOWED" && !quality.ai.ready) setSkipThis(true);
+    }
+  }
+
+  async function scheduleStep() {
+    patch("schedule", { status: "running", detail: RUNNING_DETAIL.schedule });
+    const res = await scheduleStepAction({ contentItemId: itemId, scheduledDate: date, platforms: [...platforms] }).catch(() => null);
+    if (!res || !res.ok) {
+      patch("schedule", { status: "failed", detail: res ? res.error : "Couldn't reach the server to schedule. Try again." });
+      return setPhase("stopped");
+    }
+    onStateChange(res.state);
+    setScheduledFor(res.scheduledFor);
+    patch("schedule", { status: "done", detail: `Scheduled for ${res.scheduledFor} on ${[...platforms].map((p) => PLATFORM_SHORT_LABEL[p]).join(", ")}.` });
+    setPhase("done");
+  }
+
+  /** Owner override: free technical check → READY (journaled as Chris's decision) → schedule. */
+  async function skipFlow(trigger: SkipTrigger, reason: string | null, factualConfirmed: boolean) {
+    setPhase("running");
+    setFirmAiBlock(null);
+    patch("check", { label: SKIP_LABEL, status: "running", detail: SKIP_RUNNING, reasons: undefined });
+    const res = await skipAiCheckAction({ contentItemId: itemId, trigger, aiUnavailableReason: reason, factualConfirmed }).catch(() => null);
+    if (!res) {
+      patch("check", { status: "failed", detail: "Lost connection during the technical check. Your edit is saved — try again." });
+      return setPhase("stopped");
+    }
+    if (res.state) onStateChange(res.state);
+    if (!res.ok) {
+      if (res.needsConfirmation) {
+        setConfirm({ trigger, reason, unverifiedClaims: res.needsConfirmation.unverifiedClaims, skippedChecks: res.needsConfirmation.skippedChecks });
+        setConfirmChecked(false);
+        patch("check", { status: "waiting", detail: "Technical check passed. Waiting for you to check the numbers…" });
+        return setPhase("confirm");
+      }
+      patch("check", { status: "failed", detail: res.error, reasons: res.technicalReasons });
+      return setPhase("stopped");
+    }
+    setConfirm(null);
+    setSkippedAi({ reason });
+    patch("check", { status: "done", detail: skippedDetail(reason) });
+    await scheduleStep();
+  }
+
+  /** The AI check failed: skip if it couldn't run and the owner allows it, stop firmly if
+   * Firm, otherwise show the error. */
+  async function onCheckFailed(aiUnavailable: string | null | undefined, state: string | undefined, error: string) {
+    const action = onAiCheckFailure(quality?.mode ?? "FIRM", aiUnavailable, state);
+    if (action.kind === "SKIP") return skipFlow("AI_UNAVAILABLE", action.reason, false);
+    if (action.kind === "FIRM_STOP") setFirmAiBlock(action.reason);
+    patch("check", { status: "failed", detail: error });
+    setPhase("stopped");
+  }
+
   async function run() {
     if (platforms.size === 0 || !date) return;
     let state = itemState;
+    const qPlan = planQualityStep({ mode: quality?.mode ?? "FIRM", ai: quality?.ai ?? { ready: true, reason: null }, skipThis });
+    const skipAi = qPlan.kind === "SKIP";
     const needSave = dirty || !["EDIT_PLANNED", "RENDERED", "READY", "SCHEDULED"].includes(state);
-    const plan: Step[] = (["save", "render", "check", "schedule"] as StepId[]).map((id) => ({ id, label: LABELS[id], status: "waiting" }));
+    const plan: Step[] = (["save", "render", "check", "schedule"] as StepId[]).map((id) => ({ id, label: id === "check" && skipAi ? SKIP_LABEL : LABELS[id], status: "waiting" }));
     setSteps(plan);
     setPhase("running");
+    setSkippedAi(null);
+    setFirmAiBlock(null);
     startedAt.current = Date.now();
     setElapsed(0);
 
@@ -123,11 +238,12 @@ export function FinishModal({
 
     // 2. render
     // On the live site the render (+ the quality check right after it) runs in the cloud worker
-    // and we follow its progress; locally it runs during the request, as before.
+    // and we follow its progress; locally it runs during the request, as before. Skipping the
+    // AI check: render only — the free technical check runs right after, here.
     let cloudCheck: { passed: boolean; reasons: string[] } | null = null;
     if (state === "EDIT_PLANNED") {
       patch("render", { status: "running", detail: RUNNING_DETAIL.render });
-      const res = await renderStepAction(itemId, { thenQualityGate: true }).catch(() => null);
+      const res = await renderStepAction(itemId, { thenQualityGate: !skipAi }).catch(() => null);
       if (!res || !res.ok) {
         if (res?.state) onStateChange(res.state);
         patch("render", { status: "failed", detail: res ? res.error : "Lost connection while rendering. Your edit is saved — try again." });
@@ -158,10 +274,7 @@ export function FinishModal({
           return setPhase("stopped");
         }
         patch("render", { status: "done", detail: "Rendered." });
-        if (out.check && !out.check.ok) {
-          patch("check", { status: "failed", detail: out.check.error });
-          return setPhase("stopped");
-        }
+        if (out.check && !out.check.ok) return onCheckFailed(out.check.aiUnavailable, state, out.check.error);
         if (out.check?.ok) cloudCheck = { passed: out.check.passed, reasons: out.check.reasons };
       } else {
         state = res.state;
@@ -184,12 +297,16 @@ export function FinishModal({
       }
       patch("check", { status: "done", detail: "Passed every check." });
     } else if (state === "RENDERED") {
+      if (qPlan.kind === "SKIP") return skipFlow(qPlan.trigger, qPlan.reason, false);
       patch("check", { status: "running", detail: RUNNING_DETAIL.check });
       const res = await qualityGateStepAction(itemId).catch(() => null);
-      if (!res || !res.ok) {
-        if (res?.state) onStateChange(res.state);
-        patch("check", { status: "failed", detail: res ? res.error : "Lost connection during the quality check. Your edit is saved — try again." });
+      if (!res) {
+        patch("check", { status: "failed", detail: "Lost connection during the quality check. Your edit is saved — try again." });
         return setPhase("stopped");
+      }
+      if (!res.ok) {
+        if (res.state) onStateChange(res.state);
+        return onCheckFailed("aiUnavailable" in res ? res.aiUnavailable : null, res.state, res.error);
       }
       state = res.state;
       onStateChange(state);
@@ -210,16 +327,19 @@ export function FinishModal({
     }
 
     // 4. schedule
-    patch("schedule", { status: "running", detail: RUNNING_DETAIL.schedule });
-    const res = await scheduleStepAction({ contentItemId: itemId, scheduledDate: date, platforms: [...platforms] }).catch(() => null);
-    if (!res || !res.ok) {
-      patch("schedule", { status: "failed", detail: res ? res.error : "Couldn't reach the server to schedule. Try again." });
-      return setPhase("stopped");
-    }
-    onStateChange(res.state);
-    setScheduledFor(res.scheduledFor);
-    patch("schedule", { status: "done", detail: `Scheduled for ${res.scheduledFor} on ${[...platforms].map((p) => PLATFORM_SHORT_LABEL[p]).join(", ")}.` });
-    setPhase("done");
+    await scheduleStep();
+  }
+
+  /** Firm mode stopped for lack of AI: switch the setting (audited) and finish without it. */
+  async function switchToSkipAndContinue() {
+    const reason = firmAiBlock;
+    if (!quality) return;
+    setModeSaving(true);
+    const res = await setQualityModeAction("SKIP_ALLOWED").catch(() => null);
+    setModeSaving(false);
+    if (!res?.ok) return;
+    setQuality({ ...quality, mode: "SKIP_ALLOWED" });
+    await skipFlow("AI_UNAVAILABLE", reason, false);
   }
 
   const toggle = (p: PlatformId) =>
@@ -304,6 +424,49 @@ export function FinishModal({
                 Warnings are things the app&apos;s buttons might cover. You can still schedule — {touch ? "tap" : "click"} one to see it in the editor.
               </p>
             </div>
+            {quality && (
+              <div className="mt-5" data-testid="finish-quality">
+                <span className="ed-label">Quality check before scheduling</span>
+                <div className="ed-seg flex w-full" role="group" aria-label="Quality check before scheduling">
+                  {(
+                    [
+                      ["FIRM", "Firm"],
+                      ["SKIP_ALLOWED", "Let me skip it"],
+                    ] as const
+                  ).map(([m, label]) => (
+                    <button key={m} type="button" className="!h-9 flex-1 !text-[13px]" aria-pressed={quality.mode === m} disabled={modeSaving} onClick={() => void changeMode(m)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {quality.mode === "FIRM" ? (
+                  <p className="mt-2 text-[12px] leading-relaxed text-[var(--color-text-muted)]">
+                    The AI checks (picture, brand &amp; voice, fact-check) must pass before it&apos;s scheduled.
+                    {!aiReady && (
+                      <span className="text-[var(--color-gold-400)]"> The AI can&apos;t run right now ({quality.ai.reason ?? "unavailable"}), so Finish will stop after rendering.</span>
+                    )}
+                  </p>
+                ) : (
+                  <>
+                    <label className="ed-card mt-2 flex cursor-pointer items-center gap-3 px-3 py-2.5 text-[13px] font-medium">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-[var(--color-gold-500)]"
+                        checked={skipThis || !aiReady}
+                        disabled={!aiReady}
+                        onChange={(e) => setSkipThis(e.target.checked)}
+                        data-testid="skip-ai-check"
+                      />
+                      Skip the AI check for this video
+                    </label>
+                    <p className="mt-2 text-[12px] leading-relaxed text-[var(--color-text-muted)]">
+                      {!aiReady && <span className="text-[var(--color-gold-400)]">The AI can&apos;t run right now ({quality.ai.reason ?? "unavailable"}). </span>}
+                      Free checks always run: the file, length, size, loudness and on-screen text. Skipped: the AI picture check, brand &amp; voice review and AI fact-check. It&apos;s logged as your decision and the video is marked &ldquo;Scheduled without AI quality check&rdquo;.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
             <button type="button" className="btn btn-primary ed-finish-cta mt-6 w-full !py-2.5 !text-[14px]" disabled={platforms.size === 0 || !date} onClick={() => void run()}>
               Finish &amp; schedule
             </button>
@@ -336,6 +499,46 @@ export function FinishModal({
                 </li>
               ))}
             </ol>
+            {phase === "confirm" && confirm && (
+              <div className="ed-card mt-4 px-4 py-3" data-testid="factual-confirm">
+                <p className="text-[13.5px] font-semibold">Check the numbers first</p>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--color-text-muted)]">
+                  These haven&apos;t been fact-checked against a source. Skipping the AI check means you&apos;re vouching for them:
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-[12.5px] leading-relaxed">
+                  {confirm.unverifiedClaims.map((c, j) => (
+                    <li key={j}>{c}</li>
+                  ))}
+                </ul>
+                <label className="mt-3 flex cursor-pointer items-center gap-3 text-[13px] font-medium">
+                  <input type="checkbox" className="h-5 w-5 accent-[var(--color-gold-500)]" checked={confirmChecked} onChange={(e) => setConfirmChecked(e.target.checked)} data-testid="factual-confirm-check" />
+                  I&apos;ve checked the numbers in this video
+                </label>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" className="btn btn-primary flex-1 !text-[13px]" disabled={!confirmChecked} onClick={() => void skipFlow(confirm.trigger, confirm.reason, true)}>
+                    Skip the AI check &amp; schedule
+                  </button>
+                  <button type="button" className="btn btn-ghost flex-1 !text-[13px]" onClick={onClose}>
+                    Keep editing
+                  </button>
+                </div>
+              </div>
+            )}
+            {phase === "done" && skippedAi && (
+              <p className="mt-3 flex items-center gap-1.5 text-[12.5px] text-[var(--color-gold-400)]" data-testid="skipped-ai-badge">
+                <Icon name="warn" size={13} /> Scheduled without AI quality check
+              </p>
+            )}
+            {phase === "stopped" && firmAiBlock && (
+              <div className="ed-card mt-4 px-4 py-3" data-testid="firm-ai-block">
+                <p className="text-[12.5px] leading-relaxed text-[var(--color-text-muted)]">
+                  The quality check is set to <b>Firm</b>. To schedule now without the AI check (the free technical check still runs), switch to &ldquo;Let me skip it&rdquo;.
+                </p>
+                <button type="button" className="btn btn-primary mt-3 w-full !text-[13px]" disabled={modeSaving} onClick={() => void switchToSkipAndContinue()}>
+                  Let me skip it &amp; schedule
+                </button>
+              </div>
+            )}
             {phase === "done" && (
               <div className="mt-4 flex gap-2">
                 <Link href="/calendar" className="btn btn-primary flex-1 !text-[13px]">

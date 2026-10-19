@@ -13,6 +13,7 @@ import {
   startOfDayInTz,
   ymdInTz,
   COURSE_THRESHOLDS,
+  listAiCheckSkippedItemIds,
   queryAll,
   type PostingPlanData,
 } from "@chris/domain";
@@ -37,6 +38,9 @@ export interface CalEvent {
   links: { platform: string; url: string }[];
   note: string | null;
   suggestion: { contentItemId: string; title: string } | null;
+  /** Sent to the calendar by the owner without the AI quality check (honest mark —
+   * docs/decisions-pending/quality-override.md). */
+  noAiCheck: boolean;
 }
 
 export interface PoolItem {
@@ -96,6 +100,7 @@ export async function loadCalendarEvents(opts: {
           }),
       ] as const)
     : [[], []];
+  const noAiCheck = ids.length ? await listAiCheckSkippedItemIds(prisma, ids).catch(() => new Set<string>()) : new Set<string>();
   const thumbBy = new Map<string, string>();
   for (const r of renders) if (!thumbBy.has(r.contentItemId) && r.storageKey) thumbBy.set(r.contentItemId, r.storageKey);
 
@@ -133,6 +138,7 @@ export async function loadCalendarEvents(opts: {
     canEdit: FINISHING_EDIT_STATES.has(state as never),
     thumbKey: thumbBy.get(id) ?? null,
     suggestion: null,
+    noAiCheck: noAiCheck.has(id),
   });
 
   // Published (anywhere) → at its publish time.
@@ -211,6 +217,7 @@ export async function loadCalendarEvents(opts: {
         links: [],
         note: null,
         suggestion: r ? { contentItemId: r.id, title: r.title } : null,
+        noAiCheck: false,
       });
     });
   }

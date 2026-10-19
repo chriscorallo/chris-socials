@@ -45,6 +45,36 @@ export const MANUAL_TRANSITIONS: ReadonlyArray<{
   },
 ];
 
+/**
+ * Human transitions that are allowlisted but NEVER a bare button: each one only succeeds
+ * through its own guarded domain function, which checks its preconditions and writes its own
+ * evidence. `applyManualTransition` / `listManualTransitions` deliberately ignore this list,
+ * so the "no bare-button path into READY" guarantee above still holds.
+ *
+ * RENDERED -> READY "Owner override: skip AI quality check" — `applyOwnerQualityOverride`
+ * (quality-override.ts): only with the owner's "Let me skip it" setting on, only after the
+ * free TECHNICAL gate passed on that exact render, only with the per-video "I've checked the
+ * numbers" confirmation when unverified numbers are on screen; writes a DecisionJournalEntry
+ * (userOverride) + AuditLog + a HUMAN transition. See docs/decisions-pending/quality-override.md.
+ */
+export const OWNER_GUARDED_TRANSITIONS: ReadonlyArray<{
+  from: ContentState;
+  to: ContentState;
+  label: string;
+  requires: readonly string[];
+}> = [
+  {
+    from: "RENDERED",
+    to: "READY",
+    label: "Owner override: skip AI quality check",
+    requires: [
+      "Owner setting 'Quality check before scheduling' = 'Let me skip it'",
+      "Free technical gate PASS on the latest render",
+      "'I've checked the numbers in this video' when unverified numbers/claims are on screen",
+    ],
+  },
+];
+
 export class ManualTransitionNotAllowedError extends Error {
   constructor(from: ContentState, to: ContentState) {
     super(

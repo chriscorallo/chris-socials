@@ -1,4 +1,5 @@
-import { prisma, getAiSpendOverview } from "@chris/domain";
+import { prisma, getAiSpendOverview, getQualityCheckMode } from "@chris/domain";
+import { QualityModeSetting } from "./QualityModeSetting";
 import { requireSession } from "../../../lib/session";
 import { resolveDailyCapUsd } from "../../../lib/model-provider";
 import { NavBar } from "../../components/NavBar";
@@ -16,6 +17,7 @@ export default async function AiCreditPage() {
   await requireSession();
   const now = new Date();
   const o = await getAiSpendOverview(prisma, now);
+  const qualityMode = await getQualityCheckMode(prisma);
   const keySet = Boolean(process.env.ANTHROPIC_API_KEY);
   let cap: number | null;
   try {
@@ -54,6 +56,14 @@ export default async function AiCreditPage() {
           <p className="mt-3 text-[13px] leading-snug text-[var(--color-text-faint)]">
             Opens Anthropic&apos;s billing page (sign in with the account that owns the app&apos;s key). If it offers auto-reload, turn it on so the AI never stops mid-week.
           </p>
+        </Panel>
+
+        <Panel className="mt-4">
+          <p className="text-[15px] font-semibold">Quality check before scheduling</p>
+          <p className="mt-1 mb-3 text-[13px] leading-snug text-[var(--color-text-muted)]">
+            The final AI check (picture, brand &amp; voice, fact-check) needs credit. Choose what Finish does when it can&apos;t run.
+          </p>
+          <QualityModeSetting initial={qualityMode} />
         </Panel>
 
         <Panel className="mt-4">
