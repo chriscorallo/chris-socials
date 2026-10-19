@@ -336,3 +336,14 @@ describe("full edit — end to end (pure, model-free embedder)", () => {
     expect(classifyBeat(S[0]!.text, ctxFor(S), S[0]!.numbers).beat).toBe("GREETING");
   });
 });
+
+describe("hook titles never carry profanity or insults", () => {
+  it("TITLE_PROFANITY blocks insults, keeps normal words", async () => {
+    const { TITLE_PROFANITY } = await import("../full-edit/hook");
+    expect(TITLE_PROFANITY.test("Somebody who has $400,000 You are a bitch")).toBe(true);
+    expect(TITLE_PROFANITY.test("Holy shit, the 401k")).toBe(true);
+    expect(TITLE_PROFANITY.test("The $10K raise trap")).toBe(false);
+    expect(TITLE_PROFANITY.test("Assets vs liabilities")).toBe(false);
+    expect(TITLE_PROFANITY.test("Classic budgeting mistakes")).toBe(false);
+  });
+});

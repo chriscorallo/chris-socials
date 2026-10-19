@@ -129,6 +129,8 @@ export function scoreHookCandidates(sentences: FESentence[], ctx: HookContext): 
 // ---------------------------------------------------------------------------------------
 
 /** The brand's avoid list (brand/CHRIS_BRAIN.md "Avoid") + common clickbait. */
+/** Never on a title: profanity/insults (fine in his delivery, never as on-screen headline copy). */
+export const TITLE_PROFANITY = /\b(fuck\w*|shit\w*|bitch\w*|ass(hole)?s?|dick\w*|cunt\w*|bastards?|whores?|sluts?|retard\w*|piss\w*|crap|damn(ed)?|goddamn)\b/i;
 export const TITLE_AVOID = /\b(unlock|level up|game ?changer|hack|hacks|secret|shocking|insane|you won'?t believe|must see|life ?changing|crush|10x|guru|millionaire mindset|financial freedom|smash|don'?t miss)\b|[!]{2,}|[\u{1F300}-\u{1FAFF}]/iu;
 
 export interface HookTitle {
@@ -183,7 +185,7 @@ export function hookTitles(hookSentences: FESentence[], allSentences: FESentence
     const t = cleanTitle(text);
     const n = tokens(t).length;
     if (n < 2 || n > 8 || t.length > 48) return;
-    if (TITLE_AVOID.test(t)) return;
+    if (TITLE_AVOID.test(t) || TITLE_PROFANITY.test(t)) return;
     if (out.some((o) => o.text.toLowerCase() === t.toLowerCase())) return;
     out.push({ text: t, template, grounded: true });
   };

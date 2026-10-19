@@ -409,6 +409,23 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     timeline = EditTimelineSchema.parse({ ...timeline, visuals: picks.map((p) => p.visual), zooms, sfx });
     const solved = solveVisualPlacements(timeline, placementOpts);
     const low = new Set(solved.warnings.filter((w) => w.code === "LOW_CONFIDENCE").map((w) => w.visualId));
+    // Close-up selfie framing often leaves no room beside Chris's face. Instead of dropping the
+    // graphic, show it the way top creators do: a quick FULL-SCREEN cutaway (≈2 s) while his
+    // voice continues — never in the hook, at most one per ~10 s, never two in a row.
+    const cutawayStarts = solved.visuals.filter((v) => (v.props as { screen?: string } | undefined)?.screen === "FULL").map((v) => v.start);
+    for (const p of picks.filter((x) => low.has(x.visual.id))) {
+      const start = p.visual.start;
+      const ok = start >= hookEndOut + 0.3 && cutawayStarts.every((t) => Math.abs(t - start) >= 10) && (picks.length <= 2 || cutawayStarts.length < Math.max(1, Math.round(outDur / 12)));
+      if (!ok) continue;
+      const end = r3(Math.min(Math.max(p.visual.end, start + 1.8), start + 2.6));
+      const idx = solved.visuals.findIndex((v) => v.id === p.visual.id);
+      if (idx < 0) continue;
+      solved.visuals[idx] = { ...solved.visuals[idx]!, end, props: { ...(solved.visuals[idx]!.props as Record<string, unknown>), screen: "FULL" } };
+      p.visual = solved.visuals[idx]!;
+      cutawayStarts.push(start);
+      low.delete(p.visual.id);
+      note("QUALITY", `“${p.presetName}” shown as a quick full-screen cutaway — no room beside your face`);
+    }
     for (const p of picks.filter((x) => low.has(x.visual.id))) {
       note("QUALITY", `swapped out “${p.presetName}” — it had no spot clear of your face and the captions`);
       rejectedAll.push({ sentenceId: p.sentenceId, presetId: p.presetId, reason: "No clear spot (face/captions)" });
