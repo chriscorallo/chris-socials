@@ -5,6 +5,8 @@ describe("strict-schema fallback (Anthropic refuses schemas with >16 union param
   it("recognises the API's refusal (seen live 2026-10-19 on the Motion Designer)", () => {
     const live = new Error('400 {"type":"error","error":{"type":"invalid_request_error","message":"Schemas contains too many parameters with union types (32 parameters with type arrays or anyOf). This causes exponential compilation cost. Reduce the number of nullable or union-typed parameters (limit: 16 parameters with unions)."}}');
     expect(isSchemaTooComplexError(live)).toBe(true);
+    // Seen live on the Viewer Panel the same day:
+    expect(isSchemaTooComplexError(new Error('400 {"type":"error","error":{"type":"invalid_request_error","message":"The compiled grammar is too large, which would cause performance issues. Simplify your tool schemas or reduce the number of strict tools."}}'))).toBe(true);
     expect(isSchemaTooComplexError(new Error("400 credit balance is too low"))).toBe(false);
   });
 

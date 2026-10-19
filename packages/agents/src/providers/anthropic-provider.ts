@@ -105,7 +105,7 @@ function extractJsonText(content: Anthropic.Beta.BetaContentBlock[]): string | u
 /** The API refused the schema for strict structured output (too many optional/union fields). */
 export function isSchemaTooComplexError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return /too many parameters with union types|schema is too complex|exponential compilation cost/i.test(msg);
+  return /too many parameters with union types|schema is too complex|exponential compilation cost|compiled grammar is too large|simplify your tool schemas/i.test(msg);
 }
 
 function schemaInstructions(schema: unknown): string {
