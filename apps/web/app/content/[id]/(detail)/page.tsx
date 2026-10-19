@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll, getAiCheckStatus } from "@chris/domain";
+import { aiReadiness } from "../../../../lib/ai-readiness";
 import { DiscardDraftButton } from "../DiscardDraftButton";
 import { requireSession } from "../../../../lib/session";
 import { storageMode } from "../../../../lib/storage";
@@ -30,6 +31,7 @@ import {
   runEditPlanner,
   runRender,
   runQualityGate,
+  runLateAiCheck,
   runPlatformPackaging,
   submitPublishSchedule,
   runPublish,
@@ -108,6 +110,11 @@ export default async function ContentDetailPage({
   const heroKey = goodRender?.storageKey ?? heroTake?.storageKey ?? null;
   const viewerCheck = goodRender ? await getViewerCheckForVideo(item.id).catch(() => null) : null;
   const livePost = item.publications.find((p) => p.status === "SUCCESS" && p.url);
+  // Owner override (docs/decisions-pending/quality-override.md): was the latest render sent to
+  // the calendar without the AI check? Honest mark + an optional "Run the AI check now".
+  const aiCheck = goodRender ? await getAiCheckStatus(prisma, item.id).catch(() => ({ kind: "CHECKED" as const })) : ({ kind: "CHECKED" as const });
+  const aiNow = aiCheck.kind === "SKIPPED" ? await aiReadiness().catch(() => null) : null;
+  const canLateCheck = aiCheck.kind === "SKIPPED" && !!aiNow?.ready && (state === "READY" || state === "SCHEDULED");
   // What the page shows: a draft is still being filmed; a discarded draft left no footage.
   const shownState = draft ? "READY_TO_FILM" : footageGone ? "FILMED" : state;
   const next = nextActionFor(footageGone ? "FILMED" : state, draft);
@@ -357,6 +364,12 @@ export default async function ContentDetailPage({
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-muted)] sm:text-[14px]">
               {draft ? <DraftBadge /> : <StatusPill state={shownState} />}
               {when && <span>{when}</span>}
+              {aiCheck.kind === "SKIPPED" && (
+                <span data-testid="no-ai-check-badge">
+                  <Badge tone="gold">Scheduled without AI quality check</Badge>
+                </span>
+              )}
+              {aiCheck.kind === "CHECKED_LATER" && !aiCheck.passed && <Badge tone="rose">AI check found something to fix</Badge>}
             </div>
             {draftSaved && draft && <p className="mt-2 text-[13.5px] text-[var(--color-emerald-400)]" data-testid="draft-saved">Draft saved — come back anytime to film the rest.</p>}
             {!when && <p className="mt-2 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-[15px]">{next.hint}</p>}
@@ -456,6 +469,36 @@ export default async function ContentDetailPage({
           )}
 
           {/* Viewer Panel: an AI first-time viewer watches the latest render (advisory only). */}
+          {aiCheck.kind === "SKIPPED" && (
+            <Panel id="no-ai-check">
+              <SectionHeading eyebrow="Quality check" title="Scheduled without AI quality check" />
+              <p className="text-[14px] leading-snug text-[var(--color-text-muted)]">
+                You skipped the AI check{aiCheck.override.aiUnavailableReason ? ` (${aiCheck.override.aiUnavailableReason})` : ""} on{" "}
+                {formatWhen(aiCheck.override.createdAt)}. The free technical check passed.
+                {aiCheck.override.factualConfirmed ? " You confirmed you'd checked the numbers in it." : ""}
+              </p>
+              {canLateCheck ? (
+                <form action={runLateAiCheck} className="mt-3">
+                  <input type="hidden" name="contentItemId" value={item.id} />
+                  <Button tone="ghost" className="w-full sm:w-auto" pendingLabel="Checking…">Run the AI check now</Button>
+                </form>
+              ) : (
+                <p className="mt-2 text-[12.5px] text-[var(--color-text-faint)]">When the AI has credit again, you can run the AI check from here (optional).</p>
+              )}
+            </Panel>
+          )}
+          {aiCheck.kind === "CHECKED_LATER" && !aiCheck.passed && (
+            <Panel id="late-ai-check">
+              <SectionHeading eyebrow="Quality check" title="The AI check found something to fix" />
+              <ul className="list-disc space-y-1 pl-4 text-[13.5px] leading-snug text-[var(--color-text-muted)]">
+                {aiCheck.reasons.slice(0, 6).map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[12.5px] text-[var(--color-text-faint)]">It won&apos;t post until it&apos;s fixed — open the editor, fix it and Finish again.</p>
+            </Panel>
+          )}
+
           {viewerCheck && <ViewerCheck data={viewerCheck} />}
 
           {state === "SELECTED" && (

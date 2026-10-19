@@ -181,6 +181,11 @@ function PostDetail({ e, onDone }: { e: CalEvent; onDone: (msg?: string) => void
       </div>
 
       {e.note && <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2 text-[14px] text-[var(--color-text-muted)]">{e.note}</p>}
+      {e.noAiCheck && (
+        <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2 text-[14px] text-[var(--color-gold-400)]" data-testid="sheet-no-ai-check">
+          Scheduled without AI quality check — your call; the free technical check passed.
+        </p>
+      )}
 
       {e.links.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">

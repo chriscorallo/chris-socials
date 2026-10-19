@@ -4,7 +4,9 @@ import { prisma, setAutoEditMode, saveFinishingEdit, scheduleContentItemForPubli
 import { EditTimelineSchema, graphicBakeKey, type FullEditReport, type FullEditChoices, type EditTimeline, type PlacementWarning, type GraphicBakeInput } from "@chris/media/timeline";
 import { designMotionForContentItem } from "@chris/worker/motion-design-job";
 import { renderContentItem } from "@chris/worker";
-import { runQualityGateForContentItem } from "@chris/worker/quality-gate-job";
+import { runQualityGateForContentItem, skipAiQualityCheckForContentItem } from "@chris/worker/quality-gate-job";
+import { getQualityCheckMode, setQualityCheckMode, aiUnavailableReason, QualityOverrideNotAllowedError, type QualityCheckMode } from "@chris/domain";
+import { aiReadiness } from "../../../../lib/ai-readiness";
 import { applyStyleCutChoice } from "@chris/worker/style-cut-job";
 import { requireSession } from "../../../../lib/session";
 import { storage } from "../../../../lib/storage";
@@ -44,16 +46,18 @@ async function stateOf(contentItemId: string): Promise<ContentState> {
 function plainError(err: unknown, step: string): string {
   const name = err instanceof Error ? err.name : "";
   const msg = err instanceof Error ? err.message : String(err);
+  // Firm mode wording (docs/decisions-pending/quality-override.md): say exactly what's
+  // missing and the two ways forward.
   if (name === "SpendCapExceededError") {
-    return "Today's AI spending limit has been reached, so the AI quality check couldn't run. Your edit is saved — try again tomorrow, or raise MODEL_SPEND_DAILY_CAP_USD.";
+    return "The AI check hit today's spending limit — switch to “Let me skip it” in Settings (More → AI credit) or try again tomorrow. Your edit is saved and rendered.";
   }
   // Credit first: Anthropic's out-of-credit message mentions "Anthropic API", which the key
   // check below would otherwise misread as "no key".
   if (/credit balance|billing|insufficient|quota/i.test(msg)) {
-    return "The AI account is out of credit, so the quality check couldn't run. Your edit is saved and rendered — add credit (More → AI credit) and press Finish again.";
+    return "The AI check needs credit — switch to “Let me skip it” in Settings (More → AI credit) or add credit. Your edit is saved and rendered.";
   }
   if (/api[_ ]?key|authentication|x-api-key|401/i.test(msg)) {
-    return "The quality check needs the AI service, which isn't set up (no Anthropic API key). Your edit is saved and rendered.";
+    return "The AI check needs the AI service, which isn't set up (no Anthropic API key) — switch to “Let me skip it” in Settings (More → AI credit). Your edit is saved and rendered.";
   }
   return `${step} failed: ${msg}`;
 }
@@ -316,7 +320,7 @@ export async function finishJobResultAction(contentItemId: string, jobRunId: str
   StepResult<{
     state: ContentState;
     render: { ok: boolean; error: string | null };
-    check: null | { ok: true; passed: boolean; reasons: string[] } | { ok: false; error: string };
+    check: null | { ok: true; passed: boolean; reasons: string[] } | { ok: false; error: string; aiUnavailable: string | null };
   }>
 > {
   await requireSession();
@@ -336,26 +340,93 @@ export async function finishJobResultAction(contentItemId: string, jobRunId: str
   const renderError = renderOk
     ? null
     : `The render didn't pass its technical check: ${(r.render.errorMessage ?? "see the item page for details").replace(/\.+$/, "")}. Your edit is saved.`;
-  let check: { ok: true; passed: boolean; reasons: string[] } | { ok: false; error: string } | null = null;
+  let check: { ok: true; passed: boolean; reasons: string[] } | { ok: false; error: string; aiUnavailable: string | null } | null = null;
   if (r.gate) check = { ok: true, passed: r.gate.passed, reasons: r.gate.reasons };
   else if (r.gateError) {
     const e = new Error(r.gateError.message);
     e.name = r.gateError.name;
-    check = { ok: false, error: plainError(e, "The quality check") };
+    check = { ok: false, error: plainError(e, "The quality check"), aiUnavailable: aiUnavailableReason(e) };
   }
   return { ok: true, state, render: { ok: renderOk, error: renderError }, check };
 }
 
 export async function qualityGateStepAction(
   contentItemId: string,
-): Promise<StepResult<{ state: ContentState; passed: boolean; reasons: string[] }>> {
+): Promise<StepResult<{ state: ContentState; passed: boolean; reasons: string[] }> | { ok: false; error: string; state?: ContentState; aiUnavailable: string | null }> {
   const session = await requireSession();
   try {
     const result = await runQualityGateForContentItem(prisma, storage, getModelProvider(), contentItemId, { actorId: session.user!.id! });
     const state = await stateOf(contentItemId);
     return { ok: true, state, passed: state === "READY" || result.overallStatus === "PASS", reasons: result.reasons };
   } catch (err) {
-    return { ok: false, error: plainError(err, "The quality check"), state: await stateOf(contentItemId).catch(() => undefined) };
+    return {
+      ok: false,
+      error: plainError(err, "The quality check"),
+      state: await stateOf(contentItemId).catch(() => undefined),
+      aiUnavailable: aiUnavailableReason(err instanceof Error ? err : { message: String(err) }),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Owner override: "Quality check before scheduling" — Firm / Let me skip it
+// (docs/decisions-pending/quality-override.md). The free technical check always runs.
+// ---------------------------------------------------------------------------------------
+
+export interface QualitySettings {
+  mode: QualityCheckMode;
+  ai: { ready: boolean; reason: string | null };
+}
+
+export async function qualitySettingsAction(): Promise<QualitySettings> {
+  await requireSession();
+  const [mode, ai] = [await getQualityCheckMode(prisma), await aiReadiness().catch(() => ({ ready: true, reason: null }))];
+  return { mode, ai };
+}
+
+/** Chris's setting (audit-logged via setFlag). */
+export async function setQualityModeAction(mode: QualityCheckMode): Promise<StepResult<{ mode: QualityCheckMode }>> {
+  const session = await requireSession();
+  if (mode !== "FIRM" && mode !== "SKIP_ALLOWED") return { ok: false, error: "Unknown setting." };
+  try {
+    await setQualityCheckMode(prisma, mode, session.user!.id!);
+    return { ok: true, mode };
+  } catch (err) {
+    return { ok: false, error: plainError(err, "Saving the setting") };
+  }
+}
+
+export type SkipAiCheckStepResult =
+  | { ok: true; state: ContentState; skippedChecks: string[]; unverifiedClaims: string[] }
+  | { ok: false; error: string; state?: ContentState; needsConfirmation?: { unverifiedClaims: string[]; skippedChecks: string[] }; technicalReasons?: string[] };
+
+/**
+ * The owner override for one rendered video: free technical check → READY with a journaled
+ * HUMAN override (never a fake PASS). Runs in this process (no model call, no video download —
+ * DB reads + layout arithmetic), on Vercel too.
+ */
+export async function skipAiCheckAction(input: {
+  contentItemId: string;
+  trigger: "AI_UNAVAILABLE" | "OWNER_CHOICE";
+  aiUnavailableReason?: string | null;
+  factualConfirmed: boolean;
+}): Promise<SkipAiCheckStepResult> {
+  const session = await requireSession();
+  try {
+    const r = await skipAiQualityCheckForContentItem(prisma, input.contentItemId, { actorId: session.user!.id! }, {
+      trigger: input.trigger === "AI_UNAVAILABLE" ? "AI_UNAVAILABLE" : "OWNER_CHOICE",
+      aiUnavailableReason: input.aiUnavailableReason ?? null,
+      factualConfirmed: input.factualConfirmed === true,
+    });
+    const state = await stateOf(input.contentItemId);
+    if (r.status === "READY") return { ok: true, state, skippedChecks: r.skippedChecks, unverifiedClaims: r.unverifiedClaims };
+    if (r.status === "NEEDS_FACTUAL_CONFIRMATION") {
+      return { ok: false, state, error: "This video shows numbers that haven't been fact-checked — check them first.", needsConfirmation: { unverifiedClaims: r.unverifiedClaims, skippedChecks: r.skippedChecks } };
+    }
+    return { ok: false, state, error: "The free technical check found a problem, so this can't go on the calendar yet — skipping the AI check never skips this one. Your edit is saved.", technicalReasons: r.reasons };
+  } catch (err) {
+    if (err instanceof QualityOverrideNotAllowedError) return { ok: false, error: err.message, state: await stateOf(input.contentItemId).catch(() => undefined) };
+    return { ok: false, error: plainError(err, "The technical check"), state: await stateOf(input.contentItemId).catch(() => undefined) };
   }
 }
 

@@ -33,6 +33,7 @@ CANCELLED`
 | `EDIT_PLANNED` | `EDITING` | Renderer picks up the plan |
 | `EDITING` | `RENDERED` | Render completes |
 | `RENDERED` | `READY` | Hard gates all `PASS` |
+| `RENDERED` | `READY` | **Owner override: skip AI quality check** (actorType `HUMAN`) — only via `applyOwnerQualityOverride`: owner setting "Let me skip it" on, free TECHNICAL gate `PASS` on that exact render, "I've checked the numbers" when unverified numbers are on screen; writes `QualityOverride` + `DecisionJournalEntry` (userOverride) + `AuditLog`. Never a bare button (`OWNER_GUARDED_TRANSITIONS`, not `MANUAL_TRANSITIONS`). See docs/decisions-pending/quality-override.md |
 | `RENDERED` | `QC_REPAIR` | Visual QA / Technical QC finds issues |
 | `QC_REPAIR` | `RENDERED` | Repair applied, re-rendered (loop) |
 | `QC_REPAIR` | `QC_BLOCKED` | Repair-iteration limit reached |
@@ -76,3 +77,6 @@ else, going backward means cancel-and-recreate a new `ContentItem`, not mutating
   and the same target transition is a no-op (returns the existing result), not a duplicate
   row or an error.
 - `CANCELLED` transitions always carry a human-readable `reason` — no silent cancellation.
+- Bare-button manual transitions are `MANUAL_TRANSITIONS` only (none reaches READY). Guarded
+  human transitions (`OWNER_GUARDED_TRANSITIONS`) succeed only through their own domain function,
+  which checks preconditions and writes its evidence — currently just the owner quality override.

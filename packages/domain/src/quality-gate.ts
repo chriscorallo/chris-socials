@@ -160,50 +160,7 @@ export async function recordQualityGateResult(
 
   const render = await prisma.render.findUniqueOrThrow({ where: { id: parsed.renderId } });
 
-  const aggregation = aggregateHardGates(parsed.gates);
-  const reasons = parsed.reasons.length > 0 ? parsed.reasons : aggregation.reasons;
-
-  // Two sequential writes, not one nested create — this sandbox's PGlite dev database has
-  // already shown it can't be trusted with compound/concurrent Prisma operations it wasn't
-  // exercised against (see /docs/DECISIONS.md, the Promise.all and nested-include findings
-  // from Phases 2-3); a nested `issues: { create: [...] }` write is untested territory here,
-  // so this stays as two plain queries instead of one clever one.
-  const qcReport = await prisma.qCReport.create({
-    data: {
-      contentItemId: parsed.contentItemId,
-      renderId: parsed.renderId,
-      factualStatus: parsed.gates.factual,
-      technicalStatus: parsed.gates.technical,
-      brandStatus: parsed.gates.brand,
-      creativeStatus: parsed.gates.creative,
-      overallStatus: aggregation.overall,
-      reasons: reasons as never,
-      visualQAImpression: parsed.visualQAImpression ?? null,
-    },
-  });
-
-  if (parsed.issues.length > 0) {
-    await prisma.qCIssue.createMany({
-      data: parsed.issues.map((issue) => ({
-        qcReportId: qcReport.id,
-        category: issue.category,
-        description: issue.description,
-        severity: issue.severity,
-        timestampSeconds: issue.timestampSeconds ?? null,
-        recommendedRepair: issue.recommendedRepair ?? null,
-        source: issue.source,
-      })),
-    });
-  }
-
-  await recordAudit(prisma, {
-    actor: actor.actorId,
-    actorType: "SYSTEM",
-    action: "QUALITY_GATE_RECORDED",
-    entityType: "ContentItem",
-    entityId: parsed.contentItemId,
-    after: { qcReportId: qcReport.id, overallStatus: aggregation.overall, gates: parsed.gates },
-  });
+  const { qcReport, aggregation, reasons } = await persistQCReport(prisma, parsed, actor);
 
   if (aggregation.overall === "PASS") {
     await applyTransition(prisma, {
@@ -250,6 +207,98 @@ export async function recordQualityGateResult(
   }
 
   return qcReport;
+}
+
+export class LateQualityCheckNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LateQualityCheckNotAllowedError";
+  }
+}
+
+/**
+ * "Run the AI check now" — the full Quality Gate on a render the OWNER already sent to READY
+ * without it (QualityOverride; docs/decisions-pending/quality-override.md). Records the
+ * QCReport for that render but makes NO state transition: the video stays where Chris put it.
+ * Preflight then uses the newer record (renderPublishApproval) — a PASS is a normal approval,
+ * a BLOCK stops it posting until Chris edits it (a real hard-gate finding still blocks).
+ * Only for the latest successful render, only when it carries an owner override, only while
+ * the video hasn't started publishing.
+ */
+export async function recordLateQualityCheck(
+  prisma: PrismaClient,
+  input: RecordQualityGateResultInput,
+  actor: { actorId: string },
+) {
+  const parsed = RecordQualityGateResultSchema.parse(input);
+  const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: parsed.contentItemId } });
+  if (item.currentState !== "READY" && item.currentState !== "SCHEDULED") {
+    throw new LateQualityCheckNotAllowedError(`The AI check can only be added to a ready or scheduled video (this one is ${item.currentState}).`);
+  }
+  const latest = await prisma.render.findFirst({ where: { contentItemId: parsed.contentItemId, status: "SUCCESS" }, orderBy: { createdAt: "desc" } });
+  if (!latest || latest.id !== parsed.renderId) {
+    throw new LateQualityCheckNotAllowedError("That isn't the video's latest render.");
+  }
+  const override = await prisma.qualityOverride.findFirst({ where: { renderId: parsed.renderId } });
+  if (!override) {
+    throw new LateQualityCheckNotAllowedError("This video already went through the quality check.");
+  }
+  const { qcReport } = await persistQCReport(prisma, parsed, actor, "QUALITY_GATE_RECORDED_AFTER_OWNER_OVERRIDE");
+  return qcReport;
+}
+
+async function persistQCReport(
+  prisma: PrismaClient,
+  parsed: z.output<typeof RecordQualityGateResultSchema>,
+  actor: { actorId: string },
+  auditAction = "QUALITY_GATE_RECORDED",
+) {
+  const aggregation = aggregateHardGates(parsed.gates);
+  const reasons = parsed.reasons.length > 0 ? parsed.reasons : aggregation.reasons;
+
+  // Two sequential writes, not one nested create — this sandbox's PGlite dev database has
+  // already shown it can't be trusted with compound/concurrent Prisma operations it wasn't
+  // exercised against (see /docs/DECISIONS.md, the Promise.all and nested-include findings
+  // from Phases 2-3); a nested `issues: { create: [...] }` write is untested territory here,
+  // so this stays as two plain queries instead of one clever one.
+  const qcReport = await prisma.qCReport.create({
+    data: {
+      contentItemId: parsed.contentItemId,
+      renderId: parsed.renderId,
+      factualStatus: parsed.gates.factual,
+      technicalStatus: parsed.gates.technical,
+      brandStatus: parsed.gates.brand,
+      creativeStatus: parsed.gates.creative,
+      overallStatus: aggregation.overall,
+      reasons: reasons as never,
+      visualQAImpression: parsed.visualQAImpression ?? null,
+    },
+  });
+
+  if (parsed.issues.length > 0) {
+    await prisma.qCIssue.createMany({
+      data: parsed.issues.map((issue) => ({
+        qcReportId: qcReport.id,
+        category: issue.category,
+        description: issue.description,
+        severity: issue.severity,
+        timestampSeconds: issue.timestampSeconds ?? null,
+        recommendedRepair: issue.recommendedRepair ?? null,
+        source: issue.source,
+      })),
+    });
+  }
+
+  await recordAudit(prisma, {
+    actor: actor.actorId,
+    actorType: "SYSTEM",
+    action: auditAction,
+    entityType: "ContentItem",
+    entityId: parsed.contentItemId,
+    after: { qcReportId: qcReport.id, overallStatus: aggregation.overall, gates: parsed.gates },
+  });
+
+  return { qcReport, aggregation, reasons };
 }
 
 export async function getLatestQCReport(prisma: PrismaClient, contentItemId: string) {

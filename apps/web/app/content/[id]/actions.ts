@@ -337,6 +337,19 @@ export async function runQualityGate(formData: FormData) {
 }
 
 /**
+ * "Run the AI check now" on a video Chris sent to the calendar without it (owner override,
+ * docs/decisions-pending/quality-override.md): the full Quality Gate, recorded for that render
+ * with NO state change. A PASS clears the "Scheduled without AI quality check" mark; a BLOCK is
+ * shown and stops it posting until it's fixed (a real hard-gate finding still blocks).
+ */
+export async function runLateAiCheck(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  const r = await runHeavyJob("quality-gate", { contentItemId, lateCheck: true }, { actorId: session.user!.id! });
+  heavyJobRedirect(contentItemId, r, (o) => (o.ok ? null : plainJobError(o.error)));
+}
+
+/**
  * Phase 5 — packages the finished video for one platform (spec §9 step 20). Uses the selected
  * take's transcript as the "final transcript" input (the render trims/captions that audio but
  * doesn't re-transcribe it — see /docs/DECISIONS.md's no-real-transcription-provider

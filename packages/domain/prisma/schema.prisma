@@ -158,6 +158,7 @@ model ContentItem {
   editPlans              EditPlan[]
   renders                Render[]
   qcReports              QCReport[]
+  qualityOverrides       QualityOverride[]
   platformPackages       PlatformPackage[]
   publications           Publication[]
   performanceSnapshots   PerformanceSnapshot[]
@@ -462,29 +463,29 @@ model MediaAsset {
   // Phase 3 analysis fields — added to this same table rather than a separate RawTake
   // table, per /docs/DATA_MODEL.md. Populated by deterministic ffprobe analysis
   // (packages/media's probeMedia) once ingested; null until then.
-  durationSeconds  Float?
-  width            Int?
-  height           Int?
-  frameRate        Float?
-  hasAudio         Boolean?
-  videoCodec       String?
-  audioCodec       String?
+  durationSeconds     Float?
+  width               Int?
+  height              Int?
+  frameRate           Float?
+  hasAudio            Boolean?
+  videoCodec          String?
+  audioCodec          String?
   // Transcript — plain text, plus word-level timings when produced by a real transcription
   // provider (or null for a manually typed transcript). See /docs/DECISIONS.md
   // ("Real transcription: local Whisper, word-level timings").
-  transcript       String?
+  transcript          String?
   // [{ word: string, start: number, end: number }] in seconds, source-media timeline.
-  transcriptWords  Json?
+  transcriptWords     Json?
   // "LOCAL_WHISPER" | "MANUAL" — provenance of `transcript`.
-  transcriptSource String?
-  transcribedAt    DateTime?
+  transcriptSource    String?
+  transcribedAt       DateTime?
   // Where the speaker is over time — [{ t, box: {x,y,w,h} | null }] canvas-independent source
   // fractions, sampled ~2-4 fps by the face/subject tracker. Drives AUTO placement of motion
   // graphics so they never cover Chris. Null until analyzed.
-  subjectTrack     Json?
+  subjectTrack        Json?
   // Per-frame person matte for this take (grayscale video, same timing as the source) — lets
   // motion graphics sit BEHIND Chris. Storage key; null until computed.
-  matteStorageKey  String?
+  matteStorageKey     String?
   // Editor PREVIEW assets (never render inputs — renders always use the original): a small
   // H.264 proxy with a keyframe every 0.5 s, a filmstrip sprite (JPEG) and, in previewMeta,
   // the proxy/sprite geometry + audio peaks. Null until generated (ingest / lazy backfill).
@@ -493,8 +494,8 @@ model MediaAsset {
   filmstripStorageKey String?
   previewMeta         Json?
 
-  contentItem    ContentItem     @relation(fields: [contentItemId], references: [id])
-  takeSelections TakeSelection[] @relation("SelectedTake")
+  contentItem      ContentItem       @relation(fields: [contentItemId], references: [id])
+  takeSelections   TakeSelection[]   @relation("SelectedTake")
   // Set when this take is one segment of a teleprompter recording session (one row at most).
   recordingSegment RecordingSegment?
 
@@ -570,11 +571,12 @@ model Render {
   errorMessage      String?
   createdAt         DateTime     @default(now())
 
-  contentItem   ContentItem     @relation(fields: [contentItemId], references: [id])
-  editPlan      EditPlan        @relation(fields: [editPlanId], references: [id])
-  qcReports     QCReport[]
-  variants      RenderVariant[]
-  viewerReviews ViewerReview[]
+  contentItem      ContentItem       @relation(fields: [contentItemId], references: [id])
+  editPlan         EditPlan          @relation(fields: [editPlanId], references: [id])
+  qcReports        QCReport[]
+  qualityOverrides QualityOverride[]
+  variants         RenderVariant[]
+  viewerReviews    ViewerReview[]
 
   @@index([contentItemId])
   @@index([editPlanId])
@@ -624,6 +626,41 @@ model QCReport {
   @@index([renderId])
 }
 
+/// The OWNER's explicit decision to send one render to READY without the AI-powered checks
+/// (Visual QA, brand/voice, creative, AI fact-check) — e.g. while the AI is out of credit.
+/// Spec §5: the human owner outranks the hard gates. The free, deterministic TECHNICAL gate
+/// always ran first and passed (`technicalStatus` is recorded, never assumed). Append-only:
+/// never updated or deleted — a later AI check is a new QCReport, not an edit of this row.
+/// See docs/decisions-pending/quality-override.md.
+model QualityOverride {
+  id                     String         @id @default(cuid())
+  contentItemId          String
+  renderId               String
+  /// "AI_UNAVAILABLE" (no key / out of credit / spend cap) or "OWNER_CHOICE" (tapped Skip).
+  trigger                String
+  /// Plain-English why, e.g. "The AI account is out of credit".
+  aiUnavailableReason    String?
+  /// The deterministic TECHNICAL gate result at override time (always PASS — a BLOCK refuses).
+  technicalStatus        HardGateStatus
+  /// QCIssue-shaped deterministic findings (collisions etc.) seen at override time.
+  technicalIssues        Json
+  /// Which AI-powered checks were skipped (plain labels).
+  skippedChecks          Json
+  /// On-screen numbers / claims without a verified source that Chris confirmed (may be []).
+  unverifiedClaims       Json
+  /// true when Chris ticked "I've checked the numbers in this video".
+  factualConfirmed       Boolean        @default(false)
+  decisionJournalEntryId String?
+  actorId                String
+  createdAt              DateTime       @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+  render      Render      @relation(fields: [renderId], references: [id])
+
+  @@index([contentItemId])
+  @@index([renderId])
+}
+
 model QCIssue {
   id                String     @id @default(cuid())
   qcReportId        String
@@ -650,6 +687,7 @@ model ScheduleEntry {
   createdAt       DateTime @default(now())
 
   contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
   @@index([scheduledDate])
 }
 

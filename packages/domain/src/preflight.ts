@@ -1,5 +1,6 @@
 import type { PrismaClient, ContentPlatform, ContentState } from "@prisma/client";
 import { validateMediaSpec, validatePackageText } from "./platform-limits";
+import { renderPublishApproval } from "./quality-override";
 
 /**
  * Spec §9 step 21 — "verifies file/version/hash, credentials, account, packaging, schedule,
@@ -87,18 +88,14 @@ export async function runPreflight(prisma: PrismaClient, input: PreflightInput):
       reasons.push("Latest successful Render has no storageKey (file check).");
     }
     // Hard-gate requirement (spec §9 step 17 -> 21): the exact render being published must
-    // have a QC report whose aggregate is PASS. A gate that was skipped, still pending, or
-    // BLOCKed for this render is a hard stop — never "probably fine". The latest report for
-    // this render is the one that counts (a re-run after a repair supersedes an older one).
-    const qc = await prisma.qCReport.findFirst({
-      where: { renderId: render.id },
-      orderBy: { createdAt: "desc" },
-    });
-    if (!qc) {
-      reasons.push("No QC report exists for the latest render — the quality gate has not passed (QC check).");
-    } else if (qc.overallStatus !== "PASS") {
-      reasons.push(`Latest QC report for this render is ${qc.overallStatus}, not PASS (QC check).`);
-    }
+    // have a QC report whose aggregate is PASS — or the OWNER's explicit, journaled override
+    // for that exact render (technical gate passed; AI checks skipped by Chris — spec §5, the
+    // owner outranks the gates; docs/decisions-pending/quality-override.md). Anything else
+    // (no check, pending, BLOCKed, or a later AI check that BLOCKed after an override) is a
+    // hard stop — never "probably fine". The latest record for this render is the one that
+    // counts (a re-run after a repair supersedes an older one).
+    const approval = await renderPublishApproval(prisma, render.id);
+    if (!approval.ok) reasons.push(approval.reason);
     reasons.push(
       ...validateMediaSpec(
         input.platform,

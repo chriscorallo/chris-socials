@@ -145,6 +145,7 @@ re-rendering it.
 |---|---|---|
 | `QCReport` | Spec §9 step 16 — one row per Quality Gate run against a `Render`, append-only | `contentItemId, renderId, factualStatus/technicalStatus/brandStatus/creativeStatus/overallStatus (HardGateStatus: PASS/BLOCK), reasons (json), visualQAImpression?` |
 | `QCIssue` | Machine-actionable finding, one or more per `QCReport` | `qcReportId, category, description, severity (QCSeverity: INFO/MINOR/MAJOR/BLOCKING), timestampSeconds?, recommendedRepair?, source ("VISUAL_QA" \| "OVERLAY_COLLISION")` |
+| `QualityOverride` | The OWNER's explicit decision to send one render to READY without the AI-powered checks (spec §5: owner outranks the gates) — append-only, never a fake QCReport. Added 2026-10-18 (docs/decisions-pending/quality-override.md) | `contentItemId, renderId, trigger ("AI_UNAVAILABLE" \| "OWNER_CHOICE"), aiUnavailableReason?, technicalStatus (always PASS), technicalIssues (json), skippedChecks (json), unverifiedClaims (json), factualConfirmed, decisionJournalEntryId?, actorId` |
 
 `overallStatus` is never hand-set — it's the persisted output of
 `packages/domain/src/quality-gate.ts`'s `aggregateHardGates()`, the one function responsible

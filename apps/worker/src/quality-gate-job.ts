@@ -6,6 +6,10 @@ import {
   getLatestResearchPacket,
   getLatestScriptVersion,
   recordQualityGateResult,
+  recordLateQualityCheck,
+  applyOwnerQualityOverride,
+  FactualConfirmationRequiredError,
+  AI_QUALITY_CHECKS,
   parseTranscriptWords,
   aggregateHardGates,
   isScriptVersionFilmable,
@@ -22,6 +26,7 @@ import {
   groundedNumbers,
   numberIsGrounded,
   numbersShownBy,
+  extractNumbers,
   type ModelProvider,
   type MotionResearchInput,
 } from "@chris/agents";
@@ -37,6 +42,7 @@ import {
   findTimelineCollisions,
   nodeMeasureText,
   type CaptionCollision,
+  type EditTimeline,
   type TimelineVisual,
 } from "@chris/media";
 import type { StorageAdapter } from "@chris/media";
@@ -118,31 +124,26 @@ export function describeUngroundedVisualNumbers(found: UngroundedVisualNumbers[]
   return `On-screen numbers aren't in the fact-checked research or script: ${parts.join("; ")}. Fix the graphic to use a researched number, or remove it.`;
 }
 
-/**
- * Runs the Phase 4 Hard Gate quality check on a ContentItem currently at RENDERED (spec §9
- * step 16), and persists+transitions via recordQualityGateResult (packages/domain). Combines:
- *
- * - FACTUAL: the ClaimsGateResult already recorded on the ResearchPacket at RESEARCHING time
- *   (Phase 2) — this system doesn't re-run Claims Gate against the final edit; Claims Gate's
- *   contract (/docs/AGENT_CONTRACTS.md) is ResearchPacket + ScriptVersion, not Render, and an
- *   EditPlan can only ever trim/caption the script's spoken content, never add a new claim.
- * - TECHNICAL: the deterministic TechnicalQCReport from the render itself (Phase 3), escalated
- *   to BLOCK by any BLOCKING-severity finding from Visual QA or the overlay-collision check.
- * - BRAND / CREATIVE: the BrandGuardianReport already recorded on the ScriptVersion (Phase 2),
- *   reduced to PASS/BLOCK via threshold — see /docs/DECISIONS.md for why Brand Guardian's
- *   existing scores are reused here instead of inventing a second brand-review agent call.
- *
- * Visual QA (this phase's new agent) is the only actual model call this job makes; frame
- * extraction and overlay-collision checking are both deterministic (packages/media).
- */
-export async function runQualityGateForContentItem(
-  db: PrismaClient,
-  storage: StorageAdapter,
-  modelProvider: ModelProvider,
-  contentItemId: string,
-  actor: { actorId: string },
-  options: { maxFrames?: number } = {},
-): Promise<QualityGateJobResult> {
+
+/** Everything the Quality Gate decides WITHOUT a model call — shared by the full gate and the
+ * owner's "skip the AI check" path, so both see exactly the same technical/factual facts. */
+interface DeterministicChecks {
+  render: { id: string; storageKey: string };
+  plan: ReturnType<typeof EditPlanOutputSchema.parse>;
+  timeline: EditTimeline | null;
+  technicalBase: GateStatus;
+  collisionIssues: QCIssueInput[];
+  factualStatus: GateStatus;
+  factualBlockReason: string | null;
+  /** The Claims Gate said BLOCK (a real finding, not just "no verdict"). */
+  claimsGateBlocked: boolean;
+  ungroundedVisuals: UngroundedVisualNumbers[];
+  allowedNumbers: number[];
+  wordsByAsset: Record<string, ReturnType<typeof parseTranscriptWords>>;
+  brand: { status: GateStatus; brandScore: number; voiceScore: number; originalityScore: number; creativeStatus: GateStatus; onRecord: boolean };
+}
+
+async function runDeterministicChecks(db: PrismaClient, contentItemId: string): Promise<DeterministicChecks> {
   const render = await db.render.findFirst({
     where: { contentItemId, status: "SUCCESS" },
     orderBy: { createdAt: "desc" },
@@ -215,33 +216,38 @@ export async function runQualityGateForContentItem(
   const parsedTimeline = rawTimeline != null ? EditTimelineSchema.safeParse(rawTimeline) : null;
   const timeline = parsedTimeline?.success ? parsedTimeline.data : null;
 
+  // Numbers the video may show: the fact-checked research + the Claims-Gate-passed script.
+  const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+  const research: MotionResearchInput | null = researchPacket
+    ? {
+        primaryClaim: researchPacket.primaryClaim,
+        numericInputs: asArray<{ label: string; value: string }>(researchPacket.numericInputs),
+        facts: asArray<{ statement: string; type: string }>(researchPacket.facts),
+        calculationNotes: researchPacket.calculationNotes,
+      }
+    : null;
+  const scripts = await db.scriptVersion.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" } });
+  const gated = scripts.find((s) => isScriptVersionFilmable(s).ok) ?? null;
+  const gatedScript = gated ? { spokenScript: gated.spokenScript } : null;
+
   // FACTUAL also covers numbers drawn by motion graphics (deterministic, no model call).
+  let ungroundedVisuals: UngroundedVisualNumbers[] = [];
   if (timeline && timeline.visuals.length > 0) {
-    const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
-    const research: MotionResearchInput | null = researchPacket
-      ? {
-          primaryClaim: researchPacket.primaryClaim,
-          numericInputs: asArray<{ label: string; value: string }>(researchPacket.numericInputs),
-          facts: asArray<{ statement: string; type: string }>(researchPacket.facts),
-          calculationNotes: researchPacket.calculationNotes,
-        }
-      : null;
-    const scripts = await db.scriptVersion.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" } });
-    const gated = scripts.find((s) => isScriptVersionFilmable(s).ok) ?? null;
-    const ungrounded = findUngroundedVisualNumbers(timeline.visuals, research, gated ? { spokenScript: gated.spokenScript } : null);
-    if (ungrounded.length > 0) {
-      const reason = describeUngroundedVisualNumbers(ungrounded);
+    ungroundedVisuals = findUngroundedVisualNumbers(timeline.visuals, research, gatedScript);
+    if (ungroundedVisuals.length > 0) {
+      const reason = describeUngroundedVisualNumbers(ungroundedVisuals);
       factualStatus = "BLOCK";
       factualBlockReason = factualBlockReason ? `${factualBlockReason} Also: ${reason}` : reason;
     }
   }
 
   const collisionIssues: QCIssueInput[] = [];
+  let wordsByAsset: Record<string, ReturnType<typeof parseTranscriptWords>> = {};
   if (timeline) {
     // Deterministic, pure layout arithmetic — no model call.
     const assetIds = [...new Set(timeline.clips.map((c) => c.mediaAssetId))];
     const assets = await db.mediaAsset.findMany({ where: { id: { in: assetIds } } });
-    const wordsByAsset = Object.fromEntries(assets.map((a) => [a.id, parseTranscriptWords(a.transcriptWords)]));
+    wordsByAsset = Object.fromEntries(assets.map((a) => [a.id, parseTranscriptWords(a.transcriptWords)]));
     const chunks = timelineCaptionChunks(timeline, wordsByAsset);
     for (const c of findTimelineCollisions(timeline, chunks, nodeMeasureText)) {
       collisionIssues.push(
@@ -292,6 +298,57 @@ export async function runQualityGateForContentItem(
     });
     for (const c of captionCollisions) collisionIssues.push(captionCollisionToIssue(c));
   }
+
+  return {
+    render: { id: render.id, storageKey: render.storageKey },
+    plan,
+    timeline,
+    technicalBase,
+    collisionIssues,
+    factualStatus,
+    factualBlockReason,
+    claimsGateBlocked: claimsGateResult?.result === "BLOCK",
+    ungroundedVisuals,
+    allowedNumbers: groundedNumbers(research, gatedScript),
+    wordsByAsset,
+    brand: { status: brandStatus, brandScore, voiceScore, originalityScore, creativeStatus, onRecord: !!brandGuardianReport },
+  };
+}
+
+/**
+ * Runs the Phase 4 Hard Gate quality check on a ContentItem currently at RENDERED (spec §9
+ * step 16), and persists+transitions via recordQualityGateResult (packages/domain). Combines:
+ *
+ * - FACTUAL: the ClaimsGateResult already recorded on the ResearchPacket at RESEARCHING time
+ *   (Phase 2) — this system doesn't re-run Claims Gate against the final edit; Claims Gate's
+ *   contract (/docs/AGENT_CONTRACTS.md) is ResearchPacket + ScriptVersion, not Render, and an
+ *   EditPlan can only ever trim/caption the script's spoken content, never add a new claim.
+ * - TECHNICAL: the deterministic TechnicalQCReport from the render itself (Phase 3), escalated
+ *   to BLOCK by any BLOCKING-severity finding from Visual QA or the overlay-collision check.
+ * - BRAND / CREATIVE: the BrandGuardianReport already recorded on the ScriptVersion (Phase 2),
+ *   reduced to PASS/BLOCK via threshold — see /docs/DECISIONS.md for why Brand Guardian's
+ *   existing scores are reused here instead of inventing a second brand-review agent call.
+ *
+ * Visual QA (this phase's new agent) is the only actual model call this job makes; frame
+ * extraction and overlay-collision checking are both deterministic (packages/media).
+ *
+ * `options.lateCheck` ("Run the AI check now" on a video the owner already sent to the
+ * calendar without it): same checks, recorded as a QCReport for that render WITHOUT a state
+ * transition (recordLateQualityCheck) — a later BLOCK then supersedes the override in preflight.
+ */
+export async function runQualityGateForContentItem(
+  db: PrismaClient,
+  storage: StorageAdapter,
+  modelProvider: ModelProvider,
+  contentItemId: string,
+  actor: { actorId: string },
+  options: { maxFrames?: number; lateCheck?: boolean } = {},
+): Promise<QualityGateJobResult> {
+  const d = await runDeterministicChecks(db, contentItemId);
+  const { render, plan, timeline, technicalBase, collisionIssues, factualStatus, factualBlockReason } = d;
+  const { brandScore, voiceScore, originalityScore } = d.brand;
+  const brandStatus = d.brand.status;
+  const creativeStatus = d.brand.creativeStatus;
 
   const workDir = await mkdtemp(join(tmpdir(), "chris-quality-gate-"));
   // No initializer: either both are assigned before the try block ends, or it throws and
@@ -370,7 +427,8 @@ export async function runQualityGateForContentItem(
 
   const aggregation = aggregateHardGates(gates, reasonsByGate);
 
-  const qcReport = await recordQualityGateResult(
+  const record = options.lateCheck ? recordLateQualityCheck : recordQualityGateResult;
+  const qcReport = await record(
     db,
     {
       contentItemId,
@@ -384,4 +442,148 @@ export async function runQualityGateForContentItem(
   );
 
   return { qcReportId: qcReport.id, overallStatus: qcReport.overallStatus, gates, reasons: aggregation.reasons };
+}
+
+// ---------------------------------------------------------------------------------------
+// Owner override: "skip the AI quality check" (docs/decisions-pending/quality-override.md)
+// ---------------------------------------------------------------------------------------
+
+const MAX_LISTED_CLAIMS = 12;
+
+/** Digit-written numbers in a string (spelled-out words like "one" are too common in speech
+ * to flag here; graphics are checked separately with the full extractor). */
+function digitNumbers(text: string): number[] {
+  return /\d/.test(text) ? extractNumbers(text).filter((n) => Number.isFinite(n)) : [];
+}
+
+/**
+ * PURE: the on-screen numbers/claims Chris must vouch for when the FACTUAL gate can't pass on
+ * its own (no fact-check on record, a Claims Gate BLOCK, or ungrounded graphic numbers).
+ * Lists ungrounded numbers in graphics, on-screen texts and captions (what's said — captions
+ * or not), plus a Claims Gate BLOCK reason. Empty = nothing numeric to confirm.
+ */
+export function listUnverifiedClaims(input: {
+  factualStatus: GateStatus;
+  claimsGateBlocked: boolean;
+  factualBlockReason: string | null;
+  ungroundedVisuals: UngroundedVisualNumbers[];
+  texts: Array<{ text: string; start: number }>;
+  spoken: Array<{ text: string; start: number }>;
+  allowedNumbers: number[];
+}): string[] {
+  if (input.factualStatus === "PASS") return [];
+  const out: string[] = [];
+  if (input.claimsGateBlocked && input.factualBlockReason) out.push(`The fact-check flagged: ${input.factualBlockReason.split(" Also: ")[0]!.replace(/\.+$/, "")}`);
+  for (const f of input.ungroundedVisuals) {
+    const nums = [...new Set(f.numbers.map((n) => n.value.toLocaleString("en-US")))].join(", ");
+    out.push(`The ${TEMPLATE_NAMES[f.template] ?? f.template} at ${f.start.toFixed(1)}s shows ${nums}`);
+  }
+  const ungrounded = (t: string) => digitNumbers(t).some((n) => !numberIsGrounded(n, input.allowedNumbers));
+  for (const t of input.texts) if (ungrounded(t.text)) out.push(`On-screen text at ${t.start.toFixed(1)}s: "${t.text.trim()}"`);
+  for (const s of input.spoken) if (ungrounded(s.text)) out.push(`You say at ${s.start.toFixed(1)}s: "${s.text.trim()}"`);
+  const unique = [...new Set(out)];
+  return unique.length > MAX_LISTED_CLAIMS
+    ? [...unique.slice(0, MAX_LISTED_CLAIMS), `…and ${unique.length - MAX_LISTED_CLAIMS} more`]
+    : unique;
+}
+
+export interface SkipAiPrecheck {
+  renderId: string;
+  technical: { status: GateStatus; reasons: string[]; issues: QCIssueInput[] };
+  /** What the override would skip (plain labels, with why for brand/factual). */
+  skippedChecks: string[];
+  unverifiedClaims: string[];
+}
+
+/** The free part of the Quality Gate, for the override: technical gate + what's unverified. */
+export async function precheckSkipAiQualityCheck(db: PrismaClient, contentItemId: string): Promise<SkipAiPrecheck> {
+  const d = await runDeterministicChecks(db, contentItemId);
+  const technicalStatus = technicalGateFromIssues(d.technicalBase, d.collisionIssues);
+  const technicalReasons: string[] = [];
+  if (d.technicalBase === "BLOCK") technicalReasons.push("The render didn't pass its technical check (file, length, size, codec or loudness).");
+  for (const i of d.collisionIssues) if (i.severity === "BLOCKING") technicalReasons.push(i.description);
+
+  const texts = d.timeline
+    ? d.timeline.texts.map((t) => ({ text: t.text, start: t.start }))
+    : d.plan.textOverlays.map((o) => ({ text: o.text, start: o.startSeconds }));
+  const spoken = d.timeline
+    ? timelineCaptionChunks({ clips: d.timeline.clips, captions: { ...d.timeline.captions, enabled: true } }, d.wordsByAsset).map((c) => ({ text: c.text, start: c.start }))
+    : [];
+  const unverifiedClaims = listUnverifiedClaims({
+    factualStatus: d.factualStatus,
+    claimsGateBlocked: d.claimsGateBlocked,
+    factualBlockReason: d.factualBlockReason,
+    ungroundedVisuals: d.ungroundedVisuals,
+    texts,
+    spoken,
+    allowedNumbers: d.allowedNumbers,
+  });
+
+  const skippedChecks: string[] = [AI_QUALITY_CHECKS.VISUAL_QA];
+  if (d.brand.status === "BLOCK") {
+    skippedChecks.push(
+      d.brand.onRecord
+        ? `${AI_QUALITY_CHECKS.BRAND} (scored below the bar: brand ${d.brand.brandScore}, voice ${d.brand.voiceScore})`
+        : `${AI_QUALITY_CHECKS.BRAND} (none on record)`,
+    );
+  }
+  if (d.brand.creativeStatus === "BLOCK") {
+    skippedChecks.push(
+      d.brand.onRecord ? `${AI_QUALITY_CHECKS.CREATIVE} (scored ${d.brand.originalityScore})` : `${AI_QUALITY_CHECKS.CREATIVE} (none on record)`,
+    );
+  }
+  if (d.factualStatus === "BLOCK") skippedChecks.push(`${AI_QUALITY_CHECKS.FACTUAL} (${d.claimsGateBlocked ? "it flagged a claim" : "none on record"})`);
+
+  return {
+    renderId: d.render.id,
+    technical: { status: technicalStatus, reasons: technicalReasons, issues: d.collisionIssues },
+    skippedChecks,
+    unverifiedClaims,
+  };
+}
+
+export type SkipAiQualityCheckResult =
+  | { status: "READY"; qualityOverrideId: string; skippedChecks: string[]; unverifiedClaims: string[] }
+  | { status: "TECHNICAL_BLOCK"; reasons: string[] }
+  | { status: "NEEDS_FACTUAL_CONFIRMATION"; unverifiedClaims: string[]; skippedChecks: string[] };
+
+/**
+ * Owner override end to end: free technical gate → (if it passes) the owner's journaled
+ * RENDERED -> READY (applyOwnerQualityOverride). A technical BLOCK never becomes READY; on-
+ * screen numbers without a source need `factualConfirmed`. Throws
+ * QualityOverrideNotAllowedError when the setting is Firm or the video isn't at RENDERED.
+ */
+export async function skipAiQualityCheckForContentItem(
+  db: PrismaClient,
+  contentItemId: string,
+  actor: { actorId: string },
+  input: { trigger: "AI_UNAVAILABLE" | "OWNER_CHOICE"; aiUnavailableReason?: string | null; factualConfirmed: boolean },
+): Promise<SkipAiQualityCheckResult> {
+  const pre = await precheckSkipAiQualityCheck(db, contentItemId);
+  if (pre.technical.status !== "PASS") return { status: "TECHNICAL_BLOCK", reasons: pre.technical.reasons };
+  if (pre.unverifiedClaims.length > 0 && !input.factualConfirmed) {
+    return { status: "NEEDS_FACTUAL_CONFIRMATION", unverifiedClaims: pre.unverifiedClaims, skippedChecks: pre.skippedChecks };
+  }
+  try {
+    const row = await applyOwnerQualityOverride(db, {
+      contentItemId,
+      actorId: actor.actorId,
+      trigger: input.trigger,
+      aiUnavailableReason: input.aiUnavailableReason ?? null,
+      technical: {
+        status: "PASS",
+        renderId: pre.renderId,
+        issues: pre.technical.issues.map((i) => ({ category: i.category, description: i.description, severity: i.severity, timestampSeconds: i.timestampSeconds ?? null })),
+      },
+      skippedChecks: pre.skippedChecks,
+      unverifiedClaims: pre.unverifiedClaims,
+      factualConfirmed: input.factualConfirmed,
+    });
+    return { status: "READY", qualityOverrideId: row.id, skippedChecks: pre.skippedChecks, unverifiedClaims: pre.unverifiedClaims };
+  } catch (err) {
+    if (err instanceof FactualConfirmationRequiredError) {
+      return { status: "NEEDS_FACTUAL_CONFIRMATION", unverifiedClaims: err.unverifiedClaims, skippedChecks: pre.skippedChecks };
+    }
+    throw err;
+  }
 }

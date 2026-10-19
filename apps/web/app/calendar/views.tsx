@@ -336,7 +336,7 @@ function MonthChip({ e, ...p }: ViewProps & { e: CalEvent }) {
       onPointerDown={draggable ? (ev) => p.startDrag(ev, payloadFor(e)) : undefined}
       className={`flex h-[24px] w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] hover:brightness-125 ${draggable ? "cursor-grab" : ""}`}
       style={{ ...eventStyle(e.status), ...NO_CALLOUT, opacity: p.drag?.payload.id === e.id ? 0.35 : 1 }}
-      title={`${formatMinutes(e.startMin)} · ${eventTitle(e)} · ${STATUS_LABEL[e.status]}`}
+      title={`${formatMinutes(e.startMin)} · ${eventTitle(e)} · ${STATUS_LABEL[e.status]}${e.noAiCheck ? " · Scheduled without AI quality check" : ""}`}
     >
       <PlatformDots platforms={e.platforms} size={5} />
       <span className="shrink-0 tabular-nums text-[var(--color-text-muted)]">{formatMinutes(e.startMin, true)}</span>
@@ -457,6 +457,7 @@ export function DayList({ ymd, events, showAdd = true, ...p }: ViewProps & { ymd
                 <span className="truncate" style={{ color: e.kind === "slot" ? undefined : STATUS_COLOR[e.status] }}>
                   {e.kind === "slot" ? (e.suggestion ? `Fill with “${e.suggestion.title}”` : "Nothing ready to fill it") : STATUS_LABEL[e.status]}
                 </span>
+                {e.noAiCheck && <span className="shrink-0 text-[var(--color-gold-400)]" data-testid="cal-no-ai-check">· No AI check</span>}
               </span>
             </span>
             <svg width="7" height="12" viewBox="0 0 7 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="shrink-0 text-[var(--color-text-faint)]" aria-hidden>

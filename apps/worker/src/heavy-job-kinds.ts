@@ -49,7 +49,9 @@ export interface HeavyJobArgsByKind {
   /** Render the latest edit (motion layer + matte compositing). `thenQualityGate` runs the four
    * hard gates right after a successful render in the same worker (the editor's Finish). */
   render: { contentItemId: string; thenQualityGate?: boolean };
-  "quality-gate": { contentItemId: string };
+  /** `lateCheck`: "Run the AI check now" on a video the owner sent to the calendar without
+   * it — records the QCReport with no state change (docs/decisions-pending/quality-override.md). */
+  "quality-gate": { contentItemId: string; lateCheck?: boolean };
   /** EDIT → RENDER → INSPECT → FIX loop (re-renders). */
   "auto-repair": { contentItemId: string };
   /** One take, or every take without word timings (`force` re-does all but never silently). */
@@ -327,6 +329,8 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
       out = { contentItemId, thenQualityGate: optBool(a.thenQualityGate, "thenQualityGate") ?? false };
       break;
     case "quality-gate":
+      out = { contentItemId, ...(optBool(a.lateCheck, "lateCheck") ? { lateCheck: true } : {}) };
+      break;
     case "auto-repair":
     case "graphics-bake":
       out = { contentItemId };
