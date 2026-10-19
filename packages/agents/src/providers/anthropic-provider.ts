@@ -187,9 +187,14 @@ export class AnthropicModelProvider implements ModelProvider {
     // API's strict-mode limits (e.g. "too many parameters with union types … limit: 16"); then
     // the same request is sent once more with the JSON Schema written into the prompt, and the
     // answer is validated by zod below exactly as before (never trusted unvalidated).
-    const send = async (strict: boolean): Promise<Anthropic.Beta.BetaMessage | undefined> => {
+    const send = async (strict: boolean, repair?: { previous: Anthropic.Beta.BetaContentBlock[]; problems: string }): Promise<Anthropic.Beta.BetaMessage | undefined> => {
       const content = strict ? userContent : [...userContent, { type: "text" as const, text: schemaInstructions(format.schema) }];
       const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content }];
+      if (repair) {
+        const text = extractJsonText(repair.previous) ?? "";
+        messages.push({ role: "assistant", content: [{ type: "text", text }] });
+        messages.push({ role: "user", content: [{ type: "text", text: `That JSON doesn't validate against the schema:\n${repair.problems}\n\nReply with the corrected JSON object only — same content, fixed to fit the schema.` }] });
+      }
       let last: Anthropic.Beta.BetaMessage | undefined;
       for (let attempt = 0; attempt <= MAX_PAUSE_TURN_CONTINUATIONS; attempt += 1) {
         // Streamed so large max_tokens never trips the SDK's non-streaming timeout guard.
@@ -213,11 +218,21 @@ export class AnthropicModelProvider implements ModelProvider {
     };
 
     let final: Anthropic.Beta.BetaMessage | undefined;
+    let strictMode = true;
     try {
       final = await send(true);
     } catch (err) {
       if (!isSchemaTooComplexError(err)) throw err;
+      strictMode = false;
       final = await send(false);
+    }
+    // Prompt-mode answers aren't enforced by the API: one repair round with the exact problems.
+    if (!strictMode && final && final.stop_reason !== "refusal" && final.stop_reason !== "max_tokens") {
+      const first = request.schema.safeParse(parseJsonAnswer(extractJsonText(final.content)));
+      if (!first.success) {
+        const problems = first.error.issues.slice(0, 20).map((i) => `- ${i.path.join(".") || "(root)"}: ${i.message}`).join("\n");
+        final = await send(false, { previous: final.content, problems });
+      }
     }
 
     const latencyMs = Date.now() - startedAt;
@@ -237,7 +252,8 @@ export class AnthropicModelProvider implements ModelProvider {
     const parsedJson = parseJsonAnswer(text);
     const validated = request.schema.safeParse(parsedJson);
     if (!validated.success) {
-      throw new ModelOutputParseError(request.promptId, model, usage, latencyMs);
+      const detail = parsedJson === undefined ? "(no JSON found)" : validated.error.issues.slice(0, 6).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+      throw new ModelOutputParseError(request.promptId, model, usage, latencyMs, `[${detail}]`);
     }
 
     return {

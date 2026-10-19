@@ -109,9 +109,9 @@ export class BilledModelCallError extends Error {
 }
 
 export class ModelOutputParseError extends BilledModelCallError {
-  constructor(promptId: string, model: string, usage?: ModelUsage, latencyMs = 0) {
+  constructor(promptId: string, model: string, usage?: ModelUsage, latencyMs = 0, detail?: string) {
     super(
-      `Model output for prompt "${promptId}" (model ${model}) did not parse against the expected schema.`,
+      `Model output for prompt "${promptId}" (model ${model}) did not parse against the expected schema.${detail ? ` ${detail}` : ""}`,
       model,
       usage,
       latencyMs,
