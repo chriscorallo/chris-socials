@@ -1338,9 +1338,101 @@ function ScreenFx({ ctx }: { ctx: GCtx }) {
       return <FxZoomPunch ctx={ctx} />;
     case "SPLIT":
       return <FxSplit ctx={ctx} />;
+    case "MONEY_RAIN":
+      return <FxMoneyRain ctx={ctx} />;
+    case "SHOCKWAVE":
+      return <FxShockwave ctx={ctx} />;
+    case "GOLD_DUST":
+      return <FxGoldDust ctx={ctx} />;
     default:
       return <FxGlitch ctx={ctx} />;
   }
+}
+
+/** Bills and coins fall through the frame; the centre column stays clear for Chris. */
+function FxMoneyRain({ ctx }: { ctx: GCtx }) {
+  const { frame, fps, width: W, height: H, p } = ctx;
+  const inT = prog(frame, 0, Math.round(0.2 * fps), EASE_OUT);
+  const N = 34;
+  const items = Array.from({ length: N }, (_, i) => {
+    const h1 = hash01(i * 3.7 + 1);
+    const h2 = hash01(i * 5.1 + 2);
+    const h3 = hash01(i * 7.3 + 3);
+    // Left or right band only (never over the face in the middle 40%).
+    const x = (h1 < 0.5 ? 0.04 + h1 * 0.52 : 0.68 + (h1 - 0.5) * 0.56) * W;
+    const speed = (0.55 + 0.7 * h2) * H;
+    const y = ((frame / fps) * speed + h3 * H * 1.4) % (H * 1.3) - H * 0.15;
+    const coin = h2 > 0.62;
+    const rot = (frame / fps) * (60 + 140 * h3) * (h1 > 0.5 ? 1 : -1) + h3 * 360;
+    const s = 0.7 + 0.6 * h3;
+    return { x, y, coin, rot, s, k: i };
+  });
+  const bill = `linear-gradient(135deg, ${mix(p.positive, "#000000", 0.25)} 0%, ${mix(p.positive, "#FFFFFF", 0.08)} 50%, ${mix(p.positive, "#000000", 0.3)} 100%)`;
+  const coinBg = `radial-gradient(circle at 35% 30%, ${mix(p.primary, "#FFFFFF", 0.5)}, ${p.primary} 50%, ${mix(p.primary, "#000000", 0.3)} 100%)`;
+  return (
+    <div style={{ ...fill, opacity: inT }}>
+      {items.map((it) =>
+        it.coin ? (
+          <div key={it.k} style={{ position: "absolute", left: it.x, top: it.y, width: 44 * it.s, height: 44 * it.s, borderRadius: 999, background: coinBg, boxShadow: `0 6px 14px ${rgba("#000000", 0.4)}, inset 0 0 0 3px ${rgba("#000000", 0.12)}`, transform: `scaleX(${r4(Math.abs(Math.cos((it.rot * Math.PI) / 180)))})` }} />
+        ) : (
+          <div key={it.k} style={{ position: "absolute", left: it.x, top: it.y, width: 110 * it.s, height: 50 * it.s, borderRadius: 6, background: bill, boxShadow: `0 8px 16px ${rgba("#000000", 0.4)}, inset 0 0 0 2px ${rgba("#FFFFFF", 0.18)}`, transform: `rotate(${r1(it.rot)}deg)`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT.display, fontSize: 22 * it.s, color: rgba("#FFFFFF", 0.7) }}>$</div>
+        ),
+      )}
+      <FxWord ctx={ctx} y={H * 0.15} />
+    </div>
+  );
+}
+
+/** A ring punches out from the centre with a chromatic edge; a short flash; the word slams. */
+function FxShockwave({ ctx }: { ctx: GCtx }) {
+  const { frame, fps, width: W, height: H, p } = ctx;
+  const cx = W / 2;
+  const cy = H * 0.46;
+  const t = prog(frame, 0, Math.round(0.7 * fps), EASE_OUT);
+  const t2 = prog(frame, Math.round(0.08 * fps), Math.round(0.8 * fps), EASE_OUT);
+  const R = Math.hypot(W, H) * 0.6;
+  const flash = Math.max(0, 1 - frame / Math.max(1, Math.round(0.18 * fps)));
+  const ring = (k: number, color: string, w: number, a: number) => (
+    <circle cx={cx} cy={cy} r={Math.max(1, R * k)} fill="none" stroke={color} strokeWidth={w * (1 - k) + 2} opacity={a * (1 - k)} />
+  );
+  return (
+    <div style={fill}>
+      <div style={{ ...fill, background: rgba("#FFFFFF", 0.55 * flash) }} />
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ position: "absolute", inset: 0 }}>
+        {ring(t, "#FFFFFF", 38, 0.9)}
+        {ring(t * 0.985, "#FF2A6D", 14, 0.7)}
+        {ring(t * 1.015, "#22E4FF", 14, 0.7)}
+        {ring(t2 * 0.8, p.primary, 22, 0.8)}
+      </svg>
+      <FxWord ctx={ctx} y={H * 0.22} />
+    </div>
+  );
+}
+
+/** Fine gold particles drift upward — quiet, premium. The centre is nearly clear. */
+function FxGoldDust({ ctx }: { ctx: GCtx }) {
+  const { frame, fps, width: W, height: H, p } = ctx;
+  const inT = prog(frame, 0, Math.round(0.5 * fps), EASE_OUT);
+  const N = 70;
+  const dots = Array.from({ length: N }, (_, i) => {
+    const h1 = hash01(i * 2.3 + 11);
+    const h2 = hash01(i * 4.1 + 12);
+    const h3 = hash01(i * 6.7 + 13);
+    const x = h1 * W + Math.sin((frame / fps) * (0.6 + h2) + i) * 18;
+    const y = H - (((frame / fps) * (40 + 90 * h2) + h3 * H) % (H + 60)) + 30;
+    const centre = Math.abs(x - W / 2) < W * 0.2 && y > H * 0.25 && y < H * 0.75;
+    const a = (centre ? 0.25 : 1) * (0.35 + 0.65 * hash01(Math.floor(frame / 4) * 0.37 + i));
+    const s = 3 + 7 * h3;
+    return { x, y, a, s, k: i };
+  });
+  return (
+    <div style={{ ...fill, opacity: inT }}>
+      {dots.map((d) => (
+        <div key={d.k} style={{ position: "absolute", left: d.x, top: d.y, width: d.s, height: d.s, borderRadius: 999, background: mix(p.primary, "#FFFFFF", 0.35), opacity: d.a, boxShadow: `0 0 ${r1(d.s * 1.6)}px ${rgba(p.primary, 0.9)}` }} />
+      ))}
+      <FxWord ctx={ctx} y={H * 0.16} kind="CINE" />
+    </div>
+  );
 }
 
 /** The optional word of a screen effect (upper area, clear of the face and the captions). */

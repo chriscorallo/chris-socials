@@ -72,6 +72,18 @@ const SYNONYM_GROUPS: string[][] = [
   ["wiki", "wikipedia", "definition", "define", "meaning", "encyclopedia"],
   ["browser", "website", "web", "site", "url", "link", "404", "cookie", "cookies", "chrome", "safari"],
   ["calendar", "date", "day", "days", "schedule", "invite", "meeting", "deadline"],
+  // Signature (series & brand)
+  ["series", "episode", "ep", "opener", "intro", "ident", "sting", "stinger", "bumper", "outro", "brand", "signature"],
+  ["poison", "dilemma", "choice", "choose", "either", "rather", "pick"],
+  ["math", "calculator", "tape", "calculate", "add", "adds", "total"],
+  ["butterfly", "fork", "decision", "decades", "years later", "future"],
+  ["broke", "character", "fictional", "afford", "sitcom", "superhero", "verdict"],
+  ["mystery", "incentive", "sense", "why", "hidden", "casino", "popcorn"],
+  ["alive", "receipt", "cost of", "dating", "single", "friendships", "life"],
+  ["shockwave", "impact", "boom", "hit", "reveal", "punch"],
+  ["money rain", "cash", "raining", "jackpot", "bills", "coins"],
+  ["dust", "sparkle", "sparkles", "particles", "glitter", "shimmer"],
+  ["car", "vehicle", "auto", "lease", "wallet", "diamond", "bank"],
 ];
 
 const SYN = new Map<string, Set<string>>();

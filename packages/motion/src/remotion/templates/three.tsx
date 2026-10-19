@@ -1355,6 +1355,132 @@ function Laptop({ m, frame, fps, p }: { m: Mats; frame: number; fps: number; p: 
   );
 }
 
+// ---------------------------------------------------------------- 2026-10-19 signature objects
+/** A sleek car: rounded body + cabin, four turning wheels, lit headlights. */
+function Car({ m, frame, fps, p }: { m: Mats; frame: number; fps: number; p: Palette }) {
+  const body = useMemo(() => roundedSlab(2.2, 0.5, 1.0, 0.12, 0.04), []);
+  const cabin = useMemo(() => roundedSlab(1.1, 0.42, 0.9, 0.14, 0.04), []);
+  const wheelSpin = (frame / fps) * 6;
+  const lamp = useMemo(() => new THREE.MeshStandardMaterial({ color: mix(p.primary, "#FFFFFF", 0.5), emissive: new THREE.Color(mix(p.primary, "#FFFFFF", 0.3)), emissiveIntensity: 1.6, roughness: 0.4 }), [p.primary]);
+  return (
+    <group position={[0, -0.2, 0]}>
+      <mesh geometry={body} material={m.accentDeep} position={[0, 0.1, 0]} />
+      <mesh geometry={cabin} material={m.glass} position={[-0.1, 0.55, 0]} />
+      <mesh position={[-0.1, 0.78, 0]} material={m.accentDeep}>
+        <boxGeometry args={[1.0, 0.06, 0.92]} />
+      </mesh>
+      {[-0.75, 0.75].map((x) =>
+        [-0.5, 0.5].map((z) => (
+          <group key={`${x}${z}`} position={[x, -0.2, z]} rotation={[0, 0, wheelSpin]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]} material={m.dark}>
+              <cylinderGeometry args={[0.26, 0.26, 0.16, 32]} />
+            </mesh>
+            <mesh rotation={[Math.PI / 2, 0, 0]} material={m.silver} position={[0, 0, z > 0 ? 0.085 : -0.085]}>
+              <cylinderGeometry args={[0.15, 0.15, 0.02, 6]} />
+            </mesh>
+          </group>
+        )),
+      )}
+      {[-0.36, 0.36].map((z) => (
+        <mesh key={z} position={[1.1, 0.14, z]} material={lamp}>
+          <boxGeometry args={[0.04, 0.12, 0.2]} />
+        </mesh>
+      ))}
+      <mesh position={[0.2, -0.16, 0]} material={m.dark}>
+        <boxGeometry args={[2.3, 0.06, 1.02]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** A brilliant-cut gem: crown cone + pavilion cone with a flat table, turning to catch light. */
+function Diamond({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const t = frame / fps;
+  return (
+    <group position={[0, -0.05, 0]} rotation={[0, t * 0.9, 0]}>
+      <mesh position={[0, 0.34, 0]} material={m.glass}>
+        <cylinderGeometry args={[0.46, 0.9, 0.42, 8, 1]} />
+      </mesh>
+      <mesh position={[0, -0.33, 0]} rotation={[Math.PI, 0, 0]} material={m.glass}>
+        <coneGeometry args={[0.9, 0.92, 8, 1]} />
+      </mesh>
+      <mesh position={[0, 0.56, 0]} material={m.goldBright}>
+        <cylinderGeometry args={[0.46, 0.46, 0.02, 8, 1]} />
+      </mesh>
+      <mesh position={[0, 0.13, 0]} material={m.gold}>
+        <torusGeometry args={[0.9, 0.025, 8, 8]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** A leather bifold that opens; two cards fan out of the slot. */
+function Wallet({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const open = prog(frame, Math.round(0.35 * fps), Math.round(0.7 * fps), EASE_OUT);
+  const fan = prog(frame, Math.round(0.8 * fps), Math.round(0.6 * fps), EASE_OUT);
+  const half = useMemo(() => roundedSlab(1.3, 0.9, 0.12, 0.08, 0.03), []);
+  const cardG = useMemo(() => roundedSlab(1.05, 0.66, 0.02, 0.06, 0.008), []);
+  return (
+    <group position={[0, -0.1, 0]}>
+      <mesh geometry={half} material={m.leather} position={[-0.65, 0, 0]} />
+      <group position={[0, 0, 0]} rotation={[0, -Math.PI * 0.95 * (1 - open), 0]}>
+        <mesh geometry={half} material={m.leather} position={[0.65, 0, 0]} />
+        <mesh position={[0.65, 0, 0.07]} material={m.leatherDark}>
+          <boxGeometry args={[1.2, 0.5, 0.01]} />
+        </mesh>
+        <mesh geometry={cardG} material={m.accent} position={[0.62, -0.05 + 0.22 * fan, 0.09]} rotation={[0, 0, 0.08 * fan]} />
+        <mesh geometry={cardG} material={m.gold} position={[0.68, -0.1 + 0.38 * fan, 0.11]} rotation={[0, 0, -0.1 * fan]} />
+      </group>
+      <mesh position={[-0.65, 0.05, 0.07]} material={m.leatherDark}>
+        <boxGeometry args={[1.2, 0.5, 0.01]} />
+      </mesh>
+      <mesh position={[-0.65, 0.3, 0.075]} material={m.gold}>
+        <boxGeometry args={[0.5, 0.025, 0.004]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** A columned bank; a gold coin drops into the slot on the steps. */
+function Bank({ m, frame, fps }: { m: Mats; frame: number; fps: number }) {
+  const drop = prog(frame, Math.round(0.5 * fps), Math.round(0.7 * fps), EASE_IN);
+  const roof = useMemo(() => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-1.05, 0);
+    sh.lineTo(0, 0.46);
+    sh.lineTo(1.05, 0);
+    sh.lineTo(-1.05, 0);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 1.0, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 3 });
+    g.translate(0, 0, -0.5);
+    return g;
+  }, []);
+  return (
+    <group position={[0, -0.3, 0]}>
+      <mesh geometry={roof} material={m.ceramic} position={[0, 0.9, 0]} />
+      <mesh position={[0, 0.84, 0]} material={m.gold}>
+        <boxGeometry args={[2.2, 0.1, 1.08]} />
+      </mesh>
+      {[-0.75, -0.25, 0.25, 0.75].map((x) => (
+        <mesh key={x} position={[x, 0.3, 0.3]} material={m.ceramic}>
+          <cylinderGeometry args={[0.1, 0.11, 1.0, 20]} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.3, -0.2]} material={m.ceramic}>
+        <boxGeometry args={[1.9, 1.0, 0.7]} />
+      </mesh>
+      <mesh position={[0, -0.25, 0]} material={m.dark}>
+        <boxGeometry args={[2.4, 0.12, 1.3]} />
+      </mesh>
+      <mesh position={[0, -0.36, 0.25]} material={m.silver}>
+        <boxGeometry args={[2.6, 0.1, 1.0]} />
+      </mesh>
+      <mesh position={[0, 0.95 + 1.2 * (1 - drop) - 0.1 * drop, 0.62]} rotation={[0, 0, Math.PI / 2]} material={m.goldBright}>
+        <cylinderGeometry args={[0.2, 0.2, 0.05, 32]} />
+      </mesh>
+    </group>
+  );
+}
+
 const ICON_FRAMING: Record<string, { y: number; scale: number; tiltX: number }> = {
   COIN: { y: 0, scale: 1.05, tiltX: 0.12 },
   CREDIT_CARD: { y: 0, scale: 1.1, tiltX: 0.2 },
@@ -1379,6 +1505,10 @@ const ICON_FRAMING: Record<string, { y: number; scale: number; tiltX: number }> 
   LIGHTNING: { y: 0, scale: 0.95, tiltX: 0.1 },
   TARGET: { y: 0, scale: 1.0, tiltX: 0.08 },
   LAPTOP: { y: 0, scale: 0.92, tiltX: 0.32 },
+  CAR: { y: 0.05, scale: 0.9, tiltX: 0.22 },
+  DIAMOND: { y: 0, scale: 1.0, tiltX: 0.1 },
+  WALLET: { y: 0, scale: 1.0, tiltX: 0.22 },
+  BANK: { y: -0.05, scale: 0.9, tiltX: 0.16 },
 };
 
 function Stage({ width, height, dpr, children, cameraZ = 6, fov = 30, cameraY = 0 }: { width: number; height: number; dpr: number; children: ReactNode; cameraZ?: number; fov?: number; cameraY?: number }) {
@@ -1439,6 +1569,10 @@ export function Icon3D(tp: TemplateComponentProps<"ICON_3D">) {
     case "LIGHTNING": model = <Lightning m={m} frame={frame} fps={fps} p={p} />; break;
     case "TARGET": model = <Target m={m} frame={frame} fps={fps} />; break;
     case "LAPTOP": model = <Laptop m={m} frame={frame} fps={fps} p={p} />; break;
+    case "CAR": model = <Car m={m} frame={frame} fps={fps} p={p} />; break;
+    case "DIAMOND": model = <Diamond m={m} frame={frame} fps={fps} />; break;
+    case "WALLET": model = <Wallet m={m} frame={frame} fps={fps} />; break;
+    case "BANK": model = <Bank m={m} frame={frame} fps={fps} />; break;
   }
   const hasCap = !!props.caption;
   const canvasH = hasCap ? 480 : 600;

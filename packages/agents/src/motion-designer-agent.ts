@@ -92,7 +92,7 @@ export const MotionDesignerPropsSchemas = {
   LIST_STEPS: z.object({ title: S.nullable(), items: z.array(S), style: z.enum(["NUMBERED", "CHECK"]) }).strict(),
   ICON_3D: z
     .object({
-      icon: z.enum(["COIN", "CREDIT_CARD", "HOUSE", "PIGGY_BANK", "CHART_UP", "CALENDAR", "LOCK", "PHONE", "BRIEFCASE", "GRADUATION_CAP", "TROPHY", "ROCKET", "LIGHTBULB", "BRAIN", "GIFT", "KEY", "MAGNIFIER", "MEGAPHONE", "CROWN", "FIRE", "LIGHTNING", "TARGET", "LAPTOP"]),
+      icon: z.enum(["COIN", "CREDIT_CARD", "HOUSE", "PIGGY_BANK", "CHART_UP", "CALENDAR", "LOCK", "PHONE", "BRIEFCASE", "GRADUATION_CAP", "TROPHY", "ROCKET", "LIGHTBULB", "BRAIN", "GIFT", "KEY", "MAGNIFIER", "MEGAPHONE", "CROWN", "FIRE", "LIGHTNING", "TARGET", "LAPTOP", "CAR", "DIAMOND", "WALLET", "BANK"]),
       caption: S.nullable(),
     })
     .strict(),
@@ -525,7 +525,7 @@ const TEMPLATE_GUIDE: Record<MotionTemplate, string> = {
   COMPARISON: "A vs B side by side (left/right {label, value string}, verdict, winner)",
   PERCENT_RING: "a single share/percentage 0-100 (percent, label)",
   LIST_STEPS: "2-5 short steps/rules as they're named (items <=48 chars each, NUMBERED|CHECK)",
-  ICON_3D: "a concrete object made real: COIN, CREDIT_CARD, HOUSE, PIGGY_BANK, CHART_UP, CALENDAR, LOCK, PHONE, BRIEFCASE, GRADUATION_CAP, TROPHY, ROCKET, LIGHTBULB, BRAIN, GIFT, KEY, MAGNIFIER, MEGAPHONE, CROWN, FIRE, LIGHTNING, TARGET, LAPTOP (+ caption)",
+  ICON_3D: "a concrete object made real: COIN, CREDIT_CARD, HOUSE, PIGGY_BANK, CHART_UP, CALENDAR, LOCK, PHONE, BRIEFCASE, GRADUATION_CAP, TROPHY, ROCKET, LIGHTBULB, BRAIN, GIFT, KEY, MAGNIFIER, MEGAPHONE, CROWN, FIRE, LIGHTNING, TARGET, LAPTOP, CAR, DIAMOND, WALLET, BANK (+ caption)",
   MONEY_STACK_3D: "an amount of cash made physical (amount, label)",
   CALLOUT: "arrow + label pointing at something visible on screen (text <=40, pointTo canvas fractions) — rarely needed",
   TIMELINE: "2-5 dated/ordered events (label <=16, sub)",

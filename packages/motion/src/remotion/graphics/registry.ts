@@ -6,6 +6,7 @@ import { COMPARE_COMPONENTS } from "./compare";
 import { FX_COMPONENTS } from "./fx";
 import { LIFE_COMPONENTS } from "./life";
 import { PHONE_COMPONENTS } from "./phone";
+import { SIGNATURE_COMPONENTS } from "./signature";
 import { SOCIAL_COMPONENTS } from "./social";
 import { TEXT_COMPONENTS } from "./text";
 import { WEB_COMPONENTS } from "./web";
@@ -21,4 +22,5 @@ export const GRAPHIC_EXTRA_COMPONENTS: Partial<Record<GraphicComponent, Componen
   ...WEB_COMPONENTS,
   ...LIFE_COMPONENTS,
   ...FX_COMPONENTS,
+  ...SIGNATURE_COMPONENTS,
 };

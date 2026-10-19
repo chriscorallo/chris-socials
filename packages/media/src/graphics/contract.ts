@@ -105,6 +105,10 @@ export const GRAPHIC_COMPONENTS = [
   "COUNTDOWN",
   "QUIZ",
   "SCREEN_FX",
+  // Signature (Chris's brand: series openers, dilemma frames, ident stingers)
+  "SERIES_CARD",
+  "DILEMMA",
+  "SIGNATURE_STING",
 ] as const;
 export type GraphicComponent = (typeof GRAPHIC_COMPONENTS)[number];
 /** The 28 components of the first library (their specs + sizes live in this file). */
@@ -259,7 +263,8 @@ export type GraphicCategory =
   | "NEWS_MEDIA"
   | "HOOKS"
   | "REACTIONS"
-  | "LIFE";
+  | "LIFE"
+  | "SIGNATURE";
 
 /** Chip order in the library (ids are stable; labels may change). */
 export const GRAPHIC_CATEGORIES: Array<{ id: GraphicCategory; label: string }> = [
@@ -270,6 +275,7 @@ export const GRAPHIC_CATEGORIES: Array<{ id: GraphicCategory; label: string }> =
   { id: "PHONE", label: "Phone & apps" },
   { id: "SEARCH_WEB", label: "Search & web" },
   { id: "NEWS_MEDIA", label: "News & media" },
+  { id: "SIGNATURE", label: "Series & signature" },
   { id: "HOOKS", label: "Hooks & quizzes" },
   { id: "REACTIONS", label: "Reactions & FX" },
   { id: "TIMELINES", label: "Timelines & steps" },

@@ -2,6 +2,7 @@ import type { GraphicComponentSpec, GraphicProps, Library2GraphicComponent } fro
 import { FX_SPECS, fxSize } from "./fx";
 import { LIFE_SPECS, lifeSize } from "./life";
 import { PHONE_SPECS, phoneSize } from "./phone";
+import { SIGNATURE_SPECS, signatureSize } from "./signature";
 import { SOCIAL_SPECS, socialSize } from "./social";
 import type { Size } from "./types";
 import { WEB_SPECS, webSize } from "./web";
@@ -13,9 +14,10 @@ export const LIBRARY2_SPECS: Record<Library2GraphicComponent, GraphicComponentSp
   ...WEB_SPECS,
   ...LIFE_SPECS,
   ...FX_SPECS,
+  ...SIGNATURE_SPECS,
 };
 
-const SIZERS = [socialSize, phoneSize, webSize, lifeSize, fxSize];
+const SIZERS = [socialSize, phoneSize, webSize, lifeSize, fxSize, signatureSize];
 
 /** Design box of a library-2 component (px at a 1080-wide canvas, scale 1). */
 export function library2DesignSize(p: GraphicProps, variant: string, head: number): Size {

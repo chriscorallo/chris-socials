@@ -57,7 +57,7 @@ export const FX_SPECS = {
     highlight: "ITEMS",
     labels: { title: "Question", subtitle: "Small line", text: "Option", value: "% / score", entries: "Options (✓ = correct)" },
   }, { preferY: 0.38 }),
-  SCREEN_FX: spec("SCREEN_FX", "Screen effect", "Glitch, film burn, light leak, speed lines, VHS, spotlight, punch, split", "REACTIONS", [["GLITCH", "Glitch"], ["FILM_BURN", "Film burn"], ["LIGHT_LEAK", "Light leak"], ["SPEED_LINES", "Speed lines"], ["VHS", "VHS"], ["SPOTLIGHT", "Spotlight"], ["ZOOM_PUNCH", "Punch frame"], ["SPLIT", "Before / after"]], {
+  SCREEN_FX: spec("SCREEN_FX", "Screen effect", "Glitch, film burn, light leak, speed lines, VHS, spotlight, punch, split, money rain, shockwave, gold dust", "REACTIONS", [["GLITCH", "Glitch"], ["FILM_BURN", "Film burn"], ["LIGHT_LEAK", "Light leak"], ["SPEED_LINES", "Speed lines"], ["VHS", "VHS"], ["SPOTLIGHT", "Spotlight"], ["ZOOM_PUNCH", "Punch frame"], ["SPLIT", "Before / after"], ["MONEY_RAIN", "Money rain"], ["SHOCKWAVE", "Shockwave"], ["GOLD_DUST", "Gold dust"]], {
     title: true,
     meta: "Timestamp",
     items: { count: [0, 2] },

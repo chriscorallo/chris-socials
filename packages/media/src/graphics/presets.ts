@@ -3,6 +3,8 @@ import type { GraphicCategory, GraphicComponent, GraphicProps } from "./contract
 import { FX_PRESETS } from "./library2/fx";
 import { LIFE_PRESETS } from "./library2/life";
 import { OBJECTS_PRESETS } from "./library2/objects";
+import { SIGNATURE_PRESETS } from "./library2/signature";
+import { FX2_PRESETS } from "./library2/fx2";
 import { PHONE_PRESETS } from "./library2/phone";
 import { SOCIAL_PRESETS } from "./library2/social";
 import { WEB_PRESETS } from "./library2/web";
@@ -914,7 +916,7 @@ graphic("month-grid-savings-streak", "Savings streak", "12 months of saving the 
 // original library so its order (and every saved preset id) is unchanged.
 // =======================================================================================
 
-all.push(...SOCIAL_PRESETS, ...PHONE_PRESETS, ...WEB_PRESETS, ...LIFE_PRESETS, ...FX_PRESETS, ...OBJECTS_PRESETS);
+all.push(...SOCIAL_PRESETS, ...PHONE_PRESETS, ...WEB_PRESETS, ...LIFE_PRESETS, ...FX_PRESETS, ...OBJECTS_PRESETS, ...SIGNATURE_PRESETS, ...FX2_PRESETS);
 
 export const GRAPHIC_PRESETS: readonly GraphicPreset[] = all;
 

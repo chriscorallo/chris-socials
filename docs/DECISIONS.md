@@ -9115,3 +9115,47 @@ and the Claims Gate hard gate stay); merging v1 and v2 brand docs (Chris chose t
 
 **Reversibility:** prompts roll back by version; the playbook is removable by frontmatter; the
 brief model is additive (older items have none and every bot still works without one).
+
+## 2026-10-19 — Graphics library 3: Signature family (brand recognition), new VFX and 3D objects
+
+**Context:** Chris asked for the visual library to be audited for glitches, "souped up" with more
+visuals / animation / 3D / VFX, made more appealing with some brand recognition, and kept highly
+searchable and plug-and-play. The audit pass (previous commit) fixed wrong intermediate math in
+count-ups, typewriter overflow and chopped labels. This pass adds 40 presets (450 → 490).
+
+**Decision:**
+1. **SIGNATURE category** (`packages/media/src/graphics/families/signature.ts`, motion
+   `graphics/signature.tsx`): one visual signature across the brand — serif series pill, gold
+   rule sweep, tabular episode tag, gold → violet accent.
+   - `SERIES_CARD` — an opener per series from the Content Intelligence playbook: POISON (two
+     tiles + "or" badge), MATH (receipt-style addition with a glowing result), BUTTERFLY (a
+     forking path drawn over time), BROKE (ledger + rubber-stamp verdict), NO_SENSE (a pulsing
+     "?" that resolves into the answer), ALIVE (paper receipt with a torn edge), EPISODE.
+   - `DILEMMA` — the sound-off opening frame: two giant contrasting amounts (SPLIT / SIDE), a
+     3-second TIMER, or a coin FLIP that lands on one side.
+   - `SIGNATURE_STING` — INTRO sweep, OUTRO follow card, PART bumper, branded LOWER third.
+   Series names are *Chris's own series* (brand recognition), never third-party brands — the
+   brand-safe regex scan still covers every preset ≥ 171.
+2. **SCREEN_FX** gains MONEY_RAIN (bills + coins fall in the side bands, centre clear for the
+   face), SHOCKWAVE (chromatic ring punch + flash) and GOLD_DUST (quiet premium particles).
+3. **ICON_3D** gains CAR, DIAMOND, WALLET (opens, cards fan out) and BANK (a coin drops in),
+   with line-icon fallbacks and 8 presets; the enum is mirrored in `motion-contract.ts` and
+   the Motion Designer's schema/guide.
+4. **Search** — synonym groups for series / episode / sting / bumper / dilemma / poison / math /
+   butterfly / broke / mystery / receipt / shockwave / money rain / dust / car / wallet /
+   diamond / bank, so "pick your poison", "part 2", "money rain" or "choose" land on the right
+   preset first.
+5. **Totals never count** (carried from the audit): every result/total in the new family shows
+   its final value from the first frame it appears.
+
+**Glitches fixed in review before commit:** receipt tear polygon drew a bow-tie (point order);
+diamond rendered as an hourglass (duplicate cone); dilemma TIMER's "or" badge overlapped a
+tile's sub-text (badge removed for TIMER, wider gap for SPLIT); INTRO sting text shrank to one
+tiny line (two lines at a readable size); dilemma numbers could push the label out of the
+tile (capped at half the tile height); BUTTERFLY card too short for its last label.
+
+**Alternatives considered:** real logos for recognition (rejected: impersonation / brand-safety
+rule); more generic templates (rejected: the ask was identity, not volume).
+
+**Reversibility:** additive — new category, components and presets; nothing existing changed
+its id, data shape or look.

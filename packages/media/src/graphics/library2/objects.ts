@@ -25,5 +25,13 @@ export const OBJECTS_PRESETS: GraphicPreset[] = [
   O("3d-lightning", "3D lightning bolt", "A bolt strikes in with a flash, then crackles.", ["lightning", "fast", "energy", "power", "quick tip"], "LIGHTNING", "Quick win", { enterSfx: "IMPACT" }),
   O("3d-target", "3D target + dart", "A dart flies in and lands dead center.", ["target", "goal", "bullseye", "aim", "focus"], "TARGET", "The goal", { seconds: 4, enterSfx: "WHOOSH" }),
   O("3d-laptop", "3D laptop", "A laptop opens to a glowing dashboard.", ["laptop", "computer", "work", "remote", "side hustle"], "LAPTOP", "Build in public", { seconds: 4, enterSfx: "SOFT_POP" }),
+  O("3d-car", "3D car", "A sleek car rolls in, wheels turning, headlights on.", ["car", "vehicle", "payment", "lease", "auto", "personality"], "CAR", "The car payment", { featured: true, seconds: 4, enterSfx: "WHOOSH" }),
+  O("3d-car-payment", "3D car — financing", "Car for the 72-month-loan beat.", ["car", "loan", "financing", "72 months", "payment"], "CAR", "72 months of this", { seconds: 4, enterSfx: "WHOOSH" }),
+  O("3d-diamond", "3D diamond", "A cut gem turns and catches the light.", ["diamond", "ring", "luxury", "expensive", "status", "engagement"], "DIAMOND", "Looks rich", { seconds: 4, enterSfx: "SHIMMER" }),
+  O("3d-diamond-status", "3D diamond — status", "Diamond for the looking-rich beat.", ["diamond", "status", "flex", "luxury"], "DIAMOND", "Rich on paper", { seconds: 4, enterSfx: "SHIMMER" }),
+  O("3d-wallet", "3D wallet", "A leather wallet opens; the cards fan out.", ["wallet", "cash", "cards", "spending", "money", "budget"], "WALLET", "What's actually in it", { seconds: 4, enterSfx: "SOFT_POP" }),
+  O("3d-wallet-empty", "3D wallet — empty", "Wallet for the end-of-month beat.", ["wallet", "empty", "broke", "end of month"], "WALLET", "By the 20th", { seconds: 4, enterSfx: "SOFT_POP" }),
+  O("3d-bank", "3D bank", "A columned bank with a coin dropping in.", ["bank", "savings", "account", "deposit", "institution", "high yield"], "BANK", "Where it should sit", { seconds: 4, enterSfx: "CLICK" }),
+  O("3d-bank-interest", "3D bank — interest", "Bank for the where-your-cash-earns beat.", ["bank", "interest", "apy", "savings", "yield"], "BANK", "4.3% vs 0.01%", { seconds: 4, enterSfx: "CLICK" }),
   O("3d-trophy-level-up", "3D trophy — level up", "Trophy for milestone and level-up beats.", ["trophy", "win", "level up", "milestone"], "TROPHY", "Level up", { enterSfx: "SHIMMER" }),
 ];

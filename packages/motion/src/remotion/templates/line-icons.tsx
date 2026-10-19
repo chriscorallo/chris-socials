@@ -149,6 +149,30 @@ export const LINE_ICON_PATHS: Record<string, Stroke[]> = {
     { d: "M28 44.5h8" },
     { d: "M18 34l7-7l5 4l9-9l6 5", accent: true },
   ],
+  CAR: [
+    { d: "M8 40v-8l6-12h30l8 12h6v8H8z" },
+    { d: "M16 24h26l5 8H12z" },
+    { d: "M18 40a4 4 0 1 0 0 8a4 4 0 1 0 0-8z" },
+    { d: "M46 40a4 4 0 1 0 0 8a4 4 0 1 0 0-8z" },
+    { d: "M53 36h3", accent: true },
+  ],
+  DIAMOND: [
+    { d: "M20 12h24l12 14L32 54L8 26z" },
+    { d: "M8 26h48M20 12l12 14l12-14M32 26v28" },
+    { d: "M26 18l6-6", accent: true },
+  ],
+  WALLET: [
+    { d: "M10 18h40a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V22a4 4 0 0 1 4-4z" },
+    { d: "M6 24h44a4 4 0 0 1 4 4v4H6" },
+    { d: "M40 34h14v10H40a5 5 0 0 1 0-10z" },
+    { d: "M45 39h3", accent: true },
+  ],
+  BANK: [
+    { d: "M8 24L32 10l24 14H8z" },
+    { d: "M12 24v22M24 24v22M40 24v22M52 24v22" },
+    { d: "M6 46h52v6H6z" },
+    { d: "M32 14a3 3 0 1 0 0 6a3 3 0 1 0 0-6z", accent: true },
+  ],
 };
 
 function DrawnIcon({ strokes, size, primary, secondary, frame, fps, start, tempo, glow }: { strokes: Stroke[]; size: number; primary: string; secondary: string; frame: number; fps: number; start: number; tempo: number; glow: number }) {

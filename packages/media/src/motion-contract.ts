@@ -98,7 +98,7 @@ export const MotionPropsSchemas = {
   }),
   /** A modeled 3D object that animates in (spin/float/settle) — real geometry + lighting. */
   ICON_3D: z.object({
-    icon: z.enum(["COIN", "CREDIT_CARD", "HOUSE", "PIGGY_BANK", "CHART_UP", "CALENDAR", "LOCK", "PHONE", "BRIEFCASE", "GRADUATION_CAP", "TROPHY", "ROCKET", "LIGHTBULB", "BRAIN", "GIFT", "KEY", "MAGNIFIER", "MEGAPHONE", "CROWN", "FIRE", "LIGHTNING", "TARGET", "LAPTOP"]),
+    icon: z.enum(["COIN", "CREDIT_CARD", "HOUSE", "PIGGY_BANK", "CHART_UP", "CALENDAR", "LOCK", "PHONE", "BRIEFCASE", "GRADUATION_CAP", "TROPHY", "ROCKET", "LIGHTBULB", "BRAIN", "GIFT", "KEY", "MAGNIFIER", "MEGAPHONE", "CROWN", "FIRE", "LIGHTNING", "TARGET", "LAPTOP", "CAR", "DIAMOND", "WALLET", "BANK"]),
     caption: Label.nullable().default(null),
   }),
   /** 3D bill stacks that grow to represent an amount. */
