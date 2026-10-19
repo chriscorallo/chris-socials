@@ -24,6 +24,8 @@ import { PlanItemUpload } from "./PlanItemUpload";
 import { TeleprompterLink } from "../components/TeleprompterLink";
 import { FilmChecklist, type ChecklistItem } from "./FilmChecklist";
 import { editPlannedVideo, undoImportAction } from "./actions";
+import { deleteVideoAction } from "../content/[id]/actions";
+import { DeleteVideoButton } from "../components/DeleteVideoButton";
 
 export const maxDuration = 300;
 
@@ -330,6 +332,7 @@ function PlanRow({ v, today, urgent, draft }: { v: PlannedVideo; today: string; 
           </Link>
         )}
       </div>
+      <DeleteVideoButton contentItemId={v.id} title={v.title} action={deleteVideoAction} back="/plan" compact />
     </li>
   );
 }

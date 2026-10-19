@@ -26,7 +26,8 @@ export function formatWhen(d: Date): string {
 /** Loads video cards (newest activity first). One query with small includes. */
 export async function loadVideoCards(opts: { states?: ContentState[]; limit?: number } = {}): Promise<VideoCardData[]> {
   const rows = await prisma.contentItem.findMany({
-    where: opts.states ? { currentState: { in: opts.states } } : undefined,
+    // Deleted (CANCELLED) videos never show in lists.
+    where: opts.states ? { currentState: { in: opts.states } } : { currentState: { not: "CANCELLED" } },
     orderBy: { updatedAt: "desc" },
     take: opts.limit,
     select: {

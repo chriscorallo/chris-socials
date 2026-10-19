@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { join } from "node:path";
 import {
   prisma,
@@ -20,6 +21,7 @@ import {
   recordPerformanceEvaluation,
   recordTasteFeedback,
   recordAdversarialCritique,
+  deleteVideo,
   type ContentState,
 } from "@chris/domain";
 import {
@@ -788,4 +790,20 @@ export async function runAutopilotAction(formData: FormData) {
   const result = await runAutopilot(contentItemId, { actorId: session.user!.id! });
   const summary = `${result.steps.length ? `Autopilot did: ${result.steps.join(" → ")}. ` : ""}${result.stoppedBecause}`;
   redirect(`/content/${contentItemId}?autopilot=${encodeURIComponent(summary)}${result.jobRunId ? `&job=${encodeURIComponent(result.jobRunId)}` : ""}`);
+}
+
+/**
+ * "Delete video" — removes the video from every list and deletes its media files (takes,
+ * proxies, renders, variants…); its history/audit trail is kept (docs/DECISIONS.md "Delete video").
+ */
+export async function deleteVideoAction(formData: FormData) {
+  const session = await requireSession();
+  const contentItemId = str(formData, "contentItemId");
+  const back = str(formData, "back") || "/content";
+  const r = await deleteVideo(prisma, { contentItemId }, { actorId: session.user!.id! });
+  for (const key of r.storageKeys) {
+    await storage.delete(key).catch((err) => console.warn("[delete-video] could not delete", key, err instanceof Error ? err.message : err));
+  }
+  for (const path of ["/", "/content", "/plan", "/calendar", "/film"]) revalidatePath(path);
+  redirect(`${back}${back.includes("?") ? "&" : "?"}notice=${encodeURIComponent("Video deleted.")}`);
 }

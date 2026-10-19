@@ -48,7 +48,9 @@ import {
   draftCreatorCardAction,
   editScriptAction,
   runAutopilotAction,
+  deleteVideoAction,
 } from "../actions";
+import { DeleteVideoButton } from "../../../components/DeleteVideoButton";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
 // Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
@@ -1460,6 +1462,11 @@ export default async function ContentDetailPage({
             </div>
           </details>
         </div>
+        {!isTerminal && (
+          <div className="mt-6">
+            <DeleteVideoButton contentItemId={item.id} title={item.title} action={deleteVideoAction} />
+          </div>
+        )}
         {primary && <StickyActionBar label={primary.label}>{primary.small}</StickyActionBar>}
       </PageShell>
     </>

@@ -8852,3 +8852,14 @@ EditPlan version.
 director-actions.ts}`, `apps/web/app/api/director/{ask,sprite}`, `scripts/sandbox/*`; tests
 `packages/media/src/__tests__/{director,take-understanding}.test.ts`,
 `apps/web/lib/director/server.test.ts`, `apps/worker/src/__tests__/heavy-jobs.test.ts`.
+
+
+## Delete video (2026-10-19)
+
+Chris couldn't delete a planned/imported/filmed video ("Cancel this item" was buried in Details,
+and cancelled videos still showed in Videos/Home). Now: a "Delete video" button on the video page
+and a trash icon on each Plan row (native confirm). `deleteVideo` discards open recording drafts,
+transitions to CANCELLED ("Deleted by Chris"), audits VIDEO_DELETED and returns every storage key
+(takes, proxies, filmstrips, mattes, renders, platform variants, graphic bakes); the action deletes
+those files (best effort). History (transitions, audit, rows) is kept per SECURITY.md. Lists
+(video cards, plan, calendar) skip CANCELLED.
