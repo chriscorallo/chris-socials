@@ -143,3 +143,26 @@ describe("timing + placement for GRAPHIC visuals", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe("money math is never wrong on screen (live finding 2026-10-19: formulas counted through wrong sums)", () => {
+  const strip = (html: string) => html.replace(/<[^>]+>/g, "|").replace(/\s+/g, " ");
+  // [preset, the correct answer, intermediates the 34 % frame used to show]
+  const checks: Array<[string, string, string[]]> = [
+    ["formula-take-home", "$51k", ["$47k", "$43k", "$35k"]],
+    ["paycheck-receipt", "$2,300", ["$1,853", "$1,500", "$900"]],
+    ["formula-net-worth", "$138k", ["$131k", "$120k"]],
+    ["formula-contributions", "$180k", ["$164k", "$150k"]],
+    ["formula-side-hustle", "$1,000", ["$913", "$800"]],
+  ];
+  it.each(checks)("%s shows only %s as the answer, never a counted intermediate", (id, final, wrong) => {
+    const preset = GRAPHIC_PRESETS.find((p) => p.id === id)!;
+    const props = GraphicPropsSchema.parse(preset.props);
+    let seenFinal = false;
+    for (let frac = 0.02; frac < 0.96; frac += 0.02) {
+      const t = strip(renderAt(props, frac, preset.seconds));
+      if (t.includes(final)) seenFinal = true;
+      for (const w of wrong) expect(t, `${id}@${frac.toFixed(2)}`).not.toContain(w);
+    }
+    expect(seenFinal, id).toBe(true);
+  });
+});

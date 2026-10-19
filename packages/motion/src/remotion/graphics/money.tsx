@@ -87,7 +87,8 @@ export function ValueColumns({ ctx }: { ctx: GCtx }) {
           const colPlan = sharedPlan(ctx, s.values);
           const totalIdx = s.values.length + 1;
           const totalStart = seq.at(g, totalIdx);
-          const tv = fmtValue(ctx, counted(ctx, totalStart, total), total);
+          // A total is the answer: it appears complete (never counts through wrong sums).
+          const tv = fmtValue(ctx, counted(ctx, totalStart, total, total), total);
           const hlGlow = isH ? em.on : 0;
           return (
             <div key={g} style={{ position: "absolute", left: x, top: 0, width: colW, height: "100%", opacity: dim, transform: isH && em.scale !== 1 ? `scale(${em.scale})` : undefined, transformOrigin: "50% 60%" }}>
@@ -165,7 +166,7 @@ export function MonthGrid({ ctx }: { ctx: GCtx }) {
           y += (labels ? 62 : 0) + rowsN * (cellH + gap) - gap + 22;
           const lab = seqStyle(ctx, seq, g, 0, { style: "SLIDE" });
           const total = seriesTotal(s);
-          const tv = fmtValue(ctx, counted(ctx, seq.groupDone(g) - seq.len, total), total);
+          const tv = fmtValue(ctx, counted(ctx, seq.groupDone(g) - seq.len, total, total), total);
           const gridPlan = sharedPlan(ctx, s.values);
           return (
             <div key={g}>
@@ -250,7 +251,7 @@ export function StatTiles({ ctx }: { ctx: GCtx }) {
                 <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 22, padding: "0 30px" }}>
                   {it.icon ? <GIcon icon={it.icon} size={56} color={accent} draw={prog(frame, seq.at(0, i), Math.round(0.6 * fps), ctx.ease)} /> : <div style={{ width: 10, height: 64, borderRadius: 6, background: accent }} />}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: FONT.displayBold, fontSize: 40, color: p.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.text}</div>
+                    <div style={{ fontFamily: FONT.displayBold, fontSize: fitSize(it.text, b.w * 0.5, 40, 30, 0.55), lineHeight: 1.1, color: p.ink, ...(it.sub ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }) }}>{it.text}</div>
                     {it.sub ? <div style={{ fontFamily: FONT.text, fontSize: 30, color: p.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>{it.sub}</div> : null}
                   </div>
                   {t ? <div style={{ fontFamily: FONT.display, fontSize: fitSize(t.text, b.w * 0.42, valueSize, 34), color: valueColor(ctx, val!, isH ? p.primary : p.ink), letterSpacing: "-0.025em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{t.text}</div> : null}
@@ -378,14 +379,17 @@ export function Formula({ ctx }: { ctx: GCtx }) {
             const isRes = i === res;
             const st = seqStyle(ctx, seq, 0, i, { style: "SLIDE" });
             const val = it.value ?? 0;
-            const t = it.value === null ? null : fmtValue(ctx, counted(ctx, seq.at(0, i), val, 0, 1.2, seq.len), val);
+            // The result (= line) appears at its final value — a count-up there reads as wrong math.
+            const t = it.value === null ? null : fmtValue(ctx, counted(ctx, seq.at(0, i), val, isRes ? val : 0, 1.2, seq.len), val);
             const y = i * 108 + (isRes ? 22 : 0);
+            const labelW = Math.max(120, ctx.width - 2 * (pad + 8) - 52 - 18 - (t ? Math.min(260, t.text.length * (isRes ? 40 : 30)) : 0) - 18);
+            const labelSize = fitSize(it.text, labelW, isRes ? 44 : 38, 30, 0.55);
             return (
               <div key={i} style={{ position: "absolute", left: 0, right: 0, top: y, height: 96, display: "flex", alignItems: "center", gap: 18, ...css(st) }}>
                 {isRes ? <div style={{ position: "absolute", left: 0, right: 0, top: -14, height: 3, borderRadius: 3, background: `linear-gradient(90deg, ${rgba(p.primary, 0.1)}, ${rgba(p.primary, 0.8)})` }} /> : null}
                 <div style={{ width: 52, fontFamily: FONT.display, fontSize: 52, color: it.op === "MINUS" ? p.negative : isRes ? p.primary : p.muted, textAlign: "center" }}>{OP[it.op]}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: isRes ? FONT.displayBold : FONT.text, fontSize: isRes ? 44 : 38, color: p.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.text}</div>
+                  <div style={{ fontFamily: isRes ? FONT.displayBold : FONT.text, fontSize: labelSize, lineHeight: 1.1, color: p.ink, ...(it.sub ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }) }}>{it.text}</div>
                   {it.sub ? <div style={{ fontFamily: FONT.text, fontSize: 28, color: p.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.sub}</div> : null}
                 </div>
                 {t ? <div style={{ fontFamily: FONT.display, fontSize: isRes ? 64 : 48, color: isRes ? valueColor(ctx, val, p.primary) : it.op === "MINUS" ? p.negative : valueColor(ctx, val, p.ink), letterSpacing: "-0.025em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", transform: isRes ? `scale(${em.scale})` : undefined, textShadow: isRes ? glowShadow(p.primary, em.on, 0.6) : undefined }}>{t.text}</div> : null}
@@ -407,8 +411,9 @@ export function Formula({ ctx }: { ctx: GCtx }) {
     // Multipliers/divisors are counts (× 12 months), never money: shown as plain numbers.
     const plain = it.op === "TIMES" || it.op === "DIVIDE";
     const tctx = plain ? { ...ctx, fmt: { ...ctx.fmt, kind: "NUMBER" as const, prefix: "", suffix: "", signs: "NEGATIVE" as const } } : ctx;
-    const t = it.value === null ? null : fmtValue(tctx, counted(ctx, seq.at(0, i), val, 0, 1.2, seq.len), val);
     const isRes = i === res;
+    // Operands may count in; the answer appears complete.
+    const t = it.value === null ? null : fmtValue(tctx, counted(ctx, seq.at(0, i), val, isRes ? val : 0, 1.2, seq.len), val);
     const neg = val < 0 && ctx.fmt.negativeRed;
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: big ? undefined : termW, ...css(seqStyle(ctx, seq, 0, i, { style: "POP" })), transform: isRes && em.scale !== 1 ? `scale(${em.scale})` : css(seqStyle(ctx, seq, 0, i, { style: "POP" })).transform }}>

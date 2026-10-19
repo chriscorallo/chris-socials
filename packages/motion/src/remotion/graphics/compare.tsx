@@ -807,7 +807,7 @@ export function Checklist({ ctx }: { ctx: GCtx }) {
               <div style={{ position: "absolute", inset: 0, padding: "0 26px", display: "flex", alignItems: "center", gap: 26, transform: [emScale(isH, em), isH && em.shakeX ? `translateX(${r1(em.shakeX)}px)` : ""].filter(Boolean).join(" ") || undefined }}>
                 {marker}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: FONT.displayBold, fontSize: fitSize(it.text, textW, 40, 30, 0.55), lineHeight: 1.2, color: state === "TODO" ? mix(p.ink, p.muted, 0.5) : p.ink, letterSpacing: "-0.01em", ...oneLine }}>{it.text}</div>
+                  <div style={{ fontFamily: FONT.displayBold, fontSize: fitSize(it.text, textW, 40, 30, 0.55), lineHeight: 1.15, color: state === "TODO" ? mix(p.ink, p.muted, 0.5) : p.ink, letterSpacing: "-0.01em", ...(it.sub ? oneLine : clampLines(2)) }}>{it.text}</div>
                   {it.sub ? <div style={{ marginTop: 4, fontFamily: FONT.text, fontSize: 28, color: p.muted, ...oneLine }}>{it.sub}</div> : null}
                 </div>
               </div>

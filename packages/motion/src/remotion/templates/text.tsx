@@ -62,7 +62,7 @@ export function KineticText(tp: TemplateComponentProps<"KINETIC_TEXT">) {
     return (
       <div style={{ ...fill, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Scrim />
-        <div style={{ fontFamily: FONT.display, fontSize: size, lineHeight: 1.08, letterSpacing: "-0.02em", color: p.ink, textAlign: "center", textShadow: TEXT_LIFT, maxWidth: 880 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "baseline", columnGap: size * 0.26, rowGap: size * 0.06, maxWidth: 880, fontFamily: FONT.display, fontSize: size, lineHeight: 1.08, letterSpacing: "-0.02em", color: p.ink, textAlign: "center", textShadow: TEXT_LIFT }}>
           {words.map((w, i) => {
             const start = idx;
             idx += w.length + 1;
@@ -72,7 +72,6 @@ export function KineticText(tp: TemplateComponentProps<"KINETIC_TEXT">) {
               <span key={i} style={{ whiteSpace: "nowrap" }}>
                 <span style={{ color: isE ? p.primary : p.ink }}>{visible}</span>
                 <span style={{ opacity: 0 }}>{w.slice(visible.length)}</span>
-                {i < words.length - 1 ? " " : ""}
               </span>
             );
           })}
