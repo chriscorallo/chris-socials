@@ -398,6 +398,42 @@
   opacity: 1;
   transform: none;
 }
+/* Replace footage / Delete clip (docs/decisions-pending/replace-footage.md) */
+.ed-replace-footage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  grid-column: 1 / -1;
+}
+.ed-replace-footage:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+.ed-take-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-rose-400);
+}
+.ed-take-delete:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+.ed-take-delete:disabled {
+  opacity: 0.6;
+}
 
 /* ------------------------------------------------------------------ inspector */
 .ed-tabs {

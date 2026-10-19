@@ -469,7 +469,7 @@ export async function scheduleStepAction(input: {
  */
 export async function ensurePreviewProxiesAction(contentItemId: string): Promise<{ started: boolean; message?: string }> {
   const session = await requireSession();
-  const takes = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE", width: { not: null } }, select: { proxyStorageKey: true, previewMeta: true } });
+  const takes = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE", removedAt: null, width: { not: null } }, select: { proxyStorageKey: true, previewMeta: true } });
   // Missing, or made before rotation-aware sizing (v1 could be squashed sideways).
   const missing = takes.filter((t) => !t.proxyStorageKey || parsePreviewMeta(t.previewMeta)?.v !== PREVIEW_META_VERSION).length;
   if (missing === 0) return { started: false };
@@ -514,7 +514,7 @@ export async function graphicBakesAction(
 /** The editor's assets as they are now (picks up proxies made since the editor opened). */
 export async function previewAssetsAction(contentItemId: string): Promise<EditorAsset[]> {
   await requireSession();
-  const rows = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } });
+  const rows = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE", removedAt: null }, orderBy: { createdAt: "asc" } });
   return editorAssetsFrom(rows);
 }
 
@@ -558,7 +558,7 @@ export async function recordGraphicUseAction(presetId: string): Promise<GraphicP
  */
 export async function ensurePersonCutoutAction(contentItemId: string): Promise<{ started: boolean; message?: string }> {
   const session = await requireSession();
-  const missing = await prisma.mediaAsset.count({ where: { contentItemId, kind: "RAW_TAKE", matteStorageKey: null, width: { not: null } } });
+  const missing = await prisma.mediaAsset.count({ where: { contentItemId, kind: "RAW_TAKE", removedAt: null, matteStorageKey: null, width: { not: null } } });
   if (missing === 0) return { started: false };
   const r = await runHeavyJob("person-matte", { contentItemId }, { actorId: session.user!.id!, background: true });
   return r.status === "started" || r.status === "done" ? { started: true } : { started: false, message: r.message };

@@ -295,9 +295,27 @@ export function Editor({ item, planId, initialDoc, assets: initialAssets, music:
     return () => clearTimeout(handle);
   }, [state.doc, dirty, draftKey]);
 
+  // Footage replaced / a clip in the edit deleted: the edit was rebuilt on the server, so this
+  // session's unsaved doc is obsolete — leave without the "unsaved changes" prompt and reload.
+  const leavingRef = useRef(false);
+  const leaveEditor = useCallback(
+    (url: string) => {
+      leavingRef.current = true;
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
+      window.location.assign(url);
+    },
+    [draftKey],
+  );
+  const removeAsset = useCallback((id: string) => setAssets((cur) => cur.filter((a) => a.id !== id)), []);
+
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (leavingRef.current) return;
       e.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -527,6 +545,10 @@ export function Editor({ item, planId, initialDoc, assets: initialAssets, music:
     toast,
     touch,
     itemId: item.id,
+    itemTitle: item.title,
+    scheduledFor: schedule.isScheduled ? new Date(schedule.date).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null,
+    leaveEditor,
+    removeAsset,
     placement,
     solvePlacements,
     interactions,

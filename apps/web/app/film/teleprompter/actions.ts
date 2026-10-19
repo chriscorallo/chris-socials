@@ -92,7 +92,7 @@ export async function finishRecordingDraft(contentItemId: string, recordingSessi
     // Live site: parts are transcribed by the cloud worker's upload job. If a part's job was
     // refused (one job per video at a time), make sure one runs now for whatever is missing.
     if (heavyJobMode() === "sandbox" && isAutoTranscriptionEnabled()) {
-      const missing = await prisma.mediaAsset.count({ where: { contentItemId, kind: "RAW_TAKE", transcriptWords: { equals: Prisma.DbNull }, hasAudio: { not: false } } });
+      const missing = await prisma.mediaAsset.count({ where: { contentItemId, kind: "RAW_TAKE", removedAt: null, transcriptWords: { equals: Prisma.DbNull }, hasAudio: { not: false } } });
       if (missing > 0) {
         after(async () => {
           await runHeavyJob(

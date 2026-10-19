@@ -253,7 +253,7 @@ export async function listPlannedVideos(
   const live = entries.filter((e) => e.contentItem.currentState !== "CANCELLED");
   const ids = live.map((e) => e.contentItemId);
   const media = ids.length
-    ? await prisma.mediaAsset.groupBy({ by: ["contentItemId"], where: { contentItemId: { in: ids }, kind: "RAW_TAKE" }, _count: { _all: true } })
+    ? await prisma.mediaAsset.groupBy({ by: ["contentItemId"], where: { contentItemId: { in: ids }, kind: "RAW_TAKE", removedAt: null }, _count: { _all: true } })
     : [];
   const takesBy = new Map(media.map((m) => [m.contentItemId, m._count._all]));
   return live.map((e) => ({

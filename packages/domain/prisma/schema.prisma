@@ -493,6 +493,12 @@ model MediaAsset {
   proxyStorageKey     String?
   filmstripStorageKey String?
   previewMeta         Json?
+  // Soft removal (docs/decisions-pending/replace-footage.md): Chris deleted this take ("Delete
+  // this clip") or replaced the video's footage. Its storage files are deleted; the row is kept
+  // because take selections / edit plans / the audit trail reference it. Every list, edit
+  // builder and the editor ignore removed takes.
+  removedAt           DateTime?
+  removedReason       String?
 
   contentItem      ContentItem       @relation(fields: [contentItemId], references: [id])
   takeSelections   TakeSelection[]   @relation("SelectedTake")

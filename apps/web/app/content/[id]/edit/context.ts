@@ -73,6 +73,14 @@ export interface EditorContextValue {
 
   // ---- motion graphics + sound design
   itemId: string;
+  itemTitle: string;
+  /** Human date when the video is on the calendar (Replace footage's confirm), else null. */
+  scheduledFor: string | null;
+  /** Full-page navigation that skips the unsaved-changes prompt and drops the local draft
+   * (the server just rebuilt the edit — docs/decisions-pending/replace-footage.md). */
+  leaveEditor: (url: string) => void;
+  /** Drops a deleted take from the media bin (the saved edit didn't use it). */
+  removeAsset: (id: string) => void;
   /** Placement engine output for the current doc (AUTO visuals solved, warnings, footprints). */
   placement: PlacementResult;
   /** resolveVisualPlacements bound to this editor's subject tracks / words / glyph measure. */

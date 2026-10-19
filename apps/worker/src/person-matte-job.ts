@@ -78,7 +78,7 @@ export async function ensurePersonMattes(
 ): Promise<PersonMatteJobResult[]> {
   const ids =
     "contentItemId" in target
-      ? (await db.mediaAsset.findMany({ where: { contentItemId: target.contentItemId, kind: "RAW_TAKE" }, select: { id: true } })).map((a) => a.id)
+      ? (await db.mediaAsset.findMany({ where: { contentItemId: target.contentItemId, kind: "RAW_TAKE", removedAt: null }, select: { id: true } })).map((a) => a.id)
       : [...new Set(target.mediaAssetIds)];
   const out: PersonMatteJobResult[] = [];
   for (const id of ids) {

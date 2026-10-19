@@ -6,6 +6,14 @@ import { formatTime } from "../../../../lib/editor/preview-math";
 import type { EditorAsset } from "../../../../lib/editor/types";
 import { useEditor } from "./context";
 import { Icon } from "./icons";
+import { ReplaceFootage } from "../../../components/ReplaceFootage";
+import { DeleteTakeButton } from "../../../components/DeleteTakeButton";
+
+/** "Replace footage" in the editor (media bin / Add clip sheet): new clip → fresh edit, reloaded here. */
+export function ReplaceFootageInEditor() {
+  const { itemId, itemTitle, storageMode, scheduledFor, leaveEditor } = useEditor();
+  return <ReplaceFootage contentItemId={itemId} title={itemTitle} mode={storageMode} scheduledFor={scheduledFor} variant="editor" go={leaveEditor} />;
+}
 
 export const TAKE_DRAG_MIME = "application/x-chris-take";
 
@@ -24,6 +32,7 @@ export function MediaBin() {
         </div>
       </div>
       <div className="ed-scroll flex flex-col gap-3 p-3">
+        <ReplaceFootageInEditor />
         {assets.length === 0 && <p className="p-2 text-[12px] text-[var(--color-text-faint)]">No raw takes uploaded for this video.</p>}
         {assets.map((a, i) => (
           <TakeCard key={a.id} asset={a} index={i} inUse={used.has(a.id)} />
@@ -37,7 +46,7 @@ export function MediaBin() {
 }
 
 export function TakeCard({ asset, index, inUse }: { asset: EditorAsset; index: number; inUse: boolean }) {
-  const { apply, engine, toast, doc, touch, setUi } = useEditor();
+  const { apply, engine, toast, doc, touch, setUi, itemId, assets, removeAsset, leaveEditor } = useEditor();
   const videoRef = useRef<HTMLVideoElement>(null);
   const snippet = asset.transcript?.trim() || (asset.words?.length ? asset.words.map((w) => w.word).join(" ") : "");
 
@@ -89,6 +98,23 @@ export function TakeCard({ asset, index, inUse }: { asset: EditorAsset; index: n
         <div className="flex items-center justify-between gap-2">
           <p className="truncate text-[12.5px] font-medium">{asset.name || `Take ${index + 1}`}</p>
           {inUse && <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">In edit</span>}
+        </div>
+        <div className="mt-1 flex justify-end">
+          <DeleteTakeButton
+            contentItemId={itemId}
+            mediaAssetId={asset.id}
+            name={asset.name || `Take ${index + 1}`}
+            inEdit={inUse}
+            inUnsavedEdit={inUse}
+            lastTake={assets.length <= 1}
+            variant="editor"
+            onDone={(r) => {
+              if (r.outcome === "KEPT_EDIT") {
+                removeAsset(asset.id);
+                toast(`Deleted “${asset.name}”`);
+              } else leaveEditor(r.outcome === "NEEDS_FOOTAGE" ? `/content/${itemId}` : `/content/${itemId}/edit`);
+            }}
+          />
         </div>
         {snippet && <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-[var(--color-text-faint)]">“{snippet}”</p>}
         {asset.width && asset.height && (

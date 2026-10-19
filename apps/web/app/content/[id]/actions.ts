@@ -805,5 +805,5 @@ export async function deleteVideoAction(formData: FormData) {
     await storage.delete(key).catch((err) => console.warn("[delete-video] could not delete", key, err instanceof Error ? err.message : err));
   }
   for (const path of ["/", "/content", "/plan", "/calendar", "/film"]) revalidatePath(path);
-  redirect(`${back}${back.includes("?") ? "&" : "?"}notice=${encodeURIComponent("Video deleted.")}`);
+  redirect(`${back}${back.includes("?") ? "&" : "?"}notice=${encodeURIComponent("Video deleted from your plan.")}`);
 }

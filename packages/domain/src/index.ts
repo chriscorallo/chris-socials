@@ -9,6 +9,7 @@ export * from "./footage-first";
 export * from "./starter-edit";
 export * from "./recording-session";
 export * from "./delete-video";
+export * from "./footage-removal";
 export * from "./friendly-status";
 export * from "./render-variant";
 export * from "./audit";

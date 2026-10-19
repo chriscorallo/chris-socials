@@ -162,7 +162,7 @@ consume.
 
 | Entity | Purpose | Key fields |
 |---|---|---|
-| `MediaAsset` (extended) | Adds real ffprobe-derived technical metadata + transcript | adds `durationSeconds?, width?, height?, frameRate?, hasAudio?, videoCodec?, audioCodec?, transcript?` |
+| `MediaAsset` (extended) | Adds real ffprobe-derived technical metadata + transcript | adds `durationSeconds?, width?, height?, frameRate?, hasAudio?, videoCodec?, audioCodec?, transcript?`; 2026-10-19 adds `removedAt?, removedReason?` — soft removal of a take ("Delete this clip" / "Replace footage"): files deleted, row kept for TakeSelection/EditPlan/audit history, ignored by every list and edit builder (docs/decisions-pending/replace-footage.md) |
 | `TakeSelection` | Spec §9 step 11 — one row per selection decision, append-only | `contentItemId, selectedMediaAssetId, backupMediaAssetId?, confidence, reason, materialDefects (json)` |
 | `EditPlan` | Spec §9 step 12 — the LLM's editorial decision, append-only | `contentItemId, takeSelectionId, productionTier, targetDurationSeconds, doNothingElse, plan (json — segments, textOverlays, targetDimensions, normalizeAudio, and the not-yet-executed bRoll/music/sfx/transitions fields; see /docs/DECISIONS.md)` |
 | `Render` | Spec §9 step 13 — one row per render attempt (including repair re-renders), append-only | `contentItemId, editPlanId, attempt, status (RenderStatus: SUCCESS/FAILED), storageKey?, durationSeconds?, width?, height?, fileSizeBytes?, technicalQCReport (json)?, errorMessage?` |

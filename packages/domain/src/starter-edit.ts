@@ -147,7 +147,7 @@ export async function createStarterEdit(
   }
 
   const takes = await prisma.mediaAsset.findMany({
-    where: { contentItemId, kind: "RAW_TAKE" },
+    where: { contentItemId, kind: "RAW_TAKE", removedAt: null },
     orderBy: { createdAt: "asc" },
   });
 

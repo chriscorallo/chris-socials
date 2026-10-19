@@ -25,15 +25,18 @@ const TRANSITIONS: Record<ContentState, ContentState[]> = {
   SCRIPTED: ["READY_TO_FILM"],
   READY_TO_FILM: ["FILMED"],
   FILMED: ["MEDIA_INGESTED"],
-  MEDIA_INGESTED: ["TAKE_SELECTED"],
-  TAKE_SELECTED: ["EDIT_PLANNED"],
-  EDIT_PLANNED: ["EDITING"],
-  EDITING: ["RENDERED", "EDIT_PLANNED"], // EDIT_PLANNED = fix the edit after a failed render (rollback)
-  RENDERED: ["READY", "QC_REPAIR", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
-  QC_REPAIR: ["RENDERED", "QC_BLOCKED", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
-  QC_BLOCKED: ["EDIT_PLANNED"], // rollback
-  READY: ["SCHEDULED", "EDIT_PLANNED"], // EDIT_PLANNED = finishing-edit rollback
-  SCHEDULED: ["PUBLISHING", "EDIT_PLANNED", "READY"], // EDIT_PLANNED = finishing-edit rollback; READY = unschedule (rollback)
+  // `MEDIA_INGESTED` / `FILMED` from the editing states = footage rollbacks (2026-10-19, "Replace
+  // footage" / "Delete this clip"): MEDIA_INGESTED = the edit is rebuilt from the remaining or
+  // new take; FILMED = no takes left ("needs footage"). Only via footage-removal.ts.
+  MEDIA_INGESTED: ["TAKE_SELECTED", "FILMED"],
+  TAKE_SELECTED: ["EDIT_PLANNED", "MEDIA_INGESTED", "FILMED"],
+  EDIT_PLANNED: ["EDITING", "MEDIA_INGESTED", "FILMED"],
+  EDITING: ["RENDERED", "EDIT_PLANNED", "MEDIA_INGESTED", "FILMED"], // EDIT_PLANNED = fix the edit after a failed render (rollback)
+  RENDERED: ["READY", "QC_REPAIR", "EDIT_PLANNED", "MEDIA_INGESTED", "FILMED"], // EDIT_PLANNED = finishing-edit rollback
+  QC_REPAIR: ["RENDERED", "QC_BLOCKED", "EDIT_PLANNED", "MEDIA_INGESTED", "FILMED"], // EDIT_PLANNED = finishing-edit rollback
+  QC_BLOCKED: ["EDIT_PLANNED", "MEDIA_INGESTED", "FILMED"], // rollback
+  READY: ["SCHEDULED", "EDIT_PLANNED", "MEDIA_INGESTED", "FILMED"], // EDIT_PLANNED = finishing-edit rollback
+  SCHEDULED: ["PUBLISHING", "EDIT_PLANNED", "READY", "MEDIA_INGESTED", "FILMED"], // EDIT_PLANNED = finishing-edit rollback; READY = unschedule (rollback)
   PUBLISHING: ["PUBLISHED"],
   PUBLISHED: ["MEASURING"],
   MEASURING: ["ARCHIVED"],
@@ -42,6 +45,25 @@ const TRANSITIONS: Record<ContentState, ContentState[]> = {
 };
 
 const TERMINAL_STATES = new Set<ContentState>(["ARCHIVED", "CANCELLED"]);
+
+/**
+ * States a video's footage can be removed/replaced from (docs/decisions-pending/replace-footage.md):
+ * it has ingested takes and hasn't started publishing. From each, `-> MEDIA_INGESTED` (rebuild
+ * the edit from the remaining / new take) and `-> FILMED` (no takes left — needs footage) are
+ * rollbacks, reachable only through footage-removal.ts (never a bare button). Any render/gate
+ * PASS from before no longer applies: the video renders and passes every gate again.
+ */
+export const FOOTAGE_ROLLBACK_SOURCES: readonly ContentState[] = [
+  "MEDIA_INGESTED",
+  "TAKE_SELECTED",
+  "EDIT_PLANNED",
+  "EDITING",
+  "RENDERED",
+  "QC_REPAIR",
+  "QC_BLOCKED",
+  "READY",
+  "SCHEDULED",
+];
 
 export const ROLLBACK_TRANSITIONS = new Set<string>([
   "QC_BLOCKED->EDIT_PLANNED",
@@ -54,6 +76,8 @@ export const ROLLBACK_TRANSITIONS = new Set<string>([
   "SCHEDULED->EDIT_PLANNED",
   // Calendar "Remove from calendar" (2026-10-17): back to the READY pool, gates untouched.
   "SCHEDULED->READY",
+  // Footage rollbacks (2026-10-19): "Replace footage" / "Delete this clip" — see FOOTAGE_ROLLBACK_SOURCES.
+  ...FOOTAGE_ROLLBACK_SOURCES.flatMap((s) => [...(s === "MEDIA_INGESTED" ? [] : [`${s}->MEDIA_INGESTED`]), `${s}->FILMED`]),
 ]);
 
 export class InvalidTransitionError extends Error {

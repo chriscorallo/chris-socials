@@ -638,7 +638,7 @@ export async function registerFilmVideo(
   actor: { actorId: string },
 ): Promise<{ contentItemId: string; mediaAssetId: string; state: string; renderStatus: string | null; renderError: string | null }> {
   const fileName = `film-${input.renderId}.mp4`;
-  const existing = await db.mediaAsset.findFirst({ where: { storageKey: { endsWith: `/${fileName}` }, kind: "RAW_TAKE", ...(input.contentItemId ? { contentItemId: input.contentItemId } : {}) }, orderBy: { createdAt: "desc" } });
+  const existing = await db.mediaAsset.findFirst({ where: { storageKey: { endsWith: `/${fileName}` }, kind: "RAW_TAKE", removedAt: null, ...(input.contentItemId ? { contentItemId: input.contentItemId } : {}) }, orderBy: { createdAt: "desc" } });
   let itemId = existing?.contentItemId ?? input.contentItemId ?? null;
   if (!itemId) {
     const item = await createContentItem(db, { title: input.title.slice(0, 200), description: [input.film.logline, `Mini-movie made in the studio (film "${input.film.id}", render ${input.renderId}).`].filter(Boolean).join(" "), format: "Mini-movie" }, actor);

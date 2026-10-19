@@ -188,7 +188,7 @@ export function RecordMode({
                 segmentSeconds: Math.round(s.seconds * 1000) / 1000,
                 scriptStart: Math.round(s.scriptStart * 10000) / 10000,
                 scriptEnd: Math.round(s.scriptEnd * 10000) / 10000,
-              }),
+              }).then(() => undefined),
           },
           seg,
           (patch) => patchSeg(seg.key, patch),
