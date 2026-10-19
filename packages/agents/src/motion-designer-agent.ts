@@ -874,7 +874,7 @@ export async function designVisualsForTimeline(
   };
   // AI-designed visuals get the same veteran defaults as hand-added ones (ride punch-ins,
   // shadows + scene match, light wrap on 3D) — see packages/media visual-interaction.ts.
-  const added = chosen.map((a) =>
+  let added = chosen.map((a) =>
     applyInteractionDefaults(TimelineVisualSchema.parse({
       id: nextId(),
       template: a.v.template,
@@ -893,16 +893,33 @@ export async function designVisualsForTimeline(
   let visuals = [...keep, ...added].sort((a, b) => a.start - b.start);
   let placementWarnings: PlacementWarning[] = [];
   if (input.subjectTracks) {
-    const solved = solveVisualPlacements(
-      { ...timeline, visuals },
-      {
-        subjectTracks: input.subjectTracks,
-        sourceDimensions: input.sourceDimensions,
-        platformSafe: input.platformSafe,
-        measure: input.measure,
-        wordsByAsset: input.wordsByAsset,
-      },
-    );
+    const solve = (list: TimelineVisual[]) =>
+      solveVisualPlacements(
+        { ...timeline, visuals: list },
+        {
+          subjectTracks: input.subjectTracks!,
+          sourceDimensions: input.sourceDimensions,
+          platformSafe: input.platformSafe,
+          measure: input.measure,
+          wordsByAsset: input.wordsByAsset,
+        },
+      );
+    let solved = solve(visuals);
+    // A NEW graphic with no spot clear of his face (even shrunk to 70%) is dropped, never shown
+    // over his face — same rule as the free Full edit. Re-solve: removing one frees space.
+    for (let round = 0; round < 4; round++) {
+      const newIds = new Set(added.map((a) => a.id));
+      const covering = solved.warnings.filter((w) => w.code === "LOW_CONFIDENCE" && newIds.has(w.visualId) && /Chris's face/.test(w.message));
+      if (covering.length === 0) break;
+      for (const w of covering) {
+        const v = visuals.find((x) => x.id === w.visualId);
+        if (v) rejected.push({ template: v.template, start: v.start, end: v.end, anchorText: v.anchorText ?? "", reason: "no spot clear of Chris's face at this moment (even smaller) — dropped rather than covering him" });
+      }
+      const drop = new Set(covering.map((w) => w.visualId));
+      visuals = visuals.filter((v) => !drop.has(v.id));
+      added = added.filter((v) => !drop.has(v.id));
+      solved = solve(visuals);
+    }
     visuals = solved.visuals;
     placementWarnings = solved.warnings;
   } else {

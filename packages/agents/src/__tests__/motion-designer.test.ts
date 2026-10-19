@@ -146,6 +146,17 @@ describe("designVisualsForTimeline", () => {
     for (const x of res.visuals) expect(intersectionArea(visualRect(x, { width: 1080, height: 1920 }), head)).toBe(0);
   });
 
+  it("never shows a new graphic over his face: no clear spot (extreme close-up) → dropped and reported", async () => {
+    // His head fills the middle of the safe area — nowhere for a tall graphic to go.
+    const track = Array.from({ length: 91 }, (_, i) => ({ t: i / 3, box: { x: 0.12, y: 0.18, w: 0.7, h: 0.4 } }));
+    const res = await designVisualsForTimeline(
+      provider([v({ template: "LIST_STEPS", props: { title: "The rules", items: ["Automate", "Hide it", "Invest"], style: "NUMBERED" }, start: 9.5, end: 14 })]),
+      base({ subjectTracks: { take: track } }),
+    );
+    expect(res.added).toEqual([]);
+    expect(res.rejectedVisuals[0]!.reason).toMatch(/clear of Chris's face/);
+  });
+
   it("FACTUAL: drops a visual with an invented number and reports it", async () => {
     const res = await designVisualsForTimeline(
       provider([
