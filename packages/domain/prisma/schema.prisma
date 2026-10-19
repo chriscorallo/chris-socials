@@ -169,6 +169,12 @@ model ContentItem {
   adversarialCritiques   AdversarialCritique[]
   viewerReviews          ViewerReview[]
   recordingSessions      RecordingSession[]
+  creativeBriefs         CreativeBrief[]
+
+  // Content Intelligence series (2026-10-19): PICK_YOUR_POISON | I_DID_THE_MATH |
+  // BUTTERFLY_EFFECT | HOW_BROKE_IS_THIS_CHARACTER | MONEY_MAKES_NO_SENSE | COST_OF_BEING_ALIVE |
+  // OTHER. Null for items planned before the series existed. Mirrors the latest CreativeBrief.
+  series String?
 
   // Plan import provenance (2026-10-17): which imported plan created this item, if any.
   planImportId String?
@@ -377,6 +383,31 @@ model ResearchPacket {
 
 // Phase 2 — spec §9 step 7. Append-only, same rationale as ResearchPacket.
 // brandGuardianReport is filled in once Brand Guardian has evaluated this specific script.
+/// The per-video creative plan (Chris's "Content Intelligence Engine" output format): series,
+/// three hooks by mechanism + the pick, story with midpoint, ending objective, storyboard,
+/// engagement design, editorial scorecard, research status. Append-only — every revision is a
+/// new row; the latest is what downstream bots read. Shape validated in code
+/// (packages/domain/src/creative-brief.ts). See /docs/DECISIONS.md ("Creative Brief").
+model CreativeBrief {
+  id               String   @id @default(cuid())
+  contentItemId    String
+  scriptVersionId  String?
+  /// AGENT (in-app pipeline) | CHATGPT (free copy-paste) | HUMAN
+  source           String
+  series           String
+  /// COMMENT | SHARE | FOLLOW | PUNCHLINE
+  primaryObjective String
+  /// hooks[].mechanism of the chosen hook (denormalised for learning by hook family)
+  hookMechanism    String?
+  brief            Json
+  createdAt        DateTime @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id])
+
+  @@index([contentItemId, createdAt])
+  @@index([series])
+}
+
 model ScriptVersion {
   id                              String   @id @default(cuid())
   contentItemId                   String
