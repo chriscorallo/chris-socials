@@ -10,7 +10,7 @@ function safeName(name: string): string {
 }
 
 /** Local mode: stream the raw file body to PUT /api/upload (XHR for upload progress). */
-function uploadLocal(contentItemId: string, file: File, onProgress: (pct: number) => void, segment?: SegmentUpload | null): Promise<void> {
+function uploadLocal(contentItemId: string, file: File, onProgress: (pct: number) => void, segment?: SegmentUpload | null): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const params = new URLSearchParams({ contentItemId, filename: file.name, ...segmentParams(segment) });
@@ -20,7 +20,15 @@ function uploadLocal(contentItemId: string, file: File, onProgress: (pct: number
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let id: string | null = null;
+        try {
+          id = (JSON.parse(xhr.responseText) as { mediaAssetId?: string }).mediaAssetId ?? null;
+        } catch {
+          // older/odd body — the take still landed
+        }
+        return resolve(id);
+      }
       let message = `Upload failed (${xhr.status})`;
       try {
         message = JSON.parse(xhr.responseText).error ?? message;
@@ -56,6 +64,7 @@ function segmentParams(segment?: SegmentUpload | null): Record<string, string> {
  * Uploads one raw take into a content item, by deployment storage mode: local disk via the
  * streaming route, or browser-direct to private Vercel Blob in production (Vercel functions
  * can't receive bodies over 4.5 MB) followed by registration. `onProgress(pct, phase)`.
+ * Resolves to the new take's MediaAsset id (null if the server didn't say).
  */
 export async function uploadRawTake(
   contentItemId: string,
@@ -63,10 +72,9 @@ export async function uploadRawTake(
   mode: "blob" | "local",
   onProgress: (percent: number, phase: "uploading" | "processing") => void,
   segment?: SegmentUpload | null,
-): Promise<void> {
+): Promise<string | null> {
   if (mode === "local") {
-    await uploadLocal(contentItemId, file, (p) => onProgress(p, p >= 100 ? "processing" : "uploading"), segment);
-    return;
+    return uploadLocal(contentItemId, file, (p) => onProgress(p, p >= 100 ? "processing" : "uploading"), segment);
   }
   const storageKey = `raw/${contentItemId}/${Date.now()}-${safeName(file.name)}`;
   await upload(storageKey, file, {
@@ -86,6 +94,7 @@ export async function uploadRawTake(
     ...(segment ? { segment: segmentParams(segment) } : {}),
   });
   if ("error" in result) throw new Error(result.error);
+  return result.mediaAssetId;
 }
 
 /**

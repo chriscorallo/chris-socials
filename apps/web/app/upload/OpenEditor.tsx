@@ -19,7 +19,8 @@ export function useOpenEditor() {
   const [finishing, setFinishing] = useState<Finishing | null>(null);
   const skipRef = useRef(false);
 
-  async function openEditor(id: string) {
+  /** `go` overrides the final navigation (the editor itself does a full load to remount). */
+  async function openEditor(id: string, go: (url: string) => void = (url) => router.push(url)) {
     skipRef.current = false;
     const started = Date.now();
     setFinishing({ phase: "captions", ready: 0, total: 0 });
@@ -37,10 +38,10 @@ export function useOpenEditor() {
     setFinishing((f) => ({ phase: "opening", ready: f?.ready ?? 0, total: f?.total ?? 0 }));
     const res = await startEditingNow(id);
     if ("error" in res) {
-      router.push(`/content/${id}?pipelineError=${encodeURIComponent(res.error)}`);
+      go(`/content/${id}?pipelineError=${encodeURIComponent(res.error)}`);
       return;
     }
-    router.push(`/content/${id}/edit`);
+    go(`/content/${id}/edit`);
   }
 
   return { finishing, openEditor, skip: () => (skipRef.current = true) };

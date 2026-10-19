@@ -72,7 +72,7 @@ export async function getLatestTakeUnderstandings(prisma: PrismaClient, mediaAss
 
 /** Raw takes of an item that have no understanding yet. */
 export async function takesMissingUnderstanding(prisma: PrismaClient, contentItemId: string): Promise<string[]> {
-  const takes = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE" }, select: { id: true, width: true }, orderBy: { createdAt: "asc" } });
+  const takes = await prisma.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE", removedAt: null }, select: { id: true, width: true }, orderBy: { createdAt: "asc" } });
   if (!takes.length) return [];
   const have = new Set((await prisma.takeUnderstanding.findMany({ where: { mediaAssetId: { in: takes.map((t) => t.id) } }, select: { mediaAssetId: true } })).map((r) => r.mediaAssetId));
   return takes.filter((t) => t.width != null && !have.has(t.id)).map((t) => t.id);

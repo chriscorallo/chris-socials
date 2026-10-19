@@ -33,7 +33,7 @@ export async function loadPrompterVideo(prisma: PrismaClient, id: string): Promi
       currentState: true,
       creatorCard: { select: { hook: true, talkingPoints: true, notes: true } },
       scriptVersions: { orderBy: { createdAt: "desc" }, take: 1, select: { spokenScript: true, authorType: true } },
-      _count: { select: { scriptVersions: true, mediaAssets: { where: { kind: "RAW_TAKE" } } } },
+      _count: { select: { scriptVersions: true, mediaAssets: { where: { kind: "RAW_TAKE", removedAt: null } } } },
     },
   });
   if (!item) return null;

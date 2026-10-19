@@ -72,7 +72,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
   const [takeSelection, rawAssets, musicRows] = await Promise.all([
     prisma.takeSelection.findUnique({ where: { id: plan.takeSelectionId }, select: { selectedMediaAssetId: true } }),
     prisma.mediaAsset.findMany({
-      where: { contentItemId: id, kind: "RAW_TAKE" },
+      where: { contentItemId: id, kind: "RAW_TAKE", removedAt: null },
       orderBy: { createdAt: "asc" },
       include: { recordingSegment: { select: { segmentIndex: true, recordingSessionId: true } } },
     }),

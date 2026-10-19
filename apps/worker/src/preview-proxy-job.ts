@@ -95,7 +95,7 @@ export async function ensurePreviewProxies(
 ): Promise<PreviewProxyJobResult[]> {
   const ids =
     "contentItemId" in target
-      ? (await db.mediaAsset.findMany({ where: { contentItemId: target.contentItemId, kind: "RAW_TAKE" }, select: { id: true }, orderBy: { createdAt: "asc" } })).map((a) => a.id)
+      ? (await db.mediaAsset.findMany({ where: { contentItemId: target.contentItemId, kind: "RAW_TAKE", removedAt: null }, select: { id: true }, orderBy: { createdAt: "asc" } })).map((a) => a.id)
       : [...new Set(target.mediaAssetIds)];
   const out: PreviewProxyJobResult[] = [];
   for (const id of ids) {

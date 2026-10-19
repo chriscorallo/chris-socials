@@ -63,7 +63,7 @@ export class CannotRecordHereError extends Error {
 }
 
 export type SegmentWithAsset = RecordingSegment & {
-  mediaAsset: Pick<MediaAsset, "id" | "storageKey" | "durationSeconds" | "transcript" | "hasAudio" | "originalFilename"> | null;
+  mediaAsset: Pick<MediaAsset, "id" | "storageKey" | "durationSeconds" | "transcript" | "hasAudio" | "originalFilename" | "removedAt"> | null;
 };
 export type SessionWithSegments = RecordingSession & { segments: SegmentWithAsset[] };
 
@@ -71,7 +71,7 @@ const segmentInclude = {
   segments: {
     where: { status: "ACTIVE" as const },
     orderBy: [{ segmentIndex: "asc" as const }, { createdAt: "asc" as const }],
-    include: { mediaAsset: { select: { id: true, storageKey: true, durationSeconds: true, transcript: true, hasAudio: true, originalFilename: true } } },
+    include: { mediaAsset: { select: { id: true, storageKey: true, durationSeconds: true, transcript: true, hasAudio: true, originalFilename: true, removedAt: true } } },
   },
 };
 
@@ -347,7 +347,8 @@ export async function getFinishedRecordingSequence(db: Db, contentItemId: string
     include: segmentInclude,
   })) as SessionWithSegments | null;
   if (!s) return null;
-  const segments = s.segments.filter((g) => g.mediaAsset);
+  // A part whose take Chris deleted / replaced (removedAt) is no longer part of the video.
+  const segments = s.segments.filter((g) => g.mediaAsset && !g.mediaAsset.removedAt);
   if (segments.length === 0) return null;
   return { session: s, mediaAssetIds: segments.map((g) => g.mediaAsset!.id) };
 }

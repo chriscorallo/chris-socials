@@ -82,7 +82,8 @@ export async function getContentItem(prisma: PrismaClient, id: string) {
   ] = await queryAll([
     () => prisma.productionContract.findUnique({ where }),
     () => prisma.creatorCard.findUnique({ where }),
-    () => prisma.mediaAsset.findMany({ where, orderBy: desc }),
+    // Removed takes (replace footage / delete a clip) are history only — never listed.
+    () => prisma.mediaAsset.findMany({ where: { ...where, removedAt: null }, orderBy: desc }),
     () => prisma.scheduleEntry.findUnique({ where }),
     () => prisma.contentStateTransition.findMany({ where, orderBy: { createdAt: "asc" } }),
     () => prisma.researchPacket.findMany({ where, orderBy: desc }),

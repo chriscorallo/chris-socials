@@ -405,7 +405,7 @@ function slimTranscribe(r: TranscribeJobResult) {
 }
 
 async function rawTakeIds(db: PrismaClient, contentItemId: string): Promise<string[]> {
-  const rows = await db.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  const rows = await db.mediaAsset.findMany({ where: { contentItemId, kind: "RAW_TAKE", removedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true } });
   return rows.map((r) => r.id);
 }
 
@@ -446,7 +446,7 @@ async function runIngest(
   const styleCut: StyleCutOutcome[] = [];
   const attempted = new Set<string>();
   for (let pass = 0; pass < 5; pass++) {
-    const takes = await db.mediaAsset.findMany({ where: { contentItemId: a.contentItemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } });
+    const takes = await db.mediaAsset.findMany({ where: { contentItemId: a.contentItemId, kind: "RAW_TAKE", removedAt: null }, orderBy: { createdAt: "asc" } });
     const todo = takes.filter((t) => {
       const needs =
         (a.transcribe && t.hasAudio !== false && t.transcriptWords == null && t.transcriptSource !== "MANUAL") ||

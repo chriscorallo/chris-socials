@@ -1,7 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { prisma, createStarterEdit, applyManualTransition, getActiveHeavyJob } from "@chris/domain";
+import { revalidatePath } from "next/cache";
+import { prisma, createStarterEdit, applyManualTransition, getActiveHeavyJob, removeTake, replaceFootage, type RemoveTakeOutcome } from "@chris/domain";
+import { storage } from "../../../lib/storage";
+import { posterStorageKey } from "../../../lib/poster";
 import { requireSession } from "../../../lib/session";
 import { autoStyleCutAfterStarter } from "../../../lib/style-cut";
 import { heavyJobMode, isAutoTranscriptionEnabled } from "../../../lib/render-config";
@@ -68,7 +71,7 @@ export async function captionStatus(
 ): Promise<{ ready: number; total: number; waiting: boolean; progress: string | null }> {
   await requireSession();
   const takes = await prisma.mediaAsset.findMany({
-    where: { contentItemId, kind: "RAW_TAKE" },
+    where: { contentItemId, kind: "RAW_TAKE", removedAt: null },
     select: { transcript: true, hasAudio: true, createdAt: true },
   });
   const withAudio = takes.filter((t) => t.hasAudio !== false);
@@ -90,4 +93,66 @@ export async function captionStatus(
     else if (Date.now() - newest > 45_000) waiting = false;
   }
   return { ready, total: withAudio.length, waiting, progress };
+}
+
+/** Best effort: a file that won't delete never blocks the change (it's logged). Each video's
+ * cached poster frame (lib/poster.ts) goes with it. */
+async function deleteFiles(tag: string, keys: string[]) {
+  const all = new Set<string>();
+  for (const k of keys) {
+    all.add(k);
+    if (/\.(mp4|mov|m4v|webm)$/i.test(k)) all.add(posterStorageKey(k));
+  }
+  for (const key of all) {
+    await storage.delete(key).catch((err) => console.warn(`[${tag}] could not delete`, key, err instanceof Error ? err.message : err));
+  }
+}
+
+function revalidateVideo(contentItemId: string) {
+  for (const path of ["/", "/content", "/plan", "/calendar", "/film", `/content/${contentItemId}`, `/content/${contentItemId}/edit`]) revalidatePath(path);
+}
+
+/**
+ * "Delete this clip" (video page takes list / editor media bin). Removes the take's files; if it
+ * was in the current edit, the edit is rebuilt from the remaining take (+ the automatic Full
+ * edit / Cuts only); with no takes left the video goes back to "needs footage" — it stays in
+ * the plan. docs/decisions-pending/replace-footage.md
+ */
+export async function deleteTakeNow(
+  contentItemId: string,
+  mediaAssetId: string,
+  inUnsavedEdit = false,
+): Promise<{ ok: true; outcome: RemoveTakeOutcome; state: string } | { error: string }> {
+  const session = await requireSession();
+  const actorId = session.user!.id!;
+  try {
+    const r = await removeTake(prisma, { contentItemId, mediaAssetId, inUnsavedEdit }, { actorId });
+    await deleteFiles("delete-take", r.storageKeys);
+    if (r.editPlanId) await autoStyleCutAfterStarter(contentItemId, actorId);
+    revalidateVideo(contentItemId);
+    return { ok: true, outcome: r.outcome, state: r.state };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't delete the clip" };
+  }
+}
+
+/**
+ * "Replace footage": the new clip (already uploaded into this video) becomes its only footage —
+ * old takes, their files and the old edit's renders are removed; the client then runs the
+ * normal upload ending (captions → fresh edit → editor). Title, plan, script and schedule slot
+ * stay. docs/decisions-pending/replace-footage.md
+ */
+export async function replaceFootageNow(
+  contentItemId: string,
+  newMediaAssetId: string,
+): Promise<{ ok: true; removed: number; mustRefinish: boolean } | { error: string }> {
+  const session = await requireSession();
+  try {
+    const r = await replaceFootage(prisma, { contentItemId, newMediaAssetId }, { actorId: session.user!.id! });
+    await deleteFiles("replace-footage", r.storageKeys);
+    revalidateVideo(contentItemId);
+    return { ok: true, removed: r.removedTakeIds.length, mustRefinish: r.wasScheduledOrReady || !!r.keptScheduleDate };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't replace the footage" };
+  }
 }

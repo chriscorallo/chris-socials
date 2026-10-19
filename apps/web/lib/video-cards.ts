@@ -37,7 +37,7 @@ export async function loadVideoCards(opts: { states?: ContentState[]; limit?: nu
       updatedAt: true,
       scheduleEntry: { select: { scheduledDate: true } },
       renders: { where: { status: "SUCCESS", storageKey: { not: null } }, orderBy: { createdAt: "desc" }, take: 1, select: { storageKey: true } },
-      mediaAssets: { where: { kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" }, take: 1, select: { storageKey: true } },
+      mediaAssets: { where: { kind: "RAW_TAKE", removedAt: null }, orderBy: { createdAt: "asc" }, take: 1, select: { storageKey: true } },
       publications: { where: { status: "SUCCESS", url: { not: null } }, orderBy: { createdAt: "desc" }, take: 1, select: { url: true, publishedAt: true } },
     },
   });

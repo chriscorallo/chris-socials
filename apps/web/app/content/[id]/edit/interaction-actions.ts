@@ -48,7 +48,7 @@ export async function analyzeFootageAction(contentItemId: string, timelineInput:
   const timeline = parsed.data;
   try {
     const ids = [...new Set(timeline.clips.map((c) => c.mediaAssetId))];
-    const assets = await prisma.mediaAsset.findMany({ where: { id: { in: ids }, contentItemId, kind: "RAW_TAKE" } });
+    const assets = await prisma.mediaAsset.findMany({ where: { id: { in: ids }, contentItemId, kind: "RAW_TAKE", removedAt: null } });
     const sources: Record<string, string> = {};
     const words: Record<string, ReturnType<typeof parseTranscriptWords>> = {};
     const dims: FootageAnalysis["sourceDimensions"] = {};

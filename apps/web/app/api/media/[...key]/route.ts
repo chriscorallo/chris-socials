@@ -27,7 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   const { key: keySegments } = await params;
   const storageKey = keySegments.join("/");
 
-  const asset = await prisma.mediaAsset.findFirst({ where: { storageKey } });
+  const asset = await prisma.mediaAsset.findFirst({ where: { storageKey, removedAt: null } });
   // A take's person matte (Motion v2 — the editor previews graphics behind Chris with it).
   const matteOf = asset ? null : await prisma.mediaAsset.findFirst({ where: { matteStorageKey: storageKey } });
   // A take's editor preview proxy / filmstrip sprite (preview-only; renders use the original).

@@ -64,7 +64,8 @@ export async function listMediaAssetsForContentItem(
 ) {
   const kind = options.kind ?? "RAW_TAKE";
   return prisma.mediaAsset.findMany({
-    where: kind === "ALL" ? { contentItemId } : { contentItemId, kind },
+    // Removed takes (docs/decisions-pending/replace-footage.md) are never listed.
+    where: kind === "ALL" ? { contentItemId, removedAt: null } : { contentItemId, kind, removedAt: null },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -321,6 +322,8 @@ export async function recordPersonMatte(
 ) {
   const before = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: mediaAssetId } });
   if (before.kind !== "RAW_TAKE") throw new Error(`Person mattes are for raw takes only (asset ${mediaAssetId} is ${before.kind}).`);
+  // A take Chris deleted while this job ran: don't re-attach files to it (replace-footage.md).
+  if (before.removedAt) throw new Error(`Take ${mediaAssetId} was removed — not recording its files.`);
   if (!isMatteStorageKeyFor(before.contentItemId, storageKey)) {
     throw new Error(`Matte storage key "${storageKey}" must live under mattes/${before.contentItemId}/.`);
   }
@@ -383,6 +386,8 @@ export async function recordPreviewAssets(
 ) {
   const before = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: mediaAssetId } });
   if (before.kind !== "RAW_TAKE") throw new Error(`Preview proxies are for raw takes only (asset ${mediaAssetId} is ${before.kind}).`);
+  // A take Chris deleted while this job ran: don't re-attach files to it (replace-footage.md).
+  if (before.removedAt) throw new Error(`Take ${mediaAssetId} was removed — not recording its files.`);
   for (const k of [input.proxyStorageKey, input.filmstripStorageKey]) {
     if (!isPreviewStorageKeyFor(before.contentItemId, k)) throw new Error(`Preview storage key "${k}" must live under proxies/${before.contentItemId}/.`);
   }

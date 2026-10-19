@@ -349,7 +349,7 @@ export async function getReferenceStyleProfile(
  */
 export async function getOwnSpeechProfile(prisma: PrismaClient, options: { limit?: number } = {}): Promise<OwnSpeechProfile> {
   const takes = await prisma.mediaAsset.findMany({
-    where: { kind: "RAW_TAKE", transcriptWords: { not: Prisma.AnyNull } },
+    where: { kind: "RAW_TAKE", removedAt: null, transcriptWords: { not: Prisma.AnyNull } },
     orderBy: { createdAt: "desc" },
     take: options.limit ?? 40,
     select: { transcriptWords: true, durationSeconds: true },

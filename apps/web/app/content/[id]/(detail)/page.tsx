@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll, getAiCheckStatus } from "@chris/domain";
+import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll, getAiCheckStatus, canChangeFootage, takesUsedByPlan } from "@chris/domain";
+import { ReplaceFootage } from "../../../components/ReplaceFootage";
+import { DeleteTakeButton } from "../../../components/DeleteTakeButton";
 import { aiReadiness } from "../../../../lib/ai-readiness";
 import { DiscardDraftButton } from "../DiscardDraftButton";
 import { requireSession } from "../../../../lib/session";
@@ -105,6 +107,16 @@ export default async function ContentDetailPage({
   const scriptFilmable = latestScript ? isScriptVersionFilmable(latestScript).ok : false;
   const canEdit = FINISHING_EDIT_STATES.has(state) && !!latestEditPlan;
   const editHref = `/content/${item.id}/edit`;
+  // Footage, not the video (docs/decisions-pending/replace-footage.md): "Replace footage" and
+  // "Delete clip" on a video that has takes and hasn't started posting.
+  const footageChangeable = canChangeFootage(state) && rawTakes.length > 0 && !draft;
+  const takesInEdit = FINISHING_EDIT_STATES.has(state)
+    ? takesUsedByPlan(latestEditPlan?.plan ?? null, item.takeSelections.find((s) => s.id === latestEditPlan?.takeSelectionId)?.selectedMediaAssetId ?? null)
+    : new Set(state === "TAKE_SELECTED" && latestTakeSelection ? [latestTakeSelection.selectedMediaAssetId] : []);
+  const usableTakes = rawTakes.filter((a) => (a.durationSeconds ?? 0) > 0).length;
+  const scheduledFor = item.scheduleEntry ? formatWhen(item.scheduleEntry.scheduledDate) : null;
+  // On the calendar but not finished (e.g. its footage was replaced): it can't post until it is.
+  const mustRefinish = !!item.scheduleEntry && ["FILMED", "MEDIA_INGESTED", "TAKE_SELECTED", "EDIT_PLANNED", "EDITING", "RENDERED", "QC_REPAIR", "QC_BLOCKED"].includes(state);
 
   // Hero media: the latest good render, else the chosen (or first) take, else a placeholder.
   const goodRender = item.renders.find((r) => r.status === "SUCCESS" && r.storageKey);
@@ -297,6 +309,17 @@ export default async function ContentDetailPage({
             {asset.transcript && (
               <p className="line-clamp-3 text-[var(--color-text-muted)]">{asset.transcript}</p>
             )}
+            {footageChangeable && (
+              <div className="-ml-3">
+                <DeleteTakeButton
+                  contentItemId={item.id}
+                  mediaAssetId={asset.id}
+                  name={asset.originalFilename}
+                  inEdit={takesInEdit.has(asset.id)}
+                  lastTake={usableTakes <= 1 && (asset.durationSeconds ?? 0) > 0}
+                />
+              </div>
+            )}
             <details className="text-[var(--color-text-muted)]">
               <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] text-[var(--color-text-muted)] sm:text-[12px]">
                 {asset.transcript ? "Fix transcript / re-transcribe" : "Transcribe or paste transcript"}
@@ -375,6 +398,11 @@ export default async function ContentDetailPage({
             </div>
             {draftSaved && draft && <p className="mt-2 text-[13.5px] text-[var(--color-emerald-400)]" data-testid="draft-saved">Draft saved — come back anytime to film the rest.</p>}
             {!when && <p className="mt-2 text-[14px] leading-snug text-[var(--color-text-muted)] sm:text-[15px]">{next.hint}</p>}
+            {mustRefinish && scheduledFor && (
+              <p className="mt-2 text-[13.5px] leading-snug text-[var(--color-gold-400)]" data-testid="must-refinish">
+                Still on your calendar for {scheduledFor} — it won&apos;t post until it&apos;s finished again (open the editor and tap Finish).
+              </p>
+            )}
           </div>
 
           <div className="col-span-2 flex min-w-0 flex-col gap-4 self-start md:col-span-1 md:col-start-2">
@@ -385,6 +413,9 @@ export default async function ContentDetailPage({
                 {primary.big}
                 {secondary.length > 0 && <div className="flex gap-2.5">{secondary.slice(0, 2)}</div>}
               </div>
+            )}
+            {footageChangeable && (
+              <ReplaceFootage contentItemId={item.id} title={item.title} mode={storageMode} scheduledFor={scheduledFor} />
             )}
           </div>
         </section>
@@ -425,6 +456,35 @@ export default async function ContentDetailPage({
                   <TeleprompterLink id={item.id} />
                 </div>
               )}
+            </Panel>
+          )}
+
+          {footageChangeable && (
+            <Panel id="footage" className="scroll-mt-24">
+              <SectionHeading eyebrow="Footage" title={rawTakes.length === 1 ? "Your clip" : "Your clips"} />
+              <ul className="-mt-1 flex flex-col divide-y divide-[var(--color-border)]">
+                {rawTakes.map((a) => (
+                  <li key={a.id} className="flex min-w-0 items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14.5px]">{a.originalFilename}</p>
+                      <p className="text-[12.5px] text-[var(--color-text-faint)]">
+                        {a.durationSeconds ? `${a.durationSeconds.toFixed(1)}s` : "processing"}
+                        {takesInEdit.has(a.id) ? " · in your edit" : ""}
+                      </p>
+                    </div>
+                    <DeleteTakeButton
+                      contentItemId={item.id}
+                      mediaAssetId={a.id}
+                      name={a.originalFilename}
+                      inEdit={takesInEdit.has(a.id)}
+                      lastTake={usableTakes <= 1 && (a.durationSeconds ?? 0) > 0}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[12.5px] text-[var(--color-text-faint)]">
+                Deleting a clip deletes only that footage — the video stays in your plan. To start over with a new clip, use Replace footage.
+              </p>
             </Panel>
           )}
 

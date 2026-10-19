@@ -17,7 +17,7 @@ import { Sheet } from "./Sheet";
 import { ClipPanel, TextPanel, ZoomPanel, CaptionsPanel, LookPanel, CoverPanel } from "./Inspector";
 import { VisualsPanel, SoundPanel, StyleCutPanel, DirectorPanel } from "./lazy-panels";
 import { autoPlaceVisuals } from "../../../../lib/editor/visuals";
-import { TakeCard } from "./MediaBin";
+import { TakeCard, ReplaceFootageInEditor } from "./MediaBin";
 import { useKeyboardInset } from "./layout-hooks";
 import { Icon } from "./icons";
 
@@ -384,7 +384,7 @@ const SHEET_TITLES: Record<SheetId, string> = {
   zoom: "Zoom",
   captions: "Captions",
   look: "Look",
-  media: "Add a clip",
+  media: "Clips & footage",
   cover: "Cover",
   platforms: "Platforms",
   visuals: "Visuals",
@@ -418,6 +418,7 @@ function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onS
     const used = new Set(doc.clips.map((c) => c.mediaAssetId));
     body = (
       <div className="ed-m-takes">
+        <ReplaceFootageInEditor />
         {assets.length === 0 && <EmptyNote>No raw takes uploaded for this video.</EmptyNote>}
         {assets.map((a, i) => (
           <TakeCard key={a.id} asset={a} index={i} inUse={used.has(a.id)} />

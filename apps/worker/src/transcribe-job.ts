@@ -93,7 +93,7 @@ export async function transcribeContentItemTakes(
 ): Promise<TranscribeJobResult[]> {
   const assets = await db.mediaAsset.findMany({
     // Takes only — a MUSIC bed has no speech to transcribe.
-    where: { contentItemId, kind: "RAW_TAKE" },
+    where: { contentItemId, kind: "RAW_TAKE", removedAt: null },
     orderBy: { createdAt: "asc" },
   });
   const provider = options.provider ?? (await defaultProvider());

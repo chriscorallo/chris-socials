@@ -36,7 +36,7 @@ export function useTakeHandoff(target: HandoffTarget, mode: "blob" | "local") {
       {
         prepareExisting: preparePlannedUpload,
         createNew: createFootageItem,
-        upload: (id, file, onProgress) => uploadRawTake(id, file, mode, onProgress),
+        upload: (id, file, onProgress) => uploadRawTake(id, file, mode, onProgress).then(() => undefined),
       },
       target,
       files,

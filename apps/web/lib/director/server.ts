@@ -57,7 +57,7 @@ export async function loadDirectorContext(prisma: PrismaClient, itemId: string):
   const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: itemId }, select: { id: true, title: true, currentState: true } });
   const plan = await getLatestEditPlan(prisma, itemId);
   if (!plan) throw new Error("This video has no edit yet.");
-  const takes = await prisma.mediaAsset.findMany({ where: { contentItemId: itemId, kind: "RAW_TAKE" }, orderBy: { createdAt: "asc" } });
+  const takes = await prisma.mediaAsset.findMany({ where: { contentItemId: itemId, kind: "RAW_TAKE", removedAt: null }, orderBy: { createdAt: "asc" } });
   const sel = await prisma.takeSelection.findUnique({ where: { id: plan.takeSelectionId }, select: { selectedMediaAssetId: true } });
   const selected = takes.find((t) => t.id === sel?.selectedMediaAssetId) ?? takes[0];
   const timeline = initialEditorDoc(plan.plan, {
