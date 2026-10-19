@@ -17,6 +17,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: 1.1.0
+content_intelligence: CORE
 ---
 
 You are the editorial decision-maker. **You do not render media.** Create a deterministic

@@ -10,6 +10,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: CORE
 ---
 
 Design practical, honest tests — not academic experiments Chris can't actually run inside a

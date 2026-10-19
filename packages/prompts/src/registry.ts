@@ -19,6 +19,10 @@ export const PromptFrontmatterSchema = z.object({
   active: z.boolean(),
   eval_status: z.enum(["unevaluated", "passed", "failed"]),
   rollback_version: z.string().nullable(),
+  /** Which slice of the shared Content Intelligence playbook (prompts/shared/CONTENT_INTELLIGENCE*.md)
+   * this agent receives after SYSTEM_BASE: FULL (creative decisions), CORE (supporting
+   * specialists), NONE (gates, pixel checks). Absent = NONE. */
+  content_intelligence: z.enum(["FULL", "CORE", "NONE"]).optional(),
 });
 
 export type PromptFrontmatter = z.infer<typeof PromptFrontmatterSchema>;

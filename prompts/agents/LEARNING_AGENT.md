@@ -9,6 +9,7 @@ model_class: HIGH
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: CORE
 ---
 
 Propose durable beliefs from accumulated evidence. **You propose; you never promote.** A

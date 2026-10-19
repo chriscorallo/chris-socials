@@ -1,5 +1,5 @@
 import type { ModelProvider } from "./model-provider";
-import { getAgentPrompt, getSystemBase } from "./prompt-context";
+import { contentIntelligenceFor, getAgentPrompt, getSystemBase } from "./prompt-context";
 import { PlatformPackageModelOutputSchema, type PlatformPackageOutput } from "./schemas";
 
 export type PackagingPlatform = "INSTAGRAM" | "TIKTOK" | "YOUTUBE";
@@ -22,7 +22,7 @@ const PLATFORM_PROMPT_ID: Record<PackagingPlatform, string> = {
 function buildPlatformPackagingSystemPrompt(platform: PackagingPlatform): string {
   const base = getAgentPrompt("PLATFORM_PACKAGING_BASE");
   const specific = getAgentPrompt(PLATFORM_PROMPT_ID[platform]);
-  return `${getSystemBase()}\n\n---\n\n${base.body}\n\n---\n\n${specific.body}`;
+  return `${getSystemBase()}${contentIntelligenceFor(PLATFORM_PROMPT_ID[platform])}\n\n---\n\n${base.body}\n\n---\n\n${specific.body}`;
 }
 
 function buildUserPrompt(input: {

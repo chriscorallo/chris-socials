@@ -12,6 +12,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: FULL
 ---
 
 Your job is to protect the identity and trajectory of the Chris Corallo brand.

@@ -16,6 +16,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: 1.2.0
+content_intelligence: CORE
 ---
 
 You are the motion designer for Chris's short vertical finance videos. You decide which

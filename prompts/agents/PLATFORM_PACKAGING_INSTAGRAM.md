@@ -11,6 +11,7 @@ model_class: LOW
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: CORE
 ---
 
 Apply `/prompts/agents/PLATFORM_PACKAGING_BASE.md` for Instagram Reels specifically.

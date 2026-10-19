@@ -12,6 +12,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: 1.0.0
+content_intelligence: FULL
 ---
 
 Optimize the physical creation process. Your goal is premium output with minimum avoidable

@@ -100,22 +100,21 @@ export function batchVideos<T>(videos: readonly T[], size: number): T[][] {
 }
 
 /**
- * Faithful summary of /brand/BRAND_CONSTITUTION.md and /brand/CHRIS_BRAIN.md (v1). Those
- * files are human-owned and never edited from here; brand-guidance.test.ts fails if a phrase
- * quoted below disappears from them, so this summary can't drift silently.
+ * Faithful summary of /brand/BRAND_CONSTITUTION.md and /brand/CHRIS_BRAIN.md (v2, 2026-10-19).
+ * Those files are human-owned and never edited from here; script-import-prompt.test.ts fails if
+ * a phrase quoted below disappears from them, so this summary can't drift silently.
  */
 export const BRAND_GUIDANCE = `WHO I AM
-- My personal brand is Chris Corallo. Finance is my strongest pillar right now (money, debt, credit, investing, retirement, insurance, practical adulthood), but I'm not just "the finance guy": mindset, lifestyle and the things I'm into are part of it too.
-- Audience: ambitious people in their 20s and 30s trying to get their shit together without pretending they already understand everything.
-- Ethos: stop pretending you understand shit you don't. Ask better questions, look at the actual numbers, and build a better life intentionally.
-- People should come for useful money content and increasingly stay for me.
+- Entertainment that happens to teach people about money. I investigate ridiculous questions about money and life, do the actual math, and show you what the answers really mean.
+- Finance is the tool used to answer an interesting question, not necessarily the topic announced at the beginning. People arrive for curiosity and entertainment and stay for me.
+- Audience: ambitious people in their twenties and thirties who want to improve their lives, understand money, make better decisions and be entertained (not only people already into finance).
+- My series: Pick Your Poison, I Did The Math, The Financial Butterfly Effect, How Broke Is This Character?, Money Makes No Sense, The Cost of Being Alive.
 
 HOW I SOUND
-- Direct, conversational, skeptical, curious. Confident without pretending certainty. Funny when appropriate. Plain English. Naturally, occasionally, profane.
-- I'm interested in actual numbers and how systems really work.
-- Use: direct openings, real scenarios, concrete dollar examples, strong questions, plain-English explanations, "okay, but what does that actually mean?" thinking.
-- Specific > generic. Interesting > merely informative. Clear > sophisticated-sounding. Real numbers > vague claims. Evidence > guru folklore.
-- Never: "unlock your financial future", "level up your finances", "game changer", fake urgency, generic hacks, emoji spam, generic engagement bait, finance-bro language, fake guru tone, corporate educational tone, obviously AI-written copy.`;
+- Like an interesting person explaining something surprising to a friend. Direct, conversational, curious, skeptical. Intelligent without sounding academic. Confident without pretending certainty. Occasionally sarcastic, naturally funny, occasionally profane when it fits naturally. Honest about assumptions and uncertainty.
+- About a fifth-to-seventh-grade reading level. Plain words: "what else could that money have done?", not "opportunity cost".
+- Never: corporate language, motivational clichés, generic financial-influencer advice ("unlock your financial future", "level up", "game changer"), forced gen z slang, fake excitement, patronizing explanations, filler suspense ("but here's the crazy part"), predictable "like, comment and follow" endings, generic intros ("hey guys, welcome back"), obviously ai-written copy.
+- Humor comes from the scenario. Never mock people for poverty, debt, disability or circumstances outside their control.`;
 
 export interface BuildPromptInput {
   videos: readonly PromptVideo[];

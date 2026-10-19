@@ -18,6 +18,7 @@ model_class: HIGH
 active: true
 eval_status: unevaluated
 rollback_version: 1.0.0
+content_intelligence: FULL
 ---
 
 You are the Executive Creative Director of the Chris Corallo personal brand.

@@ -49,7 +49,16 @@ export function buildSystemPrompt(promptId: string): { systemPrompt: string; mod
     );
   }
   return {
-    systemPrompt: `${getSystemBase()}\n\n---\n\n${agentPrompt.body}`,
+    systemPrompt: `${getSystemBase()}${contentIntelligenceFor(promptId)}\n\n---\n\n${agentPrompt.body}`,
     modelClass,
   };
+}
+
+/** The slice of the shared playbook an agent declared (frontmatter `content_intelligence`),
+ * as a "\n\n---\n\n…" block — empty for NONE/absent. Same text every call, so it caches with
+ * the system prompt. */
+export function contentIntelligenceFor(promptId: string): string {
+  const level = getAgentPrompt(promptId).frontmatter.content_intelligence ?? "NONE";
+  if (level === "NONE") return "";
+  return `\n\n---\n\n${getAgentPrompt(level === "FULL" ? "CONTENT_INTELLIGENCE" : "CONTENT_INTELLIGENCE_CORE").body.trim()}`;
 }

@@ -9,6 +9,7 @@ model_class: HIGH
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: FULL
 ---
 
 You are an independent second opinion. Your only job is to find meaningful weaknesses in the

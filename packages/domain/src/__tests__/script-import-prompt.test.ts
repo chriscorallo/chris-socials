@@ -141,37 +141,36 @@ describe("BRAND_GUIDANCE stays faithful to /brand (human-owned files are never e
   it("every quoted phrase still exists in BRAND_CONSTITUTION.md / CHRIS_BRAIN.md", () => {
     const constitution = brand("BRAND_CONSTITUTION.md");
     const brain = brand("CHRIS_BRAIN.md");
-    const both = `${constitution}\n${brain}`.toLowerCase();
+    const both = `${constitution}\n${brain}`.toLowerCase().replace(/\s+/g, " ");
     const phrases = [
-      "trying to get their shit together without",
-      "pretending they already understand everything",
-      "stop pretending you understand shit you don't",
-      "ask better questions, look at the actual",
-      "build a better life intentionally",
-      "people should come for useful money content and increasingly stay for chris",
+      "entertainment that happens to teach people about money",
+      "i investigate ridiculous questions about money and life, do the",
+      "finance is the tool used to answer an interesting question",
+      "ambitious people in their twenties and thirties",
+      "pick your poison",
+      "i did the math",
+      "the financial butterfly effect",
+      "how broke is this character?",
+      "money makes no sense",
+      "the cost of being alive",
+      "explaining something surprising to a friend",
+      "intelligent without sounding academic",
       "confident without pretending certainty",
-      "naturally, occasionally, profane",
-      "interested in actual numbers and how systems really work",
-      "concrete dollar examples",
-      '"okay, but what does that actually mean?" thinking',
+      "honest about assumptions and uncertainty",
+      "what else could that money have done?",
+      "motivational clichés",
       "unlock your financial future",
-      "level up your finances",
       "game changer",
-      "fake urgency",
-      "generic hacks",
-      "emoji spam",
-      "generic engagement bait",
-      "finance-bro language",
-      "fake guru tone",
-      "corporate educational tone",
+      "forced gen z slang",
+      "fake excitement",
+      "but here's the crazy part",
+      "predictable \"like, comment and follow\" endings",
+      "hey guys, welcome back",
       "obviously ai-written copy",
-      "specific > generic",
-      "interesting > merely informative",
-      "clear > sophisticated-sounding",
-      "real numbers > vague claims",
-      "evidence > guru folklore",
+      "never mocking people for poverty, debt, disability",
     ];
     for (const p of phrases) expect(both, p).toContain(p);
-    for (const p of phrases.filter((x) => !x.startsWith("people should"))) expect(BRAND_GUIDANCE.toLowerCase(), p).toContain(p.replace(/\n/g, " "));
+    const summaryOnly = new Set(["never mocking people for poverty, debt, disability", "i investigate ridiculous questions about money and life, do the"]);
+    for (const p of phrases.filter((x) => !summaryOnly.has(x))) expect(BRAND_GUIDANCE.toLowerCase(), p).toContain(p.replace(/\n/g, " "));
   });
 });

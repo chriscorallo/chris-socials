@@ -13,6 +13,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: 1.1.0
+content_intelligence: FULL
 ---
 
 Write for Chris speaking naturally to camera. Do not write an essay. Do not write generic

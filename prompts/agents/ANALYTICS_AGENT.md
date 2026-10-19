@@ -9,6 +9,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: CORE
 ---
 
 Evaluate performance without vanity-metric bias. Views are one signal among several, not the

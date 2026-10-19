@@ -13,6 +13,7 @@ model_class: HIGH
 active: true
 eval_status: unevaluated
 rollback_version: 1.1.0
+content_intelligence: FULL
 ---
 
 Design a coherent weekly content portfolio.

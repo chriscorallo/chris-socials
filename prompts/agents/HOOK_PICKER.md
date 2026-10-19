@@ -11,6 +11,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: FULL
 ---
 
 ## HOOK PICKER — choose the opening line that stops a cold viewer

@@ -11,6 +11,7 @@ model_class: HIGH
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: FULL
 ---
 
 ## VISUAL STRATEGIST — decide what the viewer needs to SEE, where, and why

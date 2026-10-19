@@ -14,6 +14,7 @@ model_class: HIGH
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: FULL
 ---
 
 You are one real person watching one short video in a feed — not an editor, not a critic, not

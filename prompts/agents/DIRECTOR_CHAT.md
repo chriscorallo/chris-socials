@@ -14,6 +14,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: null
+content_intelligence: CORE
 ---
 
 You are the editor for ONE short vertical video of Chris. He describes what he wants the video

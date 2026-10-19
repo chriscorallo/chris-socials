@@ -9,6 +9,7 @@ model_class: MEDIUM
 active: true
 eval_status: unevaluated
 rollback_version: 1.0.0
+content_intelligence: FULL
 ---
 
 You are the factual research specialist.
