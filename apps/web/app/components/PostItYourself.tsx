@@ -129,7 +129,7 @@ export function PostItYourself({ videoUrl, fileName, texts }: { videoUrl: string
                 </a>
               </div>
               {!t ? (
-                <p className="mt-1 text-[12.5px] leading-snug text-[var(--color-text-muted)]">No text yet — it&apos;s written when you tap Finish (or type it under &ldquo;Captions for each app&rdquo;).</p>
+                <p className="mt-1 text-[12.5px] leading-snug text-[var(--color-text-muted)]">No text yet — tap Finish in the editor and the AI writes it (you can edit it after).</p>
               ) : (
                 <div className="mt-2 flex flex-col gap-2">
                   {t.title && (
