@@ -23,6 +23,7 @@ import {
   recordAdversarialCritique,
   deleteVideo,
   type ContentState,
+  creativeBriefTextFor,
 } from "@chris/domain";
 import {
   regateEditedScript,
