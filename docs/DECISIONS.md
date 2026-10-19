@@ -9001,3 +9001,23 @@ logged (state stays honest); other failures (overload, network) aren't evidence 
 logged. Called before each gate (ai-readiness, viewer-check, director state/ask, AI credit page).
 
 **Reversibility:** remove the calls; no schema change.
+
+---
+
+## 2026-10-19 — AI edit (the third Auto edit choice, was a "coming later" placeholder)
+
+Chris pointed at the grayed "AI edit — coming later" choice in the editor's Auto edit tab; it
+was never built. Built from existing, tested pieces plus one new agent:
+1. **Base:** the free Full edit (cut to reference length, fluff out, hook candidates found) —
+   reused as-is if it's already the current edit.
+2. **Hook:** new `HOOK_PICKER` agent (`prompts/agents/HOOK_PICKER.md`, MEDIUM class, typed
+   `HookPickSchema`) chooses among the Full edit's candidates — sentences Chris actually said;
+   it can't invent words and an out-of-range pick is refused. Semantic judgment (does the line
+   stand alone, does it pay off) replaces the keyword heuristic's choice; re-cut via the
+   existing `hookIndex` choice.
+3. **Graphics:** the existing Motion Designer (`designVisualsAction`, replaceExisting) designs
+   graphics for what he's saying, replacing the Full edit's template graphics.
+Each step saves a new version (undo walks back). If step 3 fails, the AI hook stays and the
+error says so. Client orchestration: `StyleCutPanel.tsx` `runAi`; action
+`edit/ai-edit-actions.ts`. Not yet measured on a real video: hook pick ≈ a few cents (Sonnet),
+graphics per the Motion Designer's own estimate.

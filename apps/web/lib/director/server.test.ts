@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   prisma,
   analyzeMediaAsset,
@@ -15,6 +15,9 @@ import { MockModelProvider } from "@chris/agents";
 import { EditTimelineSchema, expandFaceToProtectedRegion } from "@chris/media";
 import { readDirectorRecord } from "@chris/media/director";
 import { askDirectorAi, directorMessagesView, directorState, prepareDirectorTurn, submitDirectorAnswer, undoDirectorChange } from "./server";
+
+// No network in tests: the stale-credit re-check (ai-credit-probe.ts) has its own test.
+vi.mock("../ai-credit-probe", () => ({ recheckAiCreditIfStale: async () => "not-needed" }));
 
 /**
  * Director chat against the throwaway DB: the conversation is stored append-only, every applied

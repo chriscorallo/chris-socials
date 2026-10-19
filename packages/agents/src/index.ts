@@ -23,6 +23,7 @@ export * from "./take-selector-agent";
 export * from "./edit-planner-agent";
 export * from "./visual-qa-agent";
 export * from "./platform-packaging-agent";
+export * from "./hook-picker-agent";
 export * from "./scheduler-agent";
 export * from "./analytics-agent";
 export * from "./audience-intelligence-agent";

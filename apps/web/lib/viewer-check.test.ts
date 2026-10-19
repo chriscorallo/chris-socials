@@ -15,6 +15,9 @@ import { sampleViewerReview } from "@chris/agents";
 import { aiAvailability, attentionStrip, isAiUnavailableError, type ViewerCheckData } from "./viewer-check-view";
 import { getViewerCheckForVideo } from "./viewer-check";
 
+// No network in tests: the stale-credit re-check (ai-credit-probe.ts) has its own test.
+vi.mock("./ai-credit-probe", () => ({ recheckAiCreditIfStale: async () => "not-needed" }));
+
 // The card is a client component: render it on the server with the router and the server
 // action stubbed — enough to check what each state SHOWS (no browser needed).
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => undefined }) }));

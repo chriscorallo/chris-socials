@@ -3,13 +3,16 @@
 import { useState } from "react";
 import type { FullEditChoices } from "@chris/media/timeline";
 import { useEditor } from "./context";
-import { setAutoEditModeAction, styleCutAction } from "./actions";
+import { setAutoEditModeAction, styleCutAction, designVisualsAction, designVisualsResultAction } from "./actions";
+import { aiPickHookAction } from "./ai-edit-actions";
+import { waitForJob } from "../../../../lib/use-job-progress";
 
 /**
  * "Auto edit" — the automatic edits, side by side (docs/decisions-pending/full-edit.md):
  *  - Full edit (free): hook first, the story said once and tight, graphics with his numbers.
  *  - Cuts only: the style cut — pauses out, punch-ins on his face.
- *  - AI edit: later (needs AI credit).
+ *  - AI edit (uses AI credit): the Full edit, then the AI picks the opening line and redesigns
+ *    the graphics (docs/DECISIONS.md "AI edit").
  * Every choice is saved as a NEW version (undo brings the previous edit back). The full edit's
  * hook, title, graphics and removed lines can each be changed in one tap.
  */
@@ -20,9 +23,12 @@ export function StyleCutPanel() {
   const [error, setError] = useState<string | null>(null);
   const [showRemoved, setShowRemoved] = useState(false);
   const [showHooks, setShowHooks] = useState(false);
+  /** AI edit progress line while it runs; the AI's reason for its hook once done. */
+  const [aiStep, setAiStep] = useState<string | null>(null);
+  const [aiDone, setAiDone] = useState<{ hook: string; reason: string; graphics: number } | null>(null);
+  const current: "FULL" | "CUTS" | "AI" | null = styleCut.fullEditActive ? (aiDone ? "AI" : "FULL") : styleCut.active ? "CUTS" : null;
   const hasCaptions = styleCut.hasWords;
   const fe = styleCut.fullEdit;
-  const current: "FULL" | "CUTS" | null = styleCut.fullEditActive ? "FULL" : styleCut.active ? "CUTS" : null;
   const hasExtras = doc.texts.length + doc.visuals.length + doc.zooms.length + doc.sfx.length > 0;
 
   const run = async (mode: "STYLE" | "PLAIN" | "FULL", choices?: FullEditChoices, label?: string) => {
@@ -30,6 +36,7 @@ export function StyleCutPanel() {
     if ((dirty || (hasExtras && mode !== "FULL")) && !window.confirm(`${dirty ? "Your unsaved changes will be replaced. " : ""}${hasExtras && mode !== "FULL" ? "Text and graphics are timed to the current cut, so they'll be removed. " : ""}You can undo this.`)) return;
     setBusy(label ?? mode);
     setError(null);
+    setAiDone(null);
     try {
       const res = await styleCutAction({ contentItemId: itemId, mode, choices });
       if (!res.ok) {
@@ -50,6 +57,68 @@ export function StyleCutPanel() {
       setError("Couldn't reach the server. Your edit is unchanged — try again.");
     } finally {
       setBusy(null);
+    }
+  };
+
+  /** AI edit: Full edit base → AI picks the hook → AI designs the graphics. Each step saves a version. */
+  const runAi = async () => {
+    if (busy) return;
+    if (dirty && !window.confirm("Your unsaved changes will be replaced. You can undo this.")) return;
+    setBusy("AI");
+    setError(null);
+    setAiDone(null);
+    try {
+      // 1. The Full edit is the base (cut to length, fluff out, hook candidates found).
+      let report = styleCut.fullEditActive ? fe : null;
+      let sc = styleCut;
+      if (!report) {
+        setAiStep("Making the Full edit…");
+        const res = await styleCutAction({ contentItemId: itemId, mode: "FULL" });
+        if (!res.ok) return setError(res.error);
+        loadSavedVersion(res.timeline, res.state);
+        report = res.fullEdit ?? null;
+        sc = { ...sc, active: false, fullEditActive: true, fullEdit: report, profileNote: res.profileNote ?? sc.profileNote };
+        setStyleCut(sc);
+      }
+      if (!report) return setError("The Full edit didn't come back — try again.");
+
+      // 2. The AI picks the opening line among the sentences he said.
+      let hookText = report.hook.text;
+      let hookReason = "Kept the Full edit's hook.";
+      if (report.hook.candidates.length > 1) {
+        setAiStep("AI is picking the strongest hook…");
+        const pick = await aiPickHookAction({ contentItemId: itemId, candidates: report.hook.candidates });
+        if (!pick.ok) return setError(pick.error);
+        hookReason = pick.reason;
+        if (pick.chosenIndex !== report.hook.chosenIndex) {
+          setAiStep("Re-cutting with the AI's hook…");
+          const res = await styleCutAction({ contentItemId: itemId, mode: "FULL", choices: { ...((report.choices ?? {}) as FullEditChoices), hookIndex: pick.chosenIndex } });
+          if (!res.ok) return setError(res.error);
+          loadSavedVersion(res.timeline, res.state);
+          report = res.fullEdit ?? report;
+          sc = { ...sc, fullEditActive: true, fullEdit: report };
+          setStyleCut(sc);
+        }
+        hookText = report.hook.text;
+      }
+
+      // 3. The AI designs the graphics for what he's saying (replaces the template ones).
+      setAiStep("AI is designing the graphics…");
+      let vis = await designVisualsAction({ contentItemId: itemId, replaceExisting: true });
+      if (vis.ok && "pending" in vis) {
+        const jobRunId = vis.jobRunId;
+        const done = await waitForJob(jobRunId, (v) => v.status === "RUNNING" && setAiStep(v.line ?? "AI is designing the graphics…"));
+        vis = done.status === "SUCCEEDED" || done.status === "FAILED" ? await designVisualsResultAction(itemId, jobRunId) : { ok: false, error: "Designing didn't finish — try again." };
+      }
+      if (!vis.ok) return setError(`The hook is done, but the graphics step failed: ${vis.error}`);
+      loadSavedVersion(vis.timeline, vis.state);
+      setAiDone({ hook: hookText, reason: hookReason, graphics: vis.added.length });
+      toast("AI edit saved as a new version.");
+    } catch {
+      setError("Couldn't reach the server. Whatever finished is saved — try again.");
+    } finally {
+      setBusy(null);
+      setAiStep(null);
     }
   };
 
@@ -110,8 +179,16 @@ export function StyleCutPanel() {
       <div className="flex flex-col gap-2">
         <Choice id="FULL" title="Full edit (free)" blurb="Strong hook first, every point said once, graphics with your numbers. No AI, free." onClick={() => void run("FULL", {}, "FULL")} />
         <Choice id="CUTS" title="Cuts only" blurb="Just takes out your pauses, with punch-ins on your face." onClick={() => void run("STYLE")} />
-        <Choice id="AI" title="AI edit" blurb="Needs AI credit — coming later." disabled badge="Later" />
+        <Choice id="AI" title="AI edit" blurb={busy === "AI" ? (aiStep ?? "Working…") : "Full edit, then the AI picks the strongest hook and designs the graphics. Uses AI credit."} onClick={() => void runAi()} badge="AI" />
       </div>
+
+      {aiDone && (
+        <div className="fe-summary mt-3" data-testid="ai-edit-summary">
+          <p className="text-[13px] font-semibold leading-snug">AI hook: “{aiDone.hook}”</p>
+          <p className="mt-1 text-[12px] leading-snug text-[var(--color-text-muted)]">{aiDone.reason}</p>
+          <p className="mt-1 text-[12px] text-[var(--color-text-muted)]">{aiDone.graphics} graphic{aiDone.graphics === 1 ? "" : "s"} designed by the AI.</p>
+        </div>
+      )}
 
       {fe && (
         <div className="fe-summary mt-3" data-testid="full-edit-summary">
