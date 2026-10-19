@@ -27,6 +27,7 @@ import {
   toPipelineResultInput,
   type PackagingPlatform,
 } from "@chris/agents";
+import { EditTimelineSchema, timelineCaptionWords } from "@chris/media/timeline";
 import { getModelProvider } from "./model-provider";
 import { isAutoTranscriptionEnabled } from "./render-config";
 import { runHeavyJob, type RunHeavyJobResult } from "./heavy-jobs";
@@ -112,12 +113,34 @@ export async function runEditPlanStep(contentItemId: string, actor: Actor) {
   return recordEditPlan(prisma, planFields, actor);
 }
 
-export async function runPackagingStep(contentItemId: string, platform: PackagingPlatform, actor: Actor) {
+/**
+ * What's actually SAID in the finished video: the words of the latest successful render's
+ * timeline (a condensed Full edit drops most of a long take — captions must describe the cut,
+ * not the fluff). Falls back to the selected take's transcript, then any kept take's.
+ */
+export async function finalTranscriptFor(contentItemId: string): Promise<string> {
+  const render = await prisma.render.findFirst({ where: { contentItemId, status: "SUCCESS" }, orderBy: { createdAt: "desc" }, select: { editPlanId: true } });
+  const plan = render ? await prisma.editPlan.findUnique({ where: { id: render.editPlanId }, select: { plan: true } }) : null;
+  const parsed = EditTimelineSchema.safeParse((plan?.plan as Record<string, unknown> | null)?.timeline);
+  if (parsed.success) {
+    const timeline = parsed.data;
+    const assets = await prisma.mediaAsset.findMany({ where: { id: { in: [...new Set(timeline.clips.map((c) => c.mediaAssetId))] } }, select: { id: true, transcriptWords: true } });
+    const wordsByAsset = Object.fromEntries(assets.map((a) => [a.id, parseTranscriptWords(a.transcriptWords)]));
+    const text = timelineCaptionWords({ clips: timeline.clips, captions: { ...timeline.captions, uppercase: false } }, wordsByAsset)
+      .map((w) => w.word.trim())
+      .filter(Boolean)
+      .join(" ");
+    if (text) return text;
+  }
   const takeSelection = await getLatestTakeSelection(prisma, contentItemId);
-  const selectedAsset = takeSelection
-    ? await prisma.mediaAsset.findUnique({ where: { id: takeSelection.selectedMediaAssetId } })
-    : null;
-  const finalTranscript = selectedAsset?.transcript ?? "(no transcript available)";
+  const selectedAsset = takeSelection ? await prisma.mediaAsset.findUnique({ where: { id: takeSelection.selectedMediaAssetId } }) : null;
+  if (selectedAsset?.transcript) return selectedAsset.transcript;
+  const anyTake = await prisma.mediaAsset.findFirst({ where: { contentItemId, removedAt: null, transcript: { not: null } }, orderBy: { createdAt: "desc" }, select: { transcript: true } });
+  return anyTake?.transcript ?? "(no transcript available)";
+}
+
+export async function runPackagingStep(contentItemId: string, platform: PackagingPlatform, actor: Actor) {
+  const finalTranscript = await finalTranscriptFor(contentItemId);
   const brandContext = await getBrandContextText(prisma);
   const pkg = await runPlatformPackagingAgent(getModelProvider(), { platform, finalTranscript, brandContext });
   return recordPlatformPackage(

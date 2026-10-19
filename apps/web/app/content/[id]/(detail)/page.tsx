@@ -53,6 +53,8 @@ import {
   deleteVideoAction,
 } from "../actions";
 import { DeleteVideoButton } from "../../../components/DeleteVideoButton";
+import { CaptionEditor } from "../../../components/CaptionEditor";
+import type { CaptionPlatform } from "../caption-actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
 // Vercel Fluid Compute ceiling instead of the platform default. See /docs/DECISIONS.md.
@@ -1226,27 +1228,39 @@ export default async function ContentDetailPage({
             </CollapsiblePanel>
           )}
 
-          {item.platformPackages.length > 0 && (
-            <CollapsiblePanel eyebrow="Distribution" title="Platform Packages">
-              <div className="flex flex-col gap-3">
-                {ALL_PLATFORMS.filter((p) => packagedPlatforms.has(p)).map((platform) => {
-                  const pkg = item.platformPackages.find((p) => p.platform === platform)!;
-                  return (
-                    <div key={platform} className="border-t border-[var(--color-border)] pt-3 first:border-0 first:pt-0">
-                      <p className="text-[13px]">
-                        <span className="font-medium">{platformLabel(platform)}</span>
-                        {pkg.title ? ` — ${pkg.title}` : ""}
-                      </p>
-                      <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">{pkg.caption}</p>
-                      {(pkg.hashtags as string[]).length > 0 && (
-                        <p className="mt-1 text-xs text-[var(--color-text-faint)]">
-                          {(pkg.hashtags as string[]).join(" ")}
+          {(item.platformPackages.length > 0 || item.currentState === "READY" || item.currentState === "SCHEDULED") && (
+            <CollapsiblePanel eyebrow="Distribution" title="Captions for each app" defaultOpen={item.currentState === "READY" || item.currentState === "SCHEDULED"}>
+              {item.currentState === "READY" || item.currentState === "SCHEDULED" ? (
+                <CaptionEditor
+                  contentItemId={item.id}
+                  platforms={[...ALL_PLATFORMS]}
+                  initial={ALL_PLATFORMS.filter((p) => packagedPlatforms.has(p)).map((platform) => {
+                    const pkg = item.platformPackages.find((p) => p.platform === platform)!;
+                    const meta = (pkg.metadata ?? null) as Record<string, unknown> | null;
+                    return { platform: platform as CaptionPlatform, caption: pkg.caption, title: pkg.title, hashtags: (pkg.hashtags as string[]) ?? [], source: typeof meta?.source === "string" ? meta.source : "AI" };
+                  })}
+                />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {ALL_PLATFORMS.filter((p) => packagedPlatforms.has(p)).map((platform) => {
+                    const pkg = item.platformPackages.find((p) => p.platform === platform)!;
+                    return (
+                      <div key={platform} className="border-t border-[var(--color-border)] pt-3 first:border-0 first:pt-0">
+                        <p className="text-[13px]">
+                          <span className="font-medium">{platformLabel(platform)}</span>
+                          {pkg.title ? ` — ${pkg.title}` : ""}
                         </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">{pkg.caption}</p>
+                        {(pkg.hashtags as string[]).length > 0 && (
+                          <p className="mt-1 text-xs text-[var(--color-text-faint)]">
+                            {(pkg.hashtags as string[]).join(" ")}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CollapsiblePanel>
           )}
 

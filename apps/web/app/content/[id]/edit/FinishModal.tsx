@@ -22,8 +22,10 @@ import { planQualityStep, onAiCheckFailure, skippedDetail } from "../../../../li
 import { useEditor } from "./context";
 import { browserMeasureText } from "./measure";
 import { Icon } from "./icons";
+import { writeCaptionsAction, type CaptionView, type CaptionPlatform } from "../caption-actions";
+import { CaptionEditor } from "../../../components/CaptionEditor";
 
-type StepId = "save" | "render" | "check" | "schedule";
+type StepId = "save" | "render" | "check" | "captions" | "schedule";
 type StepStatus = "waiting" | "running" | "done" | "skipped" | "failed";
 
 interface Step {
@@ -38,6 +40,7 @@ const LABELS: Record<StepId, string> = {
   save: "Save your edit",
   render: "Render the video",
   check: "Quality check",
+  captions: "Write the captions",
   schedule: "Put it on the calendar",
 };
 
@@ -45,6 +48,7 @@ const RUNNING_DETAIL: Record<StepId, string> = {
   save: "Saving a new version…",
   render: "Rendering in full quality — this can take a minute or two…",
   check: "Checking facts, brand, picture and sound…",
+  captions: "Writing a caption for each app (and a YouTube title)…",
   schedule: "Scheduling…",
 };
 
@@ -88,6 +92,8 @@ export function FinishModal({
   const [elapsed, setElapsed] = useState(0);
   const [renderPct, setRenderPct] = useState<number | null>(null);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
+  /** Text each app gets when it posts (written at the captions step, editable on the done screen). */
+  const [captions, setCaptions] = useState<{ list: CaptionView[]; missing: { platform: CaptionPlatform; reason: string }[] } | null>(null);
   // "Quality check before scheduling" (Firm / Let me skip it) + can the AI run right now.
   const [quality, setQuality] = useState<QualitySettings | null>(null);
   const [skipThis, setSkipThis] = useState(false);
@@ -151,7 +157,18 @@ export function FinishModal({
     }
   }
 
+  /** Captions never stop the Finish: an app the AI couldn't write for is typed on the done screen. */
+  async function captionsStep() {
+    patch("captions", { status: "running", detail: RUNNING_DETAIL.captions });
+    const res = await writeCaptionsAction({ contentItemId: itemId, platforms: [...platforms] }).catch(() => null);
+    const missing = res ? res.missing : [...platforms].map((p) => ({ platform: p as CaptionPlatform, reason: "couldn't reach the server" }));
+    setCaptions({ list: res?.captions ?? [], missing });
+    if (missing.length === 0) patch("captions", { status: "done", detail: "Written for each app — read or edit them below." });
+    else patch("captions", { status: "done", detail: `Couldn't write ${missing.map((m) => PLATFORM_SHORT_LABEL[m.platform as PlatformId]).join(", ")} (${missing[0]!.reason}) — type it below before it posts.` });
+  }
+
   async function scheduleStep() {
+    await captionsStep();
     patch("schedule", { status: "running", detail: RUNNING_DETAIL.schedule });
     const res = await scheduleStepAction({ contentItemId: itemId, scheduledDate: date, platforms: [...platforms] }).catch(() => null);
     if (!res || !res.ok) {
@@ -207,7 +224,7 @@ export function FinishModal({
     const qPlan = planQualityStep({ mode: quality?.mode ?? "FIRM", ai: quality?.ai ?? { ready: true, reason: null }, skipThis });
     const skipAi = qPlan.kind === "SKIP";
     const needSave = dirty || !["EDIT_PLANNED", "RENDERED", "READY", "SCHEDULED"].includes(state);
-    const plan: Step[] = (["save", "render", "check", "schedule"] as StepId[]).map((id) => ({ id, label: id === "check" && skipAi ? SKIP_LABEL : LABELS[id], status: "waiting" }));
+    const plan: Step[] = (["save", "render", "check", "captions", "schedule"] as StepId[]).map((id) => ({ id, label: id === "check" && skipAi ? SKIP_LABEL : LABELS[id], status: "waiting" }));
     setSteps(plan);
     setPhase("running");
     setSkippedAi(null);
@@ -370,7 +387,7 @@ export function FinishModal({
         {phase === "form" && (
           <div className="px-6 pb-6">
             <p className="mb-5 text-[13px] leading-relaxed text-[var(--color-text-muted)]">
-              We&apos;ll save your edit, render it in full quality, run the quality check, and put it on the calendar — all in one go.
+              We&apos;ll save your edit, render it in full quality, run the quality check, write the caption for each app, and put it on the calendar — all in one go.
             </p>
             <div className="ed-finish-steps" aria-hidden>
               <span>1 Save</span>
@@ -379,7 +396,9 @@ export function FinishModal({
               <i>›</i>
               <span>3 Check</span>
               <i>›</i>
-              <span>4 Schedule</span>
+              <span>4 Captions</span>
+              <i>›</i>
+              <span>5 Schedule</span>
             </div>
             <label className="block">
               <span className="ed-label">When should it go out?</span>
@@ -537,6 +556,12 @@ export function FinishModal({
                 <button type="button" className="btn btn-primary mt-3 w-full !text-[13px]" disabled={modeSaving} onClick={() => void switchToSkipAndContinue()}>
                   Let me skip it &amp; schedule
                 </button>
+              </div>
+            )}
+            {phase === "done" && captions && (
+              <div className="mt-5" data-testid="finish-captions">
+                <p className="ed-label">What each app will show</p>
+                <CaptionEditor contentItemId={itemId} platforms={[...platforms] as CaptionPlatform[]} initial={captions.list} missing={captions.missing} />
               </div>
             )}
             {phase === "done" && (

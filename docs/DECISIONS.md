@@ -8948,3 +8948,39 @@ The migration is additive; a removed row could be un-removed in SQL, but its fil
 
 Worker code changed (filters in heavy-jobs / transcribe / proxy / matte / film jobs): the
 cloud-worker sandbox snapshot should be rebuilt so the live ingest job ignores removed takes.
+
+---
+
+## 2026-10-19 — Captions at Finish (each app's text written before scheduling, editable)
+
+**What happened:** Chris asked whether the caption / title / description reach each app's
+native fields (they do — IG `caption`, YouTube `snippet.title/description/tags`, TikTok
+`post_info.title` once audited; inbox mode can't carry text) and then for captions without
+extra effort. Inspection found a real gap: **Finish & schedule never packaged** — only
+Autopilot called `runPackagingStep` — so a video scheduled from the editor reached publish
+with no `PlatformPackage` and was skipped ("No PlatformPackage recorded…", publish-job.ts).
+
+**Decision:**
+- Finish gains a step between Check and Schedule: **Write the captions**
+  (`writeCaptionsAction`, `app/content/[id]/caption-actions.ts`). For each chosen app with no
+  package yet it runs the existing packaging agents (LOW class → Haiku 5.5, ≈ $0.001/app,
+  ≈ $0.003/video); an app that already has text (incl. Chris's edits) is never rewritten.
+- The step **never fails the Finish** (graceful degradation): an app the AI couldn't write for
+  (no credit, cap, etc.) comes back in `missing`, and the done screen shows empty fields to
+  type into, with the reason. Preflight still blocks an app with no text at post time.
+- **Editable**: the done screen and the video page ("Captions for each app") show one card per
+  app — IG caption, TikTok caption, YouTube title + description — plus hashtags.
+  `saveCaptionAction` validates with `validatePackageText` (the same limits preflight applies)
+  and records a **new** PlatformPackage row (`metadata.source = "OWNER_EDIT"`,
+  `editedFromPackageId`), so history is kept and publish uses the latest.
+- Captions describe the **finished cut**: `finalTranscriptFor` reads the words that survive the
+  latest successful render's timeline (`timelineCaptionWords`), falling back to the selected
+  take's transcript, then any kept take's. A condensed Full edit no longer gets captions about
+  the fluff it cut. (Also used by Autopilot's packaging.)
+
+**Alternatives considered:** a free ChatGPT copy-paste round trip for packaging (rejected for
+now — at ≈ $0.003/video the AI path is effectively free and adds no steps; can be added later
+on the Studio `parsePackAnswer` pattern); packaging at publish time (rejected — Chris must be
+able to read/edit the text before it posts).
+
+**Reversibility:** additive — no schema change; removing the step restores the old Finish.
