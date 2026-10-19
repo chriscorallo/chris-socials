@@ -9056,3 +9056,18 @@ to help the viewer ("when are they confused? when would they need a visual?"), n
 Reversibility: prompt rollback 1.2.0; `strategize` is per-call (the "Design visuals with AI"
 button is unchanged apart from the number and echo rules); story pass 2 is gated on exceeding
 the references' max.
+
+---
+
+## 2026-10-19 — "Post it yourself" (download + copy text) while the apps aren't connected
+
+Chris can't wait on the platform developer-app setup. The video page now has a "Post it
+yourself" panel whenever a finished render exists: **Save video to Photos** (iPhone: first tap
+fetches the render, second tap opens the share sheet → Save Video; Safari only opens the sheet
+straight from a tap; elsewhere a plain download) and one-tap **copy** of each app's exact text —
+Instagram caption, TikTok caption, YouTube title + description — composed with the same
+functions the publishers use (hashtags, limits). Finish's done screen links to it.
+`/api/media/<render>?download=1` serves renders as attachments (Vercel Blob honours
+`download=1` on a presigned URL and sends `Access-Control-Allow-Origin: *` — both verified live
+2026-10-19); takes and previews are never offered for download. One master file for all three
+apps (per-platform variants are still encoded at publish time when an app is connected).

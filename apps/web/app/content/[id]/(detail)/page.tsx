@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll, getAiCheckStatus, canChangeFootage, takesUsedByPlan } from "@chris/domain";
+import { composeInstagramCaption, composeTikTokTitle, composeYouTubeMetadata, prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll, getAiCheckStatus, canChangeFootage, takesUsedByPlan } from "@chris/domain";
 import { ReplaceFootage } from "../../../components/ReplaceFootage";
 import { DeleteTakeButton } from "../../../components/DeleteTakeButton";
 import { aiReadiness } from "../../../../lib/ai-readiness";
@@ -54,6 +54,7 @@ import {
 } from "../actions";
 import { DeleteVideoButton } from "../../../components/DeleteVideoButton";
 import { CaptionEditor } from "../../../components/CaptionEditor";
+import { PostItYourself, type PostText } from "../../../components/PostItYourself";
 import type { CaptionPlatform } from "../caption-actions";
 
 // Server Actions on this page run model calls / ffmpeg synchronously — allow up to the
@@ -122,6 +123,18 @@ export default async function ContentDetailPage({
 
   // Hero media: the latest good render, else the chosen (or first) take, else a placeholder.
   const goodRender = item.renders.find((r) => r.status === "SUCCESS" && r.storageKey);
+  // "Post it yourself": the exact text each app would get (latest package; limits applied).
+  const postTexts: PostText[] = ALL_PLATFORMS.flatMap((platform): PostText[] => {
+    const pkg = item.platformPackages.find((p) => p.platform === platform);
+    if (!pkg) return [];
+    const tags = (pkg.hashtags as string[]) ?? [];
+    if (platform === "YOUTUBE") {
+      const yt = composeYouTubeMetadata({ title: pkg.title, caption: pkg.caption, hashtags: tags });
+      return [{ platform, caption: yt.description, title: yt.title }];
+    }
+    const text = platform === "INSTAGRAM" ? composeInstagramCaption(pkg.caption, tags).text : composeTikTokTitle(pkg.caption, tags).text;
+    return [{ platform, caption: text, title: null }];
+  });
   const heroTake = rawTakes.find((a) => a.id === latestTakeSelection?.selectedMediaAssetId) ?? rawTakes[0];
   const heroKey = goodRender?.storageKey ?? heroTake?.storageKey ?? null;
   const viewerCheck = goodRender ? await getViewerCheckForVideo(item.id).catch(() => null) : null;
@@ -421,6 +434,22 @@ export default async function ContentDetailPage({
             )}
           </div>
         </section>
+
+        {goodRender?.storageKey && (
+          <Panel className="mb-5" id="post">
+            <SectionHeading eyebrow="Post it yourself" title="Save the video, copy the text" />
+            {!["RENDERED", "READY", "SCHEDULED", "PUBLISHING", "PUBLISHED"].includes(item.currentState) && (
+              <p className="mb-3 text-[13px] leading-snug text-[var(--color-gold-400)]">
+                This is the last finished version. You&apos;ve changed the edit since — tap Finish in the editor to make the new one.
+              </p>
+            )}
+            <PostItYourself
+              videoUrl={`/api/media/${goodRender.storageKey}`}
+              fileName={`${item.title.replace(/[^\w -]+/g, "").trim().replace(/\s+/g, "-").slice(0, 60) || "video"}.mp4`}
+              texts={postTexts}
+            />
+          </Panel>
+        )}
 
         {autopilot && (
           <Panel className="mb-5">

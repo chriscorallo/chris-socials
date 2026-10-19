@@ -47,6 +47,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   // Editor-preview files are write-once (bakes are content-addressed by key).
   const previewCache = bake ? "private, max-age=31536000, immutable" : proxyOf ? "private, max-age=86400" : null;
 
+  // "Post it yourself": `?download=1` saves a finished render as a file (attachment) instead of
+  // playing it inline. Renders only — takes and previews are never offered for download here.
+  const download = !!render && new URL(request.url).searchParams.get("download") === "1";
+
   const local = getLocalStorage();
   if (!local) {
     // The compositor preview reads proxies/bakes with fetch(); if the Blob origin refuses that
@@ -55,14 +59,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
       const stream = await streamFromStorage(storageKey);
       if (stream) return new NextResponse(stream, { headers: { "Content-Type": contentType, "Cache-Control": previewCache ?? "private, max-age=0" } });
     }
-    return NextResponse.redirect(await storage.signedUrl(storageKey, 600), 302);
+    const signed = await storage.signedUrl(storageKey, 600);
+    // Vercel Blob honours download=1 on a presigned URL (Content-Disposition: attachment —
+    // verified live 2026-10-19).
+    return NextResponse.redirect(download ? `${signed}${signed.includes("?") ? "&" : "?"}download=1` : signed, 302);
   }
 
   const filePath = local.pathFor(storageKey);
   const { size } = await stat(filePath);
   const baseHeaders: Record<string, string> = {
     "Content-Type": contentType,
-    "Content-Disposition": `inline; filename="${filename}"`,
+    "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
     // Preview proxies/filmstrips are write-once per take: let the phone keep them (no re-download
     // every time the editor opens). Everything else revalidates as before.
     "Cache-Control": previewCache ?? "private, max-age=0, must-revalidate",

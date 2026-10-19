@@ -565,8 +565,13 @@ export function FinishModal({
               </div>
             )}
             {phase === "done" && (
-              <div className="mt-4 flex gap-2">
-                <Link href="/calendar" className="btn btn-primary flex-1 !text-[13px]">
+              <Link href={`/content/${itemId}#post`} className="btn btn-primary mt-4 w-full !min-h-[48px] !text-[14px]" data-testid="finish-post-yourself">
+                Save the video &amp; copy captions to post yourself
+              </Link>
+            )}
+            {phase === "done" && (
+              <div className="mt-2 flex gap-2">
+                <Link href="/calendar" className="btn btn-ghost flex-1 !text-[13px]">
                   <Icon name="calendar" size={14} /> Open calendar
                 </Link>
                 <Link href={`/content/${itemId}`} className="btn btn-ghost flex-1 !text-[13px]">
