@@ -22,6 +22,8 @@ export interface HookPickCandidate {
   reason: string;
 }
 
+const BRIEF_SECTION = "## Creative brief (the plan this video was made to)";
+
 export class HookPickInvalidError extends Error {
   constructor(message: string) {
     super(message);
@@ -31,11 +33,11 @@ export class HookPickInvalidError extends Error {
 
 export async function runHookPickerAgent(
   provider: ModelProvider,
-  input: { candidates: HookPickCandidate[]; transcript: string; brandContext: string },
+  input: { candidates: HookPickCandidate[]; transcript: string; brandContext: string; creativeBrief?: string | null },
 ): Promise<HookPick> {
   if (input.candidates.length === 0) throw new HookPickInvalidError("There are no hook options to choose from.");
   const { systemPrompt, modelClass } = buildSystemPrompt("HOOK_PICKER");
-  const userPrompt = `${input.brandContext}
+  const userPrompt = `${input.brandContext}${input.creativeBrief ? `\n\n${BRIEF_SECTION}\n\n${input.creativeBrief}\n\nPrefer the candidate that IS the planned hook (or says the same thing) when it works cold; otherwise judge every candidate against the plan's hook mechanism and ending objective.` : ""}
 
 ## What Chris said in the full take
 

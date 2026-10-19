@@ -333,6 +333,23 @@ describe("full edit — end to end (pure, model-free embedder)", () => {
     expect(r.report.checks.map((c) => c.id)).toEqual(expect.arrayContaining(["MEANING_MATCH", "VERIFICATION", "COHESION", "QUALITY", "RETENTION"]));
   });
 
+  it("follows the Creative Brief: the planned hook opens the video and the planned payoff survives a tight length target", async () => {
+    const brief = { hook: "How does that even happen?", keep: ["Do that and the raise actually makes you richer."] };
+    const tight = { ...input, story: { targetS: 8, minS: 6, maxS: 10, source: "REFERENCES" as const } };
+    const without = await buildFullEdit(tight, LEXICAL_EMBEDDER);
+    const withBrief = await buildFullEdit({ ...tight, brief }, LEXICAL_EMBEDDER);
+    if (!without.ok || !withBrief.ok) throw new Error("full edit failed");
+    expect(withBrief.report.hook.fromBrief).toBe(true);
+    expect(withBrief.report.hook.text).toBe("How does that even happen?");
+    expect(without.report.hook.fromBrief).toBe(false);
+    const kept = (r: typeof withBrief) => r.sentences.filter((s) => r.story.decisions[s.id]!.kept).map((s) => s.text);
+    expect(kept(withBrief)).toContain("Do that and the raise actually makes you richer.");
+    // The brief changes the plan, never Chris's own choices: an explicit hook pick still wins.
+    const chosen = await buildFullEdit({ ...tight, brief, choices: { hookIndex: 0 } }, LEXICAL_EMBEDDER);
+    if (!chosen.ok) throw new Error("full edit failed");
+    expect(chosen.report.hook.chosenIndex).toBe(0);
+  });
+
   it("is deterministic (same inputs → same key + timeline) and the renderer's placement re-solve changes nothing (parity)", async () => {
     const a = await buildFullEdit(input, LEXICAL_EMBEDDER);
     const b = await buildFullEdit(input, LEXICAL_EMBEDDER);

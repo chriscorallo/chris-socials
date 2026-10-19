@@ -14,6 +14,7 @@ import {
   ANTHROPIC_CREDIT_ERROR_RE,
   type DirectorProvider,
   type PrismaClient,
+  creativeBriefTextFor,
 } from "@chris/domain";
 import {
   applyDirectorAnswer,
@@ -52,6 +53,8 @@ export interface DirectorContext {
   wordsByAsset: Record<string, TranscriptWord[] | null>;
   placement: PlacementOptions;
   record: ReturnType<typeof readDirectorRecord>;
+  /** The Creative Brief this video was made to (prompt text), when it has one. */
+  brief: string | null;
 }
 
 export async function loadDirectorContext(prisma: PrismaClient, itemId: string): Promise<DirectorContext> {
@@ -91,6 +94,7 @@ export async function loadDirectorContext(prisma: PrismaClient, itemId: string):
     wordsByAsset,
     placement: { subjectTracks, sourceDimensions, wordsByAsset, mattes, measure: nodeMeasureText },
     record: readDirectorRecord(plan.plan),
+    brief: await creativeBriefTextFor(prisma, itemId),
   };
 }
 
@@ -234,6 +238,7 @@ function buildPackFor(ctx: DirectorContext, message: string, messages: DirectorM
     record: ctx.record,
     title: ctx.title,
     sheet,
+    brief: ctx.brief,
   });
 }
 

@@ -39,6 +39,8 @@ export interface DirectorPackInput {
   sheet: ContactSheetPlan | null;
   /** Short brand note (optional). */
   brand?: string | null;
+  /** The Creative Brief this video was made to (optional) — the director keeps the plan's hook, arc and ending unless Chris asks otherwise. */
+  brief?: string | null;
 }
 
 export interface DirectorPack {
@@ -147,7 +149,7 @@ export function buildDirectorPack(input: DirectorPackInput): DirectorPack {
     : null;
   const parts = [
     `CHRIS'S VIDEO DIRECTOR — ${followUp ? "FOLLOW-UP" : "NEW EDIT"}${input.title ? ` · “${input.title}”` : ""}
-You are the editor for one short vertical video (9:16, ${f1(D)} s) of Chris, a personal-finance creator. He describes his vision; you answer ONLY with edit instructions (JSON) that his app applies exactly. Build/animate/edit it for HIS vision — not led by captions or audio. Premium, clean, readable on a phone.${input.brand ? `\nBrand: ${input.brand}` : ""}`,
+You are the editor for one short vertical video (9:16, ${f1(D)} s) of Chris, a personal-finance creator. He describes his vision; you answer ONLY with edit instructions (JSON) that his app applies exactly. Build/animate/edit it for HIS vision — not led by captions or audio. Premium, clean, readable on a phone.${input.brand ? `\nBrand: ${input.brand}` : ""}${input.brief ? `\nThe plan this video was made to (keep its hook first, its midpoint and payoff, and its ending's objective unless Chris asks otherwise):\n${input.brief}` : ""}`,
     `## WHAT CHRIS WANTS (his words — he outranks everything below)\n\n${input.chrisMessage.trim()}`,
     input.history.length
       ? `## CONVERSATION SO FAR (oldest first)\n\n${input.history

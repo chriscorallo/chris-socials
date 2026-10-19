@@ -32,6 +32,8 @@ export interface EditPlannerInput {
   takeWords?: TranscriptWord[] | null;
   sourceDurationSeconds: number | null;
   brandContext: string;
+  /** The Creative Brief this video was made to (formatCreativeBrief), when one exists. */
+  creativeBrief?: string | null;
   /** Present for a repair pass: revise `previousPlan` to fix exactly these QC issues. */
   repairContext?: EditPlanRepairContext | null;
 }
@@ -85,7 +87,7 @@ Target length: ${contract.targetLengthMinSeconds}-${contract.targetLengthMaxSeco
 
 ## Script
 
-${input.scriptText}
+${input.scriptText}${input.creativeBrief ? `\n\n## Creative brief (the plan — keep the chosen hook first, protect the midpoint and payoff, land the ending's objective)\n\n${input.creativeBrief}` : ""}
 
 ## Selected Take
 

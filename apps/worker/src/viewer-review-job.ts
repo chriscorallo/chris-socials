@@ -8,6 +8,7 @@ import {
   recordViewerReview,
   type PrismaClient,
   type ContentPlatform,
+  creativeBriefTextFor,
 } from "@chris/domain";
 import {
   computeCostUsd,
@@ -305,6 +306,7 @@ export async function reviewRenderAsViewer(
       sfxCount: null,
       referenceStyle: null,
       notes: [],
+      creativeBrief: await creativeBriefTextFor(db, contentItemId),
     };
     if (timeline) {
       const assetIds = [...new Set(timeline.clips.map((c) => c.mediaAssetId))];

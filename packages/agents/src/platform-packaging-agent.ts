@@ -29,12 +29,13 @@ function buildUserPrompt(input: {
   platform: PackagingPlatform;
   finalTranscript: string;
   brandContext: string;
+  creativeBrief?: string | null;
 }): string {
   return `${input.brandContext}
 
 ## Final Render Transcript (the finished artifact — package this, not the script draft)
 
-${input.finalTranscript}
+${input.finalTranscript}${input.creativeBrief ? `\n\n## Creative brief (what this video is for)\n\n${input.creativeBrief}\n\nThe caption/title/description serve the brief: the series, the chosen hook's promise, and the ending's ONE objective (COMMENT → ask the genuine question; SHARE → give the legitimate reason to send it; FOLLOW → the repeatable reason to return; PUNCHLINE → keep it short and let the line land). Never "like, comment, share and follow".` : ""}
 
 ## Task
 
@@ -45,7 +46,7 @@ metadataEntries as {key, value} pairs; leave it empty when there are none.`;
 
 export async function runPlatformPackagingAgent(
   provider: ModelProvider,
-  input: { platform: PackagingPlatform; finalTranscript: string; brandContext: string },
+  input: { platform: PackagingPlatform; finalTranscript: string; brandContext: string; creativeBrief?: string | null },
 ): Promise<PlatformPackageOutput> {
   const systemPrompt = buildPlatformPackagingSystemPrompt(input.platform);
   const specific = getAgentPrompt(PLATFORM_PROMPT_ID[input.platform]);

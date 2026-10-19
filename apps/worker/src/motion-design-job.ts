@@ -2,6 +2,7 @@ import {
   getLatestEditPlan,
   getMotionTasteForDesign,
   classifyMotionTopic,
+  creativeBriefTextFor,
   isEnabled,
   isScriptVersionFilmable,
   parseTranscriptWords,
@@ -176,6 +177,7 @@ export async function designMotionForContentItem(
         durationS: timelineDuration(timeline),
         title: item.title,
         brandContext,
+        creativeBrief: await creativeBriefTextFor(db, contentItemId),
       });
     }
     const designed: DesignVisualsResult = await designVisualsForTimeline(scopeProvider(provider, { contentItemId }), {

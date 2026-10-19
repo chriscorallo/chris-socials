@@ -89,6 +89,9 @@ export interface StoryInput {
   /** Chris's overrides from the "Removed lines" list. */
   forceKeep?: number[];
   forceDrop?: number[];
+  /** Sentence ids that carry the Creative Brief's midpoint / payoff / ending — protected from
+   * length trims (the arc the video was planned around survives the cut). */
+  protect?: number[];
 }
 
 export interface StoryPlan {
@@ -285,8 +288,9 @@ export function planStory(input: StoryInput): StoryPlan {
   // ---- 6. Length: drop the lowest-value lines until the story fits the references' length.
   const lastPayoff = [...S.keys()].reverse().find((i) => dec[i]!.kept && (S[i]!.beat === "PAYOFF" || S[i]!.beat === "POINT" || S[i]!.beat === "NUMBER"));
   const protectedIdx = new Set<number>();
+  const protect = new Set(input.protect ?? []);
   S.forEach((s, i) => {
-    if (hook.has(s.id) || forceKeep.has(s.id)) protectedIdx.add(i);
+    if (hook.has(s.id) || forceKeep.has(s.id) || (protect.has(s.id) && dec[i]!.kept)) protectedIdx.add(i);
   });
   if (lastPayoff != null) protectedIdx.add(lastPayoff);
   // Context: the most valuable setup/point in the first third that isn't the hook.

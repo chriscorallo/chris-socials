@@ -12,6 +12,7 @@ import {
   recordReplannedEditPlan,
   recordPlatformPackage,
   recordTakeSelection,
+  creativeBriefTextFor,
   isScriptVersionFilmable,
   getPlanContextForAgent,
   type ContentState,
@@ -64,6 +65,8 @@ export async function runTakeSelectionStep(contentItemId: string, actor: Actor) 
       words: parseTranscriptWords(a.transcriptWords),
     })),
     brandContext,
+    scriptText: (await getLatestScriptVersion(prisma, contentItemId))?.spokenScript ?? null,
+    creativeBrief: await creativeBriefTextFor(prisma, contentItemId),
   });
   return recordTakeSelection(
     prisma,
@@ -95,6 +98,7 @@ export async function runEditPlanStep(contentItemId: string, actor: Actor) {
     takeWords: parseTranscriptWords(selectedAsset.transcriptWords),
     sourceDurationSeconds: selectedAsset.durationSeconds,
     brandContext,
+    creativeBrief: await creativeBriefTextFor(prisma, contentItemId),
   });
   const planFields = {
     contentItemId,
@@ -142,7 +146,7 @@ export async function finalTranscriptFor(contentItemId: string): Promise<string>
 export async function runPackagingStep(contentItemId: string, platform: PackagingPlatform, actor: Actor) {
   const finalTranscript = await finalTranscriptFor(contentItemId);
   const brandContext = await getBrandContextText(prisma);
-  const pkg = await runPlatformPackagingAgent(getModelProvider(), { platform, finalTranscript, brandContext });
+  const pkg = await runPlatformPackagingAgent(getModelProvider(), { platform, finalTranscript, brandContext, creativeBrief: await creativeBriefTextFor(prisma, contentItemId) });
   return recordPlatformPackage(
     prisma,
     {

@@ -57,7 +57,7 @@ export class TakeSelectionInvalidIdError extends Error {
   }
 }
 
-function buildUserPrompt(takes: CandidateTake[], brandContext: string): string {
+function buildUserPrompt(takes: CandidateTake[], brandContext: string, scriptText: string | null = null, creativeBrief: string | null = null): string {
   const list = takes
     .map(
       (t, i) =>
@@ -65,7 +65,7 @@ function buildUserPrompt(takes: CandidateTake[], brandContext: string): string {
     )
     .join("\n\n");
 
-  return `${brandContext}
+  return `${brandContext}${scriptText ? `\n\n## The script this was filmed from (judge each take against what was MEANT to be said)\n\n${scriptText}` : ""}${creativeBrief ? `\n\n## Creative brief\n\n${creativeBrief}\n\nPrefer the take that delivers the chosen hook and the payoff as planned.` : ""}
 
 ## Candidate Takes (reference each by its exact id in brackets)
 
@@ -79,7 +79,7 @@ backupMediaAssetId (if any) must be exact ids from the list above — never inve
 
 export async function runTakeSelectorAgent(
   provider: ModelProvider,
-  input: { takes: CandidateTake[]; brandContext: string },
+  input: { takes: CandidateTake[]; brandContext: string; scriptText?: string | null; creativeBrief?: string | null },
 ): Promise<TakeSelectionResult> {
   if (input.takes.length === 0) {
     throw new Error("runTakeSelectorAgent requires at least one candidate take.");
@@ -89,7 +89,7 @@ export async function runTakeSelectorAgent(
   const result = await provider.completeStructured({
     modelClass,
     systemPrompt,
-    userPrompt: buildUserPrompt(input.takes, input.brandContext),
+    userPrompt: buildUserPrompt(input.takes, input.brandContext, input.scriptText ?? null, input.creativeBrief ?? null),
     schema: TakeSelectionResultSchema,
     promptId: "TAKE_SELECTOR",
   });

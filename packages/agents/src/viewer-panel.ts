@@ -104,6 +104,9 @@ export interface ViewerReviewFacts {
     backgroundUnderVoiceDb: number | null;
   } | null;
   notes: string[];
+  /** The Creative Brief this video was made to (formatCreativeBrief), when one exists — only
+   * for the "did it deliver what it set out to?" judgment; the viewer never sees it. */
+  creativeBrief?: string | null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -542,7 +545,10 @@ function buildUserPrompt(facts: ViewerReviewFacts, frames: PlannedFrame[], brand
   const brand = brandContext
     ? `\n\n## The creator's brand (only to keep your FIXES in his voice — the viewer doesn't know any of this)\n\n${brandContext}`
     : "";
-  return `${formatViewerFacts(facts, frames)}${brand}
+  const brief = facts.creativeBrief
+    ? `\n\n## What this video was MADE to do (the creator's plan — the viewer doesn't know it)\n\n${facts.creativeBrief}\n\nAfter watching as the viewer, judge in \`story.summary\` whether the finished video delivered the plan: the intended reaction, the chosen hook's promise, the midpoint (if planned), the payoff, and the ending's objective. Name what the plan promised that the cut doesn't deliver.`
+    : "";
+  return `${formatViewerFacts(facts, frames)}${brand}${brief}
 
 ## Task
 

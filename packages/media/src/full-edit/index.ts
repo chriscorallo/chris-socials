@@ -76,6 +76,13 @@ export interface FullEditInput {
   /** Length (the reference videos' duration median / p25–p75). */
   story?: StoryTarget;
   choices?: FullEditChoices;
+  /**
+   * The Creative Brief this video was planned to (packages/domain formatCreativeBrief's source):
+   * the chosen hook line and the story beats to keep (midpoint, payoff, ending). Matched to the
+   * take's sentences by meaning; the hook candidate that IS the planned hook is preferred and
+   * the matched beats are protected from length trims.
+   */
+  brief?: { hook: string | null; keep: string[] } | null;
   /** Glyph measurement (node: nodeMeasureText) — without it text sizes are estimated. */
   measure?: MeasureText;
   options?: Partial<StyleCutOptions>;
@@ -105,6 +112,8 @@ export const FullEditReportSchema = z.object({
     coldOpen: z.boolean(),
     replayed: z.boolean(),
     chosenIndex: z.number(),
+    /** The chosen hook is the Creative Brief's planned hook (matched by meaning). */
+    fromBrief: z.boolean().default(false),
     candidates: z.array(z.object({ index: z.number(), text: z.string(), score: z.number(), reason: z.string(), start: z.number(), sentenceIds: z.array(z.number()) })),
     titles: z.array(z.object({ text: z.string(), template: z.string() })),
     titleIndex: z.number().nullable(),
@@ -244,6 +253,29 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   const kw = keywords(sentences);
   const sameT = sameThresholdFor(embedder);
 
+  // ---- 1b. The Creative Brief: which sentences carry its hook and its story beats ------------
+  const briefTexts = input.brief ? [input.brief.hook ?? "", ...input.brief.keep].map((t) => t.trim()) : [];
+  const briefMatch: Array<number | null> = briefTexts.map(() => null);
+  if (briefTexts.some(Boolean)) {
+    const bv = await embedder.embed(briefTexts.map((t) => t || "."));
+    briefTexts.forEach((t, k) => {
+      if (!t) return;
+      let best = -1;
+      let bestSim = -1;
+      sentences.forEach((s, j) => {
+        if (["GREETING", "SIGN_OFF", "META", "FLUFF"].includes(s.beat)) return;
+        const sim = cosine(bv[k]!, vecs[j]!);
+        if (sim > bestSim) {
+          bestSim = sim;
+          best = j;
+        }
+      });
+      if (best >= 0 && bestSim >= embedder.thresholds.match) briefMatch[k] = sentences[best]!.id;
+    });
+  }
+  const briefHookId = input.brief ? briefMatch[0] : null;
+  const briefProtect = briefMatch.slice(1).filter((id): id is number => id != null);
+
   // Seconds a set of word spans lasts once pauses are tightened (the budget's estimate).
   const estimateS = (spans: Array<{ w0: number; w1: number }>) => {
     let t = 0;
@@ -268,17 +300,27 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     estimateS,
     forceKeep: choices.forceKeep,
     forceDrop: choices.forceDrop,
+    protect: briefProtect,
   };
 
   // ---- 2. Hook bot (on the lines that survive the mechanical cleanup) ----------------------
   const pre = planStory({ ...storyBase, target: { ...storyTarget, targetS: 1e9 }, hookIds: [] });
   const eligible = new Set(pre.decisions.filter((d) => d.kept).map((d) => d.id));
-  const candidates = scoreHookCandidates(sentences, {
+  // The planned hook is always a candidate when he said it (the cleanup may have dropped it as
+  // a slow start / teaser — as the opening line that's exactly what it's for).
+  const plannedHook = briefHookId != null ? sentences.find((s) => s.id === briefHookId) : undefined;
+  if (plannedHook && !["GREETING", "SIGN_OFF", "META"].includes(plannedHook.beat)) eligible.add(plannedHook.id);
+  const scored = scoreHookCandidates(sentences, {
     relevance: new Map(sentences.map((s, i) => [s.id, relevance[i]!])),
     cleanEdges: (s) => boundary(s.w0 - 1).safe && boundary(s.w1).safe,
     eligible,
     takeEndS: words[words.length - 1]!.end,
-  }).slice(0, 6);
+  });
+  let candidates = scored.slice(0, 6);
+  if (plannedHook && !candidates.some((c) => c.sentenceIds.includes(plannedHook.id))) {
+    const planned = scored.find((c) => c.sentenceIds.length === 1 && c.sentenceIds[0] === plannedHook.id) ?? scored.find((c) => c.sentenceIds.includes(plannedHook.id));
+    if (planned) candidates = [...candidates.slice(0, 5), planned];
+  }
   if (candidates.length === 0) return { ok: false, reason: "NO_STORY", message: "Couldn't find a line to open on." };
   let hookIndex = choices.hookIndex != null && choices.hookIndex >= 0 && choices.hookIndex < candidates.length ? choices.hookIndex : 0;
   if (choices.hookIndex == null) {
@@ -286,6 +328,9 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     const firstId = [...eligible].sort((a, b) => a - b)[0];
     const firstIdx = candidates.findIndex((c) => c.sentenceIds[0] === firstId);
     if (firstIdx > 0 && candidates[0]!.score - candidates[firstIdx]!.score < 0.6) hookIndex = firstIdx;
+    // The planned hook (when he said it, and it survived the cleanup) opens the video.
+    const plannedIdx = briefHookId != null ? candidates.findIndex((c) => c.sentenceIds.includes(briefHookId)) : -1;
+    if (plannedIdx >= 0) hookIndex = plannedIdx;
   }
   const hook = candidates[hookIndex]!;
 
@@ -570,6 +615,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
       coldOpen: story.coldOpen,
       replayed: story.hookReplayed,
       chosenIndex: hookIndex,
+      fromBrief: briefHookId != null && hook.sentenceIds.includes(briefHookId),
       candidates: candidates.map((c, i) => ({ index: i, text: c.text, score: c.score, reason: c.reason, start: r2(c.start), sentenceIds: c.sentenceIds })),
       titles: titles.map((t) => ({ text: t.text, template: t.template })),
       titleIndex: titleText ? titleIndex : null,

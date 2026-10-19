@@ -51,7 +51,7 @@ export function sanitizeVisualBrief(brief: VisualBrief, durationS: number): Visu
 
 export async function runVisualStrategistAgent(
   provider: ModelProvider,
-  input: { transcript: string; durationS: number; title: string | null; brandContext: string },
+  input: { transcript: string; durationS: number; title: string | null; brandContext: string; creativeBrief?: string | null },
 ): Promise<VisualBrief> {
   const { systemPrompt, modelClass } = buildSystemPrompt("VISUAL_STRATEGIST");
   const result = await provider.completeStructured({
@@ -65,7 +65,7 @@ Duration: ${input.durationS.toFixed(1)} s (every time you return is on this time
 
 ## Timestamped transcript (what the viewer hears, one phrase per line)
 
-${input.transcript}
+${input.transcript}${input.creativeBrief ? `\n\n## Creative brief (the plan this video was made to)\n\n${input.creativeBrief}\n\nThe storyboard's opening frame, midpoint visual and payoff visual are the starting plan — keep them where the finished cut still supports them, place them at the moments they belong to, and still apply every viewer-first rule above (a planned visual the viewer doesn't need is dropped).` : ""}
 
 ## Task
 

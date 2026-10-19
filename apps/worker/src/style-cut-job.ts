@@ -20,6 +20,7 @@ import {
   type PrismaClient,
   type StoredStyleCut,
   type StoredFullEdit,
+  getLatestCreativeBrief,
 } from "@chris/domain";
 import { EditPlanOutputSchema } from "@chris/agents";
 import {
@@ -325,6 +326,14 @@ type FullEditComputed =
   | { ok: false; error: string };
 
 /** The free Full edit of the selected take (one-take videos; multi-part recordings get the style cut). */
+/** The Creative Brief's hook line and story beats, for the Full edit to match against the take. */
+async function briefForFullEdit(db: PrismaClient, contentItemId: string): Promise<{ hook: string | null; keep: string[] } | null> {
+  const b = await getLatestCreativeBrief(db, contentItemId).catch(() => null);
+  if (!b) return null;
+  const chosen = b.hooks[b.chosenHookIndex] ?? b.hooks[0];
+  return { hook: chosen?.text ?? null, keep: [b.story.midpointReversal, b.story.payoff, b.story.ending].filter((t): t is string => !!t) };
+}
+
 async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, contentItemId: string, l: Loaded, choices: FullEditChoices, measure = true): Promise<FullEditComputed> {
   if (l.takes.length > 1) return { ok: false, error: "The full edit works on one take — this video was recorded in parts, so it gets the cuts-only edit." };
   if (!l.take.words?.length) return { ok: false, error: "The full edit needs captions first — they appear once your words are transcribed." };
@@ -343,6 +352,7 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
       target: styleCutTargetFromProfile(profile),
       story: storyTargetFromProfile(profile),
       choices,
+      brief: await briefForFullEdit(db, contentItemId),
       measure: nodeMeasureText,
     },
     fullEditEmbedder(),

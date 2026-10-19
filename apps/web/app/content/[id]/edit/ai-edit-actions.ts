@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@chris/domain";
+import { prisma, creativeBriefTextFor } from "@chris/domain";
 import { getBrandContextText, runHookPickerAgent, scopeProvider, type HookPickCandidate } from "@chris/agents";
 import { requireSession } from "../../../../lib/session";
 import { getModelProvider } from "../../../../lib/model-provider";
@@ -26,6 +26,7 @@ export async function aiPickHookAction(input: {
       candidates: input.candidates.map((c) => ({ index: c.index, text: c.text, score: c.score, reason: c.reason })),
       transcript,
       brandContext: await getBrandContextText(prisma),
+      creativeBrief: await creativeBriefTextFor(prisma, input.contentItemId),
     });
     return { ok: true, chosenIndex: pick.chosenIndex, reason: pick.reason };
   } catch (err) {

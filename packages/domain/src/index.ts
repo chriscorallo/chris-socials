@@ -169,3 +169,4 @@ export * from "./graphic-bake";
 export * from "./db-concurrency";
 export * from "./director";
 export * from "./creative-brief";
+export * from "./creative-brief-text";
