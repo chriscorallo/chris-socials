@@ -35,7 +35,7 @@ describe("downstream bots receive the Creative Brief (and work without one)", ()
 
   it("the Director's pack carries the plan", () => {
     const timeline = EditTimelineSchema.parse({ version: 2, clips: [{ id: "c1", mediaAssetId: "take", sourceStart: 0, sourceEnd: 10 }], captions: { fontId: "inter-display-extrabold", fontSize: 64, color: "#FFFFFF", highlightColor: "#FFD84D", y: 0.72 } });
-    const pack = buildDirectorPack({ chrisMessage: "make it pop", history: [], lastApplied: null, timeline, understanding: {}, wordsByAsset: {}, placement: {}, record: null, title: "T", sheet: null, brief: BRIEF });
+    const pack = buildDirectorPack({ chrisMessage: "make it pop", history: [], lastApplied: null, timeline, understanding: {}, wordsByAsset: {}, placement: { subjectTracks: {} }, record: null, title: "T", sheet: null, brief: BRIEF });
     expect(pack.prompt).toContain("The plan this video was made to");
     expect(pack.prompt).toContain("Pick Your Poison");
   });

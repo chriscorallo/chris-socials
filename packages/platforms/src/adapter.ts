@@ -99,6 +99,10 @@ export interface PlatformMetrics {
   saveCount: number | null;
   reach: number | null;
   avgWatchTimeSeconds: number | null;
+  /** New followers attributed to this post / profile visits from it — only when the platform
+   * reports them (none of the three public APIs do as of 2026-10-19); never derived. */
+  followsGained?: number | null;
+  profileVisits?: number | null;
   rawResponse: unknown;
 }
 

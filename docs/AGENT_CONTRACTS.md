@@ -23,6 +23,25 @@ From `/prompts/shared/SYSTEM_BASE.md` and spec §12:
    for Chris's own.
 7. Premium quality means the correct decision, not maximum complexity.
 
+## Shared inputs every creative agent gets (2026-10-19, Content Intelligence)
+
+- **The playbook** — `/prompts/shared/CONTENT_INTELLIGENCE.md` (Chris's "Content Intelligence
+  Engine" master strategy: series, hook families, story arc with a real-or-null midpoint,
+  objective-based endings, evidence standards, editorial scorecard). Each agent prompt's
+  frontmatter declares `content_intelligence: FULL | CORE | NONE`; `buildSystemPrompt` appends
+  the full playbook, the CORE excerpt (`CONTENT_INTELLIGENCE_CORE.md`), or nothing after
+  SYSTEM_BASE. FULL: Script, Research, Brand Guardian, Creative Director, Weekly Strategist,
+  Adversarial Evaluator, Hook Picker, Visual Strategist, Viewer Panel, Production Director.
+  CORE: Platform Packaging, Motion Designer, Director Chat, Edit Planner, Take Selector,
+  Analytics, Learning, Weekly Review, Experiment. NONE: Claims Gate, Visual QA, the Studio crew.
+- **The Creative Brief** (`CreativeBrief`, one append-only row per revision; `formatCreativeBrief`
+  → prompt text) — written by the Script Agent (v2.0.0) or the free ChatGPT script import, then
+  read by Hook Picker, Visual Strategist, Viewer Panel ("did it deliver the plan?"), Platform
+  Packaging (captions serve the ending objective), Director Chat, Edit Planner, Take Selector
+  (which now also gets the script), Analytics (judges the brief's "what to test"), and the free
+  Full edit (planned hook preferred, midpoint/payoff/ending sentences protected from length
+  trims). Absent brief = the agent works from the footage as before.
+
 ## Roster
 
 | Agent | Role | Authority level | Primary input(s) | Output artifact | Model class | Can hard-BLOCK? |

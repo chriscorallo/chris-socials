@@ -21,7 +21,11 @@ objective function (`/docs/PRODUCT_SPEC.md` — objective function).
 - **CONSUMPTION** — was it watched through?
 - **AMPLIFICATION** — was it shared/reposted?
 - **CONVERSATION** — comments, replies, DMs generated
-- **IDENTITY CONVERSION** — did viewers start recognizing/following Chris specifically?
+- **IDENTITY CONVERSION** — did viewers start recognizing/following Chris specifically? The
+  brand's conversion metric is new followers per 1,000 views (followsGained ÷ views × 1,000);
+  when the platform returned it, compare it within that platform, never across platforms.
+  When a Creative Brief is given, say whether the result supported its ending objective and
+  its "what to test" hypothesis — directionally; one video is never proof.
 - **RELATIONSHIP** — repeat viewers, returning engagement
 - **BUSINESS VALUE** — newsletter signups, community joins, downstream value
 - **PRODUCTION ROI** — `PERFORMANCE_PER_HUMAN_PRODUCTION_MINUTE` and related cost-adjusted

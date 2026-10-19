@@ -832,6 +832,11 @@ model PerformanceSnapshot {
   saveCount           Int?
   reach               Int?
   avgWatchTimeSeconds Float?
+  // Content Intelligence (2026-10-19): follower conversion. Filled only where a platform API
+  // returns it (none of the three do today); never estimated. followsGained ÷ viewCount × 1,000
+  // = new followers per 1,000 views, the brand's conversion metric.
+  followsGained       Int?
+  profileVisits       Int?
   rawResponse         Json?
 
   contentItem ContentItem @relation(fields: [contentItemId], references: [id])

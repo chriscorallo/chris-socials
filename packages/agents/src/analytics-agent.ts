@@ -12,6 +12,14 @@ export interface SnapshotSummary {
   saveCount: number | null;
   reach: number | null;
   avgWatchTimeSeconds: number | null;
+  followsGained?: number | null;
+  profileVisits?: number | null;
+}
+
+/** New followers per 1,000 views (the brand's conversion metric) — null unless both are known. */
+export function followersPerThousandViews(s: Pick<SnapshotSummary, "viewCount" | "followsGained">): number | null {
+  if (s.followsGained == null || s.viewCount == null || s.viewCount <= 0) return null;
+  return Math.round((s.followsGained / s.viewCount) * 1000 * 100) / 100;
 }
 
 export interface ProductionCostContext {
@@ -30,13 +38,16 @@ function buildUserPrompt(input: {
   snapshots: SnapshotSummary[];
   productionCost: ProductionCostContext;
   brandContext: string;
+  creativeBrief?: string | null;
 }): string {
   const snapshotTable = input.snapshots
     .map(
       (s) =>
         `- ${s.platform} @ ${s.offset}: views=${formatMetric(s.viewCount)}, likes=${formatMetric(s.likeCount)}, ` +
         `comments=${formatMetric(s.commentCount)}, shares=${formatMetric(s.shareCount)}, saves=${formatMetric(s.saveCount)}, ` +
-        `reach=${formatMetric(s.reach)}, avgWatchTimeSeconds=${formatMetric(s.avgWatchTimeSeconds)}`,
+        `reach=${formatMetric(s.reach)}, avgWatchTimeSeconds=${formatMetric(s.avgWatchTimeSeconds)}, ` +
+        `followsGained=${formatMetric(s.followsGained ?? null)}, profileVisits=${formatMetric(s.profileVisits ?? null)}, ` +
+        `followersPer1000Views=${formatMetric(followersPerThousandViews(s))}`,
     )
     .join("\n");
 
@@ -51,7 +62,7 @@ ${snapshotTable || "(no snapshots captured yet)"}
 
 ## Production cost context (for PRODUCTION_ROI)
 
-${costLine}
+${costLine}${input.creativeBrief ? `\n\n## What this video was made to do (its Creative Brief)\n\n${input.creativeBrief}\n\nJudge IDENTITY CONVERSION against the brief's ending objective and its "what to test" hypothesis: did the result support it, contradict it, or say nothing (data missing)? One video is directional, never proof.` : ""}
 
 ## Task
 
@@ -65,6 +76,7 @@ export async function runAnalyticsAgent(
     snapshots: SnapshotSummary[];
     productionCost: ProductionCostContext;
     brandContext: string;
+    creativeBrief?: string | null;
   },
 ): Promise<PerformanceEvaluation> {
   if (input.snapshots.length === 0) {

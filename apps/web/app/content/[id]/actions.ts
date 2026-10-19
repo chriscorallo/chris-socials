@@ -517,7 +517,10 @@ export async function runAnalytics(formData: FormData) {
         saveCount: s.saveCount,
         reach: s.reach,
         avgWatchTimeSeconds: s.avgWatchTimeSeconds,
+        followsGained: s.followsGained,
+        profileVisits: s.profileVisits,
       })),
+      creativeBrief: await creativeBriefTextFor(prisma, contentItemId),
       productionCost: {
         estimatedFilmingMinutes: creatorCard?.estimatedMinutes ?? null,
         humanEditingBudgetMinutes: contract?.humanEditingBudgetMinutes ?? null,

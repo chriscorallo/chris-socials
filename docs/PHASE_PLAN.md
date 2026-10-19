@@ -946,3 +946,17 @@ listed in the DECISIONS integration entry.
 captions/overlays can't avoid faces on their own (Visual QA catches it); transcription on
 Vercel (needs a worker host or a hosted transcription API); platform app review/audits and
 OAuth app credentials; Vercel Blob store + env vars; Anthropic credit for real evals.
+
+
+## Content Intelligence revamp (2026-10-19)
+
+Chris adopted his "Content Intelligence Engine" master strategy as the brand (Brand Constitution
+v2 / Chris Brain v2) and as a shared playbook every creative agent reads. Each video now carries
+a Creative Brief (series, three hooks by mechanism + the pick, story with a real-or-null midpoint,
+ending objective, storyboard, scorecard, research status) written by the Script Agent or the
+free ChatGPT import and read by every downstream bot. Acceptance: the unit suites in
+packages/domain (creative-brief, script-import parse/db/prompt), packages/agents
+(content-intelligence, creative-brief-inputs, motion-designer), packages/media (full-edit brief
+test); live: a new idea scripted both ways shows its brief on the video page, the AI edit's hook
+picker and strategist cite it, and the viewer check reports intended vs delivered. Real-results
+learning (followers per 1,000 views) waits for platform connections.

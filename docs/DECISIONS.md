@@ -9071,3 +9071,47 @@ functions the publishers use (hashtags, limits). Finish's done screen links to i
 `download=1` on a presigned URL and sends `Access-Control-Allow-Origin: *` — both verified live
 2026-10-19); takes and previews are never offered for download. One master file for all three
 apps (per-platform variants are still encoded at publish time when an app is connected).
+
+
+---
+
+## 2026-10-19 — Content Intelligence: brand v2, shared playbook, Creative Brief, every bot aligned
+
+**What happened:** Chris pasted a master strategy ("The Content Intelligence Engine") written
+while gameplanning topics and strategy, and asked for it to teach the entire system; he chose
+to make it the new brand version, to leave the existing 75-video library untouched, and to wait
+for platform connections rather than enter results by hand.
+
+**Decisions:**
+1. **Brand v2** — `/brand/BRAND_CONSTITUTION.md` and `/brand/CHRIS_BRAIN.md` rewritten from the
+   master prompt (positioning "entertainment that happens to teach people about money", the
+   six series, reactions, voice/reading level/avoid list/humor/behavior). Seeded as NEW
+   `BrandConstitutionVersion` / `BrandMemory` rows on the next production build (the seed only
+   inserts when the hash changed); v1 stays in history. `BRAND_GUIDANCE` (free ChatGPT script
+   prompt) rewritten to match, with its guard test.
+2. **Shared playbook** — `/prompts/shared/CONTENT_INTELLIGENCE.md` (+ `_CORE.md` excerpt),
+   appended to agents' system prompts per a new frontmatter key `content_intelligence`
+   (FULL/CORE/NONE; see AGENT_CONTRACTS). Cached with the system prompt, so the per-call cost
+   is small. The free ChatGPT prompt carries a condensed version (`PLAYBOOK_GUIDANCE`), guarded
+   against drift by test.
+3. **Creative Brief** — new append-only `CreativeBrief` model (+ `ContentItem.series`),
+   validated/normalised in `packages/domain/src/creative-brief.ts` (lenient enums: a drifting
+   label becomes OTHER / PUNCHLINE rather than failing; scorecard list → record). SCRIPT v2.0.0
+   (rollback 1.2.0) returns the brief with the script; `applyPipelineResult` records it. The
+   ChatGPT block format gains a `BRIEF:` JSON line parsed tolerantly (`parseBriefJson`); a bad
+   brief never blocks the script import.
+4. **Downstream** — all post-production bots receive `formatCreativeBrief` text (see
+   AGENT_CONTRACTS "Shared inputs"); the free Full edit matches the brief's hook and story beats
+   to the take's sentences by meaning (`FullEditInput.brief`, `StoryInput.protect`): the planned
+   hook always competes as a candidate and wins unless Chris picked one; matched midpoint/payoff/
+   ending sentences are protected from length trims. `report.hook.fromBrief` says so.
+5. **Learning, prepared** — `PerformanceSnapshot.followsGained/profileVisits` (nullable; no
+   public API returns them today), `followersPerThousandViews`, Analytics judges the brief's
+   ending objective / "what to test" directionally.
+
+**Alternatives considered:** per-agent copies of the strategy (rejected: drifts); a single
+"meeting" mega-agent (rejected: the master prompt itself says not to simulate one; the roster
+and the Claims Gate hard gate stay); merging v1 and v2 brand docs (Chris chose the clean v2).
+
+**Reversibility:** prompts roll back by version; the playbook is removable by frontmatter; the
+brief model is additive (older items have none and every bot still works without one).

@@ -80,6 +80,8 @@ export async function captureDueSnapshots(
             saveCount: metrics.saveCount,
             reach: metrics.reach,
             avgWatchTimeSeconds: metrics.avgWatchTimeSeconds,
+            followsGained: metrics.followsGained ?? null,
+            profileVisits: metrics.profileVisits ?? null,
             rawResponse: metrics.rawResponse,
           },
           actor,

@@ -125,6 +125,8 @@ const RecordPerformanceSnapshotSchema = z.object({
   saveCount: z.number().int().nullable().optional(),
   reach: z.number().int().nullable().optional(),
   avgWatchTimeSeconds: z.number().nullable().optional(),
+  followsGained: z.number().int().nullable().optional(),
+  profileVisits: z.number().int().nullable().optional(),
   rawResponse: z.unknown().optional(),
 });
 export type RecordPerformanceSnapshotInput = z.input<typeof RecordPerformanceSnapshotSchema>;
@@ -159,6 +161,8 @@ export async function recordPerformanceSnapshot(
       saveCount: parsed.saveCount ?? null,
       reach: parsed.reach ?? null,
       avgWatchTimeSeconds: parsed.avgWatchTimeSeconds ?? null,
+      followsGained: parsed.followsGained ?? null,
+      profileVisits: parsed.profileVisits ?? null,
       rawResponse: (parsed.rawResponse ?? undefined) as never,
     },
     update: {
@@ -170,6 +174,8 @@ export async function recordPerformanceSnapshot(
       saveCount: parsed.saveCount ?? null,
       reach: parsed.reach ?? null,
       avgWatchTimeSeconds: parsed.avgWatchTimeSeconds ?? null,
+      followsGained: parsed.followsGained ?? null,
+      profileVisits: parsed.profileVisits ?? null,
       rawResponse: (parsed.rawResponse ?? undefined) as never,
     },
   });
