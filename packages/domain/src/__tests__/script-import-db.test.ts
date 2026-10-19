@@ -186,3 +186,24 @@ describe("saveImportedScripts (database)", () => {
     expect(again.outcomes[0]).toMatchObject({ status: "already-saved", contentItemId: id });
   });
 });
+
+describe("saveImportedScripts — the Creative Brief ChatGPT wrote comes along (source CHATGPT)", () => {
+  it("records the brief next to the imported script and tags the item's series; a bad brief never blocks the script", async () => {
+    const { getLatestCreativeBrief } = await import("../creative-brief");
+    const tag = uniq();
+    const ymd = addDaysYmd(ymdInTz(new Date(), TZ), 4);
+    const [a, b] = await planVideos(tag, [`Car math ${tag}`, `No brief ${tag}`], ymd);
+    const brief = { series: "I Did The Math", targetAudience: "x", primaryObjective: "share", coreReaction: "r", whyInteresting: "w", hooks: [{ text: "h", mechanism: "ABSURD_INVESTIGATION", onScreenText: "o", openingVisual: "v" }], chosenHookIndex: 0, hookRationale: "r", story: { hook: "h", setup: "s", firstDiscovery: "f", midpointReversal: null, payoff: "p", ending: "e" }, storyboard: { openingFrame: "o", onScreenText: [], scenes: [], keyCalculations: [], midpointVisual: null, payoffVisual: "p", closingFrame: "c" }, engagement: { whyShare: "a", whyComment: "b", whyFollow: "c" }, scorecard: { hookStrength: 7 }, editorial: { strongest: "a", weakest: "b", mostImportantRevision: "c", whatToTest: "d" }, research: { verified: [], assumptions: [], unverified: [], complianceFlags: [] } };
+    const rawA = `${block(1, ymd, a!.title, a!.id, "Your car costs more than your rent. Here is the math.")}\nBRIEF: ${JSON.stringify(brief)}`;
+    const rawB = `${block(2, ymd, b!.title, b!.id, "This one has a broken brief. Still a script.")}\nBRIEF: {"series": "I_DID_THE_MATH", "hooks": "not an array"}`;
+    const res = await saveImportedScripts(prisma, { rawPaste: `${rawA}\n\n${rawB}`, items: [{ rawBlock: rawA, contentItemId: a!.id }, { rawBlock: rawB, contentItemId: b!.id }] }, actor, opts);
+    expect(res.saved).toBe(2);
+    const latest = (await getLatestCreativeBrief(prisma, a!.id))!;
+    expect(latest.source).toBe("CHATGPT");
+    expect(latest.series).toBe("I_DID_THE_MATH");
+    expect(latest.primaryObjective).toBe("SHARE");
+    expect((await prisma.contentItem.findUniqueOrThrow({ where: { id: a!.id } })).series).toBe("I_DID_THE_MATH");
+    expect(await getLatestCreativeBrief(prisma, b!.id)).toBeNull();
+    expect(await prisma.scriptVersion.count({ where: { contentItemId: b!.id } })).toBe(1);
+  });
+});

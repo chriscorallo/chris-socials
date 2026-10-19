@@ -93,6 +93,49 @@ export const ScriptVersionSchema = z.object({
 });
 export type ScriptVersion = z.infer<typeof ScriptVersionSchema>;
 
+/**
+ * The Creative Brief as the Script Agent writes it (prompts/shared/CONTENT_INTELLIGENCE.md's
+ * per-video output format). Model-friendly shapes (scorecard as a list, no records);
+ * packages/domain's CreativeBriefSchema normalises and stores it.
+ */
+export const ScriptCreativeBriefSchema = z.object({
+  series: z.enum(["PICK_YOUR_POISON", "I_DID_THE_MATH", "BUTTERFLY_EFFECT", "HOW_BROKE_IS_THIS_CHARACTER", "MONEY_MAKES_NO_SENSE", "COST_OF_BEING_ALIVE", "OTHER"]),
+  targetAudience: z.string(),
+  primaryObjective: z.enum(["COMMENT", "SHARE", "FOLLOW", "PUNCHLINE"]),
+  coreReaction: z.string(),
+  whyInteresting: z.string(),
+  hooks: z.array(
+    z.object({
+      text: z.string(),
+      mechanism: z.enum(["IMPOSSIBLE_CHOICE", "ABSURD_INVESTIGATION", "PERSONAL_CONTRADICTION", "IMPOSSIBLE_QUESTION", "SHOWDOWN", "SOCIAL_ACCUSATION", "FUTURE_SELF_WARNING", "MONEY_MYSTERY", "RELATABLE_CONFESSION", "COUNTDOWN", "UNPOPULAR_OPINION", "BEFORE_AFTER"]),
+      onScreenText: z.string(),
+      openingVisual: z.string(),
+    }),
+  ),
+  chosenHookIndex: z.number().int(),
+  hookRationale: z.string(),
+  story: z.object({ hook: z.string(), setup: z.string(), firstDiscovery: z.string(), midpointReversal: z.string().nullable(), payoff: z.string(), ending: z.string() }),
+  storyboard: z.object({
+    openingFrame: z.string(),
+    onScreenText: z.array(z.string()),
+    scenes: z.array(z.string()),
+    keyCalculations: z.array(z.string()),
+    midpointVisual: z.string().nullable(),
+    payoffVisual: z.string(),
+    closingFrame: z.string(),
+  }),
+  engagement: z.object({ whyShare: z.string(), whyComment: z.string(), whyFollow: z.string() }),
+  scorecard: z.array(z.object({ dimension: z.string(), score: z.number() })),
+  editorial: z.object({ strongest: z.string(), weakest: z.string(), mostImportantRevision: z.string(), whatToTest: z.string() }),
+  research: z.object({ verified: z.array(z.string()), assumptions: z.array(z.string()), unverified: z.array(z.string()), complianceFlags: z.array(z.string()) }),
+});
+export type ScriptCreativeBrief = z.infer<typeof ScriptCreativeBriefSchema>;
+
+/** What the Script Agent returns: the script + its Creative Brief (optional so an older
+ * answer shape — and test doubles — still validate; the prompt always asks for it). */
+export const ScriptAgentOutputSchema = ScriptVersionSchema.extend({ creativeBrief: ScriptCreativeBriefSchema.optional() });
+export type ScriptAgentOutput = z.infer<typeof ScriptAgentOutputSchema>;
+
 // --- Brand Guardian -> /prompts/agents/BRAND_GUARDIAN.md ---
 export const BrandGuardianReportSchema = z.object({
   brandScore: z.number().min(0).max(100),

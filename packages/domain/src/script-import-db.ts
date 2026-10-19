@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ContentItem, ContentState, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "./audit";
+import { recordCreativeBrief } from "./creative-brief";
 import { journalDecision } from "./decision-journal";
 import { applyTransition } from "./state-machine";
 import { createProductionContractAndAdvance } from "./production-contract";
@@ -306,6 +307,12 @@ export async function saveImportedScript(
       revisionNote: note,
     },
   });
+
+  // The Creative Brief ChatGPT wrote with the script (Content Intelligence output format). A
+  // brief that doesn't validate never blocks the script — it just isn't recorded.
+  if (block.brief) {
+    await recordCreativeBrief(prisma, { contentItemId: item.id, scriptVersionId: row.id, source: "CHATGPT", brief: block.brief }, { actorId: actor.actorId }).catch(() => undefined);
+  }
 
   await recordAudit(prisma, {
     actor: actor.actorId,

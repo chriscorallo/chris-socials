@@ -209,3 +209,49 @@ describe("helpers", () => {
     expect(countWords("One, two — three... $100 4%!")).toBe(5);
   });
 });
+
+describe("parseChatGptScripts — the BRIEF (Creative Brief) section", () => {
+  const briefObj = {
+    series: "PICK_YOUR_POISON",
+    targetAudience: "20s earners",
+    primaryObjective: "COMMENT",
+    coreReaction: "Wait, which one is actually better?",
+    whyInteresting: "instant answer, math changes it",
+    hooks: [
+      { text: "$500K at 25 or $5M at 45. You only get one.", mechanism: "IMPOSSIBLE_CHOICE", onScreenText: "$500K vs $5M", openingVisual: "split screen" },
+      { text: "Five hundred grand at 25 might beat five million at 45.", mechanism: "PERSONAL_CONTRADICTION", onScreenText: "$500K > $5M?", openingVisual: "pointing" },
+      { text: "Would you trade twenty years for ten times the money?", mechanism: "IMPOSSIBLE_QUESTION", onScreenText: "20 yrs vs 10x", openingVisual: "calendar" },
+    ],
+    chosenHookIndex: 0,
+    hookRationale: "forces a decision",
+    story: { hook: "the choice", setup: "7% assumed", firstDiscovery: "1.9M", midpointReversal: null, payoff: "depends", ending: "Did the math change your answer?" },
+    storyboard: { openingFrame: "two numbers", onScreenText: [], scenes: [], keyCalculations: [], midpointVisual: null, payoffVisual: "bars", closingFrame: "which one?" },
+    engagement: { whyShare: "a", whyComment: "b", whyFollow: "c" },
+    scorecard: { hookStrength: 8 },
+    editorial: { strongest: "a", weakest: "b", mostImportantRevision: "c", whatToTest: "d" },
+    research: { verified: [], assumptions: [], unverified: [], complianceFlags: [] },
+  };
+  const head = "### VIDEO 1 | 2026-10-21 | Five hundred grand or five million | K3F9\nHOOK: $500K at 25 or $5M at 45. You only get one.\nSCRIPT:\n$500K at 25 or $5M at 45. You only get one. Most people pick the five million.\nON-SCREEN: $500K vs $5M\nCTA: Did the math change your answer?";
+
+  it("reads a one-line JSON brief, pretty-printed JSON (whose \"hook\": keys are not labels), and smart quotes", () => {
+    const one = parse(`${head}\nBRIEF: ${JSON.stringify(briefObj)}`).blocks[0]!;
+    expect(one.brief).toMatchObject({ series: "PICK_YOUR_POISON", chosenHookIndex: 0 });
+    expect(one.cta).toBe("Did the math change your answer?");
+    expect(one.warnings).toEqual([]);
+    const pretty = parse(`${head}\nBRIEF:\n\`\`\`json\n${JSON.stringify(briefObj, null, 2)}\n\`\`\`\nWant the next batch?`).blocks[0]!;
+    expect((pretty.brief as { hooks: unknown[] }).hooks).toHaveLength(3);
+    expect(pretty.spokenScript).not.toContain("hookStrength");
+    const smart = parse(`${head}\nBRIEF: ${JSON.stringify(briefObj).replace(/"/g, "“")}`).blocks[0]!;
+    expect(smart.brief).toMatchObject({ series: "PICK_YOUR_POISON" }); // smart quotes straightened first
+    const broken = parse(`${head}\nBRIEF: {"series": "PICK_YOUR_POISON", "hooks": [`).blocks[0]!;
+    expect(broken.brief).toBeNull();
+    expect(broken.warnings[0]).toMatch(/BRIEF wasn't valid JSON/);
+    expect(broken.spokenScript).toContain("Most people pick the five million.");
+  });
+
+  it("a block with no BRIEF still parses as before", () => {
+    const b = parse(head).blocks[0]!;
+    expect(b.brief).toBeNull();
+    expect(b.warnings).toEqual([]);
+  });
+});

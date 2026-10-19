@@ -3,6 +3,7 @@ import { z } from "zod";
 import { applyTransition } from "./state-machine";
 import { recordAudit } from "./audit";
 import { journalDecision } from "./decision-journal";
+import { recordCreativeBrief } from "./creative-brief";
 
 /**
  * Persists the Research -> Claims Gate -> Script -> Claims Gate (script) -> Brand Guardian
@@ -50,6 +51,9 @@ const ScriptInputSchema = z.object({
   targetRuntimeSeconds: z.number(),
   estimatedSpeakingRuntimeSeconds: z.number(),
   followUpIdeas: z.unknown(),
+  /** The Script Agent's Creative Brief (packages/domain creative-brief.ts) — recorded alongside
+   * the final script when present. */
+  creativeBrief: z.unknown().optional(),
 });
 
 const GateResultSchema = z
@@ -168,6 +172,17 @@ async function persistScripts(
  *   Defense in depth: if the final script's own Claims Gate result is present and is not PASS,
  *   READY is downgraded to SCRIPT_BLOCKED — no unchecked or failed script reaches SCRIPTED.
  */
+/** The final script's Creative Brief, when the agent wrote one. A malformed brief never fails
+ * the pipeline (the script is the deliverable); it's just not recorded. */
+async function recordBriefFor(prisma: PrismaClient, contentItemId: string, scriptVersionId: string, brief: unknown, actorId: string): Promise<void> {
+  if (!brief) return;
+  try {
+    await recordCreativeBrief(prisma, { contentItemId, scriptVersionId, source: "AGENT", brief }, { actorId, actorType: "SYSTEM" });
+  } catch {
+    // Skipped: shape didn't validate.
+  }
+}
+
 export async function applyPipelineResult(
   prisma: PrismaClient,
   contentItemId: string,
@@ -287,6 +302,7 @@ export async function applyPipelineResult(
   });
 
   const scriptRow = await persistScripts(prisma, contentItemId, researchRow.id, parsed, actor.actorId);
+  await recordBriefFor(prisma, contentItemId, scriptRow.id, parsed.script.creativeBrief, actor.actorId);
 
   await applyTransition(prisma, {
     contentItemId,

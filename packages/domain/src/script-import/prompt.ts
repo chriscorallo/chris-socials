@@ -116,6 +116,24 @@ HOW I SOUND
 - Never: corporate language, motivational clichés, generic financial-influencer advice ("unlock your financial future", "level up", "game changer"), forced gen z slang, fake excitement, patronizing explanations, filler suspense ("but here's the crazy part"), predictable "like, comment and follow" endings, generic intros ("hey guys, welcome back"), obviously ai-written copy.
 - Humor comes from the scenario. Never mock people for poverty, debt, disability or circumstances outside their control.`;
 
+/**
+ * Condensed /prompts/shared/CONTENT_INTELLIGENCE.md (Chris's master strategy) for the free
+ * ChatGPT path — the same craft rules the in-app Script Agent gets. script-import-prompt.test.ts
+ * fails if a quoted phrase disappears from the playbook, so the two can't drift.
+ */
+/** The one-line JSON shape each block's BRIEF carries (parsed into a Creative Brief). */
+export const BRIEF_JSON_SHAPE = `one JSON object on one line: {"series":"PICK_YOUR_POISON|I_DID_THE_MATH|BUTTERFLY_EFFECT|HOW_BROKE_IS_THIS_CHARACTER|MONEY_MAKES_NO_SENSE|COST_OF_BEING_ALIVE|OTHER","targetAudience":"","primaryObjective":"COMMENT|SHARE|FOLLOW|PUNCHLINE","coreReaction":"","whyInteresting":"","hooks":[{"text":"","mechanism":"","onScreenText":"","openingVisual":""},{…},{…}],"chosenHookIndex":0,"hookRationale":"","story":{"hook":"","setup":"","firstDiscovery":"","midpointReversal":"or null","payoff":"","ending":""},"storyboard":{"openingFrame":"","onScreenText":[],"scenes":[],"keyCalculations":[],"midpointVisual":"or null","payoffVisual":"","closingFrame":""},"engagement":{"whyShare":"","whyComment":"","whyFollow":""},"scorecard":{"hookStrength":0,"immediateClarity":0,"curiosity":0,"narrativeProgression":0,"retentionPotential":0,"emotionalRelevance":0,"entertainment":0,"visualStorytelling":0,"factualAccuracy":0,"payoffQuality":0,"brandFit":0,"followerConversion":0},"editorial":{"strongest":"","weakest":"","mostImportantRevision":"","whatToTest":""},"research":{"verified":[],"assumptions":[],"unverified":[],"complianceFlags":[]}}`;
+
+export const PLAYBOOK_GUIDANCE = `HOW TO MAKE EACH VIDEO GOOD (my playbook)
+- Pick the series it belongs to: PICK_YOUR_POISON (a dilemma, the viewer decides first, the middle challenges the choice), I_DID_THE_MATH (an absurd calculation with an unexpected payoff), BUTTERFLY_EFFECT (one decision over years), HOW_BROKE_IS_THIS_CHARACTER (a fictional character's finances), MONEY_MAKES_NO_SENSE (a mystery, then the hidden incentive), COST_OF_BEING_ALIVE (the hidden economics of normal life), or OTHER.
+- Write three hooks that differ in psychological mechanism, not wording: IMPOSSIBLE_CHOICE, ABSURD_INVESTIGATION, PERSONAL_CONTRADICTION, IMPOSSIBLE_QUESTION, SHOWDOWN, SOCIAL_ACCUSATION, FUTURE_SELF_WARNING, MONEY_MYSTERY, RELATABLE_CONFESSION, COUNTDOWN, UNPOPULAR_OPINION, BEFORE_AFTER. Pick the strongest and say why. Be decisive. The script opens with the chosen hook.
+- Assume sound off: the opening frame alone should say something interesting.
+- Story: hook, setup, first discovery, midpoint (only a legitimate second reveal; if the facts don't support one, don't invent it), payoff, ending. The viewer should feel rewarded, not tricked.
+- One ending objective: COMMENT (a genuine decision), SHARE (a legitimate reason to send it), FOLLOW (a repeatable reason to return) or PUNCHLINE (just memorable). Never "like, comment, share and follow".
+- Every sentence earns its place. No filler suspense ("it gets even crazier"). Estimate duration from the actual word count.
+- Never fabricate numbers, sources, rules or results. Label hypotheticals. No guaranteed returns. Correlation is not causation.
+- Score it honestly as a cold viewer (1–10, not every script is a 9): hookStrength, immediateClarity, curiosity, narrativeProgression, retentionPotential, emotionalRelevance, entertainment, visualStorytelling, factualAccuracy, payoffQuality, brandFit, followerConversion.`;
+
 export interface BuildPromptInput {
   videos: readonly PromptVideo[];
   batchNumber: number;
@@ -166,6 +184,8 @@ export const SCRIPT_FACTS_RULES = `FACTS
 /** Brand + voice + format + facts — everything a script writer needs except the video list. */
 export function scriptWritingRules(style: ScriptStyle, voiceSamples?: string): string {
   return `${BRAND_GUIDANCE}
+
+${PLAYBOOK_GUIDANCE}
 ${voiceSamplesBlock(voiceSamples)}
 ${scriptFormatRules(style)}
 
@@ -205,6 +225,7 @@ SCRIPT:
 every word I say, starting with the hook line, as normal paragraphs
 ON-SCREEN: optional short text overlays, separated by " / "
 CTA: optional closing line, only if it isn't already the last line of the script
+BRIEF: ${BRIEF_JSON_SHAPE}
 
 Copy each header line exactly: VIDEO number, date (YYYY-MM-DD), title and code, separated by " | ". The code is how my app matches each script to its video. Write all ${count}. Don't stop early and don't ask if you should continue.`;
 }

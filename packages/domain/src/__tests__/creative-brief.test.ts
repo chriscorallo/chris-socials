@@ -46,3 +46,29 @@ describe("Creative Brief", () => {
     expect(text).toContain("Unverified (don't present as fact): 1.93M figure needs a check");
   });
 });
+
+describe("Creative Brief from the in-app script pipeline", () => {
+  it("applyPipelineResult records the Script Agent's brief next to the final script (scorecard list → record)", async () => {
+    const { applyPipelineResult } = await import("../pipeline-run");
+    const { applyTransition } = await import("../state-machine");
+    const { createContentItem } = await import("../content-item");
+    const item = await createContentItem(prisma, { title: `Pipeline brief ${Date.now()}` }, { actorId: "t" });
+    for (const to of ["SELECTED", "CONTRACTED", "RESEARCHING"] as const) await applyTransition(prisma, { contentItemId: item.id, to, actorType: "SYSTEM" });
+    const brief = { ...sampleBrief(), scorecard: [{ dimension: "hookStrength", score: 8 }, { dimension: "payoffQuality", score: 12 }] };
+    const { scriptRow } = await applyPipelineResult(
+      prisma,
+      item.id,
+      {
+        status: "READY",
+        research: { primaryClaim: "c", facts: [], citations: [], numericInputs: [], calculationNotes: null, caveats: [], confidence: 0.9, contradictoryEvidence: [], prohibitedClaims: [], contentSafeWording: "c", status: "READY", stopResearching: true },
+        claimsGateResult: { result: "PASS" },
+        script: { spokenScript: "$500K at 25 or $5 million at 45.", beats: [], intendedPauses: [], emphasizedWords: [], visualBeats: [], requiredFactualCaveats: [], targetRuntimeSeconds: 45, estimatedSpeakingRuntimeSeconds: 44, followUpIdeas: [], creativeBrief: brief },
+      },
+      { actorId: "pipeline" },
+    );
+    const latest = (await getLatestCreativeBrief(prisma, item.id))!;
+    expect(latest.source).toBe("AGENT");
+    expect(latest.scorecard).toEqual({ hookStrength: 8, payoffQuality: 10 });
+    expect((await prisma.creativeBrief.findFirstOrThrow({ where: { contentItemId: item.id } })).scriptVersionId).toBe(scriptRow!.id);
+  });
+});

@@ -116,7 +116,10 @@ export const CreativeBriefSchema = z.object({
   }),
   engagement: z.object({ whyShare: S, whyComment: S, whyFollow: S }),
   /** Editorial judgments 1–10, never probabilities of success. */
-  scorecard: z.record(z.string(), z.number().min(0).max(10)),
+  scorecard: z.preprocess(
+    (v) => (Array.isArray(v) ? Object.fromEntries(v.filter((x) => x && typeof x.dimension === "string").map((x) => [x.dimension, Math.max(0, Math.min(10, Number(x.score) || 0))])) : v),
+    z.record(z.string(), z.number().min(0).max(10)),
+  ),
   editorial: z.object({ strongest: S, weakest: S, mostImportantRevision: S, whatToTest: S }),
   research: z.object({
     verified: z.array(S),

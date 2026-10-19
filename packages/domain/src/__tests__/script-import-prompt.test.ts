@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BRAND_GUIDANCE,
+  PLAYBOOK_GUIDANCE,
   batchVideos,
   buildScriptPrompt,
   estimateSecondsAt,
@@ -86,6 +87,16 @@ describe("buildScriptPrompt", () => {
     expect(prompt).toContain("Note line one / Note line two"); // multi-line notes flattened
   });
 
+  it("embeds the Content Intelligence playbook and asks for the BRIEF (the same craft rules the in-app Script Agent gets)", () => {
+    expect(prompt).toContain(PLAYBOOK_GUIDANCE);
+    expect(prompt).toContain("BRIEF: one JSON object on one line");
+    const playbook = readFileSync(join(ROOT, "prompts", "shared", "CONTENT_INTELLIGENCE.md"), "utf8").toLowerCase().replace(/\s+/g, " ");
+    for (const phrase of ["impossible_choice", "absurd_investigation", "before_after", "pick_your_poison", "cost_of_being_alive", "the viewer should feel rewarded, not tricked", "correlation is not causation"]) {
+      expect(playbook, phrase).toContain(phrase);
+      expect(PLAYBOOK_GUIDANCE.toLowerCase(), phrase).toContain(phrase);
+    }
+  });
+
   it("embeds the brand voice, the reference numbers and the [CHECK] rule", () => {
     expect(prompt).toContain(BRAND_GUIDANCE);
     expect(prompt).toContain("about 205 words a minute");
@@ -119,9 +130,9 @@ describe("buildScriptPrompt", () => {
   it("stays a sane length even for 30 videos with long notes, and truncates very long notes", () => {
     const long = videos.map((v) => ({ ...v, notes: "n".repeat(2000), hook: "h".repeat(800) }));
     const p = buildScriptPrompt({ videos: long.slice(0, 30), batchNumber: 1, batchCount: 2, style });
-    expect(p.length).toBeLessThan(25_000);
+    expect(p.length).toBeLessThan(28_000); // brand + playbook + BRIEF shape are constant (~6k); the videos are the variable part
     expect(p).not.toContain("n".repeat(400));
-    expect(buildScriptPrompt({ videos: videos.slice(0, 15), batchNumber: 1, batchCount: 4, style }).length).toBeLessThan(9_000);
+    expect(buildScriptPrompt({ videos: videos.slice(0, 15), batchNumber: 1, batchCount: 4, style }).length).toBeLessThan(12_000);
   });
 
   it("includes voice samples only when Chris has written some (capped)", () => {

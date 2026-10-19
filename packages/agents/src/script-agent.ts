@@ -1,7 +1,7 @@
 import { PLAN_CONTEXT_BUDGET_CHARS, type ProductionContract } from "@chris/domain";
 import type { ModelProvider } from "./model-provider";
 import { buildSystemPrompt } from "./prompt-context";
-import { ScriptVersionSchema, type ScriptVersion, type ResearchPacket } from "./schemas";
+import { ScriptAgentOutputSchema, type ScriptVersion, type ScriptCreativeBrief, type ResearchPacket } from "./schemas";
 
 /** A bounded revision request: rewrite `previousScript` applying exactly these edits. */
 export interface ScriptRevisionRequest {
@@ -102,14 +102,14 @@ require plus the minimum surrounding wording to keep it natural in Chris's voice
 new facts, numbers, or claims. Return a single ScriptVersion (the full revised script).`;
 }
 
-export async function runScriptAgent(provider: ModelProvider, input: ScriptAgentInput): Promise<ScriptVersion> {
+export async function runScriptAgent(provider: ModelProvider, input: ScriptAgentInput): Promise<ScriptVersion & { creativeBrief?: ScriptCreativeBrief }> {
   const { systemPrompt, modelClass } = buildSystemPrompt("SCRIPT");
   const result = await provider.completeStructured({
     modelClass,
     systemPrompt,
     stableContext: stableContextWithPlan(input.brandContext, input.planContext, PLAN_CONTEXT_BUDGET_CHARS.SCRIPT),
     userPrompt: buildUserPrompt(input),
-    schema: ScriptVersionSchema,
+    schema: ScriptAgentOutputSchema,
     promptId: "SCRIPT",
   });
   return result.output;

@@ -36,6 +36,8 @@ export interface ParsedScriptBlock {
   script: string;
   onScreen: string[];
   cta: string | null;
+  /** The BRIEF section's JSON (the Creative Brief), when ChatGPT wrote one and it parsed. */
+  brief: unknown | null;
   /** Sentences ChatGPT flagged with [CHECK] (the marker itself removed from the spoken text). */
   checks: string[];
   /** What Chris will say: the script, with the hook / CTA added only if they aren't in it already. */
@@ -52,7 +54,7 @@ export interface ParseScriptsResult {
   ignored: string[];
 }
 
-type Label = "HOOK" | "SCRIPT" | "ONSCREEN" | "CTA" | "DATE" | "TITLE" | "CODE";
+type Label = "HOOK" | "SCRIPT" | "ONSCREEN" | "CTA" | "DATE" | "TITLE" | "CODE" | "BRIEF";
 
 const LABELS: Array<[RegExp, Label]> = [
   [/^(?:the\s+)?hook(?:\s+line)?$/i, "HOOK"],
@@ -62,7 +64,27 @@ const LABELS: Array<[RegExp, Label]> = [
   [/^(?:date|post\s+date|posting\s+date|day)$/i, "DATE"],
   [/^(?:title|video\s+title|topic)$/i, "TITLE"],
   [/^(?:code|id|video\s+code|video\s+id)$/i, "CODE"],
+  [/^(?:brief|creative\s+brief|plan)$/i, "BRIEF"],
 ];
+
+/** The BRIEF section's JSON object, read tolerantly (fences, prose around it, smart quotes,
+ * trailing commas); null when there's none or it doesn't parse. */
+export function parseBriefJson(text: string): unknown | null {
+  const t = straightenQuotes(text).replace(/```(?:json)?/gi, "");
+  const start = t.indexOf("{");
+  const end = t.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  const body = t.slice(start, end + 1);
+  for (const candidate of [body, body.replace(/,\s*([}\]])/g, "$1")]) {
+    try {
+      const v = JSON.parse(candidate);
+      if (v && typeof v === "object" && !Array.isArray(v)) return v;
+    } catch {
+      /* try the next repair */
+    }
+  }
+  return null;
+}
 
 /** Invisible characters and odd spaces ChatGPT / iOS copy-paste sometimes carry. */
 function normalizeChars(s: string): string {
@@ -347,13 +369,14 @@ export function parseChatGptScripts(input: string, opts: { today: string }): Par
 }
 
 function buildBlock(raw: RawBlock, index: number, today: string, ignored: string[], isLast: boolean): ParsedScriptBlock | null {
-  const sections: Record<Label | "NONE", string[]> = { HOOK: [], SCRIPT: [], ONSCREEN: [], CTA: [], DATE: [], TITLE: [], CODE: [], NONE: [] };
+  const sections: Record<Label | "NONE", string[]> = { HOOK: [], SCRIPT: [], ONSCREEN: [], CTA: [], DATE: [], TITLE: [], CODE: [], BRIEF: [], NONE: [] };
   let cur: Label | "NONE" = "NONE";
   let lastSection: Label | "NONE" = "NONE";
   /** Unlabeled text between the header and the first label. */
   const pre: string[] = [];
   for (const line of raw.lines) {
-    const lab = labelOf(line);
+    // Inside the BRIEF's JSON, "hook": … lines are keys, not labels.
+    const lab: { label: Label; rest: string } | null = cur === "BRIEF" && /^\s*["{}\[\],]/.test(line) ? null : labelOf(line);
     if (lab) {
       cur = lastSection = lab.label;
       if (lab.rest) sections[cur].push(lab.rest);
@@ -361,7 +384,7 @@ function buildBlock(raw: RawBlock, index: number, today: string, ignored: string
     }
     // HOOK / CTA / ON-SCREEN / DATE… are one paragraph: a blank line after their text ends them
     // ("Hook: …" followed by the script as plain paragraphs). SCRIPT runs to the next label.
-    if (!line.trim() && cur !== "SCRIPT" && cur !== "NONE" && sections[cur].some((l) => l.trim())) cur = "NONE";
+    if (!line.trim() && cur !== "SCRIPT" && cur !== "BRIEF" && cur !== "NONE" && sections[cur].some((l) => l.trim())) cur = "NONE";
     sections[cur].push(line);
     if (lastSection === "NONE" && !/^\s*[-–—_*=]{3,}\s*$/.test(line)) pre.push(line);
   }
@@ -420,6 +443,9 @@ function buildBlock(raw: RawBlock, index: number, today: string, ignored: string
     .filter((s) => s && !/^(?:none|n\/a|-)$/i.test(s));
 
   const spokenScript = composeSpokenScript({ hook: hk.text.trim() || null, script: sc.text.trim(), cta: ct.text.trim() || null });
+  const briefText = join(sections.BRIEF);
+  const brief = briefText ? parseBriefJson(briefText) : null;
+  if (briefText && !brief) warnings.push("The BRIEF wasn't valid JSON — the script was kept, the plan wasn't");
   if (!header.title) warnings.push("No title in the header");
   if (!header.ymd) warnings.push("No date in the header");
 
@@ -433,6 +459,7 @@ function buildBlock(raw: RawBlock, index: number, today: string, ignored: string
     script: sc.text.trim(),
     onScreen,
     cta: ct.text.trim() || null,
+    brief,
     checks,
     spokenScript,
     wordCount: countWords(spokenScript),

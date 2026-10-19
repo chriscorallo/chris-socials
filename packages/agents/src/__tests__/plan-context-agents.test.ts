@@ -97,11 +97,12 @@ describe("Plan context in the Script agent and Weekly Strategist (mock provider 
     expect(p2.calls[0]!.stableContext!.length).toBeGreaterThan(PLAN_CONTEXT_BUDGET_CHARS.SCRIPT);
   });
 
-  it("prompt registry: SCRIPT and WEEKLY_STRATEGIST v1.2.0 declare the optional PlanContext, rollback 1.1.0", () => {
-    for (const id of ["SCRIPT", "WEEKLY_STRATEGIST"]) {
+  it("prompt registry: both declare the optional PlanContext; WEEKLY_STRATEGIST v1.2.0, SCRIPT v2.0.0 (Creative Brief) rolling back to 1.2.0", () => {
+    const versions: Record<string, [string, string]> = { WEEKLY_STRATEGIST: ["1.2.0", "1.1.0"], SCRIPT: ["2.0.0", "1.2.0"] };
+    for (const [id, [version, rollback]] of Object.entries(versions)) {
       const p = getAgentPrompt(id);
-      expect(p.frontmatter.version).toBe("1.2.0");
-      expect(p.frontmatter.rollback_version).toBe("1.1.0");
+      expect(p.frontmatter.version).toBe(version);
+      expect(p.frontmatter.rollback_version).toBe(rollback);
       expect(p.frontmatter.required_context).toContain("PlanContext (optional)");
     }
   });
