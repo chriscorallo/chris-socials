@@ -164,3 +164,4 @@ export * from "./graphic-prefs";
 export * from "./editor-health";
 export * from "./graphic-bake";
 export * from "./db-concurrency";
+export * from "./director";

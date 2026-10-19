@@ -1619,3 +1619,51 @@ model GraphicBake {
   @@index([contentItemId, status])
   @@index([storageKey])
 }
+
+// Director chat (docs/decisions-pending/director-chat.md): what the chat "sees" of one raw take
+// — face boxes, the FER+ facial-expression timeline (approximate, with confidences), motion
+// energy and a JPEG sprite (spriteKey) the browser turns into the labelled frames image.
+// Computed once per take by the worker (free, local models). Append-only: a re-analysis is a
+// new row and the latest one wins.
+model TakeUnderstanding {
+  id            String   @id @default(cuid())
+  mediaAssetId  String
+  contentItemId String
+  version       Int      @default(1)
+  /// Model ids used (expression + face detector).
+  model         String
+  /// packages/media director/understanding.ts TakeUnderstanding (samples, sprite geometry).
+  data          Json
+  spriteKey     String?
+  ms            Int?
+  createdAt     DateTime @default(now())
+
+  @@index([mediaAssetId, createdAt])
+  @@index([contentItemId])
+}
+
+// Director chat conversation of one video — append-only, never edited or deleted: Chris's
+// messages, the pack that was sent (free ChatGPT copy-paste or Claude with AI credit), the
+// instructions that came back, what was applied (change list + the EditPlan version it made)
+// and refusals (validator errors + the fix-up message).
+model DirectorMessage {
+  id               String   @id @default(cuid())
+  contentItemId    String
+  /// CHRIS | EDITOR | SYSTEM
+  role             String
+  /// MESSAGE | ANSWER | APPLIED | REJECTED | UNDONE | NOTE
+  kind             String
+  /// FREE_CHATGPT | AI | null
+  provider         String?
+  text             String
+  payload          Json?
+  baseEditPlanId   String?
+  resultEditPlanId String?
+  replyToId        String?
+  costUsd          Float?
+  idempotencyKey   String?  @unique
+  createdBy        String?
+  createdAt        DateTime @default(now())
+
+  @@index([contentItemId, createdAt])
+}

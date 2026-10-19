@@ -6,6 +6,7 @@ import { runQualityGateForContentItem } from "./quality-gate-job";
 import { autoRepairContentItem } from "./auto-repair-job";
 import { transcribeMediaAsset, transcribeContentItemTakes, type TranscribeJobResult } from "./transcribe-job";
 import { ensureSubjectTracks, type SubjectAnalyzer, type SubjectTrackJobResult } from "./subject-track-job";
+import { ensureTakeUnderstandings, isTakeUnderstandingEnabled, type TakeUnderstandingJobResult, type UnderstandingAnalyzer } from "./take-understanding-job";
 import { ensurePersonMattes, type MatteComputer, type PersonMatteJobResult } from "./person-matte-job";
 import { ensurePreviewProxies, type PreviewMaker, type PreviewProxyJobResult } from "./preview-proxy-job";
 import { bakeGraphicsForContentItem } from "./graphics-bake-job";
@@ -44,6 +45,8 @@ export interface HeavyJobContext {
   analyze?: SubjectAnalyzer;
   computeMatte?: MatteComputer;
   makePreview?: PreviewMaker;
+  /** Director chat take understanding (tests inject a fake). */
+  understand?: UnderstandingAnalyzer;
   encode?: { preset?: string; crf?: number };
   fontPath?: string;
   /** The JobRun this execution is recorded on (set by runHeavyJobRecorded). */
@@ -187,6 +190,14 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       progress(5, "Finding you in the frame…", "track");
       const results = await ensureSubjectTracks(db, storage, ids, actor, { analyze: ctx.analyze, force: a.force });
       return outcomeOf("track", results, "Face tracking failed", (n) => `Tracked ${plural(n, "take")}.`);
+    }
+
+    case "take-understand": {
+      const a = args as HeavyJobArgsByKind["take-understand"];
+      const ids = a.mediaAssetIds ?? (await rawTakeIds(db, a.contentItemId));
+      progress(5, "Reading your face and moves…", "understand");
+      const results = await ensureTakeUnderstandings(db, storage, ids, actor, { analyze: ctx.understand, force: a.force });
+      return outcomeOf("understand", results, "Reading your face failed", (n) => `Read ${plural(n, "take")}.`);
     }
 
     case "person-matte": {
@@ -430,6 +441,7 @@ async function runIngest(
   const track: SubjectTrackJobResult[] = [];
   const matte: PersonMatteJobResult[] = [];
   const proxy: PreviewProxyJobResult[] = [];
+  const understand: TakeUnderstandingJobResult[] = [];
   const wantProxy = a.proxy !== false;
   const styleCut: StyleCutOutcome[] = [];
   const attempted = new Set<string>();
@@ -465,6 +477,15 @@ async function runIngest(
       progress(35 + (10 * i) / needK.length, `Finding you in the frame${label(i, needK.length)}…`, "track");
       track.push(...(await ensureSubjectTracks(db, storage, [t.id], actor, { analyze: ctx.analyze })));
     }
+    // Director chat: what the chat "sees" (face + expressions + motion + frames sprite) — after
+    // the proxy (it reads the small proxy). Never fails ingest.
+    if (isTakeUnderstandingEnabled() || ctx.understand) {
+      const needU = todo.filter((t) => t.width != null);
+      if (needU.length) {
+        progress(44, "Reading your face and moves…", "understand");
+        understand.push(...(await ensureTakeUnderstandings(db, storage, needU.map((t) => t.id), actor, { analyze: ctx.understand })));
+      }
+    }
     // Captions (and the face) are in: if the video's edit is still the untouched no-AI starter
     // edit, make it a style cut now (no-op otherwise; never touches Chris's own edits).
     if (needT.length || needK.length) styleCut.push(await maybeAutoStyleCut(db, storage, a.contentItemId, actor));
@@ -485,7 +506,7 @@ async function runIngest(
   ];
   return {
     ok: failures.length === 0,
-    result: { transcribe, track, matte, proxy, styleCut },
+    result: { transcribe, track, matte, proxy, styleCut, understand },
     error: failures.length ? `Some footage analysis failed — ${failures.join("; ")}` : undefined,
     message: failures.length ? "Footage analyzed, with some problems." : "Footage analyzed.",
   };

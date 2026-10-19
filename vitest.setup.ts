@@ -18,3 +18,7 @@ delete process.env.ANTHROPIC_API_KEY;
 // The Full edit's sentence embeddings: the model-free embedder in tests (deterministic, no
 // model download); the local MiniLM path is exercised by the evidence runs.
 process.env.FULL_EDIT_EMBEDDINGS ??= "lexical";
+
+// The Director chat's take understanding (two ONNX models + ffmpeg) is off in ingest tests unless a
+// test injects a fake analyzer or opts in; the real path is exercised by its own slow test.
+process.env.DIRECTOR_UNDERSTANDING ??= "off";

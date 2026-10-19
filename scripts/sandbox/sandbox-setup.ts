@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Sandbox } from "@vercel/sandbox";
-import { BUILD_DIR, LITE_EXCLUDES, OUT, SANDBOX_CACHE, SANDBOX_ROOT, ULTRAFACE_URL, runtimeEnv } from "./build-runner";
+import { BUILD_DIR, EXPRESSION_MODEL_URL, LITE_EXCLUDES, OUT, SANDBOX_CACHE, SANDBOX_ROOT, ULTRAFACE_URL, runtimeEnv } from "./build-runner";
 
 const execFileAsync = promisify(execFile);
 
@@ -135,6 +135,8 @@ export async function restoreRunner(sandbox: Sandbox) {
     sandbox,
     [
       `cd ${SANDBOX_ROOT}`,
+      // Director chat: the expression model first (before the assets copy, so the bundle copy matches the manifest)
+      `mkdir -p packages/media/assets/models/emotion-ferplus && node -e "fetch(process.argv[1]).then(async (r) => { if (!r.ok) throw new Error(r.status); const b = Buffer.from(await r.arrayBuffer()); if (require('crypto').createHash('sha256').update(b).digest('hex') !== '3e47195d79e9593294df9e81a6d296a1e10969b68a717284081c29493a0ff5f1') throw new Error('checksum'); require('fs').writeFileSync(process.argv[2], b); })" ${EXPRESSION_MODEL_URL} packages/media/assets/models/emotion-ferplus/emotion-ferplus-12-int8.onnx`,
       "rm -rf motion-bundle/public && cp -r packages/media/assets motion-bundle/public",
       `node -e "fetch(process.argv[1]).then(async (r) => { if (!r.ok) throw new Error(r.status); require('fs').writeFileSync(process.argv[2], Buffer.from(await r.arrayBuffer())); })" ${ULTRAFACE_URL} packages/media/assets/models/ultraface/version-RFB-640.onnx`,
       "cp packages/media/assets/models/ultraface/version-RFB-640.onnx motion-bundle/public/models/ultraface/",

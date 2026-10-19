@@ -23,6 +23,7 @@
     "./heavy-job-kinds": "./src/heavy-job-kinds.ts",
     "./heavy-jobs": "./src/heavy-jobs.ts",
     "./style-cut-job": "./src/style-cut-job.ts",
+    "./take-understanding-job": "./src/take-understanding-job.ts",
     "./film-jobs": "./src/film-jobs.ts"
   },
   "scripts": {

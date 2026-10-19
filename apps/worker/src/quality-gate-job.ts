@@ -36,6 +36,7 @@ import {
   timelineCaptionChunks,
   findTimelineCollisions,
   nodeMeasureText,
+  directorOwnedVisualIds,
   type CaptionCollision,
   type TimelineVisual,
 } from "@chris/media";
@@ -228,7 +229,10 @@ export async function runQualityGateForContentItem(
       : null;
     const scripts = await db.scriptVersion.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" } });
     const gated = scripts.find((s) => isScriptVersionFilmable(s).ok) ?? null;
-    const ungrounded = findUngroundedVisualNumbers(timeline.visuals, research, gated ? { spokenScript: gated.spokenScript } : null);
+    // Numbers Chris put on screen himself through the Director chat (unchanged since) are his own
+    // (provenance "Chris via Director chat", plan.director) — see docs/decisions-pending/director-chat.md.
+    const owned = directorOwnedVisualIds(editPlanRow.plan, timeline.visuals);
+    const ungrounded = findUngroundedVisualNumbers(timeline.visuals.filter((v) => !owned.has(v.id)), research, gated ? { spokenScript: gated.spokenScript } : null);
     if (ungrounded.length > 0) {
       const reason = describeUngroundedVisualNumbers(ungrounded);
       factualStatus = "BLOCK";

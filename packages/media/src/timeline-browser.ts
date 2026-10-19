@@ -25,3 +25,4 @@ export * from "./graphics/presets";
 export * from "./graphics/quick-entry";
 export * from "./graphics/search";
 export * from "./graphics/suggest";
+export * from "./director";

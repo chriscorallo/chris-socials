@@ -15,7 +15,7 @@ import { FullscreenButton, StageCanvas } from "./Fullscreen";
 import { MobileTimeline } from "./MobileTimeline";
 import { Sheet } from "./Sheet";
 import { ClipPanel, TextPanel, ZoomPanel, CaptionsPanel, LookPanel, CoverPanel } from "./Inspector";
-import { VisualsPanel, SoundPanel, StyleCutPanel } from "./lazy-panels";
+import { VisualsPanel, SoundPanel, StyleCutPanel, DirectorPanel } from "./lazy-panels";
 import { autoPlaceVisuals } from "../../../../lib/editor/visuals";
 import { TakeCard } from "./MediaBin";
 import { useKeyboardInset } from "./layout-hooks";
@@ -306,6 +306,7 @@ function MobileToolbar({ onSplit, onDelete, onDuplicate }: { onSplit: () => void
   } else {
     tools = (
       <>
+        <Tool icon="magic" label="Director" onClick={() => open("director")} active={ui.sheet === "director"} />
         <Tool icon="sparkle" label="Auto edit" onClick={() => open("style")} active={ui.sheet === "style"} />
         <Tool icon="split" label="Split" onClick={onSplit} />
         <Tool
@@ -389,6 +390,7 @@ const SHEET_TITLES: Record<SheetId, string> = {
   visuals: "Visuals",
   sound: "Sound",
   style: "Auto edit",
+  director: "Director",
 };
 
 function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onSnapChange: (h: number) => void }) {
@@ -410,6 +412,7 @@ function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onS
   else if (id === "visuals") body = <VisualsPanel />;
   else if (id === "sound") body = <SoundPanel />;
   else if (id === "style") body = <StyleCutPanel />;
+  else if (id === "director") body = <DirectorPanel />;
   else if (id === "cover") body = <CoverPanel />;
   else if (id === "media") {
     const used = new Set(doc.clips.map((c) => c.mediaAssetId));
@@ -433,7 +436,7 @@ function SheetHost({ id, side, onSnapChange }: { id: SheetId; side: boolean; onS
     );
   }
   return (
-    <Sheet title={SHEET_TITLES[id]} label={SHEET_TITLES[id]} onClose={close} side={side} onSnapChange={onSnapChange} initial={id === "media" ? "full" : "half"}>
+    <Sheet title={SHEET_TITLES[id]} label={SHEET_TITLES[id]} onClose={close} side={side} onSnapChange={onSnapChange} initial={id === "media" || id === "director" ? "full" : "half"}>
       {body}
     </Sheet>
   );
