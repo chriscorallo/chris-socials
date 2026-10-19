@@ -156,12 +156,17 @@ export function planStory(input: StoryInput): StoryPlan {
   const hook = new Set(input.hookIds);
   const dec: SentenceDecision[] = S.map((s, i) => ({ id: s.id, kept: true, kind: null, why: "", value: sentenceValue(s, input.relevance[i] ?? 0), keptInstead: null, forced: false }));
   const marked: StoryPlan["marked"] = [];
+  /** Length pass 2 only: a line with no pause at an edge may be cut on its word boundary. */
+  let allowWordEdgeCuts = false;
   const drop = (i: number, kind: RemovalKind, why: string, keptInstead: number | null = null) => {
     const d = dec[i]!;
     if (!d.kept || forceKeep.has(d.id)) return false;
     if (hook.has(d.id) && kind !== "HOOK_MOVED") return false;
-    // Never cut a line we can't cut cleanly (no pause at either end).
-    if (!input.safeAfter(S[i]!.w0 - 1) || !input.safeAfter(S[i]!.w1)) return false;
+    // Never cut a line we can't cut cleanly (no pause at either end) — unless the video would
+    // otherwise run far past the references' length (pass 2 below): then a cut between two
+    // words beats shipping a video twice as long as the ones that perform.
+    const clean = input.safeAfter(S[i]!.w0 - 1) && input.safeAfter(S[i]!.w1);
+    if (!clean && !(allowWordEdgeCuts && kind === "LOW_VALUE")) return false;
     d.kept = false;
     d.kind = kind;
     d.why = why;
@@ -297,6 +302,9 @@ export function planStory(input: StoryInput): StoryPlan {
   const spansFor = () => keptSpans(S, dec, wordCuts);
   let est = input.estimateS(spansFor());
   const goal = input.target.targetS;
+  /** Lines pinned only because they had no clean pause to cut on (released in pass 2). */
+  const pinnedForCleanCut = new Set<number>();
+  const lengthPass = () => {
   for (let guard = 0; est > goal * 1.04 && guard < 500; guard++) {
     // Cheapest loss of value per second saved.
     let best: { unit: number[]; score: number } | null = null;
@@ -314,11 +322,24 @@ export function planStory(input: StoryInput): StoryPlan {
     if (!best) break;
     const ok = best.unit.map((i) => drop(i, "LOW_VALUE", best!.unit.length > 1 ? "Trimmed for length — the weakest part of the story (a list goes together)" : "Trimmed for length — says less than the lines kept"));
     if (!ok.some(Boolean)) {
-      best.unit.forEach((i) => protectedIdx.add(i));
+      best.unit.forEach((i) => {
+        if (!protectedIdx.has(i)) pinnedForCleanCut.add(i);
+        protectedIdx.add(i);
+      });
       continue;
     }
     fixDangling(S, dec, protectedIdx, drop);
     est = input.estimateS(spansFor());
+  }
+  };
+  lengthPass();
+  // Pass 2: still past the longest reference length → allow word-boundary cuts on the lines that
+  // were only pinned for lacking a pause (hook, context, last payoff and CTA stay protected).
+  if (est > input.target.maxS && pinnedForCleanCut.size > 0) {
+    pinnedForCleanCut.forEach((i) => protectedIdx.delete(i));
+    allowWordEdgeCuts = true;
+    lengthPass();
+    allowWordEdgeCuts = false;
   }
   fixDangling(S, dec, protectedIdx, drop);
 

@@ -161,10 +161,42 @@ describe("designVisualsForTimeline", () => {
     expect(res.rejectedVisuals[1]!.reason).toMatch(/FACTUAL: 15/);
   });
 
-  it("shows no numbers at all when there is no research or script", async () => {
-    const res = await designVisualsForTimeline(provider([counter(5, 8)]), base({ research: null, script: null }));
-    expect(res.visuals).toEqual([]);
-    expect(res.rejectedVisuals[0]!.reason).toMatch(/FACTUAL/);
+  it("with no research or script, shows only numbers he actually says — never an invented one", async () => {
+    const res = await designVisualsForTimeline(provider([counter(5, 8), counter(12, 15, 99000)]), base({ research: null, script: null }));
+    expect(res.visuals.map((x) => (x.props as { value: number }).value)).toEqual([24500]);
+    expect(res.rejectedVisuals[0]!.reason).toMatch(/FACTUAL: 99000/);
+  });
+
+  it("drops a text graphic that just restates what he's saying (the captions already show it)", async () => {
+    const res = await designVisualsForTimeline(
+      provider([
+        v({ template: "KINETIC_TEXT", props: { text: "Never touch it", emphasis: [], style: "PUNCH" }, start: 11.5, end: 13.5, importance: 4 }),
+        v({ template: "KINETIC_TEXT", props: { text: "Out of sight, out of reach", emphasis: [], style: "PUNCH" }, start: 20, end: 22, importance: 4 }),
+      ]),
+      base(),
+    );
+    expect(res.visuals.map((x) => (x.props as { text: string }).text)).toEqual(["Out of sight, out of reach"]);
+    expect(res.rejectedVisuals[0]!.reason).toMatch(/repeats what he's saying/);
+  });
+
+  it("with a strategist brief, builds one visual per planned moment — the brief sets the cap, not the tier", async () => {
+    const brief = {
+      topic: "saving",
+      theme: "pay yourself first",
+      coreMessage: "Automate saving before you can spend it.",
+      viewerTakeaway: "Set up an automatic transfer.",
+      viewer: "cold viewer who spends first",
+      moments: [
+        { start: 5, end: 8, need: "SCALE" as const, whyViewerNeedsIt: "the amount is abstract", concept: "how big the cushion is", visualIdea: "counter", mustNotBe: "the caption" },
+        { start: 10, end: 12, need: "PROCESS" as const, whyViewerNeedsIt: "three rules", concept: "the order", visualIdea: "steps", mustNotBe: "the caption" },
+      ],
+      leaveClean: [],
+    };
+    const p = provider([counter(5, 8), v({ template: "LIST_STEPS", props: { title: null, items: ["Automate", "Hide it", "Invest"], style: "NUMBERED" }, start: 10, end: 12, importance: 3 }), counter(20, 23)]);
+    const res = await designVisualsForTimeline(p, base({ tier: "RAW", brief }));
+    expect(res.visuals).toHaveLength(2);
+    expect(p.calls[0]!.userPrompt).toContain("Visual brief (the viewer-first plan");
+    expect(p.calls[0]!.userPrompt).toContain("Concept to make click: how big the cushion is");
   });
 
   it("removes overlaps: trims the earlier one when it can, else keeps the more important", async () => {
@@ -190,13 +222,13 @@ describe("designVisualsForTimeline", () => {
         v({ template: "TITLE_CARD", props: { title: "Three rules", subtitle: null }, start: 0, end: 2, importance: 5 }),
         counter(5, 7, 24500, 2),
         v({ template: "KINETIC_TEXT", props: { text: "Automate it", emphasis: [], style: "PUNCH" }, start: 10, end: 12, importance: 5 }),
-        v({ template: "KINETIC_TEXT", props: { text: "Never touch it", emphasis: [], style: "PUNCH" }, start: 13, end: 15, importance: 4 }),
-        v({ template: "KINETIC_TEXT", props: { text: "Invest the rest", emphasis: [], style: "PUNCH" }, start: 16, end: 18, importance: 1 }),
+        v({ template: "KINETIC_TEXT", props: { text: "Out of sight, out of reach", emphasis: [], style: "PUNCH" }, start: 13, end: 15, importance: 4 }),
+        v({ template: "KINETIC_TEXT", props: { text: "Let compounding work", emphasis: [], style: "PUNCH" }, start: 16, end: 18, importance: 1 }),
       ]),
       base({ tier: "RAW" }),
     );
     expect(res.visuals).toHaveLength(2);
-    expect(res.visuals.map((x) => (x.props as { text?: string }).text)).toEqual(["Automate it", "Never touch it"]);
+    expect(res.visuals.map((x) => (x.props as { text?: string }).text)).toEqual(["Automate it", "Out of sight, out of reach"]);
     expect(res.rejectedVisuals.find((r) => r.template === "TITLE_CARD")!.reason).toMatch(/RAW/);
     expect(res.rejectedVisuals.filter((r) => /limit/.test(r.reason))).toHaveLength(2);
   });

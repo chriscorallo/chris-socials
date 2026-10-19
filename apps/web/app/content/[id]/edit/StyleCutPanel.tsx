@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { FullEditChoices } from "@chris/media/timeline";
 import { useEditor } from "./context";
-import { setAutoEditModeAction, styleCutAction, designVisualsAction, designVisualsResultAction } from "./actions";
+import { setAutoEditModeAction, styleCutAction, designVisualsAction, designVisualsResultAction, type DesignUnderstanding } from "./actions";
 import { aiPickHookAction } from "./ai-edit-actions";
 import { waitForJob } from "../../../../lib/use-job-progress";
 
@@ -25,7 +25,7 @@ export function StyleCutPanel() {
   const [showHooks, setShowHooks] = useState(false);
   /** AI edit progress line while it runs; the AI's reason for its hook once done. */
   const [aiStep, setAiStep] = useState<string | null>(null);
-  const [aiDone, setAiDone] = useState<{ hook: string; reason: string; graphics: number } | null>(null);
+  const [aiDone, setAiDone] = useState<{ hook: string; reason: string; graphics: number; understanding: DesignUnderstanding | null } | null>(null);
   const current: "FULL" | "CUTS" | "AI" | null = styleCut.fullEditActive ? (aiDone ? "AI" : "FULL") : styleCut.active ? "CUTS" : null;
   const hasCaptions = styleCut.hasWords;
   const fe = styleCut.fullEdit;
@@ -103,8 +103,8 @@ export function StyleCutPanel() {
       }
 
       // 3. The AI designs the graphics for what he's saying (replaces the template ones).
-      setAiStep("AI is designing the graphics…");
-      let vis = await designVisualsAction({ contentItemId: itemId, replaceExisting: true });
+      setAiStep("AI is understanding the video and planning what the viewer needs to see…");
+      let vis = await designVisualsAction({ contentItemId: itemId, replaceExisting: true, strategize: true });
       if (vis.ok && "pending" in vis) {
         const jobRunId = vis.jobRunId;
         const done = await waitForJob(jobRunId, (v) => v.status === "RUNNING" && setAiStep(v.line ?? "AI is designing the graphics…"));
@@ -112,7 +112,7 @@ export function StyleCutPanel() {
       }
       if (!vis.ok) return setError(`The hook is done, but the graphics step failed: ${vis.error}`);
       loadSavedVersion(vis.timeline, vis.state);
-      setAiDone({ hook: hookText, reason: hookReason, graphics: vis.added.length });
+      setAiDone({ hook: hookText, reason: hookReason, graphics: vis.added.length, understanding: vis.understanding ?? null });
       toast("AI edit saved as a new version.");
     } catch {
       setError("Couldn't reach the server. Whatever finished is saved — try again.");
@@ -186,11 +186,26 @@ export function StyleCutPanel() {
         <div className="fe-summary mt-3" data-testid="ai-edit-summary">
           <p className="text-[13px] font-semibold leading-snug">AI hook: “{aiDone.hook}”</p>
           <p className="mt-1 text-[12px] leading-snug text-[var(--color-text-muted)]">{aiDone.reason}</p>
-          <p className="mt-1 text-[12px] text-[var(--color-text-muted)]">{aiDone.graphics} graphic{aiDone.graphics === 1 ? "" : "s"} designed by the AI.</p>
+          {aiDone.understanding && (
+            <>
+              <p className="mt-2 text-[12px] leading-snug"><span className="font-semibold">Message:</span> {aiDone.understanding.coreMessage}</p>
+              <p className="mt-1 text-[12px] leading-snug text-[var(--color-text-muted)]"><span className="font-semibold">Viewer takeaway:</span> {aiDone.understanding.viewerTakeaway}</p>
+              {aiDone.understanding.moments.length > 0 && (
+                <ul className="mt-2 flex flex-col gap-1" data-testid="ai-edit-moments">
+                  {aiDone.understanding.moments.map((m, i) => (
+                    <li key={i} className="text-[11.5px] leading-snug text-[var(--color-text-muted)]">
+                      <span className="tabular-nums">{m.start.toFixed(1)} s</span> · {m.need.toLowerCase().replace(/_/g, " ")} — {m.concept}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+          <p className="mt-2 text-[12px] text-[var(--color-text-muted)]">{aiDone.graphics} graphic{aiDone.graphics === 1 ? "" : "s"} designed for those moments.</p>
         </div>
       )}
 
-      {fe && (
+      {fe && !aiDone && (
         <div className="fe-summary mt-3" data-testid="full-edit-summary">
           <p className="text-[13px] font-semibold leading-snug">
             Hook: “{fe.hook.text}”{fe.hook.coldOpen ? <span className="text-[var(--color-text-muted)] font-normal"> (moved to the start)</span> : null}

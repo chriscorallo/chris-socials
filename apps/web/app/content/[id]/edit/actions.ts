@@ -90,6 +90,16 @@ export interface DesignVisualsStepResult {
   placementWarnings: PlacementWarning[];
   notes: string[];
   rationale: string;
+  /** AI edit: how the Visual Strategist understood the video, and the moments it planned. */
+  understanding?: DesignUnderstanding | null;
+}
+
+export interface DesignUnderstanding {
+  topic: string;
+  theme: string;
+  coreMessage: string;
+  viewerTakeaway: string;
+  moments: Array<{ start: number; end: number; need: string; concept: string }>;
 }
 
 /**
@@ -105,12 +115,14 @@ export async function designVisualsAction(input: {
   replaceExisting?: boolean;
   /** "Suggest with AI" in the graphics library: one graphic for this moment. */
   focus?: { start: number; end: number; phrase?: string | null } | null;
+  /** AI edit: plan the visuals viewer-first (Visual Strategist) before designing. */
+  strategize?: boolean;
 }): Promise<StepResult<DesignVisualsStepResult> | ({ ok: true } & PendingJob)> {
   const session = await requireSession();
   if (heavyJobMode() === "sandbox") {
     // Vercel: face tracking (ONNX) + the Motion Designer run in the cloud worker; the client
     // polls the job, then calls designVisualsResultAction for the saved version.
-    const r = await runHeavyJob("motion-design", { contentItemId: input.contentItemId, replaceExisting: input.replaceExisting ?? false, focus: input.focus ?? null }, { actorId: session.user!.id! });
+    const r = await runHeavyJob("motion-design", { contentItemId: input.contentItemId, replaceExisting: input.replaceExisting ?? false, focus: input.focus ?? null, strategize: input.strategize ?? false }, { actorId: session.user!.id! });
     if (r.status === "started") return { ok: true, pending: true, jobRunId: r.jobRunId };
     if (r.status === "done") return designResultFromJob(input.contentItemId, r.outcome.ok, r.outcome.result, r.outcome.error ?? null);
     return notStarted(r);
@@ -122,7 +134,7 @@ export async function designVisualsAction(input: {
       getModelProvider(),
       input.contentItemId,
       { actorId: session.user!.id! },
-      { trigger: "HUMAN", replaceExisting: input.replaceExisting ?? false, focus: input.focus ?? null, skipTracking: !isAutoSubjectTrackingEnabled() },
+      { trigger: "HUMAN", replaceExisting: input.replaceExisting ?? false, focus: input.focus ?? null, strategize: input.strategize ?? false, skipTracking: !isAutoSubjectTrackingEnabled() },
     );
     if (result.status !== "SUCCESS" || !result.editPlanId) {
       return { ok: false, error: plainDesignError(result.errorMessage ?? "unknown error"), state: await stateOf(input.contentItemId).catch(() => undefined) };
@@ -142,6 +154,9 @@ export async function designVisualsAction(input: {
       placementWarnings: result.placementWarnings ?? [],
       notes: result.warnings ?? [],
       rationale: result.rationale ?? "",
+      understanding: result.brief
+        ? { topic: result.brief.topic, theme: result.brief.theme, coreMessage: result.brief.coreMessage, viewerTakeaway: result.brief.viewerTakeaway, moments: result.brief.moments.map((m) => ({ start: m.start, end: m.end, need: m.need, concept: m.concept })) }
+        : null,
     };
   } catch (err) {
     return { ok: false, error: plainDesignError(err instanceof Error ? err.message : String(err)) };
@@ -166,6 +181,7 @@ async function designResultFromJob(contentItemId: string, ok: boolean, raw: unkn
     placementWarnings?: PlacementWarning[];
     notes?: string[];
     rationale?: string;
+    understanding?: DesignUnderstanding | null;
     errorMessage?: string | null;
   };
   if (!ok || r.status !== "SUCCESS" || !r.editPlanId) {
@@ -184,6 +200,7 @@ async function designResultFromJob(contentItemId: string, ok: boolean, raw: unkn
     placementWarnings: r.placementWarnings ?? [],
     notes: r.notes ?? [],
     rationale: r.rationale ?? "",
+    understanding: r.understanding ?? null,
   };
 }
 

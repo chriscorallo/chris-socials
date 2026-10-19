@@ -72,7 +72,7 @@ export interface HeavyJobArgsByKind {
    * missing them. `proxy` defaults to true (older callers don't pass it). */
   ingest: { contentItemId: string; transcribe: boolean; track: boolean; matte: boolean; proxy?: boolean };
   /** "Design visuals with AI" (HUMAN trigger; subject tracking runs first). */
-  "motion-design": { contentItemId: string; replaceExisting?: boolean; focus?: MotionDesignFocus | null };
+  "motion-design": { contentItemId: string; replaceExisting?: boolean; focus?: MotionDesignFocus | null; strategize?: boolean };
   /** Measure reference videos' edit style (no model calls): every one waiting, or just `referenceContentIds`.
    * Not tied to a video — its lease is the whole reference library (REFERENCE_LIBRARY_SUBJECT). */
   "reference-analyze": { referenceContentIds?: string[] };
@@ -359,7 +359,7 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
       };
       break;
     case "motion-design":
-      out = { contentItemId, replaceExisting: optBool(a.replaceExisting, "replaceExisting") ?? false, focus: optFocus(a.focus) };
+      out = { contentItemId, replaceExisting: optBool(a.replaceExisting, "replaceExisting") ?? false, focus: optFocus(a.focus), strategize: optBool(a.strategize, "strategize") ?? false };
       break;
     default:
       throw new Error(`unknown heavy job kind: ${String(kind)}`);

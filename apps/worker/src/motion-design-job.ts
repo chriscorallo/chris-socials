@@ -15,6 +15,11 @@ import {
   designVisualsForTimeline,
   getBrandContextText,
   scopeProvider,
+  runVisualStrategistAgent,
+  buildTranscriptPhrases,
+  formatTimestampedTranscript,
+  outputTimelineWords,
+  type VisualBrief,
   type DesignVisualsResult,
   type ModelProvider,
   type MotionResearchInput,
@@ -53,6 +58,8 @@ export interface MotionDesignJobResult {
   motionTheme?: DesignVisualsResult["motionTheme"];
   themeSource?: DesignVisualsResult["themeSource"];
   subjectTracking?: SubjectTrackJobResult[];
+  /** AI edit: the Visual Strategist's plan the visuals were built from. */
+  brief?: VisualBrief | null;
   errorMessage?: string;
 }
 
@@ -69,6 +76,9 @@ export interface MotionDesignJobOptions {
   skipTracking?: boolean;
   /** One graphic for one moment ("Suggest with AI" in the editor's graphics library). */
   focus?: { start: number; end: number; phrase?: string | null } | null;
+  /** AI edit: run the Visual Strategist first (whole-video understanding + the viewer's
+   * moments) and design only what it plans. */
+  strategize?: boolean;
 }
 
 function asArray<T>(v: unknown): T[] {
@@ -158,6 +168,16 @@ export async function designMotionForContentItem(
     const topicInput = { title: item.title, description: item.description, pillar: item.pillar };
     const { topic } = classifyMotionTopic({ ...topicInput, script: gated?.spokenScript ?? null });
     const motionTaste = await getMotionTasteForDesign(db, topic).catch(() => null);
+    let brief: VisualBrief | null = null;
+    if (options.strategize && !options.focus) {
+      const phrases = buildTranscriptPhrases(outputTimelineWords(timeline, wordsByAsset));
+      brief = await runVisualStrategistAgent(scopeProvider(provider, { contentItemId }), {
+        transcript: phrases.length ? formatTimestampedTranscript(phrases) : "(no transcript)",
+        durationS: timelineDuration(timeline),
+        title: item.title,
+        brandContext,
+      });
+    }
     const designed: DesignVisualsResult = await designVisualsForTimeline(scopeProvider(provider, { contentItemId }), {
       timeline,
       wordsByAsset,
@@ -169,6 +189,7 @@ export async function designMotionForContentItem(
       brandContext,
       replaceExisting: options.replaceExisting,
       focus: options.focus ?? null,
+      brief,
       measure: nodeMeasureText,
       topic: topicInput,
       motionTaste: motionTaste ? { context: motionTaste.context, capDelta: motionTaste.capDelta, avoidTemplates: motionTaste.avoidTemplates } : null,
@@ -246,6 +267,7 @@ export async function designMotionForContentItem(
       motionTheme: designed.motionTheme,
       themeSource: designed.themeSource,
       subjectTracking,
+      brief,
     };
   } catch (err) {
     return { status: "FAILED", errorMessage: err instanceof Error ? err.message : String(err) };

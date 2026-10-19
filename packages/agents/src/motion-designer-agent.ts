@@ -36,6 +36,7 @@ import type { ModelProvider } from "./model-provider";
 import { fallbackMotionTheme, sanitizeMotionTheme } from "./motion-theme";
 import { buildSystemPrompt } from "./prompt-context";
 import { buildTranscriptPhrases, formatTimestampedTranscript } from "./transcript-timing";
+import { formatVisualBrief, type VisualBrief } from "./visual-strategist-agent";
 
 /**
  * Motion Designer — proposes animated explainer graphics (motion-contract.ts templates) for
@@ -270,6 +271,12 @@ export interface DesignVisualsInput {
    * this OUTPUT-timeline window; anything proposed outside it is dropped. Absent = whole video.
    */
   focus?: { start: number; end: number; phrase?: string | null } | null;
+  /**
+   * The Visual Strategist's viewer-first plan (AI edit). When given, the designer builds one
+   * visual per planned moment — the concept it names, not his words — and nothing else; the
+   * cap is the number of moments (≈ one per 5 s at most), not the tier's.
+   */
+  brief?: VisualBrief | null;
 }
 
 /** The designer's view of the learned taste profile (see packages/domain motion-taste.ts). */
@@ -548,7 +555,9 @@ export function graphicsCatalogue(): string {
 }
 
 function researchSection(research: MotionResearchInput | null, allowed: number[]): string {
-  if (!research) return "No research packet — this video makes no researched numeric claims. Show NO numbers at all.";
+  if (!research)
+    return `No research packet. You may show ONLY numbers Chris actually says in this video (they're fact-checked against his sources before publishing); never invent, total or convert one.
+THE ONLY NUMBERS YOU MAY PUT ON SCREEN: ${allowed.length ? allowed.join(", ") : "none"}`;
   const numeric = research.numericInputs.map((n) => `- ${n.label}: ${n.value}${n.asOfDate ? ` (as of ${n.asOfDate})` : ""}`).join("\n");
   const facts = (research.facts ?? []).filter((f) => f.type === "FACT").map((f) => `- ${f.statement}`).join("\n");
   return `Primary claim: ${research.primaryClaim ?? "(none)"}
@@ -633,7 +642,15 @@ ${catalogue}
 
 ## Graphics library (template GRAPHIC: component — preset ids)
 
-${graphicsCatalogue()}${focus}
+${graphicsCatalogue()}${focus}${
+    input.brief
+      ? `
+
+## Visual brief (the viewer-first plan — follow it)
+
+${formatVisualBrief(input.brief)}`
+      : ""
+  }
 
 ## Task
 
@@ -642,12 +659,42 @@ phrase it illustrates (start as the key word is spoken), 1.5–5 s each, never o
 other or the existing ones, with space between them. Placement on screen is automatic (the
 engine keeps graphics off Chris's face, the captions and platform UI) — choose only template,
 props, timing, palette, enter/exit, enterSfx — and the video's motion theme. Fewer, better.
-An empty list is a valid answer.`;
+An empty list is a valid answer.${
+    input.brief
+      ? `
+
+Build ONE visual for each moment in the visual brief, inside its window, showing its CONCEPT
+(the visual idea) — never the words he is saying (the captions already show those; a graphic
+that restates them is thrown out). Choose the template/preset that best makes that concept
+click for a viewer. Skip a moment only when no template can show it honestly, and say so in the
+rationale. Add nothing outside the brief's moments.`
+      : ""
+  }`;
 }
 
 // ---------------------------------------------------------------------------------------
 // Agent
 // ---------------------------------------------------------------------------------------
+
+const ECHO_STOP = new Set("a an the and or but so to of in on at for with is are was were be been it its this that these those you your i my me we our they their he she his her them not no yes do does did just really very".split(" "));
+const contentTokens = (t: string) => t.toLowerCase().replace(/[^a-z0-9%$ ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !ECHO_STOP.has(w));
+
+/** Text-only graphics whose words are (mostly) what he says around that moment → the matched
+ * share, else null. Charts, numbers and pictures are never "echo" — they show something new. */
+export function captionEcho(template: string, props: Record<string, unknown>, words: TranscriptWord[], start: number, end: number): string | null {
+  let text: string | null = null;
+  if (template === "KINETIC_TEXT") text = String(props.text ?? "");
+  else if (template === "CALLOUT") text = String(props.text ?? "");
+  else if (template === "GRAPHIC" && (props.component === "KINETIC" || props.component === "HOOK_TEXT" || props.component === "QUOTE")) {
+    text = [props.title, props.subtitle, props.body].filter((x) => typeof x === "string").join(" ");
+  }
+  if (!text) return null;
+  const shown = contentTokens(text);
+  if (shown.length < 2) return null;
+  const heard = new Set(contentTokens(words.filter((w) => w.end >= start - 2 && w.start <= end + 2).map((w) => w.word).join(" ")));
+  const same = shown.filter((w) => heard.has(w)).length;
+  return same / shown.length >= 0.7 ? `${same} of ${shown.length} words` : null;
+}
 
 export function tierCap(tier: ProductionTierName, durationSeconds: number): number {
   // Density ceiling: about one graphic per 6 s of video, never more than the tier allows.
@@ -669,13 +716,16 @@ export async function designVisualsForTimeline(
   const { timeline } = input;
   const duration = timelineDuration(timeline);
   const words = outputTimelineWords(timeline, input.wordsByAsset);
-  const allowed = groundedNumbers(input.research, input.script);
+  // Numbers on screen: researched / fact-checked script numbers, plus what Chris SAYS in this
+  // edit (the Quality Gate still checks every on-screen number against a source pre-publish).
+  const allowed = [...new Set([...groundedNumbers(input.research, input.script), ...extractNumbers(words.map((w) => w.word).join(" "))])].sort((a, b) => a - b);
   const keep = input.replaceExisting ? [] : timeline.visuals;
   // Learned taste may lower the ceiling by one (STRONG "fewer graphics" only) — never raise it.
   const tasteDelta = Math.min(0, Math.round(input.motionTaste?.capDelta ?? 0));
   const fullCap = Math.max(0, Math.max(Math.min(1, tierCap(input.tier, duration)), tierCap(input.tier, duration) + tasteDelta) - keep.length);
   // A focused suggestion is one graphic for one moment (still within the tier's restraint).
-  const cap = input.focus ? Math.min(1, Math.max(1, fullCap)) : fullCap;
+  const briefCap = input.brief ? Math.max(0, Math.min(input.brief.moments.length, Math.max(1, Math.floor(duration / 5))) - keep.length) : null;
+  const cap = input.focus ? Math.min(1, Math.max(1, fullCap)) : briefCap ?? fullCap;
   const avoid = new Set(input.motionTaste?.avoidTemplates ?? []);
 
   // Theme: an existing one is kept unless the design replaces everything (Chris's override
@@ -739,6 +789,13 @@ export async function designVisualsForTimeline(
     // 3. Tier restraint on cinematic moments.
     if (v.template === "TITLE_CARD" && (input.tier === "RAW" || input.tier === "FAST" || titleCards >= 1)) {
       rejected.push(rejection(v, input.tier === "RAW" || input.tier === "FAST" ? `TITLE_CARD isn't used at ${input.tier} tier` : "only one TITLE_CARD per video"));
+      continue;
+    }
+    // 3b. A graphic that just restates what he's saying at that moment adds nothing (the
+    //     captions already show it).
+    const echo = captionEcho(v.template, parsed.data as Record<string, unknown>, words, v.start, v.end);
+    if (echo) {
+      rejected.push(rejection(v, `repeats what he's saying (${echo}) — the captions already show it`));
       continue;
     }
     if (v.template === "TITLE_CARD") titleCards++;

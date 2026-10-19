@@ -186,6 +186,8 @@ export function hookTitles(hookSentences: FESentence[], allSentences: FESentence
     const n = tokens(t).length;
     if (n < 2 || n > 8 || t.length > 48) return;
     if (TITLE_AVOID.test(t) || TITLE_PROFANITY.test(t)) return;
+    // Whole thoughts only: not half of an if/when sentence, not ending on a bare number.
+    if (/^(if|when|because|since|unless|whether|while|although)\b/i.test(t) || /\b\d[\d,.]*$/.test(t)) return;
     if (out.some((o) => o.text.toLowerCase() === t.toLowerCase())) return;
     out.push({ text: t, template, grounded: true });
   };
@@ -214,7 +216,17 @@ export function hookTitles(hookSentences: FESentence[], allSentences: FESentence
   const imp = hookSentences.map((s) => /^(?:(?:so|and|but|okay)[,]?\s+)?(stop|don'?t|never)\s+([^,.;!?]{3,40})/i.exec(s.text)).find(Boolean) ?? null;
   if (imp) push(trimWords(`${imp[1]} ${imp[2]}`.split(/\s+/), 6).join(" "), "IMPERATIVE");
   // 4. Contrast clause ("Most people leave free money on the table").
-  const clauses = text.split(/[;!?]|[.,:](?=\s|$)|\s—\s/).map((c) => c.trim().replace(TITLE_STOP_START, "")).filter((c) => tokens(c).length >= 3);
+  // Never split inside a number run ("paying 80, 90% of…" is one thought, not "paying 80").
+  const clauses = text
+    .replace(/(\d)[,]\s+(?=\$?\d)/g, "$1 to ")
+    .split(/[;!?]|[.,:](?=\s|$)|\s—\s/)
+    .map((c) => c.trim().replace(TITLE_STOP_START, "").replace(/\b(literally|basically|actually|really|just|like)\s+/gi, ""))
+    .filter((c) => tokens(c).length >= 3)
+    // A title must be a whole thought: no half of an if/when/because sentence, no clause
+    // that only fits by chopping its end off ("If you are literally paying 80").
+    .filter((c) => !/^(if|when|because|since|unless|whether|while|although)\b/i.test(c) && tokens(c).length <= 8)
+    // …and never ends on a bare number with nothing after it.
+    .filter((c) => !/\b\d[\d,.]*$/.test(c));
   const scored = clauses
     .map((c) => ({
       c,
@@ -229,11 +241,14 @@ export function hookTitles(hookSentences: FESentence[], allSentences: FESentence
     .sort((a, b) => b.s - a.s);
   for (const { c } of scored.slice(0, 2)) push(trimWords(c.split(/\s+/), 8).join(" "), "CONTRAST");
   // 5. Topic word + the hook amount ("Raises: $10K") as a last resort.
-  if (out.length < 3 && topicWord && amount) push(`${capitalizeFirst(topicWord)}: ${shortNumberLabel(amount)}`, "NUMBER_TOPIC");
+  // (Money only — "Car: 90%" reads as noise.)
+  if (out.length < 3 && topicWord && amount && amount.kind === "MONEY") push(`${capitalizeFirst(topicWord)}: ${shortNumberLabel(amount)}`, "NUMBER_TOPIC");
   if (out.length < 3) {
     const q2 = allSentences.find((s) => s.question && s.wordCount <= 9 && s.beat !== "TANGENT");
     if (q2) push(q2.text.replace(TITLE_STOP_START, "").replace(/\?*$/, "?"), "QUESTION");
   }
-  if (out.length < 3) push(trimWords(text.replace(TITLE_STOP_START, "").split(/\s+/), 6).join(" "), "QUOTE");
+  // His whole hook as the title — only when it IS short; chopping it makes a fragment.
+  const whole = text.replace(TITLE_STOP_START, "");
+  if (out.length < 3 && tokens(whole).length <= 8) push(whole, "QUOTE");
   return out.slice(0, 3);
 }

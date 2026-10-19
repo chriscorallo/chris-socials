@@ -9021,3 +9021,38 @@ Each step saves a new version (undo walks back). If step 3 fails, the AI hook st
 error says so. Client orchestration: `StyleCutPanel.tsx` `runAi`; action
 `edit/ai-edit-actions.ts`. Not yet measured on a real video: hook pick ≈ a few cents (Sonnet),
 graphics per the Motion Designer's own estimate.
+
+---
+
+## 2026-10-19 — AI edit v2: viewer-first visuals, reference length enforced, whole-thought titles
+
+Validated the AI edit live on "Your car payment is not a personality trait" (5:08 take): it ran
+(48 s, ≈ $0.10) but the result wasn't good — 2:38 against references of 60–95 s, the hook title
+chopped to "If you are literally paying 80", and the AI graphics step REPLACED the Full edit's 11
+number graphics with 3 kinetic-text overlays that repeated the captions (two over his head).
+Chris's direction: graphics must understand the concept deeper than his literal words and exist
+to help the viewer ("when are they confused? when would they need a visual?"), never to decorate.
+
+1. **Length** (`full-edit/story.ts`): lines with no clean pause at an edge were pinned for good,
+   so a fast talker couldn't be cut to length. Pass 2: if the plan still runs past the longest
+   reference length (`target.maxS`), those lines may be cut on a word boundary (LOW_VALUE only;
+   hook, context, last payoff and CTA stay protected). A video already within range never gets
+   word-edge cuts.
+2. **Hook titles** (`full-edit/hook.ts`): whole thoughts only — no clause chopped to fit, none
+   starting with if/when/because, none ending on a bare number; number runs ("80, 90%") are not
+   split; "Topic: N%" fallback dropped (money only).
+3. **Visual Strategist** (new `VISUAL_STRATEGIST`, HIGH, typed `VisualBrief`): reads the whole
+   video (topic, underlying theme, core message, viewer takeaway, who's watching) and walks it
+   as a cold viewer, planning moments by need (CONFUSION, ABSTRACT_IDEA, SCALE, CAUSE_EFFECT,
+   COMPARISON, PROCESS, STAKES, ATTENTION_DIP) with the concept to make click and a visual idea
+   deeper than his words. The AI edit runs it before the Motion Designer (`strategize`), which
+   builds one visual per moment (cap = moments, ≈ one per 5 s max, not the tier cap).
+4. **Motion Designer 1.3.0** (rollback 1.2.0): numbers Chris SAYS in the edit are allowed on
+   screen (same rule as the free Full edit; the Quality Gate still checks every on-screen number
+   against a source before publishing — previously no research packet meant "no numbers at
+   all"); a code check (`captionEcho`) rejects text-only graphics that restate ≥70% of what he
+   says around that moment.
+
+Reversibility: prompt rollback 1.2.0; `strategize` is per-call (the "Design visuals with AI"
+button is unchanged apart from the number and echo rules); story pass 2 is gated on exceeding
+the references' max.

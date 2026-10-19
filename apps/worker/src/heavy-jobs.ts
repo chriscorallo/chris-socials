@@ -237,6 +237,7 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
         trigger: "HUMAN",
         replaceExisting: a.replaceExisting ?? false,
         focus: a.focus ?? null,
+        strategize: a.strategize ?? false,
         analyze: ctx.analyze,
       });
       const result = {
@@ -247,6 +248,7 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
         placementWarnings: r.placementWarnings ?? [],
         notes: r.warnings ?? [],
         rationale: r.rationale ?? "",
+        understanding: r.brief ? { topic: r.brief.topic, theme: r.brief.theme, coreMessage: r.brief.coreMessage, viewerTakeaway: r.brief.viewerTakeaway, moments: r.brief.moments.map((m) => ({ start: m.start, end: m.end, need: m.need, concept: m.concept })) } : null,
         errorMessage: r.errorMessage ?? null,
       };
       const ok = r.status === "SUCCESS" && !!r.editPlanId;

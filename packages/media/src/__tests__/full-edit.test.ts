@@ -128,6 +128,17 @@ describe("full edit — hook bot", () => {
     expect(hookTitles(debt, debt, null)[0]!.text).toBe("$5K → 20 years");
     expect(TITLE_AVOID.test("Unlock your financial future")).toBe(true);
   });
+
+  it("a title is a whole thought — never chopped mid-sentence or ending on a bare number (live bug 2026-10-19)", () => {
+    const live = buildSentences(take(["If you are literally paying 80, 90% in just your needs, where are you saving?"]).words, null);
+    const titles = hookTitles(live, live, "car").map((t) => t.text);
+    expect(titles).not.toContain("If you are literally paying 80");
+    expect(titles).not.toContain("Car: 90%");
+    for (const t of titles) {
+      expect(t).not.toMatch(/\b\d[\d,.]*$/);
+      expect(t).not.toMatch(/^if\b/i);
+    }
+  });
 });
 
 describe("full edit — story bot (say it once, cut the fluff, fit the references' length)", () => {
@@ -198,6 +209,21 @@ describe("full edit — story bot (say it once, cut the fluff, fit the reference
     expect(new Set(steps).size).toBe(1); // all kept or all dropped
     expect(p.estimatedS).toBeLessThanOrEqual(9 * 1.04 + 4); // within the target (+ protected arc lines)
     expect(kindOf(p, "If you pay $2,000")).toBe("KEPT"); // the number is the most valuable line
+  });
+
+  it("a fast talker with no clean pauses still lands near the references' length (word-edge cuts in pass 2)", () => {
+    // No pause anywhere except the very start/end — pass 1 can't cut a single line.
+    const noPauses = (k: number) => k < 0 || k >= words.length - 1;
+    const target = { targetS: 9, minS: 6, maxS: 12, source: "REFERENCES" as const };
+    const full = planStory({ ...base, safeAfter: noPauses, target: { ...target, targetS: 1000, maxS: 1000 } });
+    const p = planStory({ ...base, safeAfter: noPauses, target });
+    expect(p.estimatedS).toBeLessThan(full.estimatedS * 0.75);
+    expect(p.decisions.filter((d) => d.kind === "LOW_VALUE").length).toBeGreaterThan(0);
+    // Within the longest reference length, give or take the protected arc lines.
+    expect(p.estimatedS).toBeLessThanOrEqual(target.maxS + 6);
+    // A video already inside the references' range never takes word-edge cuts.
+    const roomy = planStory({ ...base, safeAfter: noPauses, target: { ...target, maxS: full.estimatedS + 1 } });
+    expect(roomy.decisions.filter((d) => d.kind === "LOW_VALUE")).toEqual([]);
   });
 
   it("restoring a removed line (Chris's one tap) keeps it", () => {
