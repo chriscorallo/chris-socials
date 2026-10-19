@@ -68,10 +68,11 @@ export function StyleCutPanel() {
     setError(null);
     setAiDone(null);
     try {
-      // 1. The Full edit is the base (cut to length, fluff out, hook candidates found).
-      let report = styleCut.fullEditActive ? fe : null;
+      // 1. A fresh Full edit is the base (cut to the references' length, fluff out, hook
+      //    candidates found) — never a stale one, which may predate the current cutter.
+      let report: typeof fe = null;
       let sc = styleCut;
-      if (!report) {
+      {
         setAiStep("Making the Full edit…");
         const res = await styleCutAction({ contentItemId: itemId, mode: "FULL" });
         if (!res.ok) return setError(res.error);
