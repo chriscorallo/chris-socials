@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { recheckAiCreditIfStale } from "../ai-credit-probe";
 import {
   appendDirectorMessage,
   getDirectorAiAvailability,
@@ -178,6 +179,7 @@ export async function directorState(prisma: PrismaClient, itemId: string): Promi
     understood: !!u,
     sprite: u?.sprite?.key ? { url: `/api/director/sprite/${u.sprite.key}`, cols: u.sprite.cols, rows: u.sprite.rows, cellW: u.sprite.cellW, cellH: u.sprite.cellH, stepS: u.sprite.stepS, count: u.sprite.count } : null,
   }));
+  await recheckAiCreditIfStale().catch(() => null);
   const ai = await getDirectorAiAvailability(prisma, aiEnv(), new Date(), ANTHROPIC_CREDIT_ERROR_RE);
   const pack = buildPackFor(ctx, "(your message)", messages);
   const est = estimateDirectorCostUsd(pack.chars, true);
@@ -411,6 +413,7 @@ export async function askDirectorAi(
   provider: ModelProvider,
   input: { itemId: string; messageId: string; imageBase64: string | null; actorId: string },
 ): Promise<DirectorApplyOutcome & { costUsd?: number | null }> {
+  await recheckAiCreditIfStale().catch(() => null);
   const avail = await getDirectorAiAvailability(prisma, aiEnv(), new Date(), ANTHROPIC_CREDIT_ERROR_RE);
   if (!avail.available) return { ok: false, errors: [avail.reason ?? "Needs AI credit."], repairMessage: "" };
   const chris = await prisma.directorMessage.findUnique({ where: { id: input.messageId } });

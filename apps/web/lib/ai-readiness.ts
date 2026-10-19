@@ -1,5 +1,6 @@
 import { prisma, getAiSpendOverview } from "@chris/domain";
 import { resolveDailyCapUsd } from "./model-provider";
+import { recheckAiCreditIfStale } from "./ai-credit-probe";
 
 /**
  * Can the AI run right now? Free to ask (no model call): no key → off; the latest AI call
@@ -10,6 +11,7 @@ import { resolveDailyCapUsd } from "./model-provider";
  */
 export async function aiReadiness(now = new Date()): Promise<{ ready: boolean; reason: string | null }> {
   if (!process.env.ANTHROPIC_API_KEY) return { ready: false, reason: "No Anthropic API key is set up" };
+  await recheckAiCreditIfStale(now).catch(() => null);
   const o = await getAiSpendOverview(prisma, now);
   if (o.creditError) return { ready: false, reason: "The AI account is out of credit" };
   let cap: number | null;

@@ -7,6 +7,7 @@ import {
   parseReferenceVideoMetrics,
   type ViewerReviewRow,
 } from "@chris/domain";
+import { recheckAiCreditIfStale } from "./ai-credit-probe";
 import { estimateViewerReviewForVideo, formatEstimateUsd, getBrandContextText, ViewerReviewSchema } from "@chris/agents";
 import { EditTimelineSchema, clipStartTimes } from "@chris/media/timeline";
 import { referenceVideoSubject } from "@chris/worker/heavy-job-kinds";
@@ -46,6 +47,7 @@ async function aiState() {
   } catch {
     cap = null;
   }
+  await recheckAiCreditIfStale().catch(() => null);
   const o = await getAiSpendOverview(prisma, new Date()).catch(() => null);
   return aiAvailability({ keySet: Boolean(process.env.ANTHROPIC_API_KEY), creditError: !!o?.creditError, todayUsd: o?.todayUsd ?? 0, capUsd: cap });
 }

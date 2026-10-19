@@ -8984,3 +8984,20 @@ on the Studio `parsePackAnswer` pattern); packaging at publish time (rejected �
 able to read/edit the text before it posts).
 
 **Reversibility:** additive — no schema change; removing the step restores the old Finish.
+
+---
+
+## 2026-10-19 — Stale "out of credit" re-checked (AI buttons stuck gray after a top-up)
+
+**Bug:** `creditError` (getAiSpendOverview / getDirectorAiAvailability) is inferred from the
+last failed call and clears only after a later success — but the gates reading it (Director
+"Ask the AI" button, viewer check, Finish's AI check via `aiReadiness`) refuse to call while
+it's set. After Chris topped up, nothing could succeed, so the AI stayed "out of credit".
+
+**Fix:** `apps/web/lib/ai-credit-probe.ts` `recheckAiCreditIfStale()` — only while creditError
+is set, at most once a minute, one Haiku call with max_tokens 1 (≈ $0.000002), logged to
+ModelCallLog as `AI_CREDIT_PROBE`. Success clears the state for every gate; a credit refusal is
+logged (state stays honest); other failures (overload, network) aren't evidence and aren't
+logged. Called before each gate (ai-readiness, viewer-check, director state/ask, AI credit page).
+
+**Reversibility:** remove the calls; no schema change.

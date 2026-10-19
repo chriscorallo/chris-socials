@@ -2,6 +2,7 @@ import { prisma, getAiSpendOverview, getQualityCheckMode } from "@chris/domain";
 import { QualityModeSetting } from "./QualityModeSetting";
 import { requireSession } from "../../../lib/session";
 import { resolveDailyCapUsd } from "../../../lib/model-provider";
+import { recheckAiCreditIfStale } from "../../../lib/ai-credit-probe";
 import { NavBar } from "../../components/NavBar";
 import { PageShell, PageHeader, Panel } from "../../components/ui";
 
@@ -16,6 +17,7 @@ const usd = (n: number) => (n > 0 && n < 0.01 ? "<$0.01" : `$${n.toFixed(2)}`);
 export default async function AiCreditPage() {
   await requireSession();
   const now = new Date();
+  await recheckAiCreditIfStale(now).catch(() => null);
   const o = await getAiSpendOverview(prisma, now);
   const qualityMode = await getQualityCheckMode(prisma);
   const keySet = Boolean(process.env.ANTHROPIC_API_KEY);
