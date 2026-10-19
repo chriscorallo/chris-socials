@@ -102,6 +102,38 @@ function extractJsonText(content: Anthropic.Beta.BetaContentBlock[]): string | u
   return texts.at(-1)?.text;
 }
 
+/** The API refused the schema for strict structured output (too many optional/union fields). */
+export function isSchemaTooComplexError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /too many parameters with union types|schema is too complex|exponential compilation cost/i.test(msg);
+}
+
+function schemaInstructions(schema: unknown): string {
+  return `## Answer format
+
+Reply with ONLY one JSON object — no prose before or after, no code fences — that validates against this JSON Schema (every required key present; use null where the schema allows it):
+
+${JSON.stringify(schema)}`;
+}
+
+/** The JSON answer: plain, or (prompt-mode) wrapped in a code fence / stray prose. */
+export function parseJsonAnswer(text: string | undefined): unknown {
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const unfenced = text.replace(/^[\s\S]*?```(?:json)?\s*/i, "").replace(/```[\s\S]*$/, "");
+    const start = unfenced.indexOf("{");
+    const end = unfenced.lastIndexOf("}");
+    if (start < 0 || end <= start) return undefined;
+    try {
+      return JSON.parse(unfenced.slice(start, end + 1));
+    } catch {
+      return undefined;
+    }
+  }
+}
+
 export class AnthropicModelProvider implements ModelProvider {
   private readonly client: Anthropic;
 
@@ -142,7 +174,6 @@ export class AnthropicModelProvider implements ModelProvider {
     const useFallback =
       FALLBACK_CAPABLE_MODELS.has(requestedModel) && process.env.MODEL_REFUSAL_FALLBACK !== "off";
 
-    const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: userContent }];
     const usage: ModelUsage = {
       inputTokens: 0,
       outputTokens: 0,
@@ -152,24 +183,41 @@ export class AnthropicModelProvider implements ModelProvider {
       webFetchRequests: 0,
     };
 
+    // strict = the API enforces the schema (output_config.format). Complex schemas exceed the
+    // API's strict-mode limits (e.g. "too many parameters with union types … limit: 16"); then
+    // the same request is sent once more with the JSON Schema written into the prompt, and the
+    // answer is validated by zod below exactly as before (never trusted unvalidated).
+    const send = async (strict: boolean): Promise<Anthropic.Beta.BetaMessage | undefined> => {
+      const content = strict ? userContent : [...userContent, { type: "text" as const, text: schemaInstructions(format.schema) }];
+      const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content }];
+      let last: Anthropic.Beta.BetaMessage | undefined;
+      for (let attempt = 0; attempt <= MAX_PAUSE_TURN_CONTINUATIONS; attempt += 1) {
+        // Streamed so large max_tokens never trips the SDK's non-streaming timeout guard.
+        const stream = this.client.beta.messages.stream({
+          model: requestedModel,
+          max_tokens: maxTokens,
+          system: [{ type: "text", text: request.systemPrompt, cache_control: { type: "ephemeral" } }],
+          messages,
+          output_config: strict ? { effort: EFFORT_BY_CLASS[request.modelClass], format } : { effort: EFFORT_BY_CLASS[request.modelClass] },
+          ...(tools.length > 0 ? { tools } : {}),
+          ...(useFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+        });
+        last = await stream.finalMessage();
+        addUsage(usage, last.usage);
+        if (last.stop_reason !== "pause_turn") break;
+        // Resume a paused server-tool loop: echo the assistant turn back unchanged; the API
+        // detects the trailing server_tool_use block and continues.
+        messages.push({ role: "assistant", content: last.content as Anthropic.Beta.BetaContentBlockParam[] });
+      }
+      return last;
+    };
+
     let final: Anthropic.Beta.BetaMessage | undefined;
-    for (let attempt = 0; attempt <= MAX_PAUSE_TURN_CONTINUATIONS; attempt += 1) {
-      // Streamed so large max_tokens never trips the SDK's non-streaming timeout guard.
-      const stream = this.client.beta.messages.stream({
-        model: requestedModel,
-        max_tokens: maxTokens,
-        system: [{ type: "text", text: request.systemPrompt, cache_control: { type: "ephemeral" } }],
-        messages,
-        output_config: { effort: EFFORT_BY_CLASS[request.modelClass], format },
-        ...(tools.length > 0 ? { tools } : {}),
-        ...(useFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-      });
-      final = await stream.finalMessage();
-      addUsage(usage, final.usage);
-      if (final.stop_reason !== "pause_turn") break;
-      // Resume a paused server-tool loop: echo the assistant turn back unchanged; the API
-      // detects the trailing server_tool_use block and continues.
-      messages.push({ role: "assistant", content: final.content as Anthropic.Beta.BetaContentBlockParam[] });
+    try {
+      final = await send(true);
+    } catch (err) {
+      if (!isSchemaTooComplexError(err)) throw err;
+      final = await send(false);
     }
 
     const latencyMs = Date.now() - startedAt;
@@ -186,12 +234,7 @@ export class AnthropicModelProvider implements ModelProvider {
     }
 
     const text = extractJsonText(final.content);
-    let parsedJson: unknown;
-    try {
-      parsedJson = text === undefined ? undefined : JSON.parse(text);
-    } catch {
-      parsedJson = undefined;
-    }
+    const parsedJson = parseJsonAnswer(text);
     const validated = request.schema.safeParse(parsedJson);
     if (!validated.success) {
       throw new ModelOutputParseError(request.promptId, model, usage, latencyMs);
