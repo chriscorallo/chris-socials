@@ -1,0 +1,17 @@
+Got it — bills become three big red hits on the right, one at a time, and the balance drains where the check landed.
+
+```json
+{
+  "reply": "Swapped the notification stack for three big red amounts on the right that pop in one by one (rent, then car, then utilities, each with a pop), and moved your balance down to where the paycheck was so it drains in the same spot.",
+  "operations": [
+    {"op": "remove", "target": "bills"},
+    {"op": "addText", "ref": "rent", "text": "-$1,450 rent", "start": 3.3, "end": 7.2, "placement": "RIGHT", "style": "CAPTION", "size": "L", "color": "#FF5A5A"},
+    {"op": "addText", "ref": "car", "text": "-$520 car", "start": 3.8, "end": 7.2, "placement": "RIGHT", "style": "CAPTION", "size": "L", "color": "#FF5A5A"},
+    {"op": "addText", "ref": "utilities", "text": "-$240 utilities", "start": 4.3, "end": 7.2, "placement": "RIGHT", "style": "CAPTION", "size": "L", "color": "#FF5A5A"},
+    {"op": "addSfx", "ref": "pop1", "at": 3.3, "sound": "SOFT_POP"},
+    {"op": "addSfx", "ref": "pop2", "at": 3.8, "sound": "SOFT_POP"},
+    {"op": "addSfx", "ref": "pop3", "at": 4.3, "sound": "SOFT_POP"},
+    {"op": "move", "target": "balance", "placement": "BOTTOM_LEFT"}
+  ]
+}
+```

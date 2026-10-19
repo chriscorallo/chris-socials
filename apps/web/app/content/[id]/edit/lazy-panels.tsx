@@ -19,4 +19,5 @@ export const VisualsPanel = dynamic(() => import("./VisualsPanel").then((m) => m
 export const VisualEditor = dynamic(() => import("./VisualsPanel").then((m) => m.VisualEditor), { ssr: false, loading: PanelLoading });
 export const SoundPanel = dynamic(() => import("./SoundPanel").then((m) => m.SoundPanel), { ssr: false, loading: PanelLoading });
 export const StyleCutPanel = dynamic(() => import("./StyleCutPanel").then((m) => m.StyleCutPanel), { ssr: false, loading: PanelLoading });
+export const DirectorPanel = dynamic(() => import("./DirectorPanel").then((m) => m.DirectorPanel), { ssr: false, loading: PanelLoading });
 export const FinishModal = dynamic(() => import("./FinishModal").then((m) => m.FinishModal), { ssr: false });

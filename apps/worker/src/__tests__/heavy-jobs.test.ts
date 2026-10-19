@@ -120,7 +120,33 @@ describe("heavy jobs", () => {
 
     // A second run finds nothing to do.
     const again = await executeHeavyJob("ingest", { contentItemId: item.id, transcribe: true, track: true, matte: true }, { db: prisma, storage, actor: { actorId: "chris" }, transcriptionProvider: provider, analyze, computeMatte, makePreview });
-    expect(again.result).toEqual({ transcribe: [], track: [], matte: [], proxy: [], styleCut: [] });
+    expect(again.result).toEqual({ transcribe: [], track: [], matte: [], proxy: [], styleCut: [], understand: [] });
+  });
+
+  it("take-understand (Director chat): stores each take's face/expression read + sprite once; a failure is per take and never fails ingest", async () => {
+    const { item, ids } = await makeItemWithTakes(2);
+    const understand = async (_path: string, mediaAssetId: string) => {
+      if (mediaAssetId === ids[1]) throw new Error("no faces model");
+      return {
+        understanding: { version: 1 as const, mediaAssetId, durationS: 1, stepS: 0.25, source: { width: 1080, height: 1920 }, model: { id: "fake", license: "MIT", source: "test" }, samples: [{ t: 0, face: null, probs: null, motion: 0 }], sprite: { key: null, cols: 1, rows: 1, cellW: 180, cellH: 320, stepS: 0.5, count: 1 } },
+        spriteJpeg: Buffer.from("jpeg"),
+        ms: 5,
+      };
+    };
+    const out = await executeHeavyJob("take-understand", { contentItemId: item.id }, { db: prisma, storage, actor: { actorId: "chris" }, understand });
+    expect(out.ok).toBe(false);
+    const rows = await prisma.takeUnderstanding.findMany({ where: { contentItemId: item.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.mediaAssetId).toBe(ids[0]);
+    expect((await storage.get(rows[0]!.spriteKey!)).toString()).toBe("jpeg");
+    // second run: the done take is skipped
+    const again = await executeHeavyJob("take-understand", { contentItemId: item.id, mediaAssetIds: [ids[0]!] }, { db: prisma, storage, actor: { actorId: "chris" }, understand });
+    expect((again.result as { understand: Array<{ status: string }> }).understand[0]!.status).toBe("SKIPPED");
+    // inside ingest it runs too (injected) and a failed read doesn't fail the ingest
+    const { item: item2 } = await makeItemWithTakes(1);
+    const ing = await executeHeavyJob("ingest", { contentItemId: item2.id, transcribe: false, track: false, matte: false, proxy: true }, { db: prisma, storage, actor: { actorId: "chris" }, makePreview, understand });
+    expect(ing.ok).toBe(true);
+    expect(await prisma.takeUnderstanding.count({ where: { contentItemId: item2.id } })).toBe(1);
   });
 
   it("preview-proxy: stores proxy + sprite under proxies/<item>/, audit-logged; skips done takes; a failure is per take", async () => {

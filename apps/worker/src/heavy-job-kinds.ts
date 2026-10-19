@@ -19,6 +19,7 @@ export const HEAVY_JOB_KINDS = [
   "motion-design",
   "reference-analyze",
   "viewer-review",
+  "take-understand",
   // mini-movie studio (packages/cinema) — see apps/worker/src/film-jobs.ts
   "film-render",
   "film-render-chunk",
@@ -58,6 +59,9 @@ export interface HeavyJobArgsByKind {
   transcribe: { contentItemId: string; mediaAssetId?: string; force?: boolean };
   "subject-track": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
   "person-matte": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
+  /** Director chat: face boxes + facial-expression timeline + motion + frames sprite for takes
+   * still missing them (free, local models). */
+  "take-understand": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
   /** Editor preview assets (720p proxy + filmstrip + peaks) for takes still missing them. */
   "preview-proxy": { contentItemId: string; mediaAssetIds?: string[]; force?: boolean };
   /** Editor preview: render the video's PENDING GraphicBake rows (each graphic at half size,
@@ -187,6 +191,7 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
   "viewer-review": "Watching it like a new viewer",
+  "take-understand": "Reading your face and moves",
   "film-render": "Rendering your mini-movie",
   "film-render-chunk": "Rendering part of your mini-movie",
   "film-storyboard": "Sketching the storyboard",
@@ -341,6 +346,7 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
     case "subject-track":
     case "person-matte":
     case "preview-proxy":
+    case "take-understand":
       out = { contentItemId, mediaAssetIds: optIds(a.mediaAssetIds, "mediaAssetIds"), force: optBool(a.force, "force") ?? false };
       break;
     case "ingest":

@@ -45,3 +45,6 @@ packages/domain/.pglite-*/
 /*.mov
 /*.MOV
 /*.m4v
+
+# Director chat expression model (downloaded on first use / in the snapshot build; 19 MB)
+packages/media/assets/models/emotion-ferplus/*.onnx

@@ -41,6 +41,7 @@ import {
   timelineCaptionChunks,
   findTimelineCollisions,
   nodeMeasureText,
+  directorOwnedVisualIds,
   type CaptionCollision,
   type EditTimeline,
   type TimelineVisual,
@@ -233,7 +234,10 @@ async function runDeterministicChecks(db: PrismaClient, contentItemId: string): 
   // FACTUAL also covers numbers drawn by motion graphics (deterministic, no model call).
   let ungroundedVisuals: UngroundedVisualNumbers[] = [];
   if (timeline && timeline.visuals.length > 0) {
-    ungroundedVisuals = findUngroundedVisualNumbers(timeline.visuals, research, gatedScript);
+    // Numbers Chris put on screen himself through the Director chat (unchanged since) are his own
+    // (provenance "Chris via Director chat", plan.director) — see docs/DECISIONS.md "Director chat".
+    const owned = directorOwnedVisualIds(editPlanRow.plan, timeline.visuals);
+    ungroundedVisuals = findUngroundedVisualNumbers(timeline.visuals.filter((v) => !owned.has(v.id)), research, gatedScript);
     if (ungroundedVisuals.length > 0) {
       const reason = describeUngroundedVisualNumbers(ungroundedVisuals);
       factualStatus = "BLOCK";

@@ -94,7 +94,7 @@ const sessions = new Map<string, Promise<{ ort: OrtModule; session: OrtSession }
 
 /** Lazily loads onnxruntime + the model once per process (a process that never tracks never
  * loads onnxruntime). */
-function loadSession(modelPath: string) {
+export function loadSession(modelPath: string) {
   let p = sessions.get(modelPath);
   if (!p) {
     p = (async () => {
@@ -165,7 +165,7 @@ export function decodeUltraFace(
 
 /** Streams letterboxed RGB24 frames from ffmpeg, one at a time (backpressure: ffmpeg's stdout
  * is paused while a frame is being analysed, so memory stays at ~one frame). */
-async function forEachFrame(
+export async function forEachFrame(
   videoPath: string,
   fps: number,
   geom: ReturnType<typeof letterbox>,
@@ -216,7 +216,7 @@ async function forEachFrame(
 }
 
 /** RGB24 -> NCHW float32, (v - 127) / 128 (UltraFace's training normalisation). */
-function toInputTensor(rgb: Buffer, w: number, h: number): Float32Array {
+export function toInputTensor(rgb: Buffer, w: number, h: number): Float32Array {
   const plane = w * h;
   const out = new Float32Array(3 * plane);
   for (let i = 0; i < plane; i++) {

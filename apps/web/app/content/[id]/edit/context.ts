@@ -9,11 +9,11 @@ import type { PlatformWarning } from "../../../../lib/editor/platform-warnings";
 import type { PlaybackEngine } from "./playback";
 import type { PreviewAudio } from "./preview-audio";
 
-export type InspectorTab = "selection" | "captions" | "look" | "cover" | "visuals" | "sound" | "style";
+export type InspectorTab = "selection" | "captions" | "look" | "cover" | "visuals" | "sound" | "style" | "director";
 export type PlatformView = "ALL" | PlatformId;
 
 /** Bottom sheets of the touch (phone/tablet) shell. */
-export type SheetId = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound" | "style";
+export type SheetId = "clip" | "volume" | "text" | "zoom" | "captions" | "look" | "media" | "cover" | "platforms" | "visuals" | "sound" | "style" | "director";
 
 export interface EditorUi {
   reframe: boolean;

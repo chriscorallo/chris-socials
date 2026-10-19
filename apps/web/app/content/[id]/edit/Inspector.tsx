@@ -1,6 +1,6 @@
 "use client";
 
-import { StyleCutPanel, VisualEditor, VisualsPanel, SoundPanel } from "./lazy-panels";
+import { StyleCutPanel, VisualEditor, VisualsPanel, SoundPanel, DirectorPanel } from "./lazy-panels";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   CAPTION_PRESETS,
@@ -51,6 +51,7 @@ export function Inspector() {
     sel?.kind === "clip" ? "Clip" : sel?.kind === "text" ? "Text" : sel?.kind === "zoom" ? "Zoom" : sel?.kind === "visual" ? "Graphic" : "Selection";
   const tabs: Array<[InspectorTab, string]> = [
     ["selection", selLabel],
+    ["director", "Director"],
     ["style", "Auto edit"],
     ["visuals", "Visuals"],
     ["sound", "Sound"],
@@ -74,6 +75,7 @@ export function Inspector() {
         {ui.tab === "captions" && <CaptionsPanel />}
         {ui.tab === "look" && <LookPanel />}
         {ui.tab === "style" && <StyleCutPanel />}
+        {ui.tab === "director" && <DirectorPanel />}
         {ui.tab === "cover" && <CoverPanel />}
       </div>
     </aside>

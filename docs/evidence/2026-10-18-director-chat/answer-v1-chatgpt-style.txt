@@ -1,0 +1,81 @@
+Love this one — the whole story is in your face, so I timed everything to it. Here's the edit:
+
+```json
+{
+  "reply": "The paycheck lands on the left the moment you smile (cha-ching), your balance starts draining as your face drops, and rent, car and utilities stack up on the right — then the closing line. I used $2,400 for the check and Rent $1,450, Car $520, Utilities $240 (balance ends at $190) — send me your real numbers and I'll swap them.",
+  "operations": [
+    {
+      "op": "addGraphic",
+      "ref": "paycheck",
+      "presetId": "pay-received-500",
+      "start": {"expression": "happy", "nth": 1},
+      "end": {"event": "e4", "offset": 0.1},
+      "placement": "LEFT",
+      "props": {
+        "title": "Paycheck",
+        "subtitle": "Direct deposit",
+        "body": "Pay period Oct 16–31",
+        "items": [{"text": "Amount", "value": 2400}],
+        "format": {"kind": "CURRENCY", "compact": "NONE"}
+      },
+      "sfx": "CASH",
+      "why": "the check hits right when he smiles"
+    },
+    {
+      "op": "addGraphic",
+      "ref": "bills",
+      "presetId": "notif-stack-payday",
+      "start": {"expression": "happy", "nth": 1, "offset": 2.4},
+      "end": 7.2,
+      "placement": "RIGHT",
+      "props": {
+        "tone": "LIGHT",
+        "items": [
+          {"text": "Rent payment", "sub": "-$1,450.00 · Landlord", "meta": "Bank", "icon": "HOUSE", "color": "NEGATIVE"},
+          {"text": "Car payment", "sub": "-$520.00 · Auto loan", "meta": "Bank", "icon": "CAR", "color": "NEGATIVE"},
+          {"text": "Utilities", "sub": "-$240.00 · Electric + water", "meta": "Bank", "icon": "BOLT", "color": "NEGATIVE"}
+        ]
+      },
+      "sfx": "SOFT_POP",
+      "why": "bills stack up 2-3 seconds after the check, on the other side"
+    },
+    {
+      "op": "addGraphic",
+      "ref": "balance",
+      "presetId": "classic-counter",
+      "start": {"event": "e4", "offset": 0.15},
+      "end": 7.2,
+      "placement": "LEFT",
+      "props": {"value": 190, "from": 2400, "prefix": "$", "label": "Balance"},
+      "sfx": null,
+      "why": "the paycheck money drains away as the bills hit"
+    },
+    {
+      "op": "addZoom",
+      "ref": "facedrop",
+      "start": {"event": "e4"},
+      "duration": 1.0,
+      "amount": 1.12,
+      "mode": "CUT",
+      "focus": "face",
+      "why": "punch in on his face when it drops"
+    },
+    {
+      "op": "addText",
+      "ref": "ending",
+      "text": "well that was a fun 11 seconds",
+      "start": 7.3,
+      "end": "end",
+      "placement": "BOTTOM",
+      "style": "HEADLINE"
+    },
+    {
+      "op": "setCaptions",
+      "enabled": false,
+      "why": "no speech in this clip"
+    }
+  ]
+}
+```
+
+Want the bills to drop in one by one faster, or the balance to hit $0 instead?
