@@ -8479,3 +8479,14 @@ MiniLM is fetched to the transformers cache on first use (~23 MB).
 High. No migration (JSON on EditPlan rows + one feature flag). `FULL_EDIT_AUTO=off` or the sheet's
 "New uploads get: Cuts only" returns to the old behaviour; every full edit is an ordinary version
 (Cuts only / full take / any earlier version one tap away).
+
+
+## Close-up placement: protect the face core, never full-screen cutaways (2026-10-19)
+
+Chris on real selfie footage: graphics were dropped ("no spot clear of your face") and my
+same-day fallback (turn them into full-screen cutaways) covered his whole face — "so trash… it
+places the animation over the ENTIRE screen". Removed the cutaway fallback entirely. Instead the
+placement solver (shared by preview and renderer) uses `protectedFaceRect`: when Chris's face is
+TRACKED and the protected head region fills ≥45% of the platform-safe area (a selfie close-up),
+only the eyes→mouth core is a hard obstacle — graphics may sit smaller over hair/forehead or
+beside the cheeks. Wider shots and untracked takes keep full head protection.

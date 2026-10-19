@@ -347,3 +347,16 @@ describe("hook titles never carry profanity or insults", () => {
     expect(TITLE_PROFANITY.test("Classic budgeting mistakes")).toBe(false);
   });
 });
+
+describe("close-up placement protects the face core, not the whole head", () => {
+  it("shrinks protection to eyes→mouth only when the head fills the frame", async () => {
+    const { protectedFaceRect } = await import("../visual-placement");
+    const safe = { x: 60, y: 240, width: 900, height: 1000 };
+    const closeUp = { x: 100, y: 250, width: 850, height: 900 };
+    const core = protectedFaceRect(closeUp, safe);
+    expect(core.width * core.height).toBeLessThan(0.45 * closeUp.width * closeUp.height);
+    expect(core.y).toBeGreaterThan(closeUp.y + 200); // hair/forehead left free
+    const wide = { x: 400, y: 500, width: 250, height: 280 };
+    expect(protectedFaceRect(wide, safe)).toEqual(wide);
+  });
+});

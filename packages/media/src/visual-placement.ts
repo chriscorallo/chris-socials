@@ -378,6 +378,26 @@ function overlapNames(rect: Rect, named: Array<{ name: string; rect: Rect }>): s
  * Resolves AUTO placements. Returns the visuals (same order as the input), warnings for the
  * editor, and per-visual details (footprint, head region, confidence) for overlays.
  */
+/**
+ * Close-up framing (selfie: the protected head region fills a big share of the platform-safe
+ * area) leaves no room anywhere if the whole expanded head is off limits — every graphic used
+ * to be dropped or blown up full screen. Then protect only the FACE CORE (eyes → mouth, the
+ * part a viewer must see); a graphic may sit over hair/forehead or beside the cheeks, like top
+ * creators place them. Wider shots keep the full head protection. Same rule for preview and
+ * render (both call this solver).
+ */
+export const CLOSE_UP_HEAD_SHARE = 0.45;
+export function protectedFaceRect(head: Rect, safe: Rect): Rect {
+  const share = rectArea(head) / Math.max(1, rectArea(safe));
+  if (share < CLOSE_UP_HEAD_SHARE) return head;
+  // Invert subject-track-core's expansion (sides 0.35, top 0.6, bottom 0.25 face sizes).
+  const fw = head.width / 1.7;
+  const fh = head.height / 1.85;
+  const fx = head.x + 0.35 * fw;
+  const fy = head.y + 0.6 * fh;
+  return { x: Math.round(fx + 0.08 * fw), y: Math.round(fy + 0.28 * fh), width: Math.round(0.84 * fw), height: Math.round(0.72 * fh) };
+}
+
 export function solveVisualPlacements(timeline: EditTimeline, options: PlacementOptions): PlacementResult {
   const canvas = timeline.canvas;
   const k = canvas.width / 1080;
@@ -397,7 +417,8 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
   const windowObstacles = (v: TimelineVisual) => {
     const subject = subjectRegionsForWindow(timeline, v.start, v.end, options);
     const hard: Array<{ name: string; rect: Rect }> = [];
-    if (subject.head) hard.push({ name: "Chris's face", rect: subject.head });
+    // Close-up relief only when we actually know where his face is (an assumed head stays fully protected).
+    if (subject.head) hard.push({ name: "Chris's face", rect: subject.tracked ? protectedFaceRect(subject.head, safe) : subject.head });
     for (const r of captionObstacles(captionIndex, v.start, v.end)) hard.push({ name: "the captions", rect: r });
     for (const t of timeline.texts) {
       if (overlapsInTime(t, v)) hard.push({ name: `text "${t.text.slice(0, 24)}"`, rect: textRect(t, canvas, options.measure) });

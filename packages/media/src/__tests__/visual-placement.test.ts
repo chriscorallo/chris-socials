@@ -14,6 +14,7 @@ import {
   visualRect,
   intersectionArea,
   subjectRegionsForWindow,
+  protectedFaceRect,
 } from "../visual-placement";
 import type { SubjectTrack } from "../subject-track-core";
 import { PLACEMENT_SAFE_ZONE } from "../platform-profiles";
@@ -149,11 +150,22 @@ describe("placement engine", () => {
     expect(intersectionArea(res.details.c!.rect, headPx(head))).toBe(0);
   });
 
-  it("reports LOW_CONFIDENCE (never a silent overlap) when there is no clear spot", () => {
+  it("selfie close-up (head fills the frame): finds a spot clear of the eyes→mouth core instead of giving up", () => {
     const head = { x: 0.0, y: 0.1, w: 1.0, h: 0.6 };
     const res = solveVisualPlacements(timeline({ visuals: [counter()] }), { subjectTracks: { a: constantTrack(head) } });
+    const core = protectedFaceRect(headPx(head), placementSafeArea({ width: 1080, height: 1920 }, PLACEMENT_SAFE_ZONE));
+    expect(res.details.v1!.confidence).toBe("HIGH");
+    expect(intersectionArea(res.details.v1!.rect, core)).toBe(0);
+  });
+
+  it("reports LOW_CONFIDENCE (never a silent overlap) when there is no clear spot", () => {
+    // A tracked close-up AND the rest of the frame tiled with manually placed graphics.
+    const head = { x: 0.0, y: 0.1, w: 1.0, h: 0.6 };
+    const tiles: TimelineVisual[] = [];
+    for (let i = 0; i < 6; i++) for (let j = 0; j < 12; j++) tiles.push(visual({ ...counter(), id: `m${i}-${j}`, placement: { mode: "MANUAL", x: 0.05 + i * 0.18, y: 0.05 + j * 0.08, scale: 1 } }));
+    const res = solveVisualPlacements(timeline({ visuals: [...tiles, counter()] }), { subjectTracks: { a: constantTrack(head) } });
     expect(res.details.v1!.confidence).toBe("LOW");
-    expect(res.warnings.find((w) => w.code === "LOW_CONFIDENCE")?.message).toMatch(/face/);
+    expect(res.warnings.some((w) => w.code === "LOW_CONFIDENCE" && w.visualId === "v1")).toBe(true);
   });
 
   it("never moves a MANUAL graphic, and warns when it covers the face", () => {
