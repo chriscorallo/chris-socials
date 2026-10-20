@@ -204,7 +204,7 @@ function money(fmt: GraphicProps["format"], kind: DetectedNumber["kind"]): Graph
 }
 
 function fmtShort(d: DetectedNumber): string {
-  return d.raw.replace(/\s+/g, " ").replace(/\${2,}/g, "$");
+  return d.raw.replace(/\s+/g, " ").replace(/\$(?:\s*\$)+/g, "$");
 }
 
 /**

@@ -9350,3 +9350,28 @@ title "$$8,333 → 100000 year".
 Tests: `full-edit.test.ts` "the free cut reads like a creator cut it", title formatting.
 
 **Reversibility:** one default (`countUp`), one weight, one regex family, one removal kind.
+
+## 2026-10-19 — Transcription model: whisper-large-v3-turbo (the words every bot works from)
+
+**Context:** the free cut's remaining sloppiness was the words themselves: "I would rather be
+the savior", "So, a name", "So one, you are very nice house or car rent" — Whisper base.en
+mis-hearings that the captions burn in and every editing bot (beats, hook, read-through) reasons
+over. Benchmarked the four word-timestamped ONNX exports inside a sandbox on Chris's real
+"both making $100K" take (62.7 s, 8 vCPU, fp32; `scripts/sandbox/whisper-bench.ts`):
+
+| model | load | transcribe | RTF | word errors vs large | notes |
+|---|---|---|---|---|---|
+| base.en (was default) | 2.4 s | 7.8 s | 0.12 | 10.1% | "$3500" merged, garbage lines |
+| small.en | 7.9 s | 21 s | 0.34 | 9.0% | "saver rightver" |
+| medium.en | 16 s | 47 s | 0.75 | 6.0% | "7733", one bad timestamp |
+| large-v3-turbo | 14 s | 30 s | 0.48 | — | clean punctuation, sentence breaks |
+
+**Decision:** `DEFAULT_TRANSCRIPTION_MODEL = onnx-community/whisper-large-v3-turbo_timestamped`,
+fp32 (word timing), `language: "en"` forced for the multilingual export. The snapshot warm-up
+pre-downloads it (≈3 GB); a 60 s take transcribes in ~30 s. Existing takes keep their words
+until re-transcribed (`force`). `TRANSCRIPTION_MODEL` still overrides per environment.
+
+**Alternatives considered:** medium.en (slower AND worse here); small.en (fast, barely better
+than base); q8 weights (rejected for now: fp32 is the measured-good setting for word timing).
+
+**Reversibility:** one constant / one env var; the old model stays cached in older snapshots.

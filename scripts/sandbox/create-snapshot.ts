@@ -9,7 +9,7 @@
  * 3. installs Chrome headless shell's system libraries (apt);
  * 4. uploads the runner and `npm install`s its native externals (ffmpeg/ffprobe static,
  *    onnxruntime-node, transformers.js, @remotion/renderer + its Linux compositor);
- * 5. `run-job.sh warmup`: downloads Chrome headless shell, Whisper base.en (timestamped) and
+ * 5. `run-job.sh warmup`: downloads Chrome headless shell, Whisper large-v3-turbo (timestamped) and
  *    MODNet into /vercel/sandbox/cache and loads each once;
  * 6. smoke-tests every runtime: ffmpeg/ffprobe, an offline render with a 2D + a 3D graphic
  *    (Remotion + WebGL on SwiftShader + compositing), the face tracker and the person matte;

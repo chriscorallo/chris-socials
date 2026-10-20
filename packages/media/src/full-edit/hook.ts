@@ -188,7 +188,7 @@ function nounAfter(words: string[], n: SpokenNumber, sentenceW0: number): string
 export function hookTitles(hookSentences: FESentence[], allSentences: FESentence[], topicWord: string | null): HookTitle[] {
   const out: HookTitle[] = [];
   const push = (text: string, template: HookTitle["template"]) => {
-    const t = cleanTitle(text).replace(/\${2,}/g, "$");
+    const t = cleanTitle(text).replace(/\$(?:\s*\$)+/g, "$");
     const n = tokens(t).length;
     if (n < 2 || n > 8 || t.length > 48) return;
     if (TITLE_AVOID.test(t) || TITLE_PROFANITY.test(t)) return;

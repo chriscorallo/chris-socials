@@ -16,7 +16,11 @@ import type { TranscriptWord } from "../captions";
  * only needs probing/rendering never loads transformers.js/onnxruntime.
  */
 
-export const DEFAULT_TRANSCRIPTION_MODEL = "onnx-community/whisper-base.en_timestamped";
+/** 2026-10-19: large-v3-turbo — benchmarked on a real 63 s take (8 vCPU, fp32): base.en 7.8 s
+ * but 10% of words wrong vs this model ("saver" → "savior", "So, anyway" → "So, a name"),
+ * small.en 21 s / 9%, medium.en 47 s / 6% with a bad timestamp, large-v3-turbo 30 s, clean
+ * punctuation and sentence breaks. Every editing bot works from these words. See DECISIONS. */
+export const DEFAULT_TRANSCRIPTION_MODEL = "onnx-community/whisper-large-v3-turbo_timestamped";
 export const WHISPER_SAMPLE_RATE = 16000;
 /** Long-audio window (s) — must stay below 30 (see transcribe()). */
 export const WHISPER_CHUNK_SECONDS = 25;
@@ -194,12 +198,14 @@ export class LocalWhisperTranscriptionProvider {
       // docs/decisions-pending/style-cut.md.
       chunk_length_s: WHISPER_CHUNK_SECONDS,
       stride_length_s: 5,
+      // Multilingual exports: Chris speaks English — never let a window auto-detect otherwise.
+      ...(this.model.includes(".en") ? {} : { language: "en", task: "transcribe" }),
     });
     const words = normalizeWhisperChunks(out.chunks ?? [], durationSeconds);
     const text = out.text.trim() || words.map((w) => w.word).join(" ");
     return {
       text,
-      language: this.model.includes(".en") ? "en" : null,
+      language: "en",
       durationSeconds,
       words,
       model: this.model,
