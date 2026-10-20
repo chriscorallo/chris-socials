@@ -496,11 +496,15 @@ export function wordLevelCuts(words: TranscriptWord[], S: FESentence[], dec: Sen
     }
     if (lastSafe >= s.w0 && s.w1 - lastSafe >= 3) add(s.w0, lastSafe, "LEAD_IN");
     // Restart: the same 2–4 words said twice close together ("a lot of people, uh, a lot of people").
+    // The repeat may start the next kept sentence ("…the math. | The math on this…"), so the
+    // search runs to the end of a directly following kept sentence.
+    const next = S[i + 1];
+    const limit = next && dec[i + 1]!.kept && next.w0 === s.w1 + 1 ? next.w1 : s.w1;
     for (let a = s.w0; a <= s.w1; a++) {
       for (let len = 4; len >= 1; len--) {
         for (let gap = 0; gap <= 2; gap++) {
           const c = a + len + gap;
-          if (c + len - 1 > s.w1) continue;
+          if (c + len - 1 > limit) continue;
           // One repeated word only counts with a filler between ("it's, um, it's").
           if (len === 1 && (gap === 0 || FILLER_WORDS.has(b[a]!))) continue;
           let same = true;

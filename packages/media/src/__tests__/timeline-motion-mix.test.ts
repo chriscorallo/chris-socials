@@ -85,7 +85,7 @@ describe("sound design graph (pure)", () => {
   it("is exactly the legacy single chain without SFX or music", () => {
     const t = EditTimelineSchema.parse(base());
     const plan = buildAudioMix({ timeline: t, duration: 6, anyAudio: true, firstInput: 1, sourceWords: {} });
-    expect(plan.parts).toEqual(["[acat]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"]);
+    expect(plan.parts).toEqual(["[acat]dynaudnorm=f=400:g=21:m=4:p=0.9,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"]);
     expect(plan.inputArgs).toEqual([]);
   });
 

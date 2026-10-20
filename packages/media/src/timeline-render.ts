@@ -207,6 +207,9 @@ export function buildAudioMix(opts: {
   const warnings: string[] = [];
   const normalize = timeline.audio.normalize && opts.anyAudio;
   const loud = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000";
+  // Voice only: even the level between clips first (a louder take, a turned-away line) so a
+  // cut never jumps in volume; gentle (≤ +12 dB, ~0.8 s window), then the house master.
+  const voice = `${VOICE_LEVEL_FILTER},${loud}`;
 
   const events: SfxEvent[] = [];
   for (const e of timelineSfxEvents(timeline, duration)) {
@@ -225,14 +228,14 @@ export function buildAudioMix(opts: {
   }
 
   if (events.length === 0 && !musicPath) {
-    return { parts: [`[acat]${normalize ? loud : "anull"}[aout]`], inputArgs: [], warnings, sfxEvents: [], music: null };
+    return { parts: [`[acat]${normalize ? voice : "anull"}[aout]`], inputArgs: [], warnings, sfxEvents: [], music: null };
   }
 
   const parts: string[] = [];
   const inputArgs: string[] = [];
   const mixLabels: string[] = ["[voice]"];
   let idx = opts.firstInput;
-  parts.push(`[acat]${normalize ? loud : "anull"}[voice]`);
+  parts.push(`[acat]${normalize ? voice : "anull"}[voice]`);
 
   // SFX: one input per distinct sound, split per hit, each delayed to its time.
   const bySound = new Map<SfxSound, SfxEvent[]>();
@@ -306,6 +309,9 @@ export interface RenderTimelineResult {
   /** What the motion/sound-design pass did (overlay clips, SFX hits, music bed). */
   motion: { overlays: number; sfxEvents: SfxEvent[]; music: AudioMixPlan["music"]; behindSubject: number; mattedClips: number };
 }
+
+/** Per-clip voice levelling (ffmpeg dynaudnorm): 400 ms frames, 21-frame window, ≤ 4× gain. */
+export const VOICE_LEVEL_FILTER = "dynaudnorm=f=400:g=21:m=4:p=0.9";
 
 /** Length of the de-click fade at a splice (s): long enough to remove the step, too short to hear. */
 export const SPLICE_FADE_SECONDS = 0.008;

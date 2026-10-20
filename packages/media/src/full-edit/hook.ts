@@ -136,7 +136,7 @@ export const TITLE_AVOID = /\b(unlock|level up|game ?changer|hack|hacks|secret|s
 export interface HookTitle {
   text: string;
   /** Which template made it. */
-  template: "QUOTE" | "NUMBER_TOPIC" | "QUESTION" | "IMPERATIVE" | "CONTRAST";
+  template: "QUOTE" | "NUMBER_TOPIC" | "QUESTION" | "IMPERATIVE" | "CONTRAST" | "PLANNED";
   /** Every word comes from the take (or is a neutral connector). */
   grounded: boolean;
 }

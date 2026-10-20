@@ -75,15 +75,17 @@ export interface StyleCutTarget {
   source: { kind: "REFERENCES" | "DEFAULTS"; sampleSize: number; creatorCount: number };
 }
 
-/** Sane short-form defaults (close to the first live reference measurement, 2026-10-17). */
+/** Sane short-form defaults (shots: the first live reference measurement, 2026-10-17; pauses:
+ * Chris's own hand edits, 2026-10-19 — cuts land right after the word, ~0.1 s of air inside a
+ * sentence and a short beat between sentences, so the video plays as one continuous thought). */
 export const DEFAULT_STYLE_CUT_TARGET: StyleCutTarget = {
   shotMedianS: 2.4,
   shotP25S: 1.9,
   shotP75S: 3.6,
   firstCutS: 3.2,
   hookDurationS: 3.0,
-  pauseKeepS: 0.18,
-  sentencePauseKeepS: 0.32,
+  pauseKeepS: 0.12,
+  sentencePauseKeepS: 0.18,
   lufs: -14,
   source: { kind: "DEFAULTS", sampleSize: 0, creatorCount: 0 },
 };
@@ -114,11 +116,13 @@ export function styleCutTargetFromProfile(profile: StyleProfileLike | null | und
   const firstCutS = ok(profile.firstCutS) ? clamp(profile.firstCutS.value, 1.2, 8) : d.firstCutS;
   const p90 = ok(profile.gapP90S) ? profile.gapP90S.value : null;
   const longest = ok(profile.longestGapS) ? profile.longestGapS.value : null;
-  const pauseKeepS = p90 != null ? clamp(p90, 0.12, 0.3) : d.pauseKeepS;
+  // Pauses are capped at Chris's hand-edit feel whatever the references do: a creator who
+  // leaves air is not a reason to leave air (see DECISIONS 2026-10-19, "Cut like the hand edits").
+  const pauseKeepS = p90 != null ? clamp(p90, 0.08, 0.14) : d.pauseKeepS;
   const sentencePauseKeepS = clamp(
-    Math.max(pauseKeepS + 0.08, longest != null ? longest * 0.5 : d.sentencePauseKeepS),
+    Math.max(pauseKeepS + 0.04, longest != null ? longest * 0.5 : d.sentencePauseKeepS),
+    0.12,
     0.22,
-    0.5,
   );
   const lufs = ok(profile.integratedLufs) ? clamp(profile.integratedLufs.value, -20, -9) : d.lufs;
   return {
@@ -195,9 +199,10 @@ export interface StyleCutOptions {
 export const DEFAULT_STYLE_CUT_OPTIONS: StyleCutOptions = {
   preRollS: 0.12,
   tailS: 0.3,
-  minTailPadS: 0.08,
-  minLeadPadS: 0.06,
-  minRemovalS: 0.12,
+  // Measured on Chris's hand edits: ~0.09 s kept after a word, ~0.05 s before the next.
+  minTailPadS: 0.09,
+  minLeadPadS: 0.05,
+  minRemovalS: 0.06,
   alwaysCutGapS: 0.75,
   whisperTailPadS: 0.22,
   whisperLeadPadS: 0.1,
@@ -213,6 +218,9 @@ export interface StyleCutShot {
    * "JOIN" = the first shot of the next part of a multi-part recording; "STORY" = the Full edit
    * removed or reordered words here (a retake, a repeat, the cold-open jump). */
   cutBefore: "START" | "PAUSE" | "RHYTHM" | "JOIN" | "STORY";
+  /** A jump cut: the pause was removed but the shot before it was too short for a framing
+   * change, so the picture keeps the same crop (the way a hand edit tightens a sentence). */
+  jump?: boolean;
 }
 
 export interface StyleCutStats {
@@ -315,6 +323,8 @@ interface Segment {
   /** Index range (into SpeechMap.pauses) of the pauses inside this segment. */
   firstPause: number;
   lastPause: number;
+  /** Opens with a jump cut (same framing as the shot before). */
+  jump?: boolean;
 }
 
 /** A silence between two stretches of speech (source seconds). */
@@ -487,15 +497,16 @@ function cutOneTake(
     const cutIn = q(p.end - leadPad, "floor");
     if (!(cutIn - cutOut >= opts.minRemovalS - 1e-9)) return;
     if (cutOut <= seg.start || cutIn >= end) return;
-    // A short pause that would make a too-short shot stays (unless it's a long silence).
+    // The pause always goes (that's the hand-edit feel). When the shot so far is too short for
+    // a framing change, the cut is a jump cut: same crop, just the air removed.
     const shotSoFar = cutOut - seg.start;
     const minHere = firstTake && segments.length === 0 ? minFirstShot : minShot;
-    if (gap < opts.alwaysCutGapS && shotSoFar < minHere) return;
-    segments.push({ start: seg.start, end: cutOut, firstPause: seg.firstPause, lastPause: pi - 1 });
+    const jump = gap < opts.alwaysCutGapS && shotSoFar < minHere;
+    segments.push({ start: seg.start, end: cutOut, firstPause: seg.firstPause, lastPause: pi - 1, jump: seg.jump });
     removed.add(pi);
     pausesRemoved++;
     pauseSecondsRemoved += cutIn - cutOut;
-    seg = { start: cutIn, end, firstPause: pi + 1, lastPause: speech.pauses.length - 1 };
+    seg = { start: cutIn, end, firstPause: pi + 1, lastPause: speech.pauses.length - 1, jump };
   });
   segments.push(seg);
 
@@ -573,11 +584,13 @@ function cutOneTake(
     const edges = [s.start, ...cuts, s.end];
     for (let k = 0; k < edges.length - 1; k++) {
       const first = shots.length === 0 && k === 0;
+      const jump = k === 0 && !!s.jump && shots.length > 0;
       shots.push({
         sourceStart: edges[k]!,
         sourceEnd: edges[k + 1]!,
-        framing: framingForShot(shotOffset + shots.length),
+        framing: jump ? shots[shots.length - 1]!.framing : framingForShot(shotOffset + shots.length),
         cutBefore: first ? (firstTake ? "START" : "JOIN") : k === 0 && si > 0 ? "PAUSE" : "RHYTHM",
+        ...(jump ? { jump: true } : {}),
       });
     }
   });
@@ -613,9 +626,10 @@ function framedClips(shots: StyleCutShot[], geo: ShotGeometry[], base: EditTimel
     const z = clips[i]!.crop.zoom;
     s.framing = (STYLE_CUT_FRAMINGS.find((f) => Math.abs(f.zoom - z) < 1e-6)?.name ?? s.framing) as StyleCutFramingName;
   });
-  // Never the same framing twice in a row: if a step-down made two neighbours equal, the
-  // later one moves to the other punch-in (or WIDE).
+  // Never the same framing twice in a row (jump cuts excepted): if a step-down made two
+  // neighbours equal, the later one moves to the other punch-in (or WIDE).
   for (let i = 1; i < clips.length; i++) {
+    if (shots[i]!.jump) continue;
     if (Math.abs(clips[i]!.crop.zoom - clips[i - 1]!.crop.zoom) < 1e-6) {
       const g = geo[i]!;
       for (const f of STYLE_CUT_FRAMINGS) {
@@ -630,6 +644,14 @@ function framedClips(shots: StyleCutShot[], geo: ShotGeometry[], base: EditTimel
       }
     }
   }
+  // A jump cut keeps the previous clip's crop exactly — only the air is gone. Last, so a
+  // neighbour moved by the alternation above is what the jump copies.
+  shots.forEach((s, i) => {
+    if (s.jump && i > 0 && clips[i - 1]!.mediaAssetId === clips[i]!.mediaAssetId) {
+      clips[i]!.crop = { ...clips[i - 1]!.crop };
+      s.framing = shots[i - 1]!.framing;
+    }
+  });
   return clips;
 }
 
@@ -1034,7 +1056,7 @@ export function buildStyleCutFromRanges(input: StyleCutRangesInput): StyleCutRan
       shots.push({ sourceStart: q(r.start, "ceil"), sourceEnd: q(r.end, "floor"), framing: "WIDE", cutBefore: ri === 0 ? "START" : "STORY", rangeIndex: ri });
       return;
     }
-    const o = last ? opts : { ...opts, tailS: Math.min(opts.tailS, input.joinTailS ?? Math.max(0.16, target.sentencePauseKeepS * 0.6)) };
+    const o = last ? opts : { ...opts, tailS: Math.min(opts.tailS, input.joinTailS ?? Math.max(0.12, target.sentencePauseKeepS * 0.6)) };
     const c = cutOneTake(local, dur, sil && sil.length ? sil : null, o, target, offset + shots.length, ri === 0);
     if (c.speech.mode !== "AUDIO") audio = false;
     pausesRemoved += c.pausesRemoved;

@@ -9159,3 +9159,52 @@ rule); more generic templates (rejected: the ask was identity, not volume).
 
 **Reversibility:** additive — new category, components and presets; nothing existing changed
 its id, data shape or look.
+
+## 2026-10-19 — Cut like the hand edits (pauses, jump cuts, restarts, voice levelling, planned title)
+
+**Context:** Chris hand-edited two videos ("the car payment", "why $100k isn't spending money")
+and said that is how he wants every video cut: the cut lands right after the word, the whole
+video plays as one sentence instead of chopped phrases, nothing is clipped. Measured on those
+edits (scratchpad `remeasure.mjs`): ~0.14 s kept after a word (Whisper-relative; ~0.09 s true),
+~0.09 s before the next, internal pauses median 0.11 s, versus the automatic cut's 0.18 s /
+0.32 s targets and a rule that *kept* a pause whenever removing it would make a shot shorter
+than ~1 s. The viewer check on both posted videos also flagged volume jumps between lines.
+
+**Decision (packages/media):**
+1. **Targets** — `DEFAULT_STYLE_CUT_TARGET.pauseKeepS` 0.18 → 0.12, `sentencePauseKeepS`
+   0.32 → 0.18; the reference-derived values are capped to the hand-edit band
+   (`pauseKeepS` 0.08–0.14, `sentencePauseKeepS` 0.12–0.22). A creator who leaves air is not a
+   reason to leave air. Pads: `minTailPadS` 0.09, `minLeadPadS` 0.05, `minRemovalS` 0.06 (a
+   0.2 s hesitation is now trimmed; it was below the old 0.12 s floor).
+2. **Jump cuts** — the "keep the pause to avoid a short shot" rule is gone. The pause is always
+   removed; when the shot so far is shorter than the framing floor the cut is a *jump cut*
+   (`StyleCutShot.jump`): the next clip copies the previous crop exactly, and the
+   never-the-same-framing-twice rule skips it. That is what a hand edit does — air out, picture
+   stays.
+3. **Restarts across a sentence boundary** — `wordLevelCuts` now searches to the end of a
+   directly following kept sentence, so "…wild, the car payment. | The car payment is…" drops
+   the first attempt (whole-sentence false starts were already RETAKEs).
+4. **Word-edge boundaries** — the Full edit accepts measured silences ≥ 0.05 s (was 0.08) as
+   clean cut points.
+5. **Voice levelling** — the render's voice chain is now
+   `dynaudnorm=f=400:g=21:m=4:p=0.9` → house `loudnorm` (`VOICE_LEVEL_FILTER`), voice only —
+   music/SFX are mixed after. A louder take or a turned-away line no longer steps at the cut.
+6. **Planned title** — the Creative Brief's chosen hook `onScreenText` is the first hook-title
+   choice when it is title-sized (≤ 48 chars, ≤ 8 words), template `PLANNED`; the worker passes
+   it (`briefForFullEdit`).
+
+Tests: `style-cut.test.ts` "cuts like the hand edits" (kept air ≤ 0.26 s at every splice, jump
+cuts keep the crop), `full-edit.test.ts` planned title + cross-sentence restart, mix-chain
+expectation updated.
+
+**Dev note:** the worker's DB-backed tests share one PGlite connection (`connection_limit=1`),
+so the suite must run serially (`vitest run --no-file-parallelism`) with `DATABASE_URL` set;
+in parallel ~60 tests fail with connection errors that look like code failures.
+
+**Alternatives considered:** learning the pads per video from Chris's timeline edits (deferred:
+two samples; the numbers above are those samples); crossfades longer than the 8 ms de-click
+(rejected: audible smear on consonants); per-clip loudnorm (rejected: cost; dynaudnorm is one
+pass).
+
+**Reversibility:** numbers and a flag — the old behaviour is the old constants plus
+`alwaysCutGapS` gating; `VOICE_LEVEL_FILTER` is one string.

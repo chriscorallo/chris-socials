@@ -434,8 +434,8 @@ describe("styleCutTargetFromProfile", () => {
     expect(t.shotP25S).toBe(1.9);
     expect(t.shotP75S).toBe(4.6);
     expect(t.firstCutS).toBe(3.2);
-    expect(t.pauseKeepS).toBe(0.12); // clamped up: never strip every breath
-    expect(t.sentencePauseKeepS).toBeCloseTo(0.31, 2);
+    expect(t.pauseKeepS).toBe(0.09); // the references' p90 gap, within the hand-edit band (0.08–0.14)
+    expect(t.sentencePauseKeepS).toBeCloseTo(0.22, 2); // capped: a beat, never a hole
     expect(t.lufs).toBe(-14);
   });
 
@@ -647,5 +647,42 @@ describe("buildStyleCut — several parts of one recording (segmented teleprompt
     expect(b[0]!.sourceStart).toBe(0);
     const none = buildStyleCut({ base: base(), takes: parts.map((p) => ({ mediaAssetId: p.id, words: [], durationSeconds: p.duration })) });
     expect(none.ok).toBe(false);
+  });
+});
+
+describe("buildStyleCut — cuts like the hand edits (2026-10-19)", () => {
+  // Short sentences with small pauses between them: every pause goes, even when the shot so
+  // far is too short for a framing change — those become jump cuts (same crop).
+  const { words, duration } = speech({ sentences: 10, pauses: [0.35, 0.3, 0.4, 0.3, 0.45], lead: 0.6, tail: 0.6 });
+  const silences = silencesOf(words, duration);
+
+  it("removes a 0.3–0.45 s pause instead of keeping it to avoid a short shot", () => {
+    const r = okCut(words, duration, { silences });
+    expect(r.stats.pausesRemoved).toBeGreaterThanOrEqual(5);
+    // Kept air at every splice is a hand-edit beat: ≤ 0.26 s between the words.
+    for (let i = 1; i < r.timeline.clips.length; i++) {
+      const a = r.timeline.clips[i - 1]!;
+      const b = r.timeline.clips[i]!;
+      if (Math.abs(a.sourceEnd - b.sourceStart) < 1e-6) continue; // framing-only cut
+      const lastWord = [...words].reverse().find((w) => w.end <= a.sourceEnd + 1e-6)!;
+      const nextWord = words.find((w) => w.start >= b.sourceStart - 1e-6)!;
+      const kept = a.sourceEnd - lastWord.end + (nextWord.start - b.sourceStart);
+      expect(kept, `splice ${i}`).toBeLessThanOrEqual(0.26);
+      expect(kept, `splice ${i}`).toBeGreaterThanOrEqual(0.1);
+    }
+  });
+
+  it("a jump cut keeps the previous clip's crop (the picture doesn't re-frame on a short shot)", () => {
+    // Hesitations every three words: each gap goes, and the ~0.9 s shots between them are jump cuts.
+    const choppy = speech({ sentences: 8, pauses: [0.5, 0.6], lead: 0.6, tail: 0.6, midPauseEvery: 3, seed: 7 });
+    const r = okCut(choppy.words, choppy.duration, { silences: silencesOf(choppy.words, choppy.duration) });
+    const jumps = r.shots.map((s, i) => (s.jump ? i : -1)).filter((i) => i > 0);
+    expect(jumps.length).toBeGreaterThan(0);
+    for (const i of jumps) {
+      expect(r.timeline.clips[i]!.crop).toEqual(r.timeline.clips[i - 1]!.crop);
+    }
+    // Non-jump neighbours still alternate framing.
+    const nonJump = r.shots.map((s, i) => (!s.jump ? i : -1)).filter((i) => i > 0 && !r.shots[i - 1]!.jump);
+    for (const i of nonJump) expect(r.shots[i]!.framing).not.toBe(r.shots[i - 1]!.framing);
   });
 });

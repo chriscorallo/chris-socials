@@ -327,11 +327,11 @@ type FullEditComputed =
 
 /** The free Full edit of the selected take (one-take videos; multi-part recordings get the style cut). */
 /** The Creative Brief's hook line and story beats, for the Full edit to match against the take. */
-async function briefForFullEdit(db: PrismaClient, contentItemId: string): Promise<{ hook: string | null; keep: string[] } | null> {
+async function briefForFullEdit(db: PrismaClient, contentItemId: string): Promise<{ hook: string | null; keep: string[]; onScreenText: string | null } | null> {
   const b = await getLatestCreativeBrief(db, contentItemId).catch(() => null);
   if (!b) return null;
   const chosen = b.hooks[b.chosenHookIndex] ?? b.hooks[0];
-  return { hook: chosen?.text ?? null, keep: [b.story.midpointReversal, b.story.payoff, b.story.ending].filter((t): t is string => !!t) };
+  return { hook: chosen?.text ?? null, keep: [b.story.midpointReversal, b.story.payoff, b.story.ending].filter((t): t is string => !!t), onScreenText: chosen?.onScreenText ?? null };
 }
 
 async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, contentItemId: string, l: Loaded, choices: FullEditChoices, measure = true): Promise<FullEditComputed> {

@@ -254,6 +254,23 @@ describe("full edit — story bot (say it once, cut the fluff, fit the reference
     const nowhere = planStory({ ...base, words: t.words, sentences: S3, sim: [[1]], relevance: [0.6], safeAfter: (k) => k < 0 || k >= t.words.length - 1 });
     expect(nowhere.wordCuts).toEqual([]);
   });
+
+  it("a restart that begins the next sentence is caught across the sentence boundary (the first attempt goes)", () => {
+    // A whole-sentence false start is already a RETAKE at sentence level…
+    const t = take(["I did the math.", "I did the math on this car payment and it is ugly."], 0.3);
+    const S2 = buildSentences(t.words, null);
+    expect(S2.length).toBe(2);
+    const p = planStory({ ...base, words: t.words, sentences: S2, sim: [[1, 0.3], [0.3, 1]], relevance: [0.6, 0.8] });
+    expect(p.decisions[0]!.kind).toBe("RETAKE");
+    // …but a restart at the END of one sentence that resumes as the next is a word-level cut.
+    const t2 = take(["Honestly this is wild, the car payment.", "The car payment is nine hundred a month."], 0.3);
+    const S3 = buildSentences(t2.words, null);
+    expect(S3.length).toBe(2);
+    const p2 = planStory({ ...base, words: t2.words, sentences: S3, sim: [[1, 0.3], [0.3, 1]], relevance: [0.6, 0.8] });
+    expect(p2.decisions.every((d) => d.kept)).toBe(true);
+    const restart = p2.wordCuts.find((c) => c.kind === "RESTART");
+    expect(restart?.text).toBe("the car payment.");
+  });
 });
 
 describe("full edit — visuals bot", () => {
@@ -348,6 +365,17 @@ describe("full edit — end to end (pure, model-free embedder)", () => {
     const chosen = await buildFullEdit({ ...tight, brief, choices: { hookIndex: 0 } }, LEXICAL_EMBEDDER);
     if (!chosen.ok) throw new Error("full edit failed");
     expect(chosen.report.hook.chosenIndex).toBe(0);
+  });
+
+  it("the brief's planned on-screen line is the first title choice; an unusable one (too long) is ignored", async () => {
+    const brief = { hook: "How does that even happen?", keep: [], onScreenText: "The raise that made him poorer" };
+    const r = await buildFullEdit({ ...input, brief }, LEXICAL_EMBEDDER);
+    if (!r.ok) throw new Error(r.message);
+    expect(r.report.hook.titles[0]).toEqual({ text: "The raise that made him poorer", template: "PLANNED" });
+    expect(r.timeline.texts[0]?.text).toBe("The raise that made him poorer");
+    const long = await buildFullEdit({ ...input, brief: { ...brief, onScreenText: "a planned line that is far too long to ever sit on screen as a hook title" } }, LEXICAL_EMBEDDER);
+    if (!long.ok) throw new Error(long.message);
+    expect(long.report.hook.titles[0]!.template).not.toBe("PLANNED");
   });
 
   it("is deterministic (same inputs → same key + timeline) and the renderer's placement re-solve changes nothing (parity)", async () => {

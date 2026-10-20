@@ -82,7 +82,7 @@ export interface FullEditInput {
    * take's sentences by meaning; the hook candidate that IS the planned hook is preferred and
    * the matched beats are protected from length trims.
    */
-  brief?: { hook: string | null; keep: string[] } | null;
+  brief?: { hook: string | null; keep: string[]; /** The brief's planned on-screen line — offered as the first title. */ onScreenText?: string | null } | null;
   /** Glyph measurement (node: nodeMeasureText) — without it text sizes are estimated. */
   measure?: MeasureText;
   options?: Partial<StyleCutOptions>;
@@ -191,7 +191,7 @@ function boundaryFn(words: TranscriptWord[], duration: number, silences: Array<{
       let bestScore = -Infinity;
       for (const s of silences) {
         if (s.end <= a.start + 0.05 || s.start >= b.end - 0.05) continue;
-        if (s.end - s.start < 0.08) continue;
+        if (s.end - s.start < 0.05) continue;
         const overlap = Math.min(s.end, g1) - Math.max(s.start, g0);
         const score = overlap * 10 - Math.abs((s.start + s.end) / 2 - mid);
         if (score > bestScore) {
@@ -395,6 +395,11 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   // ---- 5. Hook title --------------------------------------------------------------------------
   const hookSentences = sentences.filter((s) => hook.sentenceIds.includes(s.id));
   const titles = hookTitles(hookSentences, sentences.filter((s) => story.decisions[s.id]?.kept), kw[0]?.word ?? null);
+  // The Creative Brief's planned on-screen line leads the choices when it's title-sized.
+  const planned = input.brief?.onScreenText?.trim().replace(/\s+/g, " ") ?? "";
+  if (planned && planned.length >= 4 && planned.length <= 48 && planned.split(" ").length <= 8 && !titles.some((t) => t.text.toLowerCase() === planned.toLowerCase())) {
+    titles.unshift({ text: planned, template: "PLANNED", grounded: true });
+  }
   const titleIndex = choices.titleIndex === null ? null : Math.min(choices.titleIndex ?? 0, titles.length - 1);
   const measure: MeasureText = input.measure ?? ((text, _f, px) => text.length * px * 0.56);
   const checks: FullEditCheck[] = [];
