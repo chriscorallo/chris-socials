@@ -343,7 +343,10 @@ export default async function ContentDetailPage({
                 <form action={runTranscribe}>
                   <input type="hidden" name="contentItemId" value={item.id} />
                   <input type="hidden" name="mediaAssetId" value={asset.id} />
-                  <Button>Transcribe this take (local Whisper)</Button>
+                  {/* force: an already-timed take is otherwise skipped — this is how a take gets the
+                      better model's words (large-v3-turbo, 2026-10-19). A typed transcript is replaced too. */}
+                  <input type="hidden" name="force" value="1" />
+                  <Button>{asset.transcript ? "Transcribe again (better words)" : "Transcribe this take"}</Button>
                 </form>
                 <form action={submitManualTranscript} className="flex flex-col gap-2">
                   <input type="hidden" name="contentItemId" value={item.id} />
