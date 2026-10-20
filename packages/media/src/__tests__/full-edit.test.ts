@@ -79,6 +79,44 @@ describe("full edit — sentences are whole thoughts", () => {
   });
 });
 
+describe("full edit — the free cut reads like a creator cut it (2026-10-19)", () => {
+  it("a choice question is the strongest opener and is never dropped as a slow start; the cut ends on the question", () => {
+    const lines = [
+      "So I have a picture here of two people and I'm just curious who would you rather be?",
+      "Both are making a hundred grand a year taking home $8,333 a month.",
+      "One rents a $5,000 apartment and saves $733 a month.",
+      "The other owns and saves $4,133 a month.",
+      "Now which one are you and which one would you rather be?",
+      "Let me know.",
+      "Kind of curious.",
+      "So, anyway.",
+    ];
+    const t = take(lines);
+    const S = buildSentences(t.words, t.silences);
+    expect(S[S.length - 1]!.beat).toBe("FLUFF"); // "So, anyway." — a trailing fragment, not a payoff
+    const cands = scoreHookCandidates(S, { relevance: new Map(S.map((x) => [x.id, 0.6])), cleanEdges: () => true, eligible: new Set(S.map((x) => x.id)), takeEndS: t.duration });
+    expect(cands[0]!.text).toMatch(/which one are you|who would you rather be/);
+    expect(cands[0]!.features.some((f) => f.key === "choice")).toBe(true);
+    const ident = S.map((_, i) => S.map((_, j) => (i === j ? 1 : 0)));
+    // The hook is the number line; the choice question before it must NOT be cut as a slow start.
+    const p = planStory({ words: t.words, sentences: S, sim: ident, sameThreshold: 0.62, relevance: S.map(() => 0.6), safeAfter: () => true, estimateS: (sp) => sp.reduce((a, x) => a + (t.words[x.w1]!.end - t.words[x.w0]!.start) + 0.3, 0), target: { targetS: 1000, minS: 10, maxS: 1000, source: "DEFAULTS" }, hookIds: [1] });
+    expect(p.decisions[0]!.kept).toBe(true);
+    // After the last question, the short trailing lines go — it ends on "which one are you?".
+    expect(p.decisions[5]!.kept).toBe(false);
+    expect(p.decisions[6]!.kept).toBe(false);
+    expect(p.decisions[7]!.kept).toBe(false);
+    expect(p.decisions[4]!.kept).toBe(true);
+    expect(p.decisions[6]!.kind).toBe("TRAILING");
+  });
+
+  it("titles: an amount said per year is never a time span, and no doubled dollar signs", () => {
+    const t = take(["Both are making a hundred grand a year taking home $8,333 a month and the car costs $733 instead of $3,500."]);
+    const S = buildSentences(t.words, null);
+    const titles = hookTitles(S, S, "month").map((x) => x.text);
+    expect(titles.join(" | ")).not.toMatch(/100000|\$\$/);
+  });
+});
+
 describe("full edit — understanding (beats)", () => {
   it("classifies greetings, meta, tangents, fluff, recaps, lists, CTAs and sign-offs from cue phrases", () => {
     const beat = (t: string, index = 0, count = 10) => classifyBeat(t, { index, count, prevBeat: null }, spokenNumbers(t.split(" "))).beat;

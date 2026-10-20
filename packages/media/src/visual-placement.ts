@@ -523,6 +523,9 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
           for (const o of hardInflated) hardOverlap += intersectionArea(rect, o.rect);
           let score =
             (subject.body ? (1.2 * intersectionArea(rect, subject.body)) / rectArea(rect) : 0) +
+            // Over the hair/forehead is allowed in a close-up, but a clear spot beside or below
+            // the head is always preferred — a card on his head reads as sloppy.
+            (subject.head ? (0.9 * intersectionArea(rect, subject.head)) / rectArea(rect) : 0) +
             1.5 * (1 - factor) +
             0.4 * Math.abs(cx / canvas.width - 0.5) +
             0.5 * Math.abs(cy / canvas.height - fp.preferY) +

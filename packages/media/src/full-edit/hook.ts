@@ -37,6 +37,8 @@ const CONTRAST = /\b(but|actually|nobody|no one|stop|most people|never|wrong|mis
 const TENSION = /\b(broke|lose|losing|lost|debt|cost(?:s)?|trap|regret|rich|richer|poor|millionaire|everyone|free money|interest|gone|waste|wasting|leave|leaving|turning down|overwhelming|insane|years?)\b/gi;
 const IMPERATIVE = /^(?:stop|don'?t|never|quit|check|keep|start|pay|put|save)\b/i;
 const VAGUE_OPENERS = /^(?:so|and|but|because|which|okay|ok|alright|anyway|like|um|uh|yeah)\b/i;
+/** A choice the viewer has to make — the brand's strongest opener (Pick Your Poison). */
+export const CHOICE = /\b(?:which (?:one )?(?:are you|would you (?:rather )?(?:be|pick|choose|take|want))|who would you rather be|would you rather|what would you (?:do|pick|choose)|pick one)\b/i;
 
 export interface HookContext {
   /** Topic centrality per sentence id (0..1). */
@@ -66,6 +68,7 @@ function featureList(text: string, sentences: FESentence[], ctx: HookContext): H
   if (/^(?:say|let'?s say|imagine|for example|for instance)\b|^\w+ makes \$/i.test(text.trim())) f.push({ key: "hypothetical", points: -0.9, evidence: "a hypothetical set-up, not a claim" });
   if (/\byou(?:r|'re|'ll)?\b/i.test(text)) f.push({ key: "you", points: 0.6, evidence: "talks to “you”" });
   if (/\?["'”’]*$/.test(text.trim())) f.push({ key: "question", points: 0.8, evidence: "a question" });
+  if (CHOICE.test(text)) f.push({ key: "choice", points: 1.6, evidence: "a choice the viewer has to make" });
   if (IMPERATIVE.test(text.trim())) f.push({ key: "imperative", points: 0.9, evidence: "a direct instruction" });
   const n = tokens(text).length;
   const dur = sentences[sentences.length - 1]!.end - sentences[0]!.start;
@@ -84,7 +87,7 @@ function featureList(text: string, sentences: FESentence[], ctx: HookContext): H
   if (VAGUE_OPENERS.test(text.trim())) f.push({ key: "needs-context", points: -2.0, evidence: `starts with “${VAGUE_OPENERS.exec(text.trim())![0]}” — mid-thought` });
   else if (sentences[0]!.dependent) f.push({ key: "needs-context", points: -1.6, evidence: "points back to an earlier line" });
   const beat = sentences[0]!.beat;
-  if (beat === "GREETING" || beat === "META" || beat === "CTA" || beat === "SIGN_OFF" || beat === "TANGENT" || beat === "FLUFF" || beat === "RECAP") {
+  if ((beat === "GREETING" || beat === "META" || beat === "CTA" || beat === "SIGN_OFF" || beat === "TANGENT" || beat === "FLUFF" || beat === "RECAP") && !CHOICE.test(text)) {
     f.push({ key: "not-a-hook", points: -4, evidence: `it's a ${beat.toLowerCase().replace("_", "-")}` });
   }
   if (beat === "LIST_ITEM") f.push({ key: "list-step", points: -1.5, evidence: "a list step out of context" });
@@ -185,7 +188,7 @@ function nounAfter(words: string[], n: SpokenNumber, sentenceW0: number): string
 export function hookTitles(hookSentences: FESentence[], allSentences: FESentence[], topicWord: string | null): HookTitle[] {
   const out: HookTitle[] = [];
   const push = (text: string, template: HookTitle["template"]) => {
-    const t = cleanTitle(text);
+    const t = cleanTitle(text).replace(/\${2,}/g, "$");
     const n = tokens(t).length;
     if (n < 2 || n > 8 || t.length > 48) return;
     if (TITLE_AVOID.test(t) || TITLE_PROFANITY.test(t)) return;
@@ -206,8 +209,10 @@ export function hookTitles(hookSentences: FESentence[], allSentences: FESentence
   }
   // An amount and how long it takes ("$5K → 20 years"), both said in the hook.
   const amount = nums.find((n) => n.kind === "MONEY" || n.kind === "PERCENT");
-  const span = nums.find((n) => n.kind === "NUMBER" && /^(years?|months?)$/.test(nounAfter(words, n, w0) ?? ""));
-  if (amount && span) push(`${shortNumberLabel(amount)} → ${span.value} ${nounAfter(words, span, w0)}`, "NUMBER_TOPIC");
+  // A time span is a small count of years/months ("20 years"), never an amount said per year
+  // ("a hundred grand a year" is money, not a span).
+  const span = nums.find((n) => n.kind === "NUMBER" && n.value > 0 && n.value <= 60 && Number.isInteger(n.value) && /^(years?|months?)$/.test(nounAfter(words, n, w0) ?? "") && !/\b(?:grand|k|thousand|million|dollars?)\b/i.test(n.raw));
+  if (amount && span && span !== amount) push(`${shortNumberLabel(amount)} → ${span.value} ${nounAfter(words, span, w0)}`, "NUMBER_TOPIC");
   // Two amounts of the same kind he compared ("2% vs 5%").
   const same = nums.filter((n) => n.kind === amount?.kind);
   if (same.length >= 2 && /\b(instead|vs|versus|compared|than)\b/i.test(text)) push(`${shortNumberLabel(same[0]!)} vs ${shortNumberLabel(same[1]!)}`, "NUMBER_TOPIC");

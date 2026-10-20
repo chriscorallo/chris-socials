@@ -232,7 +232,9 @@ export const GraphicAnimationSchema = z.object({
   /** Overall tempo (2 = twice as fast). */
   speed: z.number().min(0.5).max(2).default(1),
   /** Numbers count up as they appear. */
-  countUp: z.boolean().default(true),
+  /** Off by default (2026-10-19): a number he said must read as said in every frame — a
+   * count-up caught mid-animation is a wrong number on screen. Opt in per graphic. */
+  countUp: z.boolean().default(false),
   /** What the highlighted element does once revealed (on the speaker's emphasis if set). */
   emphasis: z.enum(GRAPHIC_EMPHASES).default("GLOW"),
   /** CONTAINER = the graphic's own exit; REVERSE / DROP / FADE_UP = elements leave in turn. */

@@ -1,5 +1,6 @@
 import type { TranscriptWord } from "../caption-chunking";
 import type { FESentence } from "./understand";
+import { CHOICE } from "./hook";
 import { isHedgy } from "./understand";
 import { bare, contentStems, jaccard, tokens } from "./text";
 
@@ -35,6 +36,7 @@ export type RemovalKind =
   | "DANGLING"
   | "EXTRA_CTA"
   | "SLOW_START"
+  | "TRAILING"
   | "HOOK_MOVED";
 
 export interface SentenceDecision {
@@ -278,6 +280,8 @@ export function planStory(input: StoryInput): StoryPlan {
       const teaser = /^(?:(?:so|and|but|okay|ok)[,]?\s+)*(?:here'?s (?:how|what|why|the thing)|let me explain|there'?s something)\b/i.test(s.text) && s.wordCount <= 9;
       const claim = /\b(most people|nobody|no one|everyone|never|always|actually|but|instead|wrong|mistake)\b/i.test(s.text);
       const strong = dec[i]!.value >= 3.4 || s.numbers.some((x) => !x.minor) || s.beat === "PAYOFF" || (claim && !teaser);
+      // A question that frames the video ("who would you rather be?") is never throat-clearing.
+      if (s.question || CHOICE.test(s.text)) continue;
       if (!strong && (s.beat === "SETUP" || teaser || s.wordCount <= 6)) drop(i, "SLOW_START", "Slow start — the video opens on your hook instead");
     }
   }
@@ -346,6 +350,21 @@ export function planStory(input: StoryInput): StoryPlan {
     allowWordEdgeCuts = false;
   }
   fixDangling(S, dec, protectedIdx, drop);
+
+  // ---- 6b. End on the question. After the last question / call to action, short trailing lines
+  //          ("Kind of curious." "So, anyway.") blur the ending the viewer should act on.
+  const lastAsk = [...S.keys()].reverse().find((i) => dec[i]!.kept && (S[i]!.question || S[i]!.beat === "CTA" || CHOICE.test(S[i]!.text)));
+  if (lastAsk != null) {
+    for (let i = lastAsk + 1; i < S.length; i++) {
+      const s = S[i]!;
+      if (!dec[i]!.kept || forceKeep.has(s.id) || hook.has(s.id)) continue;
+      const keepsGoing = s.numbers.some((x) => !x.minor) || s.beat === "CTA" || s.question || s.wordCount > 6;
+      if (!keepsGoing) {
+        protectedIdx.delete(i);
+        drop(i, "TRAILING", "Ends on your question — this short line after it blurred the ending");
+      }
+    }
+  }
 
   // ---- 7. Order: cold open when the hook isn't already the first kept line.
   const keptIdx = S.map((_, i) => i).filter((i) => dec[i]!.kept);

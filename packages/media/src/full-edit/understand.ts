@@ -119,6 +119,7 @@ export function classifyBeat(text: string, ctx: ClassifyContext, numbers: Spoken
   if (RX.recap.test(t)) return { beat: "RECAP", why: "repeats what was already said (recap)" };
   if (RX.meta.test(t) && numbers.every((n) => n.minor)) return { beat: "META", why: "talks about the video instead of the topic" };
   if (RX.fluffOnly.test(t)) return { beat: "FLUFF", why: "filler line — no new information" };
+  if (ctx.index === ctx.count - 1 && words <= 3 && !/\?/.test(t) && numbers.length === 0) return { beat: "FLUFF", why: "a trailing fragment at the end" };
   const li = listIndexOf(t);
   if (li != null) return { beat: "LIST_ITEM", why: "a list step" };
   if (RX.payoff.test(t) && rel > 0.4) return { beat: "PAYOFF", why: "lands the point" };

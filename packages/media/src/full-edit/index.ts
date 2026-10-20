@@ -13,7 +13,7 @@ import {
 import { EditTimelineSchema, timelineDuration, type EditTimeline, type TimelineText, type TimelineZoom } from "../timeline";
 import { findTimelineCollisions, layoutTimelineText, type MeasureText } from "../timeline-layout";
 import { timelineCaptionChunks } from "../timeline-captions";
-import { solveVisualPlacements, subjectRegionsForWindow } from "../visual-placement";
+import { solveVisualPlacements, subjectRegionsForWindow, protectedFaceRect, placementSafeArea } from "../visual-placement";
 import type { GraphicPreset } from "../graphics/presets";
 import { hookTitles, scoreHookCandidates } from "./hook";
 import { DEFAULT_STORY_TARGET, planStory, type RemovalKind, type StoryPlan, type StoryTarget } from "./story";
@@ -545,7 +545,9 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     const hr = subjectRegionsForWindow(timeline, titleText.start, titleText.end, placementOpts).head;
     const head = hr ? faceOf(hr) : null;
     const rect = layoutTimelineText(titleText, timeline.canvas, measure).rect;
-    if (head && rect.y < head.y + head.height && head.y < rect.y + rect.height && rect.x < head.x + head.width && head.x < rect.x + rect.width) qIssues.push("the hook title touches your face");
+    const core = hr ? protectedFaceRect(hr, placementSafeArea(timeline.canvas, PLACEMENT_SAFE_ZONE)) : null;
+    const face = core && head ? { x: Math.max(core.x, head.x), y: Math.max(core.y, head.y), width: Math.min(core.width, head.width), height: Math.min(core.height, head.height) } : head;
+    if (face && rect.y < face.y + face.height && face.y < rect.y + rect.height && rect.x < face.x + face.width && face.x < rect.x + rect.width) qIssues.push("the hook title touches your face");
     if (titleText.fontSize < 56) qIssues.push("the hook title is small");
   }
   if (input.measure) {
@@ -726,8 +728,18 @@ function placeTitle(text: string, timeline: EditTimeline, end: number, input: Fu
     if (headTop - safeTop >= h + 2 * margin) return { ...t, y: r3(safeTop + (headTop - safeTop) / 2) };
     if (capTop - headBottom >= h + 2 * margin) return { ...t, y: r3(headBottom + (capTop - headBottom) / 2) };
   }
-  // No clear band: top of the safe area, smallest size (the Quality check reports it).
-  const t = { ...base, fontSize: 60 };
+  // No clear band around the whole head (a close-up): the face CORE (eyes → mouth) is what must
+  // stay clear; the title may sit over the hair above it, else in the band between chin and
+  // captions, at the smallest size.
+  const t = { ...base, fontSize: 56 };
   const h = layoutTimelineText(t, canvas, measure).rect.height / H;
+  if (head) {
+    const safeRect = placementSafeArea(canvas, PLACEMENT_SAFE_ZONE);
+    const core = protectedFaceRect(head, safeRect);
+    const coreTop = core.y / H;
+    const coreBottom = (core.y + core.height) / H;
+    if (coreTop - safeTop >= h + 0.02) return { ...t, y: r3(coreTop - h / 2 - 0.01) };
+    if (capTop - coreBottom >= h + 0.02) return { ...t, y: r3(coreBottom + h / 2 + 0.01) };
+  }
   return { ...t, y: r3(safeTop + h / 2 + 0.01) };
 }

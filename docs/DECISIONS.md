@@ -9319,3 +9319,34 @@ Applied in the Motion Designer before the fact gate; the prompt (1.4.1) says so.
 placement over hair/forehead stays as designed (face core protected; top creators place there).
 
 **Reversibility:** one check; no schema change.
+
+## 2026-10-19 — The free cut, cut like a creator (from a frame-by-frame look at a live free cut)
+
+**Context:** Chris: the free cut "is especially sloppy — not even close". A live free Full edit
+of "both making $100K" (1:03 → 0:52, 13 of 14 lines kept — so not over-trimmed) showed, in
+frames: a Big number reading **$4,727** while he said $5,000 (a count-up caught mid-animation),
+**$192** for $200, a month strip showing $4,053 / $3,926 / $3,664 he never said (cells counting
+up); graphics parked on his hair/forehead; the hook title across his eyes (reported as a WARN,
+not fixed); a 30-word run-on as the opener while the actual hook ("…who would you rather be?")
+was cut as a "slow start"; the ending trailing "Let me know. Kind of curious. So, a name."; a
+title "$$8,333 → 100000 year".
+
+**Decision (all deterministic — the free cut stays free):**
+1. **Numbers read as said:** `animation.countUp` defaults to **false** for every graphic — a
+   number he said appears as said in every frame. A graphic may opt in.
+2. **Off his head:** the placement score now penalises overlap with the whole head region
+   (hair/forehead) so a clear spot beside or below the head wins; over-hair remains the
+   close-up fallback. The hook title falls back to the face CORE rule (eyes → mouth) at the
+   smallest size — above the core over the hair, else between chin and captions — instead of
+   parking at the top of the frame across the face; the Quality check judges against the core.
+3. **The hook is the choice:** `CHOICE` ("which one are you", "who would you rather be",
+   "would you rather", "pick one") scores +1.6 and is never dropped as a slow start.
+4. **End on the question:** short non-number lines after the last question / CTA are removed
+   as `TRAILING` ("Ends on your question"); a ≤ 3-word last line that isn't a question is a
+   trailing fragment (FLUFF), never the PAYOFF.
+5. **Titles:** an amount said "a year" is money, not a time span (the "→ N years" template
+   needs a small integer count); doubled "$" collapsed in titles and graphic reasons.
+
+Tests: `full-edit.test.ts` "the free cut reads like a creator cut it", title formatting.
+
+**Reversibility:** one default (`countUp`), one weight, one regex family, one removal kind.
