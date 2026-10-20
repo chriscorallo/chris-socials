@@ -33,7 +33,7 @@ import { EditTimelineSchema, type EditTimeline, type TimelineClip } from "./time
  * concat never slips audio between contiguous clips.
  */
 
-export const STYLE_CUT_VERSION = 2;
+export const STYLE_CUT_VERSION = 3; // 3: cut like the hand edits (2026-10-19)
 
 /** Output frame grid (s). Multiples of 1/30 are also whole frames at 60 fps. */
 const FRAME = 1 / 30;

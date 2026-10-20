@@ -47,7 +47,7 @@ export { chooseVisuals, listGraphic, graphicNumbers, readSeconds, presetDescript
  * decisions and visual picks; this module stays the deterministic executor + checker.
  */
 
-export const FULL_EDIT_VERSION = 1;
+export const FULL_EDIT_VERSION = 2; // 2: cut like the hand edits (2026-10-19)
 
 export interface FullEditChoices {
   /** Index into the hook candidates ("Try another hook"); omitted = the bot's pick. */
