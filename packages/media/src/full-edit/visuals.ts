@@ -256,7 +256,7 @@ export function chooseVisuals(input: VisualsInput): { picks: VisualPick[]; rejec
       cands.push({
         visual: makeVisual(`fe-v-${s.id}-${preset.id}`, preset, props, anchorOut, anchorOut + 3, s.text),
         presetId: preset.id,
-        presetName: preset.name,
+        presetName: g.name ?? preset.name,
         sentenceId: s.id,
         reason: g.reason,
         match: Math.round(match * 100) / 100,

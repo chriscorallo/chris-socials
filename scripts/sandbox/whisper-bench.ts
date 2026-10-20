@@ -16,7 +16,7 @@ const sandbox = await Sandbox.create({ ...creds, source: { type: "snapshot", sna
 console.log("sandbox", sandbox.name);
 try {
   await sandbox.writeFiles([{ path: "/vercel/sandbox/bench/bench.mjs", content: Buffer.from(readFileSync(new URL("./whisper-bench.mjs", import.meta.url))) }]);
-  const r = await sandbox.runCommand("bash", ["-lc", `cd /vercel/sandbox/runner && TRANSCRIPTION_CACHE_DIR=/vercel/sandbox/cache/transformers MODELS="${process.env.MODELS ?? ""}" DTYPES="${process.env.DTYPES ?? "fp32"}" SPEECH_URL="${process.env.SPEECH_URL ?? ""}" node /vercel/sandbox/bench/bench.mjs 2>&1 | grep -v Warning`]);
+  const r = await sandbox.runCommand("bash", ["-lc", `cd /vercel/sandbox/runner && TRANSCRIPTION_CACHE_DIR=/vercel/sandbox/cache/transformers MODELS="${process.env.MODELS ?? ""}" DTYPES="${process.env.DTYPES ?? "fp32"}" SPEECH_URL="${process.env.SPEECH_URL ?? ""}" CHUNKS="${process.env.CHUNKS ?? "25/5"}" node /vercel/sandbox/bench/bench.mjs 2>&1 | grep -v Warning`]);
   console.log(await r.stdout());
   console.log("STDERR:", (await r.stderr()).slice(-1500));
 } finally {

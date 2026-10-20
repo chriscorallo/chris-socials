@@ -109,6 +109,25 @@ describe("full edit — the free cut reads like a creator cut it (2026-10-19)", 
     expect(p.decisions[6]!.kind).toBe("TRAILING");
   });
 
+  it("an unpunctuated run (a Whisper window without punctuation) is split at breaths once it's 18+ words", () => {
+    const words: TranscriptWord[] = [];
+    let t = 0.5;
+    const say = (line: string, pauseAfter: number) => {
+      for (const w of line.split(" ")) {
+        words.push({ word: w, start: +t.toFixed(3), end: +(t + 0.16).toFixed(3) });
+        t += 0.18;
+      }
+      t += pauseAfter;
+    };
+    say("you are very nice house or a car rent right so you have a very expensive apartment five thousand dollars a month", 0.5);
+    say("you have sixteen hundred dollars you're paying for your car and then you travel a lot", 0.5);
+    say("so you're paying a thousand dollars a month just to travel", 0.3);
+    const S = buildSentences(words, null);
+    expect(S.length).toBeGreaterThanOrEqual(2);
+    expect(S[0]!.text).toMatch(/a month$/);
+    expect(S[1]!.text).toMatch(/^you have sixteen hundred/);
+  });
+
   it("titles: an amount said per year is never a time span, and no doubled dollar signs", () => {
     const t = take(["Both are making a hundred grand a year taking home $8,333 a month and the car costs $733 instead of $3,500."]);
     const S = buildSentences(t.words, null);

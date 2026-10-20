@@ -47,22 +47,28 @@ export function endsDangling(text: string): boolean {
 export function segmentSentences(words: TranscriptWord[], silences: Array<{ start: number; end: number }> | null): Array<{ w0: number; w1: number }> {
   const out: Array<{ w0: number; w1: number }> = [];
   let s = 0;
-  const longGapAfter = (i: number) => {
+  const gapAfter = (i: number, minS: number) => {
     const a = words[i]!;
     const b = words[i + 1];
     if (!b) return false;
     // Whisper often stretches a word across the silence before it — the silence must come
     // after the middle of `a` to count as a pause between a and b.
-    if (silences?.length) return silences.some((x) => x.end - x.start >= 0.7 && x.start >= (a.start + a.end) / 2 && x.end <= b.end + 0.05);
-    return b.start - a.end >= 0.7;
+    if (silences?.length) return silences.some((x) => x.end - x.start >= minS && x.start >= (a.start + a.end) / 2 && x.end <= b.end + 0.05);
+    return b.start - a.end >= minS;
   };
+  const longGapAfter = (i: number) => gapAfter(i, 0.7);
+  // A window that came back without punctuation (the larger models do this sometimes) would
+  // otherwise run on for a minute: once a sentence is 18+ words, a shorter breath (≥ 0.45 s)
+  // after a word a thought can end on closes it.
+  const breathAfter = (i: number) => gapAfter(i, 0.45);
   for (let i = 0; i < words.length; i++) {
     const last = i === words.length - 1;
     // A run-on of 45+ words is split at the next comma so one sentence never swallows a minute.
     const tooLong = i - s >= 45 && /[,;:]$/.test(words[i]!.word);
     // A long pause after a word no thought ends on is a hesitation — the sentence continues.
     const hesitation = !last && !SENTENCE_END.test(words[i]!.word) && DANGLING_END.test(words[i]!.word) && i - s < 60;
-    if (last || SENTENCE_END.test(words[i]!.word) || (longGapAfter(i) && !hesitation) || tooLong) {
+    const longRun = i - s >= 18 && !hesitation && breathAfter(i);
+    if (last || SENTENCE_END.test(words[i]!.word) || (longGapAfter(i) && !hesitation) || longRun || tooLong) {
       out.push({ w0: s, w1: i });
       s = i + 1;
     }

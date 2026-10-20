@@ -41,21 +41,23 @@ let refA = alpha(norm(TEXT));
 const results = [];
 const models = (process.env.MODELS || "onnx-community/whisper-base.en_timestamped,onnx-community/whisper-small.en_timestamped,onnx-community/whisper-medium.en_timestamped,onnx-community/whisper-large-v3-turbo_timestamped").split(",");
 console.log(JSON.stringify({ durationS: +durationS.toFixed(1), refWords: norm(TEXT).length }));
+const chunkings = (process.env.CHUNKS || "25/5").split(",").map((c) => c.split("/").map(Number));
 for (const model of models) {
-  for (const dtype of (process.env.DTYPES || "fp32").split(",")) {
+  for (const dtype of (process.env.DTYPES || "fp32").split(",")) for (const [chunk, stride] of chunkings) {
     try {
       const t0 = Date.now();
       const asr = await pipeline("automatic-speech-recognition", model, { dtype });
       const loadMs = Date.now() - t0;
       const t1 = Date.now();
-      const out = await asr(audio, { return_timestamps: "word", chunk_length_s: 25, stride_length_s: 5 });
+      const out = await asr(audio, { return_timestamps: "word", chunk_length_s: chunk, stride_length_s: stride, ...(model.includes(".en") ? {} : { language: "en", task: "transcribe" }) });
       const transcribeMs = Date.now() - t1;
       const chunks = out.chunks || [];
       const hyp = norm(out.text);
       const nums = hyp.filter((t) => /\d/.test(t));
       const times = chunks.map((c) => c.timestamp).filter((t) => Array.isArray(t));
       const bad = times.filter((t) => t[0] == null || t[1] == null || t[1] < t[0]).length;
-      const row = { model, dtype, loadMs, transcribeMs, rtf: +(transcribeMs / 1000 / durationS).toFixed(2), words: chunks.length, wer: process.env.SPEECH_URL ? null : +wer(refA, alpha(hyp)).toFixed(3), numbers: nums, badTimes: bad, lastWordEnd: times.length ? times[times.length - 1][1] : null, text: out.text.slice(0, 400), hyp };
+      const glitch = /end up\s*\$?\d|up733/.test(out.text) ? "MERGE-GLITCH(end up733)" : /saving about \$?733|about \$733|seven hundred/.test(out.text) ? "ok(saving about 733)" : "?";
+      const row = { model, dtype, chunk, stride, glitch, punctuation: (out.text.match(/[.?!]/g) || []).length, loadMs, transcribeMs, rtf: +(transcribeMs / 1000 / durationS).toFixed(2), words: chunks.length, wer: process.env.SPEECH_URL ? null : +wer(refA, alpha(hyp)).toFixed(3), numbers: nums, badTimes: bad, lastWordEnd: times.length ? times[times.length - 1][1] : null, text: out.text.slice(0, 400), hyp };
       results.push(row);
       console.log(JSON.stringify({ ...row, hyp: undefined }));
       await asr.dispose?.();

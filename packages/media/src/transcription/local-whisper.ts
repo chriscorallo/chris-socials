@@ -188,20 +188,30 @@ export class LocalWhisperTranscriptionProvider {
       return { text: "", language: "en", durationSeconds: 0, words: [], model: this.model };
     }
     const asr = await this.loadPipeline();
-    const out = await asr(audio, {
-      return_timestamps: "word",
-      // Long takes: 25 s windows with 5 s overlap, merged by transformers.js. NOT 30 s: a
-      // window equal to Whisper's own 30 s input breaks transformers.js word timestamps on
-      // takes longer than 30 s — measured 2026-10-17 on a 46 s take: 31 of 118 words came
-      // back, the first sentence all stamped 29.96 s and the rest of the first 30 s missing.
-      // 20/4 and 25/5 both returned all 118 words with sane times. See
-      // docs/decisions-pending/style-cut.md.
-      chunk_length_s: WHISPER_CHUNK_SECONDS,
-      stride_length_s: 5,
-      // Multilingual exports: Chris speaks English — never let a window auto-detect otherwise.
-      ...(this.model.includes(".en") ? {} : { language: "en", task: "transcribe" }),
-    });
-    const words = normalizeWhisperChunks(out.chunks ?? [], durationSeconds);
+    // Window: 30 s / 5 s overlap for the large model (benchmarked 2026-10-19 on a real 63 s take:
+    // fastest, the most words recovered, fully punctuated, no merge glitch); 25 s / 5 s for the
+    // small English exports, where a 30 s window broke word timestamps (2026-10-17). If a result
+    // ever comes back word-starved (a merge failure), the other window is tried and the fuller
+    // transcript kept.
+    const windows = this.model.includes("large") ? [30, WHISPER_CHUNK_SECONDS] : [WHISPER_CHUNK_SECONDS, 20];
+    const run = (chunk: number) =>
+      asr(audio, {
+        return_timestamps: "word",
+        chunk_length_s: chunk,
+        stride_length_s: 5,
+        // Multilingual exports: Chris speaks English — never let a window auto-detect otherwise.
+        ...(this.model.includes(".en") ? {} : { language: "en", task: "transcribe" }),
+      });
+    let out = await run(windows[0]!);
+    let words = normalizeWhisperChunks(out.chunks ?? [], durationSeconds);
+    if (durationSeconds > 20 && words.length / durationSeconds < 1.2) {
+      const retry = await run(windows[1]!);
+      const retryWords = normalizeWhisperChunks(retry.chunks ?? [], durationSeconds);
+      if (retryWords.length > words.length) {
+        out = retry;
+        words = retryWords;
+      }
+    }
     const text = out.text.trim() || words.map((w) => w.word).join(" ");
     return {
       text,

@@ -67,6 +67,9 @@ export interface GraphicSuggestion {
   props: Record<string, unknown>;
   /** Why ("You said $4k a month"). */
   reason: string;
+  /** What to call it in the editor when a topic-named preset is used generically ("Big number"
+   * rather than "Big number — salary" for a rent figure). */
+  name?: string;
 }
 
 function graphicFrom(presetId: string, patch: (p: GraphicProps) => GraphicProps): { preset: GraphicPreset; props: Record<string, unknown> } | null {
@@ -231,8 +234,8 @@ export function suggestGraphics(phrase: string, limit = 6): GraphicSuggestion[] 
     return m ? [{ label, icon, at: m.index }] : [];
   }).sort((a, b) => a.at - b.at);
   const out: GraphicSuggestion[] = [];
-  const push = (s: { preset: GraphicPreset; props: Record<string, unknown> } | null, reason: string) => {
-    if (s && !out.some((o) => o.preset.id === s.preset.id)) out.push({ ...s, reason });
+  const push = (s: { preset: GraphicPreset; props: Record<string, unknown> } | null, reason: string, name?: string) => {
+    if (s && !out.some((o) => o.preset.id === s.preset.id)) out.push({ ...s, reason, ...(name ? { name } : {}) });
   };
 
   // Library 2: explicit platform/phone/news/hook language ("I googled…", "she texted me").
@@ -309,10 +312,14 @@ export function suggestGraphics(phrase: string, limit = 6): GraphicSuggestion[] 
   }
   if (moneyNums.length >= 1) {
     const d = moneyNums[0]!;
-    push(graphicFrom("hero-salary", (p) => ({ ...p, items: [item(monthly ? "a month" : yearly ? "a year" : "", d.value)] })), `You said ${fmtShort(d)}`);
-    push(graphicFrom("emergency-fund-stat", (p) => ({ ...p, items: [item(text.length <= 60 ? text : roles[0]?.label ?? "", d.value, p.items[0])] })), `${fmtShort(d)} on a card`);
+    // Generic uses of topic-named presets: the salary hero is just a big number here, and the
+    // emergency-fund card loses its shield icon unless he is actually talking about a fund.
+    const aboutFund = /\b(emergency|fund|cushion|rainy day)\b/i.test(text);
+    const aboutPay = /\b(salary|income|paycheck|take.?home|making|earn)/i.test(text);
+    push(graphicFrom("hero-salary", (p) => ({ ...p, items: [item(monthly ? "a month" : yearly ? "a year" : "", d.value)] })), `You said ${fmtShort(d)}`, aboutPay ? undefined : "Big number");
+    push(graphicFrom("emergency-fund-stat", (p) => ({ ...p, items: [{ ...item(text.length <= 60 ? text : roles[0]?.label ?? "", d.value, p.items[0]), ...(aboutFund ? {} : { icon: null }) }] })), `${fmtShort(d)} on a card`, aboutFund ? undefined : "Number card");
   }
-  if (nums.length === 1 && nums[0]!.kind === "NUMBER") push(graphicFrom("hero-salary", (p) => ({ ...p, items: [item("", nums[0]!.value)], format: { ...p.format, kind: "NUMBER" } })), `You said ${fmtShort(nums[0]!)}`);
+  if (nums.length === 1 && nums[0]!.kind === "NUMBER") push(graphicFrom("hero-salary", (p) => ({ ...p, items: [item("", nums[0]!.value)], format: { ...p.format, kind: "NUMBER" } })), `You said ${fmtShort(nums[0]!)}`, "Big number");
   if (listy) push(graphicFrom("steps-debt-plan", (p) => ({ ...p, title: null })), "Sounds like a list of steps");
   if (versus && moneyNums.length < 2) push(graphicFrom("versus-rent-own", (p) => p), "A comparison");
   // Always: the words themselves.

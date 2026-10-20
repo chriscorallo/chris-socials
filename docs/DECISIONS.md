@@ -9375,3 +9375,32 @@ until re-transcribed (`force`). `TRANSCRIPTION_MODEL` still overrides per enviro
 than base); q8 weights (rejected for now: fp32 is the measured-good setting for word timing).
 
 **Reversibility:** one constant / one env var; the old model stays cached in older snapshots.
+
+## 2026-10-19 — Whisper window 30/5 for the large model; sentences split at breaths; generic names for topic presets
+
+**Context:** after switching to large-v3-turbo, the first re-transcription of the "$100K" take
+showed two new artifacts: a window-merge glitch ("end up**733** a month" lost "saving about $")
+and one window decoded without punctuation (a 60-word run the sentence splitter then kept as
+one 11.5 s "sentence"). Benchmarked window/overlap on the same take
+(`scripts/sandbox/whisper-bench.ts … CHUNKS=`):
+
+| window / overlap | transcribe | words | punctuation marks | merge glitch |
+|---|---|---|---|---|
+| 25 / 5 (was) | 32.7 s | 208 | 7 (middle unpunctuated) | none in this run |
+| 20 / 5 | 44.1 s | 202 | 14 | — |
+| 28 / 6 | 32.3 s | 205 | 8 | none |
+| **30 / 5** | **24.5 s** | **211** | **13** | none |
+| 15 / 4 | 54.6 s | 207 | 13 | none |
+
+**Decision:** (1) 30 s / 5 s for the large model, 25 / 5 for the small English exports (where a
+30 s window broke word timestamps on 2026-10-17); a word-starved result (< 1.2 words/s on a
+take > 20 s) retries the other window and keeps the fuller transcript. (2) The sentence splitter
+closes a sentence at a ≥ 0.45 s breath once it is 18+ words (after a word a thought can end
+on), so an unpunctuated window never becomes a one-minute sentence. (3) When the free visuals
+bot uses a topic-named preset generically, the editor calls it "Big number" / "Number card"
+and the emergency-fund shield icon is dropped unless he is talking about a fund.
+
+**Verified live (free cut on the re-transcribed take):** "One's a spender, one's a saver." as
+its own line, no "savior" / "So, a name", numbers static and correct, title clear of the face.
+
+**Reversibility:** window list is two numbers; splitter rule one threshold; naming is a label.
