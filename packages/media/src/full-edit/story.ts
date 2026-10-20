@@ -428,7 +428,13 @@ function fixDangling(S: FESentence[], dec: SentenceDecision[], protectedIdx: Set
       let p = i - 1;
       while (p >= 0 && skip.has(S[p]!.beat)) p--;
       if (p < 0 || dec[p]!.kept) return;
-      if (dec[p]!.kind === "REPEAT" || dec[p]!.kind === "RETAKE") return; // its twin is still there
+      if (dec[p]!.kind === "REPEAT" || dec[p]!.kind === "RETAKE") {
+        // Its twin is still there — but only if the twin plays BEFORE this line; a twin that
+        // comes later leaves "that" pointing at nothing when the viewer hears it.
+        const twin = dec[p]!.keptInstead;
+        const twinIdx = twin == null ? -1 : S.findIndex((x) => x.id === twin);
+        if (twinIdx >= 0 && twinIdx < i && dec[twinIdx]!.kept) return;
+      }
       if (protectedIdx.has(i)) {
         Object.assign(dec[p]!, { kept: true, kind: null, why: "Kept — the next line refers to it" });
         changed = true;

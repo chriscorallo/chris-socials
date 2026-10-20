@@ -54,11 +54,15 @@ export function buildSystemPrompt(promptId: string): { systemPrompt: string; mod
   };
 }
 
-/** The slice of the shared playbook an agent declared (frontmatter `content_intelligence`),
- * as a "\n\n---\n\n…" block — empty for NONE/absent. Same text every call, so it caches with
- * the system prompt. */
+/** The shared creative layers an agent declared (frontmatter `content_intelligence`), as
+ * "\n\n---\n\n…" blocks — empty for NONE/absent. FULL = the Operator persona (the creator who
+ * built the brand from videos alone: attention, interest, engagement, trust, weak material,
+ * coherence) + the whole playbook; CORE = both in short. Same text every call, so it caches
+ * with the system prompt. */
 export function contentIntelligenceFor(promptId: string): string {
   const level = getAgentPrompt(promptId).frontmatter.content_intelligence ?? "NONE";
   if (level === "NONE") return "";
-  return `\n\n---\n\n${getAgentPrompt(level === "FULL" ? "CONTENT_INTELLIGENCE" : "CONTENT_INTELLIGENCE_CORE").body.trim()}`;
+  const operator = getAgentPrompt(level === "FULL" ? "CREATOR_OPERATOR" : "CREATOR_OPERATOR_CORE").body.trim();
+  const playbook = getAgentPrompt(level === "FULL" ? "CONTENT_INTELLIGENCE" : "CONTENT_INTELLIGENCE_CORE").body.trim();
+  return `\n\n---\n\n${operator}\n\n---\n\n${playbook}`;
 }

@@ -1,3 +1,4 @@
+import { endsDangling } from "./understand";
 import type { FESentence } from "./understand";
 import { shortNumberLabel, type SpokenNumber } from "./numbers";
 import { bare, capitalizeFirst, STOP_WORDS, tokens } from "./text";
@@ -114,6 +115,8 @@ export function scoreHookCandidates(sentences: FESentence[], ctx: HookContext): 
     if (next && continues && next.id === s.id + 1 && s.wordCount <= 10 && next.wordCount <= 16 && next.end - s.start <= 7 && !s.question) singles.push([s, next]);
     for (const group of singles) {
       const text = group.map((g) => g.text).join(" ");
+      // A hook is a whole thought: never a line that stops mid-clause ("…you should have used to").
+      if (endsDangling(text)) continue;
       const features = featureList(text, group, ctx);
       // The opening line already: a small bonus for not moving anything.
       if (group[0]!.id === elig[0]!.id) features.push({ key: "already-first", points: 0.4, evidence: "already your first line" });

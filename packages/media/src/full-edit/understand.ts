@@ -35,6 +35,15 @@ export interface FESentence {
 const SENTENCE_END = /[.!?…]["'”’)\]]*$/;
 
 /** Splits words into sentences on Whisper punctuation, and on a long silence (≥ 0.7 s). */
+/** A word a thought never ends on: a pause after it is a hesitation inside the sentence, not
+ * the end of one ("…the money you should have used to | buy assets"). */
+export const DANGLING_END = /^(?:to|the|a|an|of|and|or|but|for|with|in|on|at|that|your|my|our|their|his|her|its|is|are|was|were|be|been|being|have|has|had|should|would|could|can|will|used|into|from|by|as|than|if|when|because|which|who|what|how|so|very|really|just|not|no|more|most|less|every|each|some|any|about|like)[,;:]?$/i;
+
+export function endsDangling(text: string): boolean {
+  const last = text.trim().split(/\s+/).pop() ?? "";
+  return !/[.!?]["'”’]*$/.test(last) && DANGLING_END.test(last);
+}
+
 export function segmentSentences(words: TranscriptWord[], silences: Array<{ start: number; end: number }> | null): Array<{ w0: number; w1: number }> {
   const out: Array<{ w0: number; w1: number }> = [];
   let s = 0;
@@ -51,7 +60,9 @@ export function segmentSentences(words: TranscriptWord[], silences: Array<{ star
     const last = i === words.length - 1;
     // A run-on of 45+ words is split at the next comma so one sentence never swallows a minute.
     const tooLong = i - s >= 45 && /[,;:]$/.test(words[i]!.word);
-    if (last || SENTENCE_END.test(words[i]!.word) || longGapAfter(i) || tooLong) {
+    // A long pause after a word no thought ends on is a hesitation — the sentence continues.
+    const hesitation = !last && !SENTENCE_END.test(words[i]!.word) && DANGLING_END.test(words[i]!.word) && i - s < 60;
+    if (last || SENTENCE_END.test(words[i]!.word) || (longGapAfter(i) && !hesitation) || tooLong) {
       out.push({ w0: s, w1: i });
       s = i + 1;
     }

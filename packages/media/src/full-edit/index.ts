@@ -120,6 +120,8 @@ export const FullEditReportSchema = z.object({
     titleTextId: z.string().nullable(),
   }),
   removed: z.array(z.object({ sentenceId: z.number(), text: z.string(), kind: z.string(), why: z.string(), start: z.number() })),
+  /** The lines a viewer hears, in output order (the read-through's input). */
+  kept: z.array(z.object({ sentenceId: z.number(), text: z.string(), beat: z.string() })).default([]),
   marked: z.array(z.object({ sentenceId: z.number(), note: z.string() })),
   visuals: z.array(z.object({ id: z.string(), presetId: z.string(), name: z.string(), reason: z.string(), start: z.number(), match: z.number(), numbers: z.array(z.number()) })),
   rejectedVisuals: z.number(),
@@ -629,6 +631,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     removed: dec
       .filter((d) => !d.kept && d.kind !== "HOOK_MOVED")
       .map((d) => ({ sentenceId: d.id, text: sentences[d.id]!.text, kind: d.kind ?? "LOW_VALUE", why: d.why, start: r2(sentences[d.id]!.start) })),
+    kept: [...new Set(story.order.flatMap((o) => o.sentenceIds))].map((id) => sentences.find((s) => s.id === id)!).filter(Boolean).map((s) => ({ sentenceId: s.id, text: s.text, beat: s.beat })),
     marked: story.marked.map((m) => ({ sentenceId: m.id, note: m.note })),
     visuals: picks.map((p) => ({ id: p.visual.id, presetId: p.presetId, name: p.presetName, reason: p.reason, start: r2(timeline.visuals.find((v) => v.id === p.visual.id)?.start ?? p.visual.start), match: p.match, numbers: p.numbers })),
     rejectedVisuals: rejectedAll.length,

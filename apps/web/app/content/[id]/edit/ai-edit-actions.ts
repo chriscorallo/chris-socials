@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma, creativeBriefTextFor, getLatestCreativeBrief, recordCreativeBrief, SERIES_LABEL } from "@chris/domain";
-import { getBrandContextText, runHookPickerAgent, runFootageBriefAgent, scopeProvider, type HookPickCandidate } from "@chris/agents";
+import { getBrandContextText, runHookPickerAgent, runFootageBriefAgent, runFlowCheckAgent, flowFixes, scopeProvider, type HookPickCandidate, type FlowCheckInput } from "@chris/agents";
 import type { EditorBrief } from "./context";
 import { requireSession } from "../../../../lib/session";
 import { getModelProvider } from "../../../../lib/model-provider";
@@ -49,6 +49,38 @@ export async function ensureBriefAction(input: { contentItemId: string }): Promi
     if (name === "SpendCapExceededError") return { ok: false, error: "Today's AI spending limit was reached — try again tomorrow." };
     if (/credit balance|billing|insufficient/i.test(msg)) return { ok: false, error: "The AI is out of credit — add credit in More → AI credit." };
     return { ok: false, error: "The AI couldn't write the plan for this video right now — try again." };
+  }
+}
+
+/**
+ * AI edit, read-through: the model hears the kept lines in order as a cold viewer and returns
+ * the junctions that don't follow with one fix each (restore a cut line / drop the dependent
+ * one). The editor applies them as Full-edit choices and re-cuts. Never touches the hook.
+ */
+export async function aiFlowCheckAction(input: {
+  contentItemId: string;
+  kept: FlowCheckInput["kept"];
+  removed: FlowCheckInput["removed"];
+  hookSentenceIds: number[];
+}): Promise<{ ok: true; reads: "CLEAN" | "ISSUES"; issues: Array<{ atSentenceId: number; problem: string; fix: string }>; hookProblem: string | null; quotable: string | null; forceKeep: number[]; forceDrop: number[] } | { ok: false; error: string }> {
+  await requireSession();
+  try {
+    const fcInput: FlowCheckInput = {
+      kept: input.kept,
+      removed: input.removed,
+      hookSentenceIds: input.hookSentenceIds,
+      brandContext: await getBrandContextText(prisma),
+      creativeBrief: await creativeBriefTextFor(prisma, input.contentItemId),
+    };
+    const check = await runFlowCheckAgent(scopeProvider(getModelProvider(), { contentItemId: input.contentItemId }), fcInput);
+    const fixes = flowFixes(check, fcInput);
+    return { ok: true, reads: check.reads, issues: check.issues.map((i) => ({ atSentenceId: i.atSentenceId, problem: i.problem, fix: i.fix })), hookProblem: check.hookProblem, quotable: check.quotable, ...fixes };
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "";
+    const msg = err instanceof Error ? err.message : String(err);
+    if (name === "SpendCapExceededError") return { ok: false, error: "Today's AI spending limit was reached — try again tomorrow." };
+    if (/credit balance|billing|insufficient/i.test(msg)) return { ok: false, error: "The AI is out of credit — add credit in More → AI credit." };
+    return { ok: false, error: "The read-through couldn't run right now — try again." };
   }
 }
 

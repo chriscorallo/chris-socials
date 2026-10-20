@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { FullEditChoices } from "@chris/media/timeline";
 import { useEditor } from "./context";
 import { setAutoEditModeAction, styleCutAction, designVisualsAction, designVisualsResultAction, type DesignUnderstanding } from "./actions";
-import { aiPickHookAction, ensureBriefAction } from "./ai-edit-actions";
+import { aiPickHookAction, ensureBriefAction, aiFlowCheckAction } from "./ai-edit-actions";
 import { waitForJob } from "../../../../lib/use-job-progress";
 
 /**
@@ -25,7 +25,9 @@ export function StyleCutPanel() {
   const [showHooks, setShowHooks] = useState(false);
   /** AI edit progress line while it runs; the AI's reason for its hook once done. */
   const [aiStep, setAiStep] = useState<string | null>(null);
-  const [aiDone, setAiDone] = useState<{ hook: string; reason: string; graphics: number; added: number; dropped: Array<{ template: string; at: number; reason: string }>; understanding: DesignUnderstanding | null } | null>(null);
+  const [aiDone, setAiDone] = useState<{ hook: string; reason: string; graphics: number; added: number; dropped: Array<{ template: string; at: number; reason: string }>; flow: { fixed: number; issues: string[]; hookProblem: string | null; quotable: string | null } | null; understanding: DesignUnderstanding | null } | null>(null);
+  /** A Full edit / AI edit ran in this session — the "older cut" notice no longer applies. */
+  const [recut, setRecut] = useState(false);
   const current: "FULL" | "CUTS" | "AI" | null = styleCut.fullEditActive ? (aiDone ? "AI" : "FULL") : styleCut.active ? "CUTS" : null;
   const hasCaptions = styleCut.hasWords;
   const fe = styleCut.fullEdit;
@@ -52,6 +54,7 @@ export function StyleCutPanel() {
         summary: mode === "STYLE" ? (res.summary ?? styleCut.summary) : styleCut.summary,
         profileNote: res.profileNote ?? styleCut.profileNote,
       });
+      if (mode === "FULL") setRecut(true);
       toast(mode === "FULL" ? "Full edit saved as a new version." : mode === "STYLE" ? "Cuts-only edit saved as a new version." : "Back to your full take — saved as a new version.");
     } catch {
       setError("Couldn't reach the server. Your edit is unchanged — try again.");
@@ -112,6 +115,30 @@ export function StyleCutPanel() {
         hookText = report.hook.text;
       }
 
+      // 2b. Read-through: a cold viewer hears only the kept lines in order. Junctions that
+      //     don't follow get one surgical fix each (restore the cut line / drop the dependent),
+      //     applied as Full-edit choices and re-cut. The hook is never touched.
+      let flow: { fixed: number; issues: string[]; hookProblem: string | null; quotable: string | null } | null = null;
+      if (report.kept.length > 1) {
+        setAiStep("AI is reading the cut through as a cold viewer…");
+        const chosen = report.hook.candidates[report.hook.chosenIndex];
+        const fc = await aiFlowCheckAction({ contentItemId: itemId, kept: report.kept, removed: report.removed.map((r) => ({ sentenceId: r.sentenceId, text: r.text, kind: r.kind, why: r.why })), hookSentenceIds: chosen?.sentenceIds ?? [] });
+        if (fc.ok) {
+          flow = { fixed: fc.forceKeep.length + fc.forceDrop.length, issues: fc.issues.filter((i) => i.fix !== "NONE").map((i) => i.problem), hookProblem: fc.hookProblem, quotable: fc.quotable };
+          if (fc.forceKeep.length || fc.forceDrop.length) {
+            setAiStep("Re-cutting so every line follows the one before…");
+            const prev = (report.choices ?? {}) as FullEditChoices;
+            const res = await styleCutAction({ contentItemId: itemId, mode: "FULL", choices: { ...prev, hookIndex: report.hook.chosenIndex, forceKeep: [...new Set([...(prev.forceKeep ?? []), ...fc.forceKeep])], forceDrop: [...new Set([...(prev.forceDrop ?? []), ...fc.forceDrop])] } });
+            if (!res.ok) return setError(res.error);
+            loadSavedVersion(res.timeline, res.state);
+            report = res.fullEdit ?? report;
+            sc = { ...sc, fullEditActive: true, fullEdit: report };
+            setStyleCut(sc);
+            hookText = report.hook.text;
+          }
+        }
+      }
+
       // 3. The AI designs the graphics for what he's saying (replaces the template ones).
       setAiStep("AI is understanding the video and planning what the viewer needs to see…");
       // The free edit's graphics (numbers he said) are the floor; the AI adds the concept
@@ -124,7 +151,8 @@ export function StyleCutPanel() {
       }
       if (!vis.ok) return setError(`The hook is done, but the graphics step failed: ${vis.error}`);
       loadSavedVersion(vis.timeline, vis.state);
-      setAiDone({ hook: hookText, reason: hookReason, graphics: vis.timeline.visuals.length, added: vis.added.length, dropped: (vis.rejected ?? []).map((r) => ({ template: r.template, at: r.start, reason: r.reason })), understanding: vis.understanding ?? null });
+      setRecut(true);
+      setAiDone({ hook: hookText, reason: hookReason, graphics: vis.timeline.visuals.length, added: vis.added.length, dropped: (vis.rejected ?? []).map((r) => ({ template: r.template, at: r.start, reason: r.reason })), flow, understanding: vis.understanding ?? null });
       toast("AI edit saved as a new version.");
     } catch {
       setError("Couldn't reach the server. Whatever finished is saved — try again.");
@@ -194,7 +222,7 @@ export function StyleCutPanel() {
         <Choice id="AI" title="AI edit" blurb={busy === "AI" ? (aiStep ?? "Working…") : styleCut.brief ? "Full edit, then the AI picks the strongest hook and designs the graphics. Uses AI credit." : "Writes this video's plan from the footage, then the Full edit, the AI's hook and the graphics. Uses AI credit."} onClick={() => void runAi()} badge="AI" />
       </div>
 
-      {styleCut.fullEditStale && !busy && (
+      {styleCut.fullEditStale && !busy && !recut && (
         <p className="fe-summary mt-3 text-[12.5px] leading-snug" data-testid="fe-stale">
           The cut style was updated (cuts land right after the word, like your hand edits). This video still has the older cut — tap <span className="font-semibold">Full edit</span> to re-cut it; the current version stays in history.
         </p>
@@ -215,6 +243,15 @@ export function StyleCutPanel() {
         <div className="fe-summary mt-3" data-testid="ai-edit-summary">
           <p className="text-[13px] font-semibold leading-snug">AI hook: “{aiDone.hook}”</p>
           <p className="mt-1 text-[12px] leading-snug text-[var(--color-text-muted)]">{aiDone.reason}</p>
+          {aiDone.flow && (
+            <p className="mt-2 text-[12px] leading-snug" data-testid="ai-edit-flow">
+              <span className="font-semibold">Read-through:</span>{" "}
+              {aiDone.flow.fixed ? `${aiDone.flow.fixed} junction${aiDone.flow.fixed === 1 ? "" : "s"} fixed so every line follows the one before` : "every line follows the one before"}
+              {aiDone.flow.issues.length ? ` — ${aiDone.flow.issues.slice(0, 3).join("; ")}` : ""}.
+              {aiDone.flow.hookProblem ? ` Hook: ${aiDone.flow.hookProblem}` : ""}
+              {aiDone.flow.quotable ? ` The line they'd quote: “${aiDone.flow.quotable}”` : ""}
+            </p>
+          )}
           <p className="mt-2 text-[12px] leading-snug" data-testid="ai-edit-graphics">
             <span className="font-semibold">{aiDone.graphics} graphic{aiDone.graphics === 1 ? "" : "s"} on the timeline</span> — {aiDone.added} added by the AI{aiDone.dropped.length ? `, ${aiDone.dropped.length} idea${aiDone.dropped.length === 1 ? "" : "s"} dropped` : ""}.
           </p>

@@ -55,6 +55,30 @@ describe("full edit — numbers he said", () => {
   });
 });
 
+describe("full edit — sentences are whole thoughts", () => {
+  it("a long pause after a word no thought ends on is a hesitation, not a sentence end; the hook is never a fragment", () => {
+    // "…the money you should have used to [1.0 s] buy assets." — one sentence, not two.
+    const words: TranscriptWord[] = [];
+    let t = 0.5;
+    const say = (line: string, pauseAfter: number) => {
+      for (const w of line.split(" ")) {
+        words.push({ word: w, start: +t.toFixed(3), end: +(t + 0.16).toFixed(3) });
+        t += 0.18;
+      }
+      t += pauseAfter;
+    };
+    say("The easiest way to look rich is spending the money you should have used to", 1.0);
+    say("buy assets.", 0.8);
+    say("Most people do it backwards.", 0.8);
+    const S = buildSentences(words, null);
+    expect(S.map((x) => x.text)).toEqual(["The easiest way to look rich is spending the money you should have used to buy assets.", "Most people do it backwards."]);
+    // A fragment can never be a hook candidate.
+    const frag: typeof S = [{ ...S[0]!, text: "The easiest way to look rich is spending the money you should have used to", w1: S[0]!.w1 - 2 }, S[1]!];
+    const cands = scoreHookCandidates(frag, { relevance: new Map(frag.map((x) => [x.id, 0.7])), cleanEdges: () => true, eligible: new Set(frag.map((x) => x.id)), takeEndS: 20 });
+    expect(cands.map((c) => c.text)).not.toContain("The easiest way to look rich is spending the money you should have used to");
+  });
+});
+
 describe("full edit — understanding (beats)", () => {
   it("classifies greetings, meta, tangents, fluff, recaps, lists, CTAs and sign-offs from cue phrases", () => {
     const beat = (t: string, index = 0, count = 10) => classifyBeat(t, { index, count, prevBeat: null }, spokenNumbers(t.split(" "))).beat;

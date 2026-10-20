@@ -124,6 +124,15 @@ HOW I SOUND
 /** The one-line JSON shape each block's BRIEF carries (parsed into a Creative Brief). */
 export const BRIEF_JSON_SHAPE = `one JSON object on one line: {"series":"PICK_YOUR_POISON|I_DID_THE_MATH|BUTTERFLY_EFFECT|HOW_BROKE_IS_THIS_CHARACTER|MONEY_MAKES_NO_SENSE|COST_OF_BEING_ALIVE|OTHER","targetAudience":"","primaryObjective":"COMMENT|SHARE|FOLLOW|PUNCHLINE","coreReaction":"","whyInteresting":"","hooks":[{"text":"","mechanism":"","onScreenText":"","openingVisual":""},{…},{…}],"chosenHookIndex":0,"hookRationale":"","story":{"hook":"","setup":"","firstDiscovery":"","midpointReversal":"or null","payoff":"","ending":""},"storyboard":{"openingFrame":"","onScreenText":[],"scenes":[],"keyCalculations":[],"midpointVisual":"or null","payoffVisual":"","closingFrame":""},"engagement":{"whyShare":"","whyComment":"","whyFollow":""},"scorecard":{"hookStrength":0,"immediateClarity":0,"curiosity":0,"narrativeProgression":0,"retentionPotential":0,"emotionalRelevance":0,"entertainment":0,"visualStorytelling":0,"factualAccuracy":0,"payoffQuality":0,"brandFit":0,"followerConversion":0},"editorial":{"strongest":"","weakest":"","mostImportantRevision":"","whatToTest":""},"research":{"verified":[],"assumptions":[],"unverified":[],"complianceFlags":[]}}`;
 
+export const OPERATOR_GUIDANCE = `HOW TO THINK (write like a creator who built a multi-million-follower brand from short videos alone)
+- A viewer decides in one second if it's for them, in three if it's worth ten more. The first line is a promise with tension, said plainly — no greeting, no topic sentence. The first frame says something with the sound off.
+- Specific beats general: "$900 a month for 72 months", not "a big car payment". If a sentence could be in anyone's video, cut it.
+- Re-earn attention every 7–10 seconds: a new question, a number, a turn. Each beat escalates. Never two beats doing the same job. Never a tease the next line doesn't pay.
+- People watch what's about them: "you" and their real situation. Build the video around the moment they never thought about — the hidden incentive, the number nobody counts.
+- Engagement is earned, never asked for: a real decision gets comments, "this is me" gets shares, a repeatable reason to return gets follows. Trust compounds: show the math, admit limits, no fake urgency, no guarantees.
+- Weak idea? That's the job: find the angle actually in it, lead with the strongest true thing, cut the rest. Invent the framing, never a fact.
+- It has to make sense start to finish: every sentence follows from the one before; no reveal before its setup; the last line is one they'd repeat. Read it through as a cold viewer before you answer.`;
+
 export const PLAYBOOK_GUIDANCE = `HOW TO MAKE EACH VIDEO GOOD (my playbook)
 - Pick the series it belongs to: PICK_YOUR_POISON (a dilemma, the viewer decides first, the middle challenges the choice), I_DID_THE_MATH (an absurd calculation with an unexpected payoff), BUTTERFLY_EFFECT (one decision over years), HOW_BROKE_IS_THIS_CHARACTER (a fictional character's finances), MONEY_MAKES_NO_SENSE (a mystery, then the hidden incentive), COST_OF_BEING_ALIVE (the hidden economics of normal life), or OTHER.
 - Write three hooks that differ in psychological mechanism, not wording: IMPOSSIBLE_CHOICE, ABSURD_INVESTIGATION, PERSONAL_CONTRADICTION, IMPOSSIBLE_QUESTION, SHOWDOWN, SOCIAL_ACCUSATION, FUTURE_SELF_WARNING, MONEY_MYSTERY, RELATABLE_CONFESSION, COUNTDOWN, UNPOPULAR_OPINION, BEFORE_AFTER. Pick the strongest and say why. Be decisive. The script opens with the chosen hook.
@@ -184,6 +193,8 @@ export const SCRIPT_FACTS_RULES = `FACTS
 /** Brand + voice + format + facts — everything a script writer needs except the video list. */
 export function scriptWritingRules(style: ScriptStyle, voiceSamples?: string): string {
   return `${BRAND_GUIDANCE}
+
+${OPERATOR_GUIDANCE}
 
 ${PLAYBOOK_GUIDANCE}
 ${voiceSamplesBlock(voiceSamples)}

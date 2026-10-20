@@ -9266,3 +9266,41 @@ the usual rejections (caption echo, face coverage, overlaps) took the few that w
 (rejected: the free edit's number graphics are grounded and good — discarding them is waste).
 
 **Reversibility:** one flag in `StyleCutPanel.runAi`, prompt versions roll back.
+
+## 2026-10-19 — The Operator persona, and the cut has to make sense (read-through + whole-thought sentences)
+
+**Context:** Chris: the bots writing hooks/scripts/shot lists "should act as if they built a
+massive brand from videos alone and know what keeps attention, interest, engagement, trust…
+it should be so good it can take crap material and make it compelling… and it should make
+sense — sometimes sentences don't go together, or I wonder why a line was placed there." The
+live AI edit on "You don't need to look rich…" confirmed the last point: the hook was a
+fragment ("…the money you should have used to") because the sentence splitter ended a sentence
+at a ≥ 0.7 s pause mid-clause, and the hook scorer accepted it.
+
+**Decision:**
+1. **`CREATOR_OPERATOR` shared prompt** (+ `_CORE`): the persona and craft knowledge above,
+   appended before the playbook for every FULL/CORE agent (`contentIntelligenceFor`), and
+   `OPERATOR_GUIDANCE` in the free ChatGPT script prompt. SCRIPT 2.1.0 (rollback 2.0.0) names
+   the weak-material discipline and a final cold-viewer read-through (re-hook every 7–10 s,
+   no reveal before setup, a line they'd repeat).
+2. **Whole-thought sentences** (deterministic, free edit): a long pause after a word no thought
+   ends on (`DANGLING_END`: to/the/of/and/should/used/…) is a hesitation — the sentence
+   continues; `scoreHookCandidates` never offers a fragment. `fixDangling` now only trusts a
+   REPEAT/RETAKE twin that plays BEFORE the dependent line.
+3. **`FLOW_CHECK` agent** (MEDIUM, CORE) in the AI edit after the hook pick: hears
+   `FullEditReport.kept` (new field: the lines in output order) + `removed`, returns broken
+   junctions with one fix each; the editor applies ≤ 4 as `forceKeep`/`forceDrop` and re-cuts;
+   never the hook. The summary shows "Read-through: N junctions fixed…", the hook problem if
+   any, and the quotable line.
+4. The "older cut" notice hides once a Full/AI edit has run in the session.
+
+**Verification (live, before the read-through shipped):** the AI edit on that video went from 1
+graphic to 8 on the timeline (4 ideas dropped: 2 invented numbers blocked by the fact gate, 2
+would have covered his face) — and surfaced the fragment hook this entry fixes.
+
+**Alternatives considered:** fixing coherence only with regex rules (rejected: "does this line
+follow?" is semantic — the deterministic rules catch the mechanical cases, the model the rest);
+letting the flow check rewrite lines (rejected: the edit only ever uses words he said).
+
+**Reversibility:** prompts roll back by version; the flow step is one block in `runAi`; the
+splitter rule is one regex.
