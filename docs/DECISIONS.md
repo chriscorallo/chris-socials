@@ -9404,3 +9404,24 @@ and the emergency-fund shield icon is dropped unless he is talking about a fund.
 its own line, no "savior" / "So, a name", numbers static and correct, title clear of the face.
 
 **Reversibility:** window list is two numbers; splitter rule one threshold; naming is a label.
+
+## 2026-10-19 — Long takes are transcribed in quiet-cut pieces, not overlap-merged windows
+
+**Context:** with large-v3-turbo the remaining transcript errors were all at window seams:
+25 s/5 s lost "saving about $" ("end up**733**"), 30 s/5 s lost ",000 a" ("**$5** month" — and that
+wrong number went on screen). transformers.js merges overlapping windows by text alignment, and
+numbers at a seam are exactly what it mangles. Benchmarked on the same real take
+(`scripts/sandbox/whisper-bench.ts … CHUNKS=0/0,25/5,30/5`):
+
+| method | $5,000 | $733 | $3,500 | $1,600 | words | punctuation | time |
+|---|---|---|---|---|---|---|---|
+| 25 s / 5 s overlap | ok | ok | ok | ok | 208 | 7 (middle unpunctuated) | 29.9 s |
+| 30 s / 5 s overlap | **"$5 month"** | ok | ok | ok | 211 | 13 | 24.2 s |
+| **quiet-cut pieces** | ok | ok | ok | ok | **212** | 12 | **24.0 s** |
+
+**Decision:** `quietSplitPoints` cuts the 16 kHz audio at the quietest 150 ms between 14 s and
+26 s after the previous cut (a real silence wins wherever it is; else quieter-and-later), each
+piece (≤ 26 s, under Whisper's native 30 s) is transcribed on its own with word timestamps, and
+timings are offset per piece. No overlap, no merge, no seam. Unit-tested on synthetic audio.
+
+**Reversibility:** the chunk/stride path is one call away; `WHISPER_CHUNK_SECONDS` stays.

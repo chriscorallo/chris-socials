@@ -42,6 +42,18 @@ const results = [];
 const models = (process.env.MODELS || "onnx-community/whisper-base.en_timestamped,onnx-community/whisper-small.en_timestamped,onnx-community/whisper-medium.en_timestamped,onnx-community/whisper-large-v3-turbo_timestamped").split(",");
 console.log(JSON.stringify({ durationS: +durationS.toFixed(1), refWords: norm(TEXT).length }));
 const chunkings = (process.env.CHUNKS || "25/5").split(",").map((c) => c.split("/").map(Number));
+function quietSplitPoints(audio, sampleRate, minS = 14, maxS = 26) {
+  const frame = Math.round(sampleRate * 0.02); const n = Math.floor(audio.length / frame); const rms = new Float32Array(n);
+  for (let f = 0; f < n; f++) { let acc = 0; const o = f * frame; for (let i = 0; i < frame; i++) acc += audio[o + i] * audio[o + i]; rms[f] = Math.sqrt(acc / frame); }
+  const win = 7; const out = []; let start = 0; const total = audio.length;
+  while (total - start > maxS * sampleRate) {
+    const lo = Math.floor((start + minS * sampleRate) / frame); const hi = Math.floor((start + maxS * sampleRate) / frame) - win;
+    let best = -1, bestE = Infinity;
+    for (let f = Math.max(lo, 0); f <= hi; f++) { let e = 0; for (let k = 0; k < win; k++) e += rms[f + k]; const sc = e * (1 + 0.6 * (hi - f) / Math.max(1, hi - lo)); if (sc < bestE) { bestE = sc; best = f; } }
+    if (best < 0) break; const cut = (best + 3) * frame; out.push({ start, end: cut }); start = cut;
+  }
+  out.push({ start, end: total }); return out;
+}
 for (const model of models) {
   for (const dtype of (process.env.DTYPES || "fp32").split(",")) for (const [chunk, stride] of chunkings) {
     try {
@@ -49,14 +61,20 @@ for (const model of models) {
       const asr = await pipeline("automatic-speech-recognition", model, { dtype });
       const loadMs = Date.now() - t0;
       const t1 = Date.now();
-      const out = await asr(audio, { return_timestamps: "word", chunk_length_s: chunk, stride_length_s: stride, ...(model.includes(".en") ? {} : { language: "en", task: "transcribe" }) });
+      let out;
+      if (chunk === 0) {
+        // PIECES mode: cut at quiet points, transcribe each piece alone, offset timings.
+        const pieces = quietSplitPoints(audio, 16000); const chunksAll = []; const texts = [];
+        for (const pc of pieces) { const res = await asr(audio.subarray(pc.start, pc.end), { return_timestamps: "word", ...(model.includes(".en") ? {} : { language: "en", task: "transcribe" }) }); const off = pc.start / 16000; for (const c of res.chunks || []) chunksAll.push({ ...c, timestamp: [c.timestamp[0] == null ? null : c.timestamp[0] + off, c.timestamp[1] == null ? null : c.timestamp[1] + off] }); if (res.text) texts.push(res.text.trim()); }
+        out = { text: texts.join(" "), chunks: chunksAll, pieces: pieces.map((p) => +(p.end / 16000).toFixed(1)) };
+      } else out = await asr(audio, { return_timestamps: "word", chunk_length_s: chunk, stride_length_s: stride, ...(model.includes(".en") ? {} : { language: "en", task: "transcribe" }) });
       const transcribeMs = Date.now() - t1;
       const chunks = out.chunks || [];
       const hyp = norm(out.text);
       const nums = hyp.filter((t) => /\d/.test(t));
       const times = chunks.map((c) => c.timestamp).filter((t) => Array.isArray(t));
       const bad = times.filter((t) => t[0] == null || t[1] == null || t[1] < t[0]).length;
-      const glitch = /end up\s*\$?\d|up733/.test(out.text) ? "MERGE-GLITCH(end up733)" : /saving about \$?733|about \$733|seven hundred/.test(out.text) ? "ok(saving about 733)" : "?";
+      const glitch = [/\$5,000 a month|five thousand dollars a month/.test(out.text) ? "5000-ok" : "5000-BAD", /saving about \$?733/.test(out.text) ? "733-ok" : "733-BAD", /\$3,500|thirty.five hundred/.test(out.text) ? "3500-ok" : "3500-BAD", /\$1,600|sixteen hundred/.test(out.text) ? "1600-ok" : "1600-BAD"].join(" ") + (out.pieces ? " pieces@" + out.pieces.join(",") : "");
       const row = { model, dtype, chunk, stride, glitch, punctuation: (out.text.match(/[.?!]/g) || []).length, loadMs, transcribeMs, rtf: +(transcribeMs / 1000 / durationS).toFixed(2), words: chunks.length, wer: process.env.SPEECH_URL ? null : +wer(refA, alpha(hyp)).toFixed(3), numbers: nums, badTimes: bad, lastWordEnd: times.length ? times[times.length - 1][1] : null, text: out.text.slice(0, 400), hyp };
       results.push(row);
       console.log(JSON.stringify({ ...row, hyp: undefined }));

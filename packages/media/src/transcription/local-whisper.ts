@@ -25,6 +25,54 @@ export const WHISPER_SAMPLE_RATE = 16000;
 /** Long-audio window (s) — must stay below 30 (see transcribe()). */
 export const WHISPER_CHUNK_SECONDS = 25;
 
+/**
+ * Where to cut a long take so each piece is transcribed on its own (no overlap-merging, which
+ * drops or mangles words at the seams — "$5,000 a month" came back "$5 month" on 2026-10-19):
+ * the quietest 150 ms between `minS` and `maxS` after the last cut (a real silence wins; else
+ * quieter-and-later), measured on 20 ms RMS frames. Pure; returns piece boundaries in samples.
+ */
+export function quietSplitPoints(audio: Float32Array, sampleRate: number, opts: { minS?: number; maxS?: number } = {}): Array<{ start: number; end: number }> {
+  const minS = opts.minS ?? 14;
+  const maxS = opts.maxS ?? 26;
+  const frame = Math.round(sampleRate * 0.02);
+  const n = Math.floor(audio.length / frame);
+  const rms = new Float32Array(n);
+  for (let f = 0; f < n; f++) {
+    let acc = 0;
+    const o = f * frame;
+    for (let i = 0; i < frame; i++) acc += audio[o + i]! * audio[o + i]!;
+    rms[f] = Math.sqrt(acc / frame);
+  }
+  const win = Math.max(1, Math.round(0.15 / 0.02)); // 150 ms = ~7 frames
+  const out: Array<{ start: number; end: number }> = [];
+  let start = 0;
+  const total = audio.length;
+  while (total - start > maxS * sampleRate) {
+    // Anywhere between minS and maxS after the last cut; a real silence (energy ≈ 0) wins
+    // wherever it is, otherwise the quieter AND later point (longer pieces, fewer seams).
+    const lo = Math.floor((start + minS * sampleRate) / frame);
+    const hi = Math.floor((start + maxS * sampleRate) / frame) - win;
+    let best = -1;
+    let bestE = Infinity;
+    for (let f = Math.max(lo, 0); f <= hi; f++) {
+      let e = 0;
+      for (let k = 0; k < win; k++) e += rms[f + k]!;
+      const early = (hi - f) / Math.max(1, hi - lo);
+      const score = e * (1 + 0.6 * early);
+      if (score < bestE) {
+        bestE = score;
+        best = f;
+      }
+    }
+    if (best < 0) break;
+    const cut = (best + Math.floor(win / 2)) * frame;
+    out.push({ start, end: cut });
+    start = cut;
+  }
+  out.push({ start, end: total });
+  return out;
+}
+
 export interface LocalTranscriptionResult {
   text: string;
   language: string | null;
@@ -188,30 +236,26 @@ export class LocalWhisperTranscriptionProvider {
       return { text: "", language: "en", durationSeconds: 0, words: [], model: this.model };
     }
     const asr = await this.loadPipeline();
-    // Window: 30 s / 5 s overlap for the large model (benchmarked 2026-10-19 on a real 63 s take:
-    // fastest, the most words recovered, fully punctuated, no merge glitch); 25 s / 5 s for the
-    // small English exports, where a 30 s window broke word timestamps (2026-10-17). If a result
-    // ever comes back word-starved (a merge failure), the other window is tried and the fuller
-    // transcript kept.
-    const windows = this.model.includes("large") ? [30, WHISPER_CHUNK_SECONDS] : [WHISPER_CHUNK_SECONDS, 20];
-    const run = (chunk: number) =>
-      asr(audio, {
-        return_timestamps: "word",
-        chunk_length_s: chunk,
-        stride_length_s: 5,
-        // Multilingual exports: Chris speaks English — never let a window auto-detect otherwise.
-        ...(this.model.includes(".en") ? {} : { language: "en", task: "transcribe" }),
-      });
-    let out = await run(windows[0]!);
-    let words = normalizeWhisperChunks(out.chunks ?? [], durationSeconds);
-    if (durationSeconds > 20 && words.length / durationSeconds < 1.2) {
-      const retry = await run(windows[1]!);
-      const retryWords = normalizeWhisperChunks(retry.chunks ?? [], durationSeconds);
-      if (retryWords.length > words.length) {
-        out = retry;
-        words = retryWords;
+    // Each take is cut at the quietest moment of every ~25 s span and the pieces are transcribed
+    // on their own (≤ 30 s = Whisper's native input, so no overlap-merging and none of its
+    // dropped/mangled words at the seams — see quietSplitPoints). Timings are offset per piece.
+    const lang = this.model.includes(".en") ? {} : { language: "en" as const, task: "transcribe" as const };
+    const pieces = quietSplitPoints(audio, WHISPER_SAMPLE_RATE);
+    const chunks: WhisperChunk[] = [];
+    const texts: string[] = [];
+    for (const piece of pieces) {
+      const part = audio.subarray(piece.start, piece.end);
+      if (part.length < WHISPER_SAMPLE_RATE * 0.3) continue;
+      const res = await asr(part, { return_timestamps: "word", ...lang });
+      const offset = piece.start / WHISPER_SAMPLE_RATE;
+      for (const c of res.chunks ?? []) {
+        const t = c.timestamp as [number | null, number | null] | undefined;
+        chunks.push({ ...c, timestamp: [t?.[0] == null ? null : t[0] + offset, t?.[1] == null ? null : t[1] + offset] as never });
       }
+      if (res.text?.trim()) texts.push(res.text.trim());
     }
+    const out = { text: texts.join(" "), chunks };
+    const words = normalizeWhisperChunks(out.chunks ?? [], durationSeconds);
     const text = out.text.trim() || words.map((w) => w.word).join(" ");
     return {
       text,

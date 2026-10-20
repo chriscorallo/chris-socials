@@ -88,3 +88,31 @@ describe.skipIf(!runWhisper)("LocalWhisperTranscriptionProvider (real model)", (
     600000,
   );
 });
+
+describe("quietSplitPoints — long takes are cut at the quietest moment of each ~25 s span", () => {
+  it("cuts inside the silences, never mid-speech, and leaves short takes whole", async () => {
+    const { quietSplitPoints } = await import("../transcription/local-whisper");
+    const sr = 16000;
+    const total = 70 * sr;
+    const audio = new Float32Array(total);
+    // Speech-like noise everywhere, with 400 ms silences at 20.0 s and 44.0 s; a louder patch at 25 s.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32) * 2 - 1;
+    for (let i = 0; i < total; i++) audio[i] = 0.2 * rnd();
+    for (const silentAt of [20, 44]) for (let i = silentAt * sr; i < (silentAt + 0.4) * sr; i++) audio[i] = 0;
+    for (let i = 25 * sr; i < 25.5 * sr; i++) audio[i] = 0.9 * rnd();
+    const pieces = quietSplitPoints(audio, sr);
+    expect(pieces.length).toBe(3);
+    expect(pieces[0]!.start).toBe(0);
+    expect(pieces[pieces.length - 1]!.end).toBe(total);
+    // First cut inside the 20.0–20.4 s silence; second inside 44.0–44.4 s.
+    expect(pieces[0]!.end / sr).toBeGreaterThanOrEqual(20);
+    expect(pieces[0]!.end / sr).toBeLessThanOrEqual(20.4);
+    expect(pieces[1]!.end / sr).toBeGreaterThanOrEqual(44);
+    expect(pieces[1]!.end / sr).toBeLessThanOrEqual(44.4);
+    for (let k = 1; k < pieces.length; k++) expect(pieces[k]!.start).toBe(pieces[k - 1]!.end);
+    // Every piece is at most 26 s.
+    for (const p of pieces) expect((p.end - p.start) / sr).toBeLessThanOrEqual(26.01);
+    expect(quietSplitPoints(audio.subarray(0, 20 * sr), sr)).toEqual([{ start: 0, end: 20 * sr }]);
+  });
+});
