@@ -7,6 +7,7 @@ import {
   VISUAL_TRANSITIONS,
   GRAPHIC_COMPONENTS,
   GRAPHIC_COMPONENT_SPECS,
+  graphicFillTooThin,
   GRAPHIC_ICONS,
   GRAPHIC_OPS,
   GRAPHIC_ORDERS,
@@ -31,6 +32,7 @@ import {
   type TranscriptWord,
   applyInteractionDefaults,
 } from "@chris/media/timeline";
+import type { GraphicProps } from "@chris/media/timeline";
 import type { MotionTopicInput } from "@chris/domain";
 import type { ModelProvider } from "./model-provider";
 import { fallbackMotionTheme, sanitizeMotionTheme } from "./motion-theme";
@@ -788,6 +790,17 @@ export async function designVisualsForTimeline(
         rejection(v, `FACTUAL: ${ungrounded.map((n) => `${n.value} (${n.field || "value"})`).join(", ")} not found in the research numeric inputs or the fact-checked script`),
       );
       continue;
+    }
+    // 2b. A half-empty graphic (a formula with no numbers, a before/after with one side) reads
+    //     as a placeholder — the preset's own sample is the bar for how full it must be.
+    if (v.template === "GRAPHIC") {
+      const gp = parsed.data as { component: GraphicProps["component"]; items: GraphicProps["items"]; series: GraphicProps["series"]; preset?: string | null };
+      const ref = gp.preset ? presetById(gp.preset) : null;
+      const thin = graphicFillTooThin(gp, ref && ref.template === "GRAPHIC" ? (ref.props as GraphicProps) : null);
+      if (thin) {
+        rejected.push(rejection(v, `too thin to show — ${thin}`));
+        continue;
+      }
     }
     // 3. Tier restraint on cinematic moments.
     if (v.template === "TITLE_CARD" && (input.tier === "RAW" || input.tier === "FAST" || titleCards >= 1)) {

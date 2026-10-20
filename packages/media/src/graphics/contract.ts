@@ -577,6 +577,29 @@ export function graphicPropsIssues(p: z.infer<typeof GraphicPropsBase>): Array<{
   return out;
 }
 
+/**
+ * A graphic that is valid but half-empty next to its own preset — a formula with no numbers, a
+ * before/after with one side, a chart with one value — reads as a placeholder on screen. The
+ * preset's sample data is the reference for how full the design expects to be. Returns the
+ * reason, or null when the fill is fine (or there is no preset to compare with).
+ */
+type FillView = { component: GraphicProps["component"]; items?: Array<{ value?: number | null }> | null; series?: Array<{ values: number[] }> | null };
+export function graphicFillTooThin(p: FillView, ref: FillView | null | undefined): string | null {
+  if (!ref || ref.component !== p.component) return null;
+  const label = GRAPHIC_COMPONENT_SPECS[p.component].label;
+  const items = (x: FillView) => x.items ?? [];
+  const vals = (x: FillView) => items(x).filter((it) => it.value != null).length;
+  const refVals = vals(ref);
+  const myVals = vals(p);
+  if (refVals >= 2 && myVals < Math.ceil(refVals / 2)) return `the ${label} design shows ${refVals} numbers; this fills ${myVals}`;
+  if (items(ref).length >= 2 && items(p).length < 2) return `${label} needs at least two entries to read (the design has ${items(ref).length}); this has ${items(p).length}`;
+  const sv = (x: FillView) => (x.series ?? []).reduce((a, s) => a + s.values.length, 0);
+  const refSv = sv(ref);
+  const mySv = sv(p);
+  if (refSv >= 2 && mySv < Math.ceil(refSv / 2)) return `the ${label} design plots ${refSv} values; this gives ${mySv}`;
+  return null;
+}
+
 export const GraphicPropsSchema = GraphicPropsBase.superRefine((p, ctx) => {
   for (const i of graphicPropsIssues(p)) ctx.addIssue({ code: "custom", path: i.path, message: i.message });
 });

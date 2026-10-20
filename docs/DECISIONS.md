@@ -9304,3 +9304,18 @@ letting the flow check rewrite lines (rejected: the edit only ever uses words he
 
 **Reversibility:** prompts roll back by version; the flow step is one block in `runAi`; the
 splitter rule is one regex.
+
+## 2026-10-19 — No half-empty graphics (the preset's own sample is the bar)
+
+**Context:** frames of the live AI edit showed two cards that were valid but read as
+placeholders: a "Take-home pay formula" with no numbers and a "Before / after" with one side.
+The contract validated them (counts/bounds), the fact gate had nothing to object to (no
+numbers), so they rendered.
+
+**Decision:** `graphicFillTooThin(props, presetProps)` in the graphics contract — a GRAPHIC is
+rejected (reason "too thin to show — …") when it carries fewer than half the numbers its preset
+shows, fewer than two entries where the preset has two, or fewer than half the plotted values.
+Applied in the Motion Designer before the fact gate; the prompt (1.4.1) says so. Close-up
+placement over hair/forehead stays as designed (face core protected; top creators place there).
+
+**Reversibility:** one check; no schema change.

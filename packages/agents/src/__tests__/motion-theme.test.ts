@@ -136,9 +136,9 @@ describe("Motion Designer theme + taste", () => {
     expect(r.added.map((v) => v.template)).toEqual(["BAR_CHART"]);
   });
 
-  it("prompt registry: MOTION_DESIGNER is v1.4.0 (builds on the free edit, signature presets) with a rollback to 1.3.0", () => {
+  it("prompt registry: MOTION_DESIGNER is v1.4.1 (builds on the free edit, signature presets, no half-empty graphics) with a rollback to 1.3.0", () => {
     const p = getAgentPrompt("MOTION_DESIGNER");
-    expect(p.frontmatter.version).toBe("1.4.0");
+    expect(p.frontmatter.version).toBe("1.4.1");
     expect(p.frontmatter.rollback_version).toBe("1.3.0");
     expect(p.body).toContain("SHOW THE CONCEPT, NOT THE CAPTION");
     expect(p.body).toContain("graphics library");

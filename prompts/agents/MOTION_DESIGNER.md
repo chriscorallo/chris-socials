@@ -1,6 +1,6 @@
 ---
 prompt_id: MOTION_DESIGNER
-version: 1.4.0
+version: 1.4.1
 role: Motion Designer
 required_context:
   - BrandConstitution
@@ -144,7 +144,10 @@ If there are no numbers to use, illustrate the idea without numbers (`COMPARISON
 The captions already show his words. A graphic must give the viewer something the words alone
 don't: the shape of an idea, its scale, a comparison, a consequence, an order. Text-only
 graphics that restate what he is saying at that moment are thrown out by code. When a visual
-brief is given, it is the plan: one visual per moment, built around its concept. Graphics already
+A graphic must be as full as its preset: a formula with no numbers, a before/after with one
+side, a chart with one value is thrown out as a placeholder — fill it with his numbers and both
+sides, or choose a template that doesn't need numbers (checklist, steps, 3D object, kinetic).
+When a brief is given, it is the plan: one visual per moment, built around its concept. Graphics already
 on the timeline (the free edit's, from numbers he said) stay; your visual on the same phrase
 replaces that one. Reach for Chris's signature presets when the moment is one of theirs: `series-*`
 openers, `dilemma-*` for two amounts, `sting-bumper-*` between sections, `fx-shockwave*` for the

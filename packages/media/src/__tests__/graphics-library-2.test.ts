@@ -185,3 +185,21 @@ describe("library 2 — suggestions from the transcript", () => {
 });
 
 void comp;
+
+
+describe("graphicFillTooThin — a graphic must be as full as its preset", () => {
+  it("every preset passes against itself; a numbers graphic with its numbers blanked, or a two-sided one with one side, fails", async () => {
+    const { graphicFillTooThin } = await import("../graphics/contract");
+    const { GRAPHIC_PRESETS } = await import("../graphics/presets");
+    type Fill = Parameters<typeof graphicFillTooThin>[0];
+    const graphics = GRAPHIC_PRESETS.filter((p) => p.template === "GRAPHIC").map((p) => ({ id: p.id, props: p.props as unknown as Fill }));
+    for (const p of graphics) expect(graphicFillTooThin(p.props, p.props), p.id).toBeNull();
+    const numeric = graphics.find((p) => (p.props.items ?? []).filter((i) => i.value != null).length >= 2)!;
+    const blanked: Fill = { ...numeric.props, items: (numeric.props.items ?? []).map((i) => ({ ...i, value: null })) };
+    expect(graphicFillTooThin(blanked, numeric.props)).toMatch(/numbers; this fills 0/);
+    const oneSide: Fill = { ...numeric.props, items: (numeric.props.items ?? []).slice(0, 1) };
+    expect(graphicFillTooThin(oneSide, numeric.props)).not.toBeNull();
+    // No preset to compare with → never judged thin.
+    expect(graphicFillTooThin(blanked, null)).toBeNull();
+  });
+});

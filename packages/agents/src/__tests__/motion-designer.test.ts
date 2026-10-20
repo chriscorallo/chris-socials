@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { EditTimelineSchema, GRAPHIC_COMPONENTS, MotionPropsSchemas, MOTION_TEMPLATES, visualRect, intersectionArea, type EditTimeline } from "@chris/media/timeline";
+import { EditTimelineSchema, GRAPHIC_COMPONENTS, GRAPHIC_PRESETS, MotionPropsSchemas, MOTION_TEMPLATES, visualRect, intersectionArea, type EditTimeline } from "@chris/media/timeline";
 import { MockModelProvider } from "../providers/mock-provider";
 import {
   designVisualsForTimeline,
@@ -361,6 +361,19 @@ describe("graphics library (GRAPHIC template)", () => {
     expect(res.rejectedVisuals[0]!.reason).toMatch(/FACTUAL: 31000/);
     expect(res.rejectedVisuals[1]!.reason).toMatch(/FACTUAL: 49000 \(series\[0\] total\)/);
   });
+  it("a half-empty graphic (valid, but far thinner than its preset) is rejected as a placeholder", async () => {
+    type Items = Array<{ text: string; value: number | null }>;
+    const formula = GRAPHIC_PRESETS.find((p) => p.template === "GRAPHIC" && p.props.component === "FORMULA" && ((p.props.items as Items | undefined) ?? []).filter((i) => i.value != null).length >= 2)!;
+    const thin = gProps({
+      preset: formula.id,
+      component: "FORMULA",
+      items: (formula.props.items as Items).map((_, k) => ({ text: ["Income", "Spending", "Left", "Saved", "Spent", "Rest"][k] ?? `line ${k}`, sub: null, value: null, icon: null, op: "NONE", state: "NONE" })),
+    });
+    const res = await designVisualsForTimeline(provider([v({ template: "GRAPHIC", props: thin as never, start: 5, end: 8 })]), base());
+    expect(res.added).toEqual([]);
+    expect(res.rejectedVisuals[0]!.reason).toMatch(/too thin to show/);
+  });
+
   it("invalid component content is rejected with the contract's reason", async () => {
     const res = await designVisualsForTimeline(provider([v({ template: "GRAPHIC", props: gProps({ preset: null, component: "DONUT", items: [] }) as never, start: 5, end: 8 })]), base());
     expect(res.added).toEqual([]);
