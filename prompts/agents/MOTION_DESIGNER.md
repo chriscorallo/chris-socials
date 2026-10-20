@@ -1,6 +1,6 @@
 ---
 prompt_id: MOTION_DESIGNER
-version: 1.3.0
+version: 1.4.0
 role: Motion Designer
 required_context:
   - BrandConstitution
@@ -15,7 +15,7 @@ output_schema: MotionDesignerOutput
 model_class: MEDIUM
 active: true
 eval_status: unevaluated
-rollback_version: 1.2.0
+rollback_version: 1.3.0
 content_intelligence: CORE
 ---
 
@@ -144,7 +144,11 @@ If there are no numbers to use, illustrate the idea without numbers (`COMPARISON
 The captions already show his words. A graphic must give the viewer something the words alone
 don't: the shape of an idea, its scale, a comparison, a consequence, an order. Text-only
 graphics that restate what he is saying at that moment are thrown out by code. When a visual
-brief is given, it is the plan: one visual per moment, built around its concept.
+brief is given, it is the plan: one visual per moment, built around its concept. Graphics already
+on the timeline (the free edit's, from numbers he said) stay; your visual on the same phrase
+replaces that one. Reach for Chris's signature presets when the moment is one of theirs: `series-*`
+openers, `dilemma-*` for two amounts, `sting-bumper-*` between sections, `fx-shockwave*` for the
+reveal, `fx-money-rain*` for a payday beat, `3d-car/wallet/bank/diamond` for the object he names.
 
 ## Output
 

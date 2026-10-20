@@ -14,4 +14,12 @@ describe("runVisualStrategistAgent", () => {
     expect(provider.calls[0]!.promptId).toBe("VISUAL_STRATEGIST");
     expect(formatVisualBrief(out)).toContain("Core message: Your car payment decides your savings.");
   });
+
+  it("is told what the free edit already placed, and allows up to one moment per 4.5 s", async () => {
+    const provider = new MockModelProvider(() => brief(Array.from({ length: 12 }, (_, i) => m(2 + i * 4.6, 4 + i * 4.6, `m${i}`))));
+    const out = await runVisualStrategistAgent(provider, { transcript: "[0.00-2.00] hi", durationS: 60, title: "Car", brandContext: "B", existing: [{ start: 17.3, end: 21, name: "Big number — $8,333" }] });
+    expect(provider.calls[0]!.userPrompt).toContain("Already on the timeline");
+    expect(provider.calls[0]!.userPrompt).toContain("17.3–21.0 s: Big number — $8,333");
+    expect(out.moments.length).toBe(12); // floor(60 / 4.5) = 13 ≥ 12
+  });
 });

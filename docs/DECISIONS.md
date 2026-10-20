@@ -9238,3 +9238,31 @@ the free path stays free — Chris's standing rule); a deterministic "brief" fro
 
 **Reversibility:** the step is one `if (!brief)` in the editor; the agent is a prompt row; the
 source value is additive.
+
+## 2026-10-19 — AI edit builds ON the free edit (it was ending up with fewer graphics than the free one)
+
+**Context:** Chris ran the AI edit on "You don't need to look rich…" (68 s) and got ONE graphic
+at 1:00; the free Full edit on comparable videos places four. Cause, by code reading: the AI
+edit ran the designer with `replaceExisting: true` (the free edit's number graphics were thrown
+away), the Visual Strategist's prompt said "an empty plan is better than a decorative one" and
+capped at one moment per ~6 s, and the designer's brief cap subtracted the kept graphics. Then
+the usual rejections (caption echo, face coverage, overlaps) took the few that were planned.
+
+**Decision:**
+1. The free edit's graphics are the **floor**: the AI edit keeps them (`replaceExisting: false`)
+   and the strategist is told what is already there. A brief moment on the same phrase
+   **replaces** the free graphic there (the concept is the deeper one — `warnings` says so);
+   elsewhere both stay. The brief cap is one per planned moment, no longer minus the kept.
+2. Visual Strategist 1.1.0: density target of one moment every 5–8 s (a 60 s explainer: 7–10),
+   hard ceiling one per 4.5 s; the opening frame from 1.5 s may be a DILEMMA / series opener;
+   Chris's signature families are named so the designer reaches for them. Motion Designer
+   1.4.0 mirrors this (kept graphics stay; signature preset ids).
+3. House look: MINDSET and SAVING themes are CRISP with gold objects, not CALM/line icons.
+4. The AI edit summary now says how many graphics are on the timeline, how many the AI added,
+   and lists every dropped idea with the engine's reason — so a weak result is explainable in
+   the editor, not a mystery.
+
+**Alternatives considered:** keeping replace-everything and raising the strategist's density
+(rejected: the free edit's number graphics are grounded and good — discarding them is waste).
+
+**Reversibility:** one flag in `StyleCutPanel.runAi`, prompt versions roll back.

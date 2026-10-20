@@ -610,7 +610,7 @@ function buildUserPrompt(
 
 Production tier: ${input.tier}
 Duration: ${duration.toFixed(2)} s (OUTPUT timeline — every time you return is on this timeline)
-At most ${cap} new visual(s) for this tier and length${keep.length ? ` (${keep.length} already on the timeline count toward the cap)` : ""}.
+${input.brief ? `At most ${cap} new visual(s) — one per moment in the visual brief${keep.length ? ` (the ${keep.length} already on the timeline are the free edit's graphics from numbers he said: they STAY; one of yours on the same phrase replaces the one there)` : ""}.` : `At most ${cap} new visual(s) for this tier and length${keep.length ? ` (${keep.length} already on the timeline count toward the cap)` : ""}.`}
 
 ## Timestamped transcript (OUTPUT timeline, one spoken phrase per line)
 
@@ -724,7 +724,10 @@ export async function designVisualsForTimeline(
   const tasteDelta = Math.min(0, Math.round(input.motionTaste?.capDelta ?? 0));
   const fullCap = Math.max(0, Math.max(Math.min(1, tierCap(input.tier, duration)), tierCap(input.tier, duration) + tasteDelta) - keep.length);
   // A focused suggestion is one graphic for one moment (still within the tier's restraint).
-  const briefCap = input.brief ? Math.max(0, Math.min(input.brief.moments.length, Math.max(1, Math.floor(duration / 5))) - keep.length) : null;
+  // With a brief, the cap is one per planned moment — the kept graphics (the free edit's, built
+  // from numbers he said) are the floor, not a deduction: a brief moment on the same phrase
+  // replaces the one there (step 5); elsewhere both stay.
+  const briefCap = input.brief ? Math.max(0, Math.min(input.brief.moments.length, Math.max(1, Math.floor(duration / 5)))) : null;
   const cap = input.focus ? Math.min(1, Math.max(1, fullCap)) : briefCap ?? fullCap;
   const avoid = new Set(input.motionTaste?.avoidTemplates ?? []);
 
@@ -815,12 +818,19 @@ export async function designVisualsForTimeline(
   //    else drop the less important one.
   accepted.sort((a, b) => a.start - b.start || b.v.importance - a.v.importance);
   const finalList: Accepted[] = [];
-  const blocks = keep.map((k) => ({ start: k.start, end: k.end }));
+  let blocks = keep.map((k) => ({ id: k.id, start: k.start, end: k.end }));
+  const droppedKept = new Set<string>();
   const collides = (a: { start: number; end: number }, b: { start: number; end: number }) =>
     a.start < b.end + VISUAL_GAP_SECONDS && b.start < a.end + VISUAL_GAP_SECONDS;
   for (const cand of accepted) {
     const keptHit = blocks.find((b) => collides(cand, b));
-    if (keptHit) {
+    if (keptHit && input.brief) {
+      // The brief's concept graphic wins the phrase: the kept (free-edit) one on it goes.
+      const k = keep.find((x) => x.id === keptHit.id);
+      droppedKept.add(keptHit.id);
+      blocks = blocks.filter((b) => b.id !== keptHit.id);
+      warnings.push(`${cand.v.template} at ${cand.start.toFixed(2)}s replaces the free edit's ${k?.template ?? "graphic"} "${(k?.anchorText ?? "").slice(0, 40)}" on the same phrase (the brief's concept is the deeper one)`);
+    } else if (keptHit) {
       // Try starting after the kept visual, still on this phrase.
       const shifted = { start: keptHit.end + VISUAL_GAP_SECONDS, end: cand.end };
       if (shifted.end - shifted.start >= MIN_VISUAL_SECONDS && !blocks.some((b) => b !== keptHit && collides(shifted, b))) {
@@ -890,7 +900,7 @@ export async function designVisualsForTimeline(
     })),
   );
 
-  let visuals = [...keep, ...added].sort((a, b) => a.start - b.start);
+  let visuals = [...keep.filter((k) => !droppedKept.has(k.id)), ...added].sort((a, b) => a.start - b.start);
   let placementWarnings: PlacementWarning[] = [];
   if (input.subjectTracks) {
     const solve = (list: TimelineVisual[]) =>

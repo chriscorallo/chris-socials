@@ -25,7 +25,7 @@ export function StyleCutPanel() {
   const [showHooks, setShowHooks] = useState(false);
   /** AI edit progress line while it runs; the AI's reason for its hook once done. */
   const [aiStep, setAiStep] = useState<string | null>(null);
-  const [aiDone, setAiDone] = useState<{ hook: string; reason: string; graphics: number; understanding: DesignUnderstanding | null } | null>(null);
+  const [aiDone, setAiDone] = useState<{ hook: string; reason: string; graphics: number; added: number; dropped: Array<{ template: string; at: number; reason: string }>; understanding: DesignUnderstanding | null } | null>(null);
   const current: "FULL" | "CUTS" | "AI" | null = styleCut.fullEditActive ? (aiDone ? "AI" : "FULL") : styleCut.active ? "CUTS" : null;
   const hasCaptions = styleCut.hasWords;
   const fe = styleCut.fullEdit;
@@ -114,7 +114,9 @@ export function StyleCutPanel() {
 
       // 3. The AI designs the graphics for what he's saying (replaces the template ones).
       setAiStep("AI is understanding the video and planning what the viewer needs to see…");
-      let vis = await designVisualsAction({ contentItemId: itemId, replaceExisting: true, strategize: true });
+      // The free edit's graphics (numbers he said) are the floor; the AI adds the concept
+      // graphics the viewer needs on top, replacing one only on the same phrase.
+      let vis = await designVisualsAction({ contentItemId: itemId, replaceExisting: false, strategize: true });
       if (vis.ok && "pending" in vis) {
         const jobRunId = vis.jobRunId;
         const done = await waitForJob(jobRunId, (v) => v.status === "RUNNING" && setAiStep(v.line ?? "AI is designing the graphics…"));
@@ -122,7 +124,7 @@ export function StyleCutPanel() {
       }
       if (!vis.ok) return setError(`The hook is done, but the graphics step failed: ${vis.error}`);
       loadSavedVersion(vis.timeline, vis.state);
-      setAiDone({ hook: hookText, reason: hookReason, graphics: vis.added.length, understanding: vis.understanding ?? null });
+      setAiDone({ hook: hookText, reason: hookReason, graphics: vis.timeline.visuals.length, added: vis.added.length, dropped: (vis.rejected ?? []).map((r) => ({ template: r.template, at: r.start, reason: r.reason })), understanding: vis.understanding ?? null });
       toast("AI edit saved as a new version.");
     } catch {
       setError("Couldn't reach the server. Whatever finished is saved — try again.");
@@ -213,6 +215,18 @@ export function StyleCutPanel() {
         <div className="fe-summary mt-3" data-testid="ai-edit-summary">
           <p className="text-[13px] font-semibold leading-snug">AI hook: “{aiDone.hook}”</p>
           <p className="mt-1 text-[12px] leading-snug text-[var(--color-text-muted)]">{aiDone.reason}</p>
+          <p className="mt-2 text-[12px] leading-snug" data-testid="ai-edit-graphics">
+            <span className="font-semibold">{aiDone.graphics} graphic{aiDone.graphics === 1 ? "" : "s"} on the timeline</span> — {aiDone.added} added by the AI{aiDone.dropped.length ? `, ${aiDone.dropped.length} idea${aiDone.dropped.length === 1 ? "" : "s"} dropped` : ""}.
+          </p>
+          {aiDone.dropped.length > 0 && (
+            <ul className="mt-1 flex flex-col gap-0.5" data-testid="ai-edit-dropped">
+              {aiDone.dropped.slice(0, 6).map((d, i) => (
+                <li key={i} className="text-[11.5px] leading-snug text-[var(--color-text-muted)]">
+                  <span className="tabular-nums">{d.at.toFixed(1)} s</span> · {d.template.toLowerCase().replace(/_/g, " ")} — {d.reason}
+                </li>
+              ))}
+            </ul>
+          )}
           {aiDone.understanding && (
             <>
               <p className="mt-2 text-[12px] leading-snug"><span className="font-semibold">Message:</span> {aiDone.understanding.coreMessage}</p>

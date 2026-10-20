@@ -178,6 +178,7 @@ export async function designMotionForContentItem(
         title: item.title,
         brandContext,
         creativeBrief: await creativeBriefTextFor(db, contentItemId),
+        existing: options.replaceExisting ? null : timeline.visuals.map((v) => ({ start: v.start, end: v.end, name: v.anchorText ?? v.template })),
       });
     }
     const designed: DesignVisualsResult = await designVisualsForTimeline(scopeProvider(provider, { contentItemId }), {

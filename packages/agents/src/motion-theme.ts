@@ -48,11 +48,11 @@ export const MOTION_THEME_PRESETS: Record<MotionTopic, MotionThemePreset> = {
   }),
   SAVING: preset("SAVING", {
     name: "Steady growth",
-    motionLanguage: "CALM",
+    motionLanguage: "CRISP",
     primary: "#FFD54A",
     secondary: "#34C796",
     iconStyle: "GOLD_METAL",
-    rationale: "Saving is calm consistency: gentle fades and a reassuring green.",
+    rationale: "Saving is steady: crisp settles, gold on a reassuring green.",
   }),
   CAREER: preset("CAREER", {
     name: "Confident career",
@@ -72,11 +72,11 @@ export const MOTION_THEME_PRESETS: Record<MotionTopic, MotionThemePreset> = {
   }),
   MINDSET: preset("MINDSET", {
     name: "Clear thinking",
-    motionLanguage: "CALM",
+    motionLanguage: "CRISP",
     primary: "#FFD54A",
     secondary: "#A78BFA",
-    iconStyle: "LINE",
-    rationale: "Mindset is ideas, not objects: calm motion and clean line icons keep the focus on the thought.",
+    iconStyle: "GOLD_METAL",
+    rationale: "Mindset videos still carry the house look: crisp motion, gold and violet, gold objects — the thought is the content, the look stays premium.",
   }),
   GENERAL: preset("GENERAL", {
     name: "Signature",

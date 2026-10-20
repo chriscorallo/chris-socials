@@ -273,6 +273,26 @@ describe("designVisualsForTimeline", () => {
     expect(added.start).toBeGreaterThanOrEqual(7.4);
   });
 
+  it("with a visual brief, the free edit's graphics stay as the floor and a brief moment on the same phrase replaces the one there", async () => {
+    const tl = timeline();
+    tl.visuals = [
+      { id: "mv-1", template: "KINETIC_TEXT", props: { text: "Mine", emphasis: [], style: "PUNCH" }, start: 4, end: 7, placement: { mode: "MANUAL", x: 0.5, y: 0.3, scale: 1 }, palette: "BRAND", enter: "AUTO", exit: "AUTO", enterSfx: null, anchorText: "mine", depth: "FRONT", anchor: { type: "SCREEN", offsetX: 0, offsetY: -0.25 }, cameraCoupling: 0, integration: { shadow: true, lightWrap: false, sceneMatch: true }, emphasisAt: null },
+      { id: "mv-2", template: "KINETIC_TEXT", props: { text: "Second", emphasis: [], style: "PUNCH" }, start: 20, end: 23, placement: { mode: "MANUAL", x: 0.5, y: 0.3, scale: 1 }, palette: "BRAND", enter: "AUTO", exit: "AUTO", enterSfx: null, anchorText: "second", depth: "FRONT", anchor: { type: "SCREEN", offsetX: 0, offsetY: -0.25 }, cameraCoupling: 0, integration: { shadow: true, lightWrap: false, sceneMatch: true }, emphasisAt: null },
+    ];
+    const brief = { topic: "t", theme: "t", coreMessage: "m", viewerTakeaway: "v", viewer: "cold", leaveClean: [], moments: [{ start: 5, end: 8, need: "SCALE" as const, whyViewerNeedsIt: "w", concept: "c", visualIdea: "i", mustNotBe: "x" }, { start: 12, end: 15, need: "SCALE" as const, whyViewerNeedsIt: "w", concept: "c2", visualIdea: "i", mustNotBe: "x" }] };
+    const res = await designVisualsForTimeline(provider([counter(5, 8), counter(12, 15, 8000)]), base({ timeline: tl, brief }));
+    const ids = res.visuals.map((v) => v.id);
+    // mv-1 (4–7 s) is replaced by the brief's graphic on that phrase; mv-2 stays; both new ones land.
+    expect(ids).not.toContain("mv-1");
+    expect(ids).toContain("mv-2");
+    expect(res.added).toHaveLength(2);
+    expect(res.visuals).toHaveLength(3);
+    expect(res.warnings.join(" ")).toMatch(/replaces the free edit's KINETIC_TEXT/);
+    // Without a brief the old rule holds: the kept one wins, the newcomer is pushed after it.
+    const plain = await designVisualsForTimeline(provider([counter(5, 9)]), base({ timeline: timeline() }));
+    expect(plain.visuals).toHaveLength(1);
+  });
+
   it("drops props that violate the template contract", async () => {
     const res = await designVisualsForTimeline(
       provider([v({ template: "LIST_STEPS", props: { title: null, items: ["only one"], style: "CHECK" }, start: 9, end: 12 })]),
