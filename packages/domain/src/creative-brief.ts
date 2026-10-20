@@ -130,7 +130,8 @@ export const CreativeBriefSchema = z.object({
 });
 export type CreativeBrief = z.infer<typeof CreativeBriefSchema>;
 
-export type CreativeBriefSource = "AGENT" | "CHATGPT" | "HUMAN";
+/** FOOTAGE = recovered from a filmed take by the Footage Brief agent (no script on record). */
+export type CreativeBriefSource = "AGENT" | "CHATGPT" | "HUMAN" | "FOOTAGE";
 
 export async function recordCreativeBrief(
   prisma: PrismaClient,
@@ -154,7 +155,7 @@ export async function recordCreativeBrief(
   await prisma.contentItem.update({ where: { id: input.contentItemId }, data: { series: fixed.series } });
   await recordAudit(prisma, {
     actor: actor.actorId,
-    actorType: actor.actorType ?? (input.source === "AGENT" ? "SYSTEM" : "HUMAN"),
+    actorType: actor.actorType ?? (input.source === "AGENT" || input.source === "FOOTAGE" ? "SYSTEM" : "HUMAN"),
     action: "CREATIVE_BRIEF_RECORDED",
     entityType: "ContentItem",
     entityId: input.contentItemId,

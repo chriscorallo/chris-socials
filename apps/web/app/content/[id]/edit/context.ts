@@ -46,6 +46,20 @@ export interface EditorStyleCut {
   fullEditActive: boolean;
   /** Which automatic edit new uploads get (Chris's setting). */
   autoMode: "FULL" | "CUTS";
+  /** The video's Creative Brief on record, if any — the Full edit and the AI edit follow it
+   * (planned hook opens, story beats protected, planned on-screen line as the title). */
+  brief: EditorBrief | null;
+  /** The current Full edit was made by an older cutter than the one deployed now. */
+  fullEditStale: boolean;
+}
+
+export interface EditorBrief {
+  series: string;
+  hook: string;
+  onScreenText: string;
+  objective: string;
+  /** AGENT (script pipeline) · CHATGPT (free paste) · HUMAN · FOOTAGE (recovered from the take). */
+  source: string;
 }
 
 export interface EditorContextValue {

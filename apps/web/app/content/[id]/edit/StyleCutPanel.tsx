@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { FullEditChoices } from "@chris/media/timeline";
 import { useEditor } from "./context";
 import { setAutoEditModeAction, styleCutAction, designVisualsAction, designVisualsResultAction, type DesignUnderstanding } from "./actions";
-import { aiPickHookAction } from "./ai-edit-actions";
+import { aiPickHookAction, ensureBriefAction } from "./ai-edit-actions";
 import { waitForJob } from "../../../../lib/use-job-progress";
 
 /**
@@ -68,6 +68,15 @@ export function StyleCutPanel() {
     setError(null);
     setAiDone(null);
     try {
+      // 0. The plan. A video filmed from the script or the ChatGPT paste has its Creative Brief;
+      //    an older or footage-first one gets it recovered from the take, so the Full edit, the
+      //    hook pick and the visuals all follow the playbook.
+      if (!styleCut.brief) {
+        setAiStep("AI is reading the footage and writing this video's plan…");
+        const b = await ensureBriefAction({ contentItemId: itemId });
+        if (!b.ok) return setError(b.error);
+        setStyleCut({ ...styleCut, brief: b.brief });
+      }
       // 1. A fresh Full edit is the base (cut to the references' length, fluff out, hook
       //    candidates found) — never a stale one, which may predate the current cutter.
       let report: typeof fe = null;
@@ -178,10 +187,27 @@ export function StyleCutPanel() {
   return (
     <div className="ed-section fe-panel">
       <div className="flex flex-col gap-2">
-        <Choice id="FULL" title="Full edit (free)" blurb="Strong hook first, every point said once, graphics with your numbers. No AI, free." onClick={() => void run("FULL", {}, "FULL")} />
+        <Choice id="FULL" title="Full edit (free)" blurb={styleCut.brief ? "Opens on your planned hook, keeps the story beats, every point said once, graphics with your numbers. No AI, free." : "Strong hook first, every point said once, graphics with your numbers. No AI, free."} onClick={() => void run("FULL", {}, "FULL")} />
         <Choice id="CUTS" title="Cuts only" blurb="Just takes out your pauses, with punch-ins on your face." onClick={() => void run("STYLE")} />
-        <Choice id="AI" title="AI edit" blurb={busy === "AI" ? (aiStep ?? "Working…") : "Full edit, then the AI picks the strongest hook and designs the graphics. Uses AI credit."} onClick={() => void runAi()} badge="AI" />
+        <Choice id="AI" title="AI edit" blurb={busy === "AI" ? (aiStep ?? "Working…") : styleCut.brief ? "Full edit, then the AI picks the strongest hook and designs the graphics. Uses AI credit." : "Writes this video's plan from the footage, then the Full edit, the AI's hook and the graphics. Uses AI credit."} onClick={() => void runAi()} badge="AI" />
       </div>
+
+      {styleCut.fullEditStale && !busy && (
+        <p className="fe-summary mt-3 text-[12.5px] leading-snug" data-testid="fe-stale">
+          The cut style was updated (cuts land right after the word, like your hand edits). This video still has the older cut — tap <span className="font-semibold">Full edit</span> to re-cut it; the current version stays in history.
+        </p>
+      )}
+
+      <p className="mt-3 text-[12px] leading-snug text-[var(--color-text-muted)]" data-testid="fe-brief">
+        {styleCut.brief ? (
+          <>
+            <span className="font-semibold">Plan:</span> {styleCut.brief.series} · opens on “{styleCut.brief.hook}” · ends to get a {styleCut.brief.objective.toLowerCase()}
+            {styleCut.brief.source === "FOOTAGE" ? " (recovered from the footage)" : ""}
+          </>
+        ) : (
+          <>No plan on record for this video. The free Full edit works from your words alone; <span className="font-semibold">AI edit</span> writes the plan from the footage first (about a cent).</>
+        )}
+      </p>
 
       {aiDone && (
         <div className="fe-summary mt-3" data-testid="ai-edit-summary">

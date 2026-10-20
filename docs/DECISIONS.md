@@ -9208,3 +9208,33 @@ pass).
 
 **Reversibility:** numbers and a flag — the old behaviour is the old constants plus
 `alwaysCutGapS` gating; `VOICE_LEVEL_FILTER` is one string.
+
+## 2026-10-19 — Footage Brief: the plan for videos that have none, and the editor says what it follows
+
+**Context:** Chris asked whether the Content Intelligence prompt affects the free Full edit and
+the AI edit, and for the new cut style to be applied "considering the prompt". The honest
+answer: the free Full edit is deterministic code — the prompt reaches it only through the
+Creative Brief (planned hook opens, midpoint/payoff/ending sentences protected, planned
+on-screen line as the title). Videos filmed from the in-app script or the ChatGPT paste have
+a brief; older uploads and footage-first videos have none, so nothing from the playbook reached
+their edits.
+
+**Decision:**
+1. **`FOOTAGE_BRIEF` agent** (prompt 1.0.0, MEDIUM, playbook FULL) recovers a Creative Brief
+   from the transcript: hooks/beats are sentences he said, series by mechanism, objective from
+   the filmed ending, stated numbers go to `research.unverified`. Recorded append-only with a
+   new source `FOOTAGE`.
+2. **AI edit step 0** (`ensureBriefAction`): when the video has no brief, the AI edit writes one
+   first (one MEDIUM call, cents), then the Full edit, hook pick and visuals follow it. The
+   free Full edit stays free and brief-aware; it does not call a model.
+3. **Editor transparency:** the Auto edit tab shows the plan it follows (series · opening line ·
+   ending objective, "recovered from the footage" when applicable) or says there is none; a
+   notice marks a Full edit made by an older cutter and offers the re-cut (current version
+   stays in history). `STYLE_CUT_VERSION` 3 / `FULL_EDIT_VERSION` 2 so a re-apply recomputes.
+
+**Alternatives considered:** running the footage brief inside the free Full edit (rejected:
+the free path stays free — Chris's standing rule); a deterministic "brief" from the transcript
+(rejected: series, mechanism and objective are semantic judgments).
+
+**Reversibility:** the step is one `if (!brief)` in the editor; the agent is a prompt row; the
+source value is additive.

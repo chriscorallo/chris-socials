@@ -24,6 +24,7 @@ export * from "./edit-planner-agent";
 export * from "./visual-qa-agent";
 export * from "./platform-packaging-agent";
 export * from "./hook-picker-agent";
+export * from "./footage-brief-agent";
 export * from "./visual-strategist-agent";
 export * from "./scheduler-agent";
 export * from "./analytics-agent";
