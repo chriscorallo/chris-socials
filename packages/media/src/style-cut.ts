@@ -194,6 +194,9 @@ export interface StyleCutOptions {
   /** Split long uninterrupted stretches purely to match the references' cut rate. Off: cuts
    * only where a pause/dead air was actually removed (see header, step 3). */
   rhythmCuts: boolean;
+  /** Long shots + zooms (the Editor's LONG_SHOTS_ZOOMS pacing): every pause removal is a jump
+   * cut on the same crop — the picture never re-frames on a cut; punch-ins come from zooms. */
+  holdFraming: boolean;
 }
 
 export const DEFAULT_STYLE_CUT_OPTIONS: StyleCutOptions = {
@@ -208,6 +211,7 @@ export const DEFAULT_STYLE_CUT_OPTIONS: StyleCutOptions = {
   whisperLeadPadS: 0.1,
   maxWordlessIslandS: 0.3,
   rhythmCuts: false,
+  holdFraming: false,
 };
 
 export interface StyleCutShot {
@@ -501,7 +505,7 @@ function cutOneTake(
     // a framing change, the cut is a jump cut: same crop, just the air removed.
     const shotSoFar = cutOut - seg.start;
     const minHere = firstTake && segments.length === 0 ? minFirstShot : minShot;
-    const jump = gap < opts.alwaysCutGapS && shotSoFar < minHere;
+    const jump = opts.holdFraming || (gap < opts.alwaysCutGapS && shotSoFar < minHere);
     segments.push({ start: seg.start, end: cutOut, firstPause: seg.firstPause, lastPause: pi - 1, jump: seg.jump });
     removed.add(pi);
     pausesRemoved++;

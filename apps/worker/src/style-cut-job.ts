@@ -17,12 +17,14 @@ import {
   saveFullEditChoice,
   autoStyleCutEligibility,
   getAutoEditMode,
+  type AutoEditMode,
   type PrismaClient,
   type StoredStyleCut,
   type StoredFullEdit,
   getLatestCreativeBrief,
+  creativeBriefTextFor,
 } from "@chris/domain";
-import { EditPlanOutputSchema } from "@chris/agents";
+import { EditPlanOutputSchema, getBrandContextText, runEditorAgent, scopeProvider, type ModelProvider } from "@chris/agents";
 import {
   analyzeTakeAudio,
   buildFullEdit,
@@ -334,7 +336,23 @@ async function briefForFullEdit(db: PrismaClient, contentItemId: string): Promis
   return { hook: chosen?.text ?? null, keep: [b.story.midpointReversal, b.story.payoff, b.story.ending].filter((t): t is string => !!t), onScreenText: chosen?.onScreenText ?? null };
 }
 
-async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, contentItemId: string, l: Loaded, choices: FullEditChoices, measure = true): Promise<FullEditComputed> {
+/** The Editor agent as the Full edit's planner (the plan is stored with the edit's choices). */
+export function editorPlannerFor(db: PrismaClient, provider: ModelProvider, contentItemId: string, profile: { durationS?: { value: number; n: number; p25: number; p75: number } | null } | null | undefined) {
+  return async (lines: Array<{ id: number; text: string; start: number; end: number; words: number }>) => {
+    const st = storyTargetFromProfile(profile);
+    const item = await db.contentItem.findUnique({ where: { id: contentItemId }, select: { title: true } });
+    return runEditorAgent(scopeProvider(provider, { contentItemId }), {
+      title: item?.title ?? null,
+      durationS: lines.length ? Math.max(...lines.map((l) => l.end)) : 0,
+      lines,
+      brandContext: await getBrandContextText(db),
+      creativeBrief: await creativeBriefTextFor(db, contentItemId),
+      referenceLengthS: st.source === "REFERENCES" ? { targetS: st.targetS, minS: st.minS, maxS: st.maxS } : null,
+    });
+  };
+}
+
+async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, contentItemId: string, l: Loaded, choices: FullEditChoices, measure = true, provider: ModelProvider | null = null): Promise<FullEditComputed> {
   if (l.takes.length > 1) return { ok: false, error: "The full edit works on one take — this video was recorded in parts, so it gets the cuts-only edit." };
   if (!l.take.words?.length) return { ok: false, error: "The full edit needs captions first — they appear once your words are transcribed." };
   const profile = await getReferenceStyleProfile(db, { group: "MAIN" });
@@ -354,6 +372,7 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
       choices,
       brief: await briefForFullEdit(db, contentItemId),
       measure: nodeMeasureText,
+      editorPlanner: provider && choices.useEditor ? editorPlannerFor(db, provider, contentItemId, profile) : null,
     },
     fullEditEmbedder(),
   );
@@ -364,7 +383,8 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
     inputsKey: r.inputsKey,
     summary: r.report.summary,
     report: r.report as unknown as Record<string, unknown>,
-    choices: { ...choices },
+    // The Editor's plan rides along so a re-apply never asks the model again.
+    choices: { ...choices, ...(r.report.choices.editorPlan ? { editorPlan: r.report.choices.editorPlan } : {}) },
     mediaAssetId: l.take.id,
     silences: audio.silences,
     envelope: audio.envelope,
@@ -373,7 +393,7 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
 }
 
 /** Which automatic edit new uploads get: FULL_EDIT_AUTO=off forces Cuts only; else Chris's setting. */
-async function autoMode(db: PrismaClient): Promise<"FULL" | "CUTS"> {
+async function autoMode(db: PrismaClient): Promise<AutoEditMode> {
   if (process.env.FULL_EDIT_AUTO === "off") return "CUTS";
   try {
     return await getAutoEditMode(db);
@@ -393,7 +413,7 @@ export async function maybeAutoStyleCut(
   storage: StorageAdapter,
   contentItemId: string,
   actor: { actorId: string },
-  options: { measureSilences?: boolean } = {},
+  options: { measureSilences?: boolean; provider?: (() => ModelProvider) | null } = {},
 ): Promise<StyleCutOutcome> {
   try {
     if (process.env.STYLE_CUT_AUTO === "off") return { status: "SKIPPED", reason: "Automatic style cut is turned off (STYLE_CUT_AUTO=off)." };
@@ -404,9 +424,24 @@ export async function maybeAutoStyleCut(
     if (!elig.eligible) return { status: "SKIPPED", reason: elig.reason };
     // The auto cut always starts from the plain take's look (the latest is untouched anyway).
     const base = { ...l, current: elig.replaces === "STARTER" ? plainTimeline(l.takes) : l.current };
-    if ((await autoMode(db)) === "FULL" && l.takes.length === 1) {
+    const mode = await autoMode(db);
+    if ((mode === "FULL" || mode === "EDITOR") && l.takes.length === 1) {
       try {
-        const fe = await computeFullEdit(db, storage, contentItemId, base, {}, options.measureSilences ?? true);
+        // EDITOR: the AI Editor writes the cut when a model is available; otherwise (no key, no
+        // credit, cap reached) the free Full edit — never nothing.
+        let provider: ModelProvider | null = null;
+        if (mode === "EDITOR" && options.provider) {
+          try {
+            provider = options.provider();
+          } catch (err) {
+            console.warn("[full-edit] no model provider for the Editor — free Full edit instead:", err instanceof Error ? err.message : err);
+          }
+        }
+        let fe = await computeFullEdit(db, storage, contentItemId, base, provider ? { useEditor: true } : {}, options.measureSilences ?? true, provider);
+        if (!fe.ok && provider) {
+          console.warn("[full-edit] the Editor failed — free Full edit instead:", fe.error);
+          fe = await computeFullEdit(db, storage, contentItemId, base, {}, options.measureSilences ?? true);
+        }
         if (fe.ok) {
           const row = await recordAutoFullEdit(
             db,
@@ -414,7 +449,7 @@ export async function maybeAutoStyleCut(
             actor,
           );
           if (!row) return { status: "SKIPPED", reason: "Already up to date." };
-          return { status: "APPLIED", editPlanId: row.id, summary: fe.stored.summary, profileNote: "Full edit (free) — no AI." };
+          return { status: "APPLIED", editPlanId: row.id, summary: fe.stored.summary, profileNote: fe.stored.choices.editorPlan ? "The Editor's cut (AI)." : "Full edit (free) — no AI." };
         }
         console.warn("[full-edit] fell back to the style cut:", fe.error);
       } catch (err) {
@@ -449,6 +484,7 @@ export async function applyStyleCutChoice(
   mode: "STYLE" | "PLAIN" | "FULL",
   actorId: string,
   choices: FullEditChoices = {},
+  opts: { provider?: (() => ModelProvider) | null } = {},
 ): Promise<
   | { ok: true; editPlanId: string; timeline: EditTimeline; summary: string | null; profileNote: string | null; fullEdit?: FullEditReport | null }
   | { ok: false; error: string }
@@ -457,7 +493,9 @@ export async function applyStyleCutChoice(
   if ("error" in l) return { ok: false, error: l.error };
   if (mode === "FULL") {
     // Always from the plain take (keeping Chris's caption style/look): a full edit re-cuts everything.
-    const fe = await computeFullEdit(db, storage, contentItemId, { ...l, current: plainTimeline(l.takes, l.current) }, choices);
+    let provider: ModelProvider | null = null;
+    if (choices.useEditor && !choices.editorPlan && opts.provider) provider = opts.provider();
+    const fe = await computeFullEdit(db, storage, contentItemId, { ...l, current: plainTimeline(l.takes, l.current) }, choices, true, provider);
     if (!fe.ok) return { ok: false, error: fe.error };
     const row = await saveFullEditChoice(db, { contentItemId, timeline: fe.timeline, durationSeconds: timelineDuration(fe.timeline), actorId, fullEdit: fe.stored });
     return { ok: true, editPlanId: row.id, timeline: fe.timeline, summary: fe.stored.summary, profileNote: null, fullEdit: fe.report };

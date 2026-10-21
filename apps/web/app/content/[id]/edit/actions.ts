@@ -217,7 +217,7 @@ export async function styleCutAction(input: {
 }): Promise<StepResult<{ editPlanId: string; state: ContentState; timeline: EditTimeline; summary: string | null; profileNote: string | null; fullEdit: FullEditReport | null }>> {
   const session = await requireSession();
   try {
-    const r = await applyStyleCutChoice(prisma, storage, input.contentItemId, input.mode, session.user!.id!, input.choices ?? {});
+    const r = await applyStyleCutChoice(prisma, storage, input.contentItemId, input.mode, session.user!.id!, input.choices ?? {}, { provider: () => getModelProvider() });
     if (!r.ok) return { ok: false, error: r.error };
     return { ok: true, editPlanId: r.editPlanId, state: await stateOf(input.contentItemId), timeline: r.timeline, summary: r.summary, profileNote: r.profileNote, fullEdit: r.fullEdit ?? null };
   } catch (err) {
@@ -225,8 +225,8 @@ export async function styleCutAction(input: {
   }
 }
 
-/** "For new uploads": Full edit (default) or Cuts only. Audit-logged (setFlag). */
-export async function setAutoEditModeAction(mode: "FULL" | "CUTS"): Promise<StepResult> {
+/** "For new uploads": the Editor's cut (default), the free Full edit, or Cuts only. Audit-logged (setFlag). */
+export async function setAutoEditModeAction(mode: "EDITOR" | "FULL" | "CUTS"): Promise<StepResult> {
   const session = await requireSession();
   try {
     await setAutoEditMode(prisma, mode, session.user!.id!);

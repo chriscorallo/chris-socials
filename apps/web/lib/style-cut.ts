@@ -2,6 +2,7 @@ import { prisma } from "@chris/domain";
 import { maybeAutoStyleCut } from "@chris/worker/style-cut-job";
 import { storage } from "./storage";
 import { heavyJobMode } from "./render-config";
+import { getModelProvider } from "./model-provider";
 
 /**
  * After the no-AI starter edit is made: if the take already has captions, turn the untouched
@@ -12,7 +13,7 @@ import { heavyJobMode } from "./render-config";
  */
 export async function autoStyleCutAfterStarter(contentItemId: string, actorId: string): Promise<void> {
   try {
-    await maybeAutoStyleCut(prisma, storage, contentItemId, { actorId }, { measureSilences: heavyJobMode() !== "sandbox" });
+    await maybeAutoStyleCut(prisma, storage, contentItemId, { actorId }, { measureSilences: heavyJobMode() !== "sandbox", provider: () => getModelProvider() });
   } catch (err) {
     console.warn("[style-cut]", err instanceof Error ? err.message : err);
   }

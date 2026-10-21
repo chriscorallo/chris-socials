@@ -136,6 +136,64 @@ describe("full edit — the free cut reads like a creator cut it (2026-10-19)", 
   });
 });
 
+describe("full edit — the Editor's cut is executed exactly (2026-10-21)", () => {
+  const lines = [
+    "Hey guys what's up.",
+    "So I have a picture here of two people, who would you rather be?",
+    "Both are making a hundred grand a year taking home $8,333 a month.",
+    "One rents a $5,000 apartment and saves $733 a month.",
+    "The other owns and saves $4,133 a month.",
+    "Now which one are you?",
+    "Let me know, kind of curious.",
+  ];
+  const t = take(lines);
+  const base = { base: BASE, mediaAssetId: "take", words: t.words, durationSeconds: t.duration, silences: t.silences };
+
+  it("plays the editor's lines in the editor's order, trims inside a line, holds a headline per beat, reports the beats", async () => {
+    const S = buildSentences(t.words, t.silences);
+    const id = (start: string) => S.find((s) => s.text.startsWith(start))!.id;
+    const editorPlan = {
+      storyline: [
+        { sentenceId: id("Both are"), role: "HOOK", headline: "SAME SALARY", viewerNeeds: null },
+        { sentenceId: id("So I have"), role: "SETUP", keepWords: { from: 9, to: 13 }, headline: "WHO WOULD YOU RATHER BE?", viewerNeeds: null },
+        { sentenceId: id("One rents"), role: "TENSION", headline: "$733 A MONTH", viewerNeeds: "the two budgets side by side" },
+        { sentenceId: id("The other"), role: "PAYOFF", headline: "$4,133 A MONTH", viewerNeeds: null },
+        { sentenceId: id("Now which"), role: "ENDING", headline: null, viewerNeeds: null },
+      ],
+      cut: [{ sentenceId: id("Hey guys"), why: "greeting" }, { sentenceId: id("Let me know"), why: "ends on the question" }],
+      title: "Both making $100K",
+      pacing: "LONG_SHOTS_ZOOMS",
+      rationale: "Same salary, two lives; the number is the payoff.",
+      coldViewer: "holds",
+    };
+    const r = await buildFullEdit({ ...base, choices: { editorPlan: editorPlan as never } }, LEXICAL_EMBEDDER);
+    if (!r.ok) throw new Error(r.message);
+    expect(r.report.kept.map((k) => k.text.split(" ")[0])).toEqual(["Both", "So", "One", "The", "Now"]);
+    expect(r.report.hook.text).toMatch(/^Both are making/);
+    expect(r.report.hook.titles[0]).toEqual({ text: "Both making $100K", template: "EDITOR" });
+    expect(r.report.removed.map((x) => x.why)).toEqual(expect.arrayContaining(["greeting", "ends on the question"]));
+    expect(r.report.editor?.beats.map((b) => b.headline)).toEqual(["SAME SALARY", "WHO WOULD YOU RATHER BE?", "$733 A MONTH", "$4,133 A MONTH", null]);
+    // Beat headlines on screen (the hook beat is the hook title), each held for its beat, in order.
+    const texts = r.timeline.texts.filter((x) => x.id.startsWith("fe-beat-"));
+    // (the 0.9 s "who would you rather be" beat is too short to hold a headline — reported, not shown)
+    expect(texts.map((x) => x.text)).toEqual(["$733 A MONTH", "$4,133 A MONTH"]);
+    for (let i = 1; i < texts.length; i++) expect(texts[i]!.start).toBeGreaterThanOrEqual(texts[i - 1]!.end - 0.01);
+    // The trim inside "So I have a picture here of two people, who would you rather be?" kept words 9–13.
+    const trimmed = r.story.wordCuts.filter((c) => c.kind === "TRIM");
+    expect(trimmed.length).toBeGreaterThan(0);
+    expect(r.report.kept.find((k) => k.text.startsWith("So I have"))).toBeTruthy();
+    // Long shots + zooms: every pause cut is a jump cut — the crop holds (re-framing only at story joins).
+    const pauseCuts = r.shots.filter((sh) => sh.cutBefore === "PAUSE");
+    expect(pauseCuts.length).toBeGreaterThan(0);
+    for (const sh of pauseCuts) expect(sh.jump).toBe(true);
+  });
+
+  it("a plan with unknown ids only → a clear failure, never a silent empty cut", async () => {
+    const r = await buildFullEdit({ ...base, choices: { editorPlan: { storyline: [{ sentenceId: 99, role: "HOOK" }], cut: [], rationale: "" } as never } }, LEXICAL_EMBEDDER);
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe("full edit — understanding (beats)", () => {
   it("classifies greetings, meta, tangents, fluff, recaps, lists, CTAs and sign-offs from cue phrases", () => {
     const beat = (t: string, index = 0, count = 10) => classifyBeat(t, { index, count, prevBeat: null }, spokenNumbers(t.split(" "))).beat;

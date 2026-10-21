@@ -17,6 +17,7 @@ import {
   readStoredStyleCut,
   setAutoEditMode,
   getAutoEditMode,
+  setAutoEditMode,
   FULL_EDIT_AUTO_REASON,
   STYLE_CUT_AUTO_REASON,
 } from "@chris/domain";
@@ -85,7 +86,8 @@ describe("full edit job", () => {
   }
 
   it("is the default automatic edit: hook first, retake + greeting out, a verified number graphic, idempotent", async () => {
-    expect(await getAutoEditMode(prisma)).toBe("FULL");
+    await setAutoEditMode(prisma, "EDITOR", "test"); // the shared dev DB may hold an earlier run's setting
+    expect(await getAutoEditMode(prisma)).toBe("EDITOR"); // the AI Editor by default; this test has no model → the free Full edit runs
     const { id, assetId } = await item("Full edit auto");
     const r = await maybeAutoStyleCut(prisma, storage, id, actor);
     expect(r.status).toBe("APPLIED");

@@ -55,7 +55,7 @@ export interface SentenceDecision {
 export interface WordCut {
   w0: number;
   w1: number;
-  kind: "FILLER" | "RESTART" | "LEAD_IN";
+  kind: "FILLER" | "RESTART" | "LEAD_IN" | "TRIM";
   text: string;
 }
 

@@ -80,13 +80,13 @@ export function StyleCutPanel() {
         if (!b.ok) return setError(b.error);
         setStyleCut({ ...styleCut, brief: b.brief });
       }
-      // 1. A fresh Full edit is the base (cut to the references' length, fluff out, hook
-      //    candidates found) — never a stale one, which may predate the current cutter.
+      // 1. The Editor writes the cut (hook → tension → payoff from his lines, headlines per
+      //    beat), and the engine executes it — never a stale plan, which may predate the cutter.
       let report: typeof fe = null;
       let sc = styleCut;
       {
-        setAiStep("Making the Full edit…");
-        const res = await styleCutAction({ contentItemId: itemId, mode: "FULL" });
+        setAiStep("The Editor is writing the cut from your take…");
+        const res = await styleCutAction({ contentItemId: itemId, mode: "FULL", choices: { useEditor: true } });
         if (!res.ok) return setError(res.error);
         loadSavedVersion(res.timeline, res.state);
         report = res.fullEdit ?? null;
@@ -95,10 +95,11 @@ export function StyleCutPanel() {
       }
       if (!report) return setError("The Full edit didn't come back — try again.");
 
-      // 2. The AI picks the opening line among the sentences he said.
+      // 2. The AI picks the opening line among the sentences he said (only when no Editor plan —
+      //    the Editor already chose the hook and read the cut through as a cold viewer).
       let hookText = report.hook.text;
-      let hookReason = "Kept the Full edit's hook.";
-      if (report.hook.candidates.length > 1) {
+      let hookReason = report.editor ? report.editor.rationale || "The Editor's opening line." : "Kept the Full edit's hook.";
+      if (!report.editor && report.hook.candidates.length > 1) {
         setAiStep("AI is picking the strongest hook…");
         const pick = await aiPickHookAction({ contentItemId: itemId, candidates: report.hook.candidates });
         if (!pick.ok) return setError(pick.error);
@@ -119,7 +120,7 @@ export function StyleCutPanel() {
       //     don't follow get one surgical fix each (restore the cut line / drop the dependent),
       //     applied as Full-edit choices and re-cut. The hook is never touched.
       let flow: { fixed: number; issues: string[]; hookProblem: string | null; quotable: string | null } | null = null;
-      if (report.kept.length > 1) {
+      if (!report.editor && report.kept.length > 1) {
         setAiStep("AI is reading the cut through as a cold viewer…");
         const chosen = report.hook.candidates[report.hook.chosenIndex];
         const fc = await aiFlowCheckAction({ contentItemId: itemId, kept: report.kept, removed: report.removed.map((r) => ({ sentenceId: r.sentenceId, text: r.text, kind: r.kind, why: r.why })), hookSentenceIds: chosen?.sentenceIds ?? [] });
@@ -177,11 +178,11 @@ export function StyleCutPanel() {
     });
   const removeVisual = (id: string) => apply((d) => ({ ...d, visuals: d.visuals.filter((v) => v.id !== id) }));
 
-  const setDefault = async (mode: "FULL" | "CUTS") => {
+  const setDefault = async (mode: "EDITOR" | "FULL" | "CUTS") => {
     const r = await setAutoEditModeAction(mode);
     if (r.ok) {
       setStyleCut({ ...styleCut, autoMode: mode });
-      toast(mode === "FULL" ? "New uploads get the Full edit." : "New uploads get Cuts only.");
+      toast(mode === "EDITOR" ? "New uploads get the Editor's cut (AI)." : mode === "FULL" ? "New uploads get the Full edit." : "New uploads get Cuts only.");
     } else setError(r.error);
   };
 
@@ -402,6 +403,9 @@ export function StyleCutPanel() {
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--color-border,#ffffff1a)] pt-3 text-[12px]">
         <span className="text-[var(--color-text-muted)]">New uploads get</span>
         <span className="flex gap-1">
+          <button type="button" className={`fe-chip ${styleCut.autoMode === "EDITOR" ? "fe-chip-on" : ""}`} onClick={() => void setDefault("EDITOR")}>
+            Editor (AI)
+          </button>
           <button type="button" className={`fe-chip ${styleCut.autoMode === "FULL" ? "fe-chip-on" : ""}`} onClick={() => void setDefault("FULL")}>
             Full edit
           </button>

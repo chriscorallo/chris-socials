@@ -180,7 +180,7 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       const results = a.mediaAssetId
         ? [await transcribeMediaAsset(db, storage, a.mediaAssetId, { provider: ctx.transcriptionProvider }, actor)]
         : await transcribeContentItemTakes(db, storage, a.contentItemId, { provider: ctx.transcriptionProvider, force: a.force }, actor);
-      if (results.some((r) => r.status === "SUCCESS")) await maybeAutoStyleCut(db, storage, a.contentItemId, actor);
+      if (results.some((r) => r.status === "SUCCESS")) await maybeAutoStyleCut(db, storage, a.contentItemId, actor, { provider: ctx.modelProvider ?? null });
       return outcomeOf("transcribe", results.map(slimTranscribe), "Transcription failed", (n) => `Transcribed ${plural(n, "take")}.`);
     }
 
@@ -490,7 +490,7 @@ async function runIngest(
     }
     // Captions (and the face) are in: if the video's edit is still the untouched no-AI starter
     // edit, make it a style cut now (no-op otherwise; never touches Chris's own edits).
-    if (needT.length || needK.length) styleCut.push(await maybeAutoStyleCut(db, storage, a.contentItemId, actor));
+    if (needT.length || needK.length) styleCut.push(await maybeAutoStyleCut(db, storage, a.contentItemId, actor, { provider: ctx.modelProvider ?? null }));
     const needM = todo.filter((t) => a.matte && t.width != null && !t.matteStorageKey);
     for (const [i, t] of needM.entries()) {
       progress(45 + (50 * i) / needM.length, `Cutting you out of the background${label(i, needM.length)} — the slowest step…`, "matte");
@@ -499,7 +499,7 @@ async function runIngest(
   }
   // Once more at the end: the starter edit may have been made (upload screen) while this job
   // ran, after the in-loop attempt — an untouched cut then picks up the face track. No-op otherwise.
-  if (transcribe.length || track.length) styleCut.push(await maybeAutoStyleCut(db, storage, a.contentItemId, actor));
+  if (transcribe.length || track.length) styleCut.push(await maybeAutoStyleCut(db, storage, a.contentItemId, actor, { provider: ctx.modelProvider ?? null }));
   const failures = [
     ...transcribe.filter((r) => r.status === "FAILED").map((r) => `transcription: ${r.errorMessage}`),
     ...track.filter((r) => r.status === "FAILED").map((r) => `face tracking: ${r.errorMessage}`),

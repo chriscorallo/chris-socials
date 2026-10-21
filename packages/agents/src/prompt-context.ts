@@ -59,10 +59,15 @@ export function buildSystemPrompt(promptId: string): { systemPrompt: string; mod
  * built the brand from videos alone: attention, interest, engagement, trust, weak material,
  * coherence) + the whole playbook; CORE = both in short. Same text every call, so it caches
  * with the system prompt. */
+const SCREEN_AGENTS = new Set(["EDITOR", "VISUAL_STRATEGIST", "MOTION_DESIGNER", "VIEWER_PANEL", "FLOW_CHECK"]);
+
 export function contentIntelligenceFor(promptId: string): string {
   const level = getAgentPrompt(promptId).frontmatter.content_intelligence ?? "NONE";
   if (level === "NONE") return "";
   const operator = getAgentPrompt(level === "FULL" ? "CREATOR_OPERATOR" : "CREATOR_OPERATOR_CORE").body.trim();
   const playbook = getAgentPrompt(level === "FULL" ? "CONTENT_INTELLIGENCE" : "CONTENT_INTELLIGENCE_CORE").body.trim();
-  return `\n\n---\n\n${operator}\n\n---\n\n${playbook}`;
+  // The agents that own the screen also get the Editor's orchestration rules (one lead at a
+  // time, fixed anchors, timing tied to words and held for the idea, motion felt not seen).
+  const orchestration = SCREEN_AGENTS.has(promptId) ? `\n\n---\n\n${getAgentPrompt("EDITOR_ORCHESTRATION").body.trim()}` : "";
+  return `\n\n---\n\n${operator}\n\n---\n\n${playbook}${orchestration}`;
 }

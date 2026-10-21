@@ -59,6 +59,9 @@ export async function runVisualStrategistAgent(
     creativeBrief?: string | null;
     /** Graphics already on the timeline (the free edit's, built from numbers he said). */
     existing?: Array<{ start: number; end: number; name: string }> | null;
+    /** The Editor's beats: where each idea plays, its headline, and what (if anything) the viewer
+     * needs to see there. When present, plan ONLY inside beats that name a need. */
+    editorBeats?: Array<{ role: string; headline: string | null; viewerNeeds: string | null; start: number; end: number }> | null;
   },
 ): Promise<VisualBrief> {
   const { systemPrompt, modelClass } = buildSystemPrompt("VISUAL_STRATEGIST");
@@ -75,7 +78,7 @@ Duration: ${input.durationS.toFixed(1)} s (every time you return is on this time
 
 ${input.transcript}${input.creativeBrief ? `\n\n## Creative brief (the plan this video was made to)\n\n${input.creativeBrief}\n\nThe storyboard's opening frame, midpoint visual and payoff visual are the starting plan — keep them where the finished cut still supports them, place them at the moments they belong to, and still apply every viewer-first rule above (a planned visual the viewer doesn't need is dropped).` : ""}
 
-${input.existing?.length ? `\n\n## Already on the timeline (the free edit's graphics — numbers he said)\n\n${input.existing.map((e) => `- ${e.start.toFixed(1)}–${e.end.toFixed(1)} s: ${e.name}`).join("\n")}\n\nThese stay. Plan a moment on one of these phrases only when your concept is deeper than the number itself (yours then replaces it); plan the rest of your moments where the viewer has nothing yet.` : ""}
+${input.editorBeats?.length ? `\n\n## The Editor's beats (the cut's structure — plan only where a beat names a need)\n\n${input.editorBeats.map((b) => `- ${b.start.toFixed(1)}–${b.end.toFixed(1)} s · ${b.role}${b.headline ? ` · headline on screen: "${b.headline}"` : ""} · viewer needs: ${b.viewerNeeds ?? "nothing — his face is the picture"}`).join("\n")}\n\nA headline already sits in the top zone during these beats; your visual goes under it and must not restate it. Beats with no need get no visual.` : ""}${input.existing?.length ? `\n\n## Already on the timeline (the free edit's graphics — numbers he said)\n\n${input.existing.map((e) => `- ${e.start.toFixed(1)}–${e.end.toFixed(1)} s: ${e.name}`).join("\n")}\n\nThese stay. Plan a moment on one of these phrases only when your concept is deeper than the number itself (yours then replaces it); plan the rest of your moments where the viewer has nothing yet.` : ""}
 
 ## Task
 

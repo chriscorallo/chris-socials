@@ -10,6 +10,8 @@ import {
   type StyleCutRangeShot,
   type StyleCutTarget,
 } from "../style-cut";
+import { EditorPlanSchema, editorBeats, planFromEditor, sanitizeEditorPlan, type EditorPlan } from "./editor-plan";
+export * from "./editor-plan";
 import { EditTimelineSchema, timelineDuration, type EditTimeline, type TimelineText, type TimelineZoom } from "../timeline";
 import { findTimelineCollisions, layoutTimelineText, type MeasureText } from "../timeline-layout";
 import { timelineCaptionChunks } from "../timeline-captions";
@@ -59,6 +61,11 @@ export interface FullEditChoices {
   forceDrop?: number[];
   /** Graphics Chris removed (by visual id). */
   removedVisualIds?: string[];
+  /** The Editor agent's cut (editor-plan.ts): when present it IS the story — the heuristic
+   * planner, hook scorer and length trims are skipped and the plan is executed exactly. */
+  editorPlan?: EditorPlan | null;
+  /** Ask the Editor (input.editorPlanner) to write the cut when no plan is stored yet. */
+  useEditor?: boolean;
 }
 
 export interface FullEditInput {
@@ -86,6 +93,10 @@ export interface FullEditInput {
   /** Glyph measurement (node: nodeMeasureText) — without it text sizes are estimated. */
   measure?: MeasureText;
   options?: Partial<StyleCutOptions>;
+  /** The Editor agent, called with the take's numbered lines when `choices.useEditor` is set
+   * and no plan is stored. The plan it returns is recorded in the result's choices, so a
+   * re-apply ("Try another hook", restore a line) never asks again. */
+  editorPlanner?: ((lines: Array<{ id: number; text: string; start: number; end: number; words: number }>) => Promise<EditorPlan>) | null;
 }
 
 export const FullEditCheckSchema = z.object({
@@ -122,6 +133,17 @@ export const FullEditReportSchema = z.object({
   removed: z.array(z.object({ sentenceId: z.number(), text: z.string(), kind: z.string(), why: z.string(), start: z.number() })),
   /** The lines a viewer hears, in output order (the read-through's input). */
   kept: z.array(z.object({ sentenceId: z.number(), text: z.string(), beat: z.string() })).default([]),
+  /** The Editor's cut, when the AI editor wrote it: beats with their held headlines and timing. */
+  editor: z
+    .object({
+      rationale: z.string(),
+      pacing: z.string(),
+      coldViewer: z.string().nullable(),
+      problems: z.array(z.string()),
+      beats: z.array(z.object({ role: z.string(), headline: z.string().nullable(), viewerNeeds: z.string().nullable(), sentenceIds: z.array(z.number()), start: z.number(), end: z.number() })),
+    })
+    .nullable()
+    .default(null),
   marked: z.array(z.object({ sentenceId: z.number(), note: z.string() })),
   visuals: z.array(z.object({ id: z.string(), presetId: z.string(), name: z.string(), reason: z.string(), start: z.number(), match: z.number(), numbers: z.array(z.number()) })),
   rejectedVisuals: z.number(),
@@ -218,7 +240,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   const silences = input.silences && input.silences.length ? input.silences : null;
   const target = input.target ?? DEFAULT_STYLE_CUT_TARGET;
   const storyTarget = input.story ?? DEFAULT_STORY_TARGET;
-  const choices = input.choices ?? {};
+  let choices: FullEditChoices = input.choices ?? {};
   const boundary = boundaryFn(words, duration, silences);
 
   // ---- 1. Understand ----------------------------------------------------------------------
@@ -305,6 +327,16 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     protect: briefProtect,
   };
 
+  // ---- 1c. The Editor's cut (when the AI editor wrote one) --------------------------------
+  if (!choices.editorPlan && choices.useEditor && input.editorPlanner) {
+    const plan = await input.editorPlanner(sentences.map((s) => ({ id: s.id, text: s.text, start: r2(s.start), end: r2(s.end), words: s.wordCount })));
+    choices = { ...choices, editorPlan: plan };
+  }
+  const editorParsed = choices.editorPlan ? EditorPlanSchema.safeParse(choices.editorPlan) : null;
+  const editor = editorParsed?.success ? sanitizeEditorPlan(editorParsed.data, sentences) : null;
+  if (editorParsed && !editorParsed.success) return { ok: false, reason: "NO_STORY", message: "The editor's plan didn't fit — try the edit again." };
+  if (editor && editor.plan.storyline.length === 0) return { ok: false, reason: "NO_STORY", message: "The editor's plan kept no lines." };
+
   // ---- 2. Hook bot (on the lines that survive the mechanical cleanup) ----------------------
   const pre = planStory({ ...storyBase, target: { ...storyTarget, targetS: 1e9 }, hookIds: [] });
   const eligible = new Set(pre.decisions.filter((d) => d.kept).map((d) => d.id));
@@ -323,9 +355,16 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     const planned = scored.find((c) => c.sentenceIds.length === 1 && c.sentenceIds[0] === plannedHook.id) ?? scored.find((c) => c.sentenceIds.includes(plannedHook.id));
     if (planned) candidates = [...candidates.slice(0, 5), planned];
   }
+  if (editor) {
+    // The editor's first line is the hook; it joins the candidates (first) so "Try another hook" still works.
+    const hs = sentences.find((s) => s.id === editor.plan.storyline[0]!.sentenceId)!;
+    const existing = candidates.findIndex((c) => c.sentenceIds.length === 1 && c.sentenceIds[0] === hs.id);
+    const cand = existing >= 0 ? candidates[existing]! : { sentenceIds: [hs.id], text: hs.text, start: hs.start, end: hs.end, score: 9, features: [], reason: "The editor's opening line" };
+    candidates = [cand, ...candidates.filter((c) => c !== cand)].slice(0, 6);
+  }
   if (candidates.length === 0) return { ok: false, reason: "NO_STORY", message: "Couldn't find a line to open on." };
   let hookIndex = choices.hookIndex != null && choices.hookIndex >= 0 && choices.hookIndex < candidates.length ? choices.hookIndex : 0;
-  if (choices.hookIndex == null) {
+  if (choices.hookIndex == null && !editor) {
     // Moving a line to the front must be clearly worth it.
     const firstId = [...eligible].sort((a, b) => a - b)[0];
     const firstIdx = candidates.findIndex((c) => c.sentenceIds[0] === firstId);
@@ -341,7 +380,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   let story!: StoryPlan;
   let assembled!: Extract<ReturnType<typeof buildStyleCutFromRanges>, { ok: true }>;
   for (let attempt = 0; attempt < 4; attempt++) {
-    story = planStory({ ...storyBase, target: { ...storyTarget, targetS: goal }, hookIds: hook.sentenceIds });
+    story = editor ? planFromEditor(editor.plan, sentences, words, storyBase.safeAfter, estimateS) : planStory({ ...storyBase, target: { ...storyTarget, targetS: goal }, hookIds: hook.sentenceIds });
     const ranges: Array<{ start: number; end: number }> = [];
     for (const sp of story.order) {
       const r = { start: boundary(sp.w0 - 1).at, end: boundary(sp.w1).at };
@@ -358,7 +397,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
       sourceSize: input.sourceSize,
       silences,
       target,
-      options: input.options,
+      options: { ...(input.options ?? {}), ...(editor && editor.plan.pacing === "LONG_SHOTS_ZOOMS" ? { holdFraming: true } : {}) },
       ranges,
       // The hook opens on a MEDIUM punch-in (room for the title above the head), then WIDE.
       framingOffset: 3,
@@ -366,6 +405,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     if (!res.ok) return { ok: false, reason: "NO_STORY", message: res.message };
     assembled = res;
     const out = timelineDuration(res.timeline);
+    if (editor) break; // the editor decides the length
     if (out <= storyTarget.targetS * 1.12 || out <= storyTarget.maxS) break;
     goal = goal * (storyTarget.targetS / out) * 0.97;
   }
@@ -397,6 +437,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   // ---- 5. Hook title --------------------------------------------------------------------------
   const hookSentences = sentences.filter((s) => hook.sentenceIds.includes(s.id));
   const titles = hookTitles(hookSentences, sentences.filter((s) => story.decisions[s.id]?.kept), kw[0]?.word ?? null);
+  if (editor?.plan.title?.trim()) titles.unshift({ text: editor.plan.title.trim().slice(0, 60), template: "EDITOR", grounded: true });
   // The Creative Brief's planned on-screen line leads the choices when it's title-sized.
   const planned = input.brief?.onScreenText?.trim().replace(/\s+/g, " ") ?? "";
   if (planned && planned.length >= 4 && planned.length <= 48 && planned.split(" ").length <= 8 && !titles.some((t) => t.text.toLowerCase() === planned.toLowerCase())) {
@@ -409,7 +450,29 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   if (titleIndex != null && titleIndex >= 0 && titles[titleIndex]) {
     titleText = placeTitle(titles[titleIndex]!.text, timeline, Math.max(1.6, Math.min(2.4, hookEndOut)), input, measure);
   }
-  timeline = EditTimelineSchema.parse({ ...timeline, texts: titleText ? [titleText] : [] });
+  // The Editor's beat headlines: the idea in 2–5 words, top zone, held for the whole beat
+  // (orchestration: one lead at a time; the hook title covers the hook beat).
+  const beatTexts: TimelineText[] = [];
+  const editorBeatsOut: NonNullable<FullEditReport["editor"]>["beats"] = [];
+  if (editor) {
+    const beats = editorBeats(editor.plan);
+    beats.forEach((b, i) => {
+      // The beat's words as they play (after trims): the story order's spans for its lines.
+      const spans = story.order.filter((o) => o.sentenceIds.some((id) => b.sentenceIds.includes(id)));
+      const w0 = Math.min(...spans.map((o) => o.w0));
+      const w1 = Math.max(...spans.map((o) => o.w1));
+      if (!spans.length) return;
+      const start = srcToOut(words[w0]!.start, i > 0) ?? null;
+      const end = srcToOut(Math.max(words[w1]!.start, words[w1]!.end - 0.05), i > 0);
+      if (start == null || end == null) return;
+      editorBeatsOut.push({ role: b.role, headline: b.headline, viewerNeeds: b.viewerNeeds, sentenceIds: b.sentenceIds, start: r3(start), end: r3(end) });
+      if (!b.headline || i === 0) return; // the hook beat is the hook title
+      if (end - start < 1.2) return;
+      const t = placeTitle(b.headline.slice(0, 48), timeline, end, input, measure);
+      beatTexts.push({ ...t, id: `fe-beat-${i}`, start: r3(Math.max(0, start - 0.05)), end: r3(end), fontSize: Math.min(t.fontSize, 60), uppercase: true });
+    });
+  }
+  timeline = EditTimelineSchema.parse({ ...timeline, texts: [...(titleText ? [titleText] : []), ...beatTexts] });
 
   // ---- 6. Visuals bot -------------------------------------------------------------------------
   const pv = await presetVectors(embedder);
@@ -634,6 +697,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
       .filter((d) => !d.kept && d.kind !== "HOOK_MOVED")
       .map((d) => ({ sentenceId: d.id, text: sentences[d.id]!.text, kind: d.kind ?? "LOW_VALUE", why: d.why, start: r2(sentences[d.id]!.start) })),
     kept: [...new Set(story.order.flatMap((o) => o.sentenceIds))].map((id) => sentences.find((s) => s.id === id)!).filter(Boolean).map((s) => ({ sentenceId: s.id, text: s.text, beat: s.beat })),
+    editor: editor ? { rationale: editor.plan.rationale, pacing: editor.plan.pacing, coldViewer: editor.plan.coldViewer ?? null, problems: editor.problems, beats: editorBeatsOut } : null,
     marked: story.marked.map((m) => ({ sentenceId: m.id, note: m.note })),
     visuals: picks.map((p) => ({ id: p.visual.id, presetId: p.presetId, name: p.presetName, reason: p.reason, start: r2(timeline.visuals.find((v) => v.id === p.visual.id)?.start ?? p.visual.start), match: p.match, numbers: p.numbers })),
     rejectedVisuals: rejectedAll.length,

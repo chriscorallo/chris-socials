@@ -45,7 +45,7 @@ export interface EditorStyleCut {
   /** The current version IS the full edit (not a later hand edit of it). */
   fullEditActive: boolean;
   /** Which automatic edit new uploads get (Chris's setting). */
-  autoMode: "FULL" | "CUTS";
+  autoMode: "EDITOR" | "FULL" | "CUTS";
   /** The video's Creative Brief on record, if any — the Full edit and the AI edit follow it
    * (planned hook opens, story beats protected, planned on-screen line as the title). */
   brief: EditorBrief | null;

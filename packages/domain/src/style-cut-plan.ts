@@ -57,8 +57,12 @@ export const FULL_EDIT_AUTO_REASON = "Full edit (automatic, no AI)";
 
 /** Feature flag: ON = new uploads get "Cuts only"; OFF/absent (default) = "Full edit". */
 export const AUTO_EDIT_CUTS_ONLY_FLAG = "auto_edit.cuts_only";
+/** On: new uploads get the free Full edit instead of the AI Editor's cut (2026-10-21). */
+export const AUTO_EDIT_NO_EDITOR_FLAG = "auto_edit.no_editor";
 
-export type AutoEditMode = "FULL" | "CUTS";
+/** EDITOR = the AI Editor writes the cut (default; falls back to FULL without AI credit);
+ * FULL = the free heuristic Full edit; CUTS = pauses out only. */
+export type AutoEditMode = "EDITOR" | "FULL" | "CUTS";
 
 /** What a plan row's `plan.fullEdit` holds (JSON; written by the worker). */
 export interface StoredFullEdit {
@@ -83,17 +87,28 @@ export function readStoredFullEdit(plan: unknown): StoredFullEdit | null {
   return typeof f.inputsKey === "string" && typeof f.summary === "string" && f.report && typeof f.report === "object" ? (f as StoredFullEdit) : null;
 }
 
-/** Which automatic edit new uploads get (Chris's setting; default Full edit). */
+/** Which automatic edit new uploads get (Chris's setting; default the AI Editor's cut). */
 export async function getAutoEditMode(prisma: PrismaClient): Promise<AutoEditMode> {
-  const flag = await prisma.featureFlag.findUnique({ where: { key: AUTO_EDIT_CUTS_ONLY_FLAG } });
-  return flag?.enabled ? "CUTS" : "FULL";
+  const [cuts, noEditor] = await Promise.all([
+    prisma.featureFlag.findUnique({ where: { key: AUTO_EDIT_CUTS_ONLY_FLAG } }),
+    prisma.featureFlag.findUnique({ where: { key: AUTO_EDIT_NO_EDITOR_FLAG } }),
+  ]);
+  if (cuts?.enabled) return "CUTS";
+  return noEditor?.enabled ? "FULL" : "EDITOR";
 }
 
 export async function setAutoEditMode(prisma: PrismaClient, mode: AutoEditMode, actorId: string): Promise<void> {
   await setFlag(prisma, {
     key: AUTO_EDIT_CUTS_ONLY_FLAG,
     enabled: mode === "CUTS",
-    description: "New uploads get the Cuts-only style cut instead of the free Full edit (default off = Full edit).",
+    description: "New uploads get the Cuts-only style cut instead of an edit (default off).",
+    actor: actorId,
+    actorType: "HUMAN",
+  });
+  await setFlag(prisma, {
+    key: AUTO_EDIT_NO_EDITOR_FLAG,
+    enabled: mode === "FULL",
+    description: "New uploads get the free heuristic Full edit instead of the AI Editor's cut (default off = Editor).",
     actor: actorId,
     actorType: "HUMAN",
   });

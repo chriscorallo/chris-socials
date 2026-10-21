@@ -9425,3 +9425,40 @@ piece (≤ 26 s, under Whisper's native 30 s) is transcribed on its own with wor
 timings are offset per piece. No overlap, no merge, no seam. Unit-tested on synthetic audio.
 
 **Reversibility:** the chunk/stride path is one call away; `WHISPER_CHUNK_SECONDS` stays.
+
+## 2026-10-21 — The Editor: an agent writes the cut; the engine executes it
+
+**Context:** Chris, after a frame-by-frame look at a reference reel he wants to match: the
+product is the finished video as a piece of work — dead space cut, the story built from
+beginning to end (hook, tension, payoff), chopped together into one cohesive video, and only then
+visuals that complement it. "Not one style is law"; cuts, pace and placement are means. Our
+system had no editor: the free Full edit is a rules machine (regex beats, a value formula, a
+keyword hook score, number-matched graphics) and the AI edit added judgments on top of that
+skeleton. Nobody ever made the story. The reference reel was also read for *orchestration*
+(one lead element at a time, fixed anchors, headlines held for the idea, zoom-ins instead of
+cuts on a continuous take) — written down as `EDITOR_ORCHESTRATION.md`.
+
+**Decision:**
+1. **`EDITOR` agent** (HIGH; Operator + playbook + orchestration): title + brief + numbered
+   transcript lines → `EditorPlan`: storyline (ids, roles, `keepWords` trims, a headline per
+   beat, what the viewer needs to see), cut list with reasons, hook title, pacing, rationale,
+   cold-viewer read-through. Only lines he said; the engine validates ids and trims.
+2. **The engine executes the plan** (`planFromEditor`): the heuristic planner, hook scorer and
+   length trims are skipped; the editor's order plays; trims land on the nearest clean pause
+   within one word, else the word edge; `LONG_SHOTS_ZOOMS` holds the framing across every pause
+   cut (`holdFraming`); beat headlines are held on screen for the beat in the top zone (the
+   hook beat is the hook title); `report.editor` carries the beats with their output timing.
+3. **Automatic on upload**: auto-edit mode `EDITOR` is the default (`auto_edit.no_editor` flag
+   → the free Full edit; `auto_edit.cuts_only` → cuts); without a model (no key, no credit, cap)
+   it falls back to the free Full edit — never nothing. The AI edit's first step is now the
+   Editor; the hook picker and read-through run only when there is no editor plan.
+4. **Visuals per beat**: the Visual Strategist receives the editor's beats and plans only inside
+   beats that name a need, under the headline, never restating it.
+5. The plan is stored with the edit's choices, so "Try another hook" / restore a line re-apply
+   without another model call.
+
+**Not done (next):** the watch-it-back gate (a model watches the finished render and sends it
+back when it would not post it) — required before any auto-post; the caption style (one word,
+small, near the speaker) and zoom-ins at beat boundaries as a first-class pacing mode.
+
+**Reversibility:** the auto-edit flag; `choices.useEditor` off = the old path untouched.
