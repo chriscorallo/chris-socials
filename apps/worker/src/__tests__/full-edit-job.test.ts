@@ -17,7 +17,6 @@ import {
   readStoredStyleCut,
   setAutoEditMode,
   getAutoEditMode,
-  setAutoEditMode,
   FULL_EDIT_AUTO_REASON,
   STYLE_CUT_AUTO_REASON,
 } from "@chris/domain";
