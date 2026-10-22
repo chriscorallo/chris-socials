@@ -443,8 +443,12 @@ export async function exportGoldenFixture(
     const parsed = EditTimelineSchema.safeParse((plan as { timeline?: unknown } | null)?.timeline);
     return parsed.success ? parsed.data : null;
   };
-  const machineRow = options.machinePlanId ? plans.find((p) => p.id === options.machinePlanId) : plans.find((p) => readStoredFullEdit(p.plan) && timelineOf(p.plan));
-  const machineFe = machineRow ? readStoredFullEdit(machineRow.plan) : null;
+  // The machine cut: the latest automatic edit or editor-button choice — never a hand save
+  // (a hand save keeps the earlier `fullEdit` block on its row, so the block alone is no proof).
+  const machineRow = options.machinePlanId
+    ? plans.find((p) => p.id === options.machinePlanId)
+    : plans.find((p) => !isHandEditReason(p.revisionReason) && (readStoredFullEdit(p.plan) || readStoredStyleCut(p.plan)) && timelineOf(p.plan));
+  const machineFe = machineRow ? (readStoredFullEdit(machineRow.plan) ?? readStoredStyleCut(machineRow.plan)) : null;
   const machineTl = machineRow ? timelineOf(machineRow.plan) : null;
   const handRow = options.handEditPlanId
     ? plans.find((p) => p.id === options.handEditPlanId)
