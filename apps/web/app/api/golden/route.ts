@@ -17,7 +17,7 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const items = await prisma.contentItem.findMany({
     orderBy: { createdAt: "desc" },
-    take: 40,
+    take: 400,
     select: {
       id: true,
       title: true,
