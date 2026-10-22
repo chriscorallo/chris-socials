@@ -11,7 +11,8 @@
  *    sit just before the burst and never clip it.
  *
  * The result is small (spans + bursts, a few KB), stored with the edit and replayed by the
- * golden-set harness; the raw PCM is never kept.
+ * golden-set harness; the raw PCM is never kept. Pure — this file is reached by the browser
+ * bundle (timeline-browser → style-cut); the Node decoder lives in splice/node.ts.
  */
 
 export interface VoiceSpan {
@@ -252,12 +253,6 @@ export function silencesFromVoice(a: SpliceAnalysis, minS = 0.01): Array<{ start
   }
   if (a.durationS - t >= minS) out.push({ start: r3(t), end: r3(a.durationS) });
   return out;
-}
-
-/** Node: decodes a take (16 kHz mono via ffmpeg) and analyses it. */
-export async function analyzeSpliceAudio(filePath: string, options: Partial<SpliceAnalysisOptions> = {}): Promise<SpliceAnalysis> {
-  const { extractAudioPcm16k, WHISPER_SAMPLE_RATE } = await import("../transcription/local-whisper");
-  return analyzeSplicePcm(await extractAudioPcm16k(filePath), WHISPER_SAMPLE_RATE, options);
 }
 
 export function isSpliceAnalysis(value: unknown): value is SpliceAnalysis {

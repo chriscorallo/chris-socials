@@ -60,3 +60,4 @@ export * from "./take-understanding";
 export * from "./director";
 export * from "./golden";
 export * from "./splice";
+export * from "./splice/node";
