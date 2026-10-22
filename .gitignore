@@ -48,3 +48,6 @@ packages/domain/.pglite-*/
 
 # Director chat expression model (downloaded on first use / in the snapshot build; 19 MB)
 packages/media/assets/models/emotion-ferplus/*.onnx
+
+# golden-set media renders (fixtures/golden/*.json are committed; the media never is)
+fixtures/golden/media/

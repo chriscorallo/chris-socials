@@ -17,7 +17,9 @@
     "db:migrate:diff": "pnpm --filter @chris/domain exec prisma migrate diff --from-config-datasource --to-schema packages/domain/prisma/schema.prisma --script",
     "db:migrate:deploy": "pnpm --filter @chris/domain exec prisma migrate deploy",
     "db:seed": "pnpm --filter @chris/domain exec prisma db seed",
-    "dev:web": "pnpm --filter @chris/web dev"
+    "dev:web": "pnpm --filter @chris/web dev",
+    "golden:pull": "node scripts/golden/pull.mjs",
+    "golden:replay": "tsx scripts/golden/replay.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

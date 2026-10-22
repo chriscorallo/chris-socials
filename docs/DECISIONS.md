@@ -9462,3 +9462,62 @@ back when it would not post it) — required before any auto-post; the caption s
 small, near the speaker) and zoom-ins at beat boundaries as a first-class pacing mode.
 
 **Reversibility:** the auto-edit flag; `choices.useEditor` off = the old path untouched.
+
+## 2026-10-21 — The premium editor plan: analysed, approved, handed to the next session
+
+**Context:** After the Editor shipped, Chris ran five planning-only rounds ("what would you do
+if you built a very premium AI editor… what would Apple, Meta, CapCut do… cuts right on the
+decibel… did I upload the references for nothing?"), chose the four deep-dives (gate and
+auto-post, splice precision, reference learning, screen orchestration), asked for a critique
+from the editor / influencer / viewer / new-viewer seats, then for a recommendation, and
+approved it. He is handing implementation to a fresh session (Opus 5.5), so the analysis and
+the recommendation now live in the repo, not in a conversation.
+
+**Decision:**
+1. `/docs/PREMIUM_EDITOR_PLAN.md` holds the five rounds, the critique (ten changes) and the
+   approved recommendation table (Week 0 golden-set harness + filming card + latency meter →
+   Week 1 splice engine + free gate audits → Weeks 2–4 Editor v2 + Screen Orchestrator →
+   Weeks 4–6 reference learning → Weeks 6–8 watch-back gate + shadow autonomy → auto-post when
+   earned).
+2. `/docs/PREMIUM_EDITOR_HANDOFF.md` turns Week 0 into file-level contracts (golden fixture
+   schema, splice metrics, hand-edit comparison, the worker export, the authenticated route,
+   the pull/replay scripts, the vitest harness, the filming card copy, the latency function)
+   and lists the verified state of every piece the later weeks touch, plus Chris's working
+   rules (ship cost warnings, no secrets locally, no paste paths, judge by watching).
+3. Nothing was implemented in this session beyond the docs. The next session starts at
+   handoff §3 (Week 0) and does not skip it: the harness is the gate for every later change.
+
+**Alternatives considered:** start the splice engine immediately (rejected — every iteration
+would still cost a 10-minute ship and his credit; the harness is what makes the rest fast);
+keep the plan only in the session's plan file (rejected — CLAUDE.md: the repository is the
+source of truth).
+
+**Reversibility:** docs only; the recommendation's order can be re-cut in a later entry.
+
+## 2026-10-21 — Week 0 built: golden-set harness, filming card, upload → ready meter
+
+Implements `/docs/PREMIUM_EDITOR_HANDOFF.md` §3.
+
+1. **Golden-set harness** — `packages/media/src/golden` (`GoldenFixtureSchema`, `replayGolden`,
+   `spliceMetrics`, `summariseSplices`, `compareToHandEdit`, `diffGolden`); the worker's
+   read-only `exportGoldenFixture`; `POST /api/golden` (signed-in only);
+   `pnpm golden:pull <base-url> <id>=<slug>[@<handEditPlanId>]` (signs in with the app's own
+   login, credentials from the environment, never printed) and `pnpm golden:replay [--update]`;
+   `golden.test.ts` replays every committed fixture against `fixtures/golden/expected/`.
+   Replays never call a model: the Editor's cut is rebuilt from its stored plan.
+2. **Hand edits are told apart from machine saves.** The editor's buttons and "Design visuals
+   with AI" also save as "Finishing edit by Chris: …"; `isHandEditReason` (domain) keeps only
+   real editor saves, so the harness never learns splices from a machine cut by mistake.
+3. **Filming card** on `/film` (open) and `/upload` (closed): six tips, no settings.
+4. **Upload → ready** — `uploadToReadyLatency` (domain; budget `READY_BUDGET_MINUTES` = 8) shown
+   on the content page under the progress bar, gold when over budget; the worker logs
+   `[latency] … upload→ready N min` when the automatic edit lands (live with the next worker
+   ship — no ship cycle spent on a log line).
+
+**Still to do for Week 0's definition of done:** pull the five fixtures from prod once the route
+is deployed (the two hand edits "the car payment" and "why $100k isn't spending money", plus
+three recent takes with an Editor plan), write the expected replays, commit them, and record
+the baseline numbers (splice air median/p90, clipped count, hand-edit median delta, kept order)
+in this file. Those numbers are the bar Week 1's splice engine is judged against.
+
+**Reversibility:** additive; nothing in the edit path changed behaviour.

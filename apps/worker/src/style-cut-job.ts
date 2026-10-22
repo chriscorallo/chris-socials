@@ -23,6 +23,9 @@ import {
   type StoredFullEdit,
   getLatestCreativeBrief,
   creativeBriefTextFor,
+  uploadToReadyLatency,
+  READY_BUDGET_MINUTES,
+  isHandEditReason,
 } from "@chris/domain";
 import { EditPlanOutputSchema, getBrandContextText, runEditorAgent, scopeProvider, type ModelProvider } from "@chris/agents";
 import {
@@ -42,6 +45,7 @@ import {
   type FullEditChoices,
   type FullEditEmbedder,
   type FullEditReport,
+  type GoldenFixture,
   type StorageAdapter,
   type StyleCutResult,
 } from "@chris/media";
@@ -392,6 +396,83 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
   return { ok: true, timeline: r.timeline, stored, report: r.report };
 }
 
+/**
+ * The golden-set harness's export (docs/PREMIUM_EDITOR_HANDOFF.md §3.1): one real take frozen as
+ * data so the whole edit replays offline (packages/media golden). Read-only — never writes a
+ * plan. The machine cut is the latest plan carrying a stored full edit (or `machinePlanId`); the
+ * hand edit is the latest plan Chris saved in the editor (or `handEditPlanId`).
+ */
+export async function exportGoldenFixture(
+  db: PrismaClient,
+  storage: StorageAdapter,
+  contentItemId: string,
+  options: { slug: string; machinePlanId?: string | null; handEditPlanId?: string | null },
+): Promise<GoldenFixture> {
+  const l = await load(db, contentItemId);
+  if ("error" in l) throw new Error(l.error);
+  if (l.takes.length > 1) throw new Error("The golden set works on one take — this video was recorded in parts.");
+  if (!l.take.words?.length) throw new Error("This take has no word timings yet.");
+  const audio = await takeAudioFor(db, storage, contentItemId, l.take, true);
+  const profile = await getReferenceStyleProfile(db, { group: "MAIN" });
+  const item = await db.contentItem.findUnique({ where: { id: contentItemId }, select: { title: true } });
+  const plans = await db.editPlan.findMany({
+    where: { contentItemId },
+    orderBy: { createdAt: "desc" },
+    take: 60,
+    select: { id: true, createdAt: true, plan: true, revisionReason: true },
+  });
+  const timelineOf = (plan: unknown): EditTimeline | null => {
+    const parsed = EditTimelineSchema.safeParse((plan as { timeline?: unknown } | null)?.timeline);
+    return parsed.success ? parsed.data : null;
+  };
+  const machineRow = options.machinePlanId ? plans.find((p) => p.id === options.machinePlanId) : plans.find((p) => readStoredFullEdit(p.plan) && timelineOf(p.plan));
+  const machineFe = machineRow ? readStoredFullEdit(machineRow.plan) : null;
+  const machineTl = machineRow ? timelineOf(machineRow.plan) : null;
+  const handRow = options.handEditPlanId
+    ? plans.find((p) => p.id === options.handEditPlanId)
+    : plans.find((p) => isHandEditReason(p.revisionReason) && timelineOf(p.plan));
+  const handTl = handRow ? timelineOf(handRow.plan) : null;
+  const editorPlan = plans.map((p) => readStoredFullEdit(p.plan)?.choices?.editorPlan).find((x) => x != null) ?? null;
+  return {
+    version: 1,
+    slug: options.slug,
+    contentItemId,
+    title: item?.title ?? null,
+    exportedAt: new Date().toISOString(),
+    take: {
+      mediaAssetId: l.take.id,
+      durationSeconds: l.take.durationSeconds,
+      width: l.take.width,
+      height: l.take.height,
+      words: l.take.words.map((w) => ({ word: w.word, start: w.start, end: w.end })),
+      subjectTrack: l.take.subjectTrack ?? null,
+    },
+    audio: { silences: audio.silences ?? null, envelope: audio.envelope ?? null },
+    base: plainTimeline(l.takes, l.current),
+    brief: await briefForFullEdit(db, contentItemId),
+    profile: (profile ?? null) as unknown,
+    editorPlan: editorPlan as GoldenFixture["editorPlan"],
+    machine:
+      machineRow && machineTl
+        ? { editPlanId: machineRow.id, createdAt: machineRow.createdAt.toISOString(), reason: machineRow.revisionReason, summary: machineFe?.summary ?? "", timeline: machineTl }
+        : null,
+    handEdit:
+      handRow && handTl
+        ? { editPlanId: handRow.id, createdAt: handRow.createdAt.toISOString(), note: handRow.revisionReason, timeline: handTl }
+        : null,
+  };
+}
+
+/** Upload → ready, logged once the automatic edit lands (budget: READY_BUDGET_MINUTES). Never throws. */
+async function logReadyLatency(db: PrismaClient, contentItemId: string): Promise<void> {
+  try {
+    const l = await uploadToReadyLatency(db, contentItemId);
+    if (l?.minutes != null) console.log(`[latency] ${contentItemId} upload→ready ${l.minutes.toFixed(1)} min (budget ${READY_BUDGET_MINUTES})${l.overBudget ? " OVER BUDGET" : ""}`);
+  } catch {
+    // Telemetry only.
+  }
+}
+
 /** Which automatic edit new uploads get: FULL_EDIT_AUTO=off forces Cuts only; else Chris's setting. */
 async function autoMode(db: PrismaClient): Promise<AutoEditMode> {
   if (process.env.FULL_EDIT_AUTO === "off") return "CUTS";
@@ -449,6 +530,7 @@ export async function maybeAutoStyleCut(
             actor,
           );
           if (!row) return { status: "SKIPPED", reason: "Already up to date." };
+          await logReadyLatency(db, contentItemId);
           return { status: "APPLIED", editPlanId: row.id, summary: fe.stored.summary, profileNote: fe.stored.choices.editorPlan ? "The Editor's cut (AI)." : "Full edit (free) — no AI." };
         }
         console.warn("[full-edit] fell back to the style cut:", fe.error);
@@ -465,6 +547,7 @@ export async function maybeAutoStyleCut(
       actor,
     );
     if (!row) return { status: "SKIPPED", reason: "Already up to date." };
+    await logReadyLatency(db, contentItemId);
     return { status: "APPLIED", editPlanId: row.id, summary: r.summary, profileNote: r.profileNote };
   } catch (err) {
     console.warn("[style-cut] automatic style cut failed:", err instanceof Error ? err.message : err);

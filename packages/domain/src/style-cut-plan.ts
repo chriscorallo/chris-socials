@@ -55,6 +55,17 @@ export function readStoredStyleCut(plan: unknown): StoredStyleCut | null {
 
 export const FULL_EDIT_AUTO_REASON = "Full edit (automatic, no AI)";
 
+/**
+ * A plan row Chris cut by hand in the editor — not one the editor's buttons or a bot saved under
+ * his name ("Try another hook", "Cuts only", plain take, "Design visuals with AI"). The golden-set
+ * harness learns splices from these (docs/PREMIUM_EDITOR_HANDOFF.md §3.1).
+ */
+export function isHandEditReason(reason: string | null | undefined): boolean {
+  if (!reason?.startsWith("Finishing edit by Chris")) return false;
+  const note = reason.slice("Finishing edit by Chris".length).replace(/^:\s*/, "");
+  return !/^(Full edit —|Style cut —|Plain full take)/.test(note) && !note.includes("(Design visuals with AI)");
+}
+
 /** Feature flag: ON = new uploads get "Cuts only"; OFF/absent (default) = "Full edit". */
 export const AUTO_EDIT_CUTS_ONLY_FLAG = "auto_edit.cuts_only";
 /** On: new uploads get the free Full edit instead of the AI Editor's cut (2026-10-21). */

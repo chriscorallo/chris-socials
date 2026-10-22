@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { composeInstagramCaption, composeTikTokTitle, composeYouTubeMetadata, prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll, getAiCheckStatus, canChangeFootage, takesUsedByPlan } from "@chris/domain";
+import { composeInstagramCaption, composeTikTokTitle, composeYouTubeMetadata, prisma, getContentItem, listManualTransitions, isScriptVersionFilmable, FINISHING_EDIT_STATES, nextActionFor, getRecordingDraftSummary, queryAll, getAiCheckStatus, canChangeFootage, takesUsedByPlan, uploadToReadyLatency, READY_BUDGET_MINUTES } from "@chris/domain";
 import { ReplaceFootage } from "../../../components/ReplaceFootage";
 import { DeleteTakeButton } from "../../../components/DeleteTakeButton";
 import { aiReadiness } from "../../../../lib/ai-readiness";
@@ -146,6 +146,8 @@ export default async function ContentDetailPage({
   const canLateCheck = aiCheck.kind === "SKIPPED" && !!aiNow?.ready && (state === "READY" || state === "SCHEDULED");
   // What the page shows: a draft is still being filmed; a discarded draft left no footage.
   const shownState = draft ? "READY_TO_FILM" : footageGone ? "FILMED" : state;
+  // Upload → ready, against the 8-minute budget (docs/PREMIUM_EDITOR_HANDOFF.md §3.3).
+  const latency = draft ? null : await uploadToReadyLatency(prisma, item.id).catch(() => null);
   const next = nextActionFor(footageGone ? "FILMED" : state, draft);
   const when =
     (state === "SCHEDULED" || state === "READY") && item.scheduleEntry
@@ -426,6 +428,15 @@ export default async function ContentDetailPage({
           <div className="col-span-2 flex min-w-0 flex-col gap-4 self-start md:col-span-1 md:col-start-2">
             {/* A draft is still being filmed: light "Film", not "Edit" (display only). */}
             <FlowProgress state={shownState} />
+            {latency?.minutes != null && (
+              <p
+                className={`-mt-2 text-[12.5px] ${latency.overBudget ? "text-[var(--color-gold-400)]" : "text-[var(--color-text-faint)]"}`}
+                data-testid="upload-latency"
+              >
+                Ready {latency.minutes < 1 ? "under a minute" : `${Math.round(latency.minutes)} min`} after upload
+                {latency.overBudget ? ` — over the ${READY_BUDGET_MINUTES}-minute budget` : ""}
+              </p>
+            )}
             {primary && (
               <div className="flex flex-col gap-2.5">
                 {primary.big}

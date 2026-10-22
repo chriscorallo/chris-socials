@@ -4,6 +4,7 @@ import { storageMode } from "../../lib/storage";
 import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel } from "../components/ui";
 import { FootageUpload } from "./FootageUpload";
+import { FilmingCard } from "../components/FilmingCard";
 
 export const maxDuration = 300;
 
@@ -22,6 +23,7 @@ export default async function UploadPage() {
         <Panel>
           <FootageUpload mode={storageMode} />
         </Panel>
+        <FilmingCard className="mt-4" />
         <Link href="/plan/upload" className="btn btn-ghost mt-4 w-full !min-h-[52px] !text-[16px]">
           Upload many clips — matched to your plan
         </Link>

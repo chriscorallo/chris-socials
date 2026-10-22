@@ -20,8 +20,8 @@ import {
   FULL_EDIT_AUTO_REASON,
   STYLE_CUT_AUTO_REASON,
 } from "@chris/domain";
-import { FFMPEG_PATH, LocalFsStorageAdapter, EditTimelineSchema, FullEditReportSchema } from "@chris/media";
-import { maybeAutoStyleCut, applyStyleCutChoice } from "../style-cut-job";
+import { FFMPEG_PATH, LocalFsStorageAdapter, EditTimelineSchema, FullEditReportSchema, GoldenFixtureSchema, replayGolden } from "@chris/media";
+import { maybeAutoStyleCut, applyStyleCutChoice, exportGoldenFixture } from "../style-cut-job";
 
 const run = promisify(execFile);
 const actor = { actorId: "chris" };
@@ -158,5 +158,27 @@ describe("full edit job", () => {
     expect((await maybeAutoStyleCut(prisma, storage, id2, actor)).status).toBe("APPLIED");
     expect((await getLatestEditPlan(prisma, id2))!.revisionReason).toBe(STYLE_CUT_AUTO_REASON);
     await setAutoEditMode(prisma, "FULL", "chris");
+  }, 120_000);
+  it("exports a golden fixture: the machine cut, Chris's hand edit (not a button choice), replayable offline", async () => {
+    const { id, assetId } = await item("Golden export");
+    await maybeAutoStyleCut(prisma, storage, id, actor);
+    const auto = (await getLatestEditPlan(prisma, id))!;
+    // A hand edit in the editor: the auto cut with its last clip shortened.
+    const tl = EditTimelineSchema.parse((auto.plan as { timeline: unknown }).timeline);
+    const last = tl.clips[tl.clips.length - 1]!;
+    const hand = { ...tl, clips: [...tl.clips.slice(0, -1), { ...last, sourceEnd: +(last.sourceEnd - 0.2).toFixed(3) }] };
+    const handRow = await saveFinishingEdit(prisma, { contentItemId: id, timeline: hand, durationSeconds: 10, actorId: "chris", note: "tightened the ending" });
+    // A later button choice saved under his name is NOT a hand edit.
+    expect((await applyStyleCutChoice(prisma, storage, id, "FULL", "chris", { hookIndex: 1 })).ok).toBe(true);
+
+    const f = GoldenFixtureSchema.parse(await exportGoldenFixture(prisma, storage, id, { slug: "golden-export" }));
+    expect(f.take.mediaAssetId).toBe(assetId);
+    expect(f.take.words.length).toBe(words.length);
+    expect(Array.isArray(f.audio.silences)).toBe(true);
+    expect(f.machine).not.toBeNull();
+    expect(f.handEdit?.editPlanId).toBe(handRow.id);
+    const r = await replayGolden(f);
+    expect(r.free.ok).toBe(true);
+    expect(r.hand?.vsFree.handCuts).toBeGreaterThanOrEqual(0);
   }, 120_000);
 });

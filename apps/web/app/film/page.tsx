@@ -5,6 +5,7 @@ import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, SectionHeading, Button, EmptyState } from "../components/ui";
 import { markFilmed } from "./actions";
 import { TeleprompterLink } from "../components/TeleprompterLink";
+import { FilmingCard } from "../components/FilmingCard";
 import { DraftBadge } from "../components/VideoCard";
 import { listPrompterDraftPicks, listPrompterPicks } from "../../lib/teleprompter/data";
 import { APP_TZ } from "../../lib/calendar-data";
@@ -80,6 +81,8 @@ export default async function FilmQueuePage({
               : `${ready.length} to film across ${groups.size} setup${groups.size === 1 ? "" : "s"}${totalMinutes ? ` · ~${totalMinutes} min estimated` : ""}.`
           }
         />
+
+        <FilmingCard defaultOpen className="mb-5" />
 
         <div className="mb-5">
           <Link href="/film/teleprompter?from=film" className="btn btn-primary w-full !min-h-[52px] gap-2 !text-[16px] sm:w-auto" data-testid="film-teleprompter-cta">

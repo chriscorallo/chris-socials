@@ -58,3 +58,4 @@ export * from "./graphics/search";
 export * from "./graphics/suggest";
 export * from "./take-understanding";
 export * from "./director";
+export * from "./golden";
