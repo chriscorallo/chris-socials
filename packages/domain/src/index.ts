@@ -145,6 +145,7 @@ export * from "./script-import-db";
 // learns from. See docs/decisions-pending/reference-videos.md. `getReferenceStyleProfile` is the
 // typed aggregate for the edit planner (not wired into any agent yet).
 export * from "./style-metrics";
+export * from "./style-model";
 export * from "./reference-videos";
 export type { ReferenceAnalysisStatus } from "@prisma/client";
 // Style cut (2026-10-17) — persistence of the deterministic reference-paced edit

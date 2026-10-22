@@ -1,6 +1,8 @@
 import { Prisma, type PrismaClient, type ContentPlatform } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "./audit";
+import { buildStyleModel, excludedSignals, sampleFromReferenceMetrics, sampleFromTimeline, timelineLike, type StyleModel, type StyleSample, type StyleSignal } from "./style-model";
+import { isHandEditReason } from "./style-cut-plan";
 import {
   REFERENCE_METRICS_VERSION,
   REFERENCE_VIDEO_KEY_PATTERN,
@@ -420,4 +422,54 @@ export async function moveReferenceVideo(
     after: { referenceCreatorId: to.id, name: to.name },
   });
   return { id, referenceCreatorId: to.id, name: to.name, moved: true };
+}
+
+/**
+ * The StyleModel (style-model.ts) for a group or one creator: every measured reference (any
+ * metrics version — v3 rows carry the screen signals) plus Chris's own hand edits as "mine"
+ * samples (the latest per video, weighted double). A creator's "don't copy" note excludes it
+ * from the signals it names. Reference learning, docs/PREMIUM_EDITOR_PLAN.md round 4.
+ */
+export async function getStyleModel(
+  prisma: PrismaClient,
+  options: { referenceCreatorId?: string; group?: ReferenceStyleGroup; includeMine?: boolean; mineLimit?: number } = {},
+): Promise<StyleModel> {
+  const rows = await prisma.referenceContent.findMany({
+    where: { analysisStatus: { not: null }, metrics: { not: Prisma.AnyNull }, ...(options.referenceCreatorId ? { referenceCreatorId: options.referenceCreatorId } : {}) },
+    orderBy: { analyzedAt: "desc" },
+    select: { id: true, referenceCreatorId: true, metrics: true, mediaFilename: true, referenceCreator: { select: { name: true, formats: true, doNotTransfer: true } } },
+    take: 2000,
+  });
+  const samples: StyleSample[] = [];
+  const exclusions = new Map<string, { creatorId: string; name: string; signals: StyleSignal[] }>();
+  for (const r of rows) {
+    if (options.group && creatorStyleGroup(r.referenceCreator.formats) !== options.group) continue;
+    const m = parseReferenceVideoMetrics(r.metrics);
+    if (!m) continue;
+    samples.push(sampleFromReferenceMetrics(m, r.referenceCreatorId, r.mediaFilename ?? r.id));
+    if (!exclusions.has(r.referenceCreatorId)) {
+      const signals = excludedSignals(r.referenceCreator.doNotTransfer);
+      if (signals.length) exclusions.set(r.referenceCreatorId, { creatorId: r.referenceCreatorId, name: r.referenceCreator.name, signals });
+    }
+  }
+  if (options.includeMine !== false && !options.referenceCreatorId && options.group !== "FACELESS") {
+    // His hand edits: the latest finishing edit per video that is a real hand edit (not an
+    // automatic cut he merely saved), read as what IS on screen.
+    const plans = await prisma.editPlan.findMany({
+      where: { revisionReason: { startsWith: "Finishing edit by Chris" } },
+      orderBy: { createdAt: "desc" },
+      select: { contentItemId: true, revisionReason: true, plan: true, createdAt: true },
+      take: 200,
+    });
+    const seen = new Set<string>();
+    for (const p of plans) {
+      if (seen.size >= (options.mineLimit ?? 30)) break;
+      if (seen.has(p.contentItemId) || !isHandEditReason(p.revisionReason)) continue;
+      const timeline = timelineLike((p.plan as { timeline?: unknown } | null)?.timeline);
+      if (!timeline) continue;
+      seen.add(p.contentItemId);
+      samples.push(sampleFromTimeline(timeline, `my edit ${p.createdAt.toISOString().slice(0, 10)}`));
+    }
+  }
+  return buildStyleModel(samples, { exclusions: [...exclusions.values()] });
 }

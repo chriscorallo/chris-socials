@@ -26,7 +26,7 @@ import { buildSentences, keywords, type FESentence } from "./understand";
 import { ALL_GRAPHIC_PRESETS, chooseVisuals, presetDescription, type VisualPick, type VisualRejection } from "./visuals";
 import { bare, cosine, hashString, LEXICAL_EMBEDDER, type FullEditEmbedder } from "./text";
 import { spokenNumbers, sameNumber } from "./numbers";
-import { applyScreenPlan, auditScreen, faceOf, planScreen, planZooms, toTimelineZooms, type ScreenBeat, type ScreenFinding, type ScreenInput, type ScreenPlan } from "../screen";
+import { applyScreenPlan, auditScreen, faceOf, planScreen, planZooms, toTimelineZooms, type ScreenBeat, type ScreenFinding, type ScreenInput, type ScreenPlan, type ScreenStyle } from "../screen";
 
 export { LEXICAL_EMBEDDER, type FullEditEmbedder } from "./text";
 export { spokenNumbers, shortNumberLabel, sameNumber, type SpokenNumber } from "./numbers";
@@ -101,6 +101,10 @@ export interface FullEditInput {
   brief?: { hook: string | null; keep: string[]; /** The brief's planned on-screen line — offered as the first title. */ onScreenText?: string | null } | null;
   /** Glyph measurement (node: nodeMeasureText) — without it text sizes are estimated. */
   measure?: MeasureText;
+  /** The references' StyleModel as orchestrator presets (screenStyleFromStyleModel) and caption
+   * habit (captionDefaultsFromStyleModel); absent = the built-in defaults. */
+  screenStyle?: Partial<ScreenStyle> | null;
+  captionDefaults?: { shortLineWords: number; defaultWords: number } | null;
   options?: Partial<StyleCutOptions>;
   /** The Editor agent, called with the take's numbered lines when `choices.useEditor` is set
    * and no plan is stored. The plan it returns is recorded in the result's choices, so a
@@ -535,6 +539,8 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
       // The hook BEAT (all its lines), not just the hook candidate's first sentence.
       hookEnd: screenBeats[0]?.end ?? hookEndOut,
       pacing: editor.plan.pacing,
+      style: input.screenStyle ?? undefined,
+      captionDefaults: input.captionDefaults ?? undefined,
     };
     screen = planScreen(screenInput);
     timeline = applyScreenPlan(timeline, screen);
@@ -824,6 +830,8 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
       c: choices,
       e: embedder.id,
       cv: [input.base.canvas.width, input.base.canvas.height, input.base.captions.y],
+      ss: input.screenStyle ?? null,
+      cd: input.captionDefaults ?? null,
     }),
   )}`;
   return { ok: true, version: FULL_EDIT_VERSION, timeline, report, inputsKey, story, sentences, shots, rejectedVisuals: rejectedAll };

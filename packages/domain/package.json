@@ -13,7 +13,8 @@
     "./plan-import": "./src/plan-import/index.ts",
     "./script-import": "./src/script-import/index.ts",
     "./plan-context": "./src/plan-context/index.ts",
-    "./style-metrics": "./src/style-metrics.ts"
+    "./style-metrics": "./src/style-metrics.ts",
+    "./style-model": "./src/style-model.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

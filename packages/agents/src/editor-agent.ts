@@ -30,6 +30,8 @@ export interface EditorAgentInput {
   creativeBrief?: string | null;
   /** What the references run, for the length note (never a quota). */
   referenceLengthS?: { targetS: number; minS: number; maxS: number } | null;
+  /** The StyleModel digest (editorDigest): what his references and his own edits do, ≤ 10 lines. */
+  styleDigest?: string[] | null;
   /** Editor v2: run the critique + revise pass (default true). False = the one-shot v1 call. */
   critique?: boolean;
 }
@@ -68,7 +70,7 @@ function takeHeader(input: EditorAgentInput): string {
 
 Title: ${input.title ?? "(untitled)"}
 Length: ${input.durationS.toFixed(0)} s${input.referenceLengthS ? ` · his references run ${Math.round(input.referenceLengthS.minS)}–${Math.round(input.referenceLengthS.maxS)} s (typical ${Math.round(input.referenceLengthS.targetS)} s)` : ""}
-${input.creativeBrief ? `\n## Creative brief (the plan this video was made to)\n\n${input.creativeBrief}\n` : ""}
+${input.creativeBrief ? `\n## Creative brief (the plan this video was made to)\n\n${input.creativeBrief}\n` : ""}${input.styleDigest?.length ? `\n## What his references do (measured — a range to work inside, never a quota)\n\n${input.styleDigest.map((l) => `- ${l}`).join("\n")}\n` : ""}
 ## Transcript, as numbered lines (id, source seconds, word count)
 
 ${formatLines(input.lines)}`;

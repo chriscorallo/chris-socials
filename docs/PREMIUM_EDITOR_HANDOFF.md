@@ -246,6 +246,17 @@ domain function with seeded rows (worker/domain DB test conventions above).
   the splice/screen audits to BLOCKING once a few real videos show zero findings; the two Editor
   fixtures show his framing leaves no clean top zone (headlines sit over the hair) — the filming
   card's first line is the real fix; re-pull fixtures after the v2 Editor has run on a video.
+- Weeks 4–6: built 2026-10-22 (same unshipped batch). Reference metrics v3 (`screen` text events
+  via tesseract.js OCR, `zooms` from the head track, `pads` from the reference's own cuts,
+  `rhythm` by thirds; `REFERENCE_METRICS_VERSION` 3 so the page offers to re-measure), the
+  `StyleModel` (bands; his hand edits as "mine" ×2; "don't copy" exclusions; `getStyleModel`),
+  consumers: the Editor's digest (`styleDigest`), orchestrator presets + caption habit
+  (`screenStyleFromStyleModel`, `captionDefaultsFromStyleModel`), the paragraph on `/reference`
+  and per creator. Not done: graphic/B-roll density (no region detection yet), gate thresholds
+  from the bands, a LOW vision fallback for frames OCR can't read, posted-unchanged videos as
+  "mine" (needs the Weeks 6–8 rating label). The snapshot must carry
+  `packages/media/assets/models/tesseract/eng.traineddata.gz` (restoreRunner downloads it); the
+  references must be re-measured once shipped for the screen signals to exist.
 - Routine: after any cutting change run `pnpm golden:replay` (diff must be empty or explained),
   `--update` to re-baseline, and note it in DECISIONS. Re-pull a fixture after the AI edit runs
   on that video so it gains an Editor plan.

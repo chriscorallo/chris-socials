@@ -146,7 +146,7 @@ describe("reference videos (domain)", () => {
     const gone = await video(c.id);
     const fresh = await video(c.id);
     for (const v of [old1, old2, gone]) await recordReferenceAnalysis(prisma, v.id, { metrics: fakeMetrics({ shot: 2 }) }, actor); // v1
-    await recordReferenceAnalysis(prisma, fresh.id, { metrics: fakeMusicLedMetrics() }, actor); // v2
+    await recordReferenceAnalysis(prisma, fresh.id, { metrics: { ...fakeMusicLedMetrics(), version: 3 } }, actor); // current (v3)
     await deleteReferenceVideoMedia(prisma, gone.id, async () => undefined, actor); // can't be re-measured
     expect((await prisma.referenceContent.findUniqueOrThrow({ where: { id: fresh.id } })).metricsVersion).toBe(REFERENCE_METRICS_VERSION);
     expect(await countOutdatedReferenceVideos(prisma, { referenceCreatorId: c.id })).toBe(2);

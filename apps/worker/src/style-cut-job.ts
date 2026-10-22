@@ -6,6 +6,8 @@ import {
   getFinishedRecordingSequence,
   getLatestEditPlan,
   getReferenceStyleProfile,
+  getStyleModel,
+  editorDigest,
   hasOpenRecordingDraft,
   parseTranscriptWords,
   readStarterSequence,
@@ -26,6 +28,7 @@ import {
   uploadToReadyLatency,
   READY_BUDGET_MINUTES,
   isHandEditReason,
+  type StyleModel,
 } from "@chris/domain";
 import { EditPlanOutputSchema, getBrandContextText, runEditorAgent, scopeProvider, type ModelProvider } from "@chris/agents";
 import {
@@ -50,6 +53,8 @@ import {
   isSpliceAnalysis,
   type StorageAdapter,
   type StyleCutResult,
+  screenStyleFromStyleModel,
+  captionDefaultsFromStyleModel,
 } from "@chris/media";
 import { timelineForPlan } from "./render-job";
 
@@ -357,10 +362,11 @@ async function briefForFullEdit(db: PrismaClient, contentItemId: string): Promis
 }
 
 /** The Editor agent as the Full edit's planner (the plan is stored with the edit's choices). */
-export function editorPlannerFor(db: PrismaClient, provider: ModelProvider, contentItemId: string, profile: { durationS?: { value: number; n: number; p25: number; p75: number } | null } | null | undefined) {
+export function editorPlannerFor(db: PrismaClient, provider: ModelProvider, contentItemId: string, profile: { durationS?: { value: number; n: number; p25: number; p75: number } | null } | null | undefined, styleModel?: StyleModel | null) {
   return async (lines: Array<{ id: number; text: string; start: number; end: number; words: number }>) => {
     const st = storyTargetFromProfile(profile);
     const item = await db.contentItem.findUnique({ where: { id: contentItemId }, select: { title: true } });
+    const model = styleModel === undefined ? await getStyleModel(db, { group: "MAIN" }).catch(() => null) : styleModel;
     return runEditorAgent(scopeProvider(provider, { contentItemId }), {
       title: item?.title ?? null,
       durationS: lines.length ? Math.max(...lines.map((l) => l.end)) : 0,
@@ -368,6 +374,7 @@ export function editorPlannerFor(db: PrismaClient, provider: ModelProvider, cont
       brandContext: await getBrandContextText(db),
       creativeBrief: await creativeBriefTextFor(db, contentItemId),
       referenceLengthS: st.source === "REFERENCES" ? { targetS: st.targetS, minS: st.minS, maxS: st.maxS } : null,
+      styleDigest: model ? editorDigest(model) : null,
     });
   };
 }
@@ -376,6 +383,9 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
   if (l.takes.length > 1) return { ok: false, error: "The full edit works on one take — this video was recorded in parts, so it gets the cuts-only edit." };
   if (!l.take.words?.length) return { ok: false, error: "The full edit needs captions first — they appear once your words are transcribed." };
   const profile = await getReferenceStyleProfile(db, { group: "MAIN" });
+  // The references' StyleModel: the Editor's digest and the orchestrator's presets (reference
+  // learning). Loaded once; a failure here never costs the cut.
+  const styleModel = await getStyleModel(db, { group: "MAIN" }).catch(() => null);
   const audio = await takeAudioFor(db, storage, contentItemId, l.take, measure);
   const r = await buildFullEdit(
     {
@@ -393,7 +403,9 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
       choices,
       brief: await briefForFullEdit(db, contentItemId),
       measure: nodeMeasureText,
-      editorPlanner: provider && choices.useEditor ? editorPlannerFor(db, provider, contentItemId, profile) : null,
+      screenStyle: screenStyleFromStyleModel(styleModel),
+      captionDefaults: captionDefaultsFromStyleModel(styleModel),
+      editorPlanner: provider && choices.useEditor ? editorPlannerFor(db, provider, contentItemId, profile, styleModel) : null,
     },
     fullEditEmbedder(),
   );

@@ -15,7 +15,7 @@ import { z } from "zod";
  * out of every number; videos with little or no talking get speech marked not-applicable and
  * their audio characterised (music-led) instead of read as a voice. v1 rows still parse.
  */
-export const REFERENCE_METRICS_VERSION = 2;
+export const REFERENCE_METRICS_VERSION = 3;
 
 /** Storage keys / Blob pathnames of reference videos: `reference/<creatorId>/<file>` (private). */
 export const REFERENCE_VIDEO_KEY_PATTERN = /^reference\/[\w-]+\/[\w.-]+$/;
@@ -24,8 +24,10 @@ const num = z.number().finite();
 const nnum = num.nullable();
 
 export const ReferenceVideoMetricsSchema = z.object({
-  /** 1 = first measuring; 2 = end cards left out + no-speech handling (fields below marked v2). */
-  version: z.union([z.literal(1), z.literal(2)]),
+  /** 1 = first measuring; 2 = end cards left out + no-speech handling (fields below marked v2);
+   * 3 = what a viewer sees (on-screen text events, zoom usage, the reference's splice pads, cut
+   * rhythm by thirds — reference learning, docs/PREMIUM_EDITOR_PLAN.md round 4). */
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   video: z.object({
     /** The analyzed length — up to where a platform end card starts (v2), else the file's. */
     durationS: num.nonnegative(),
@@ -118,6 +120,72 @@ export const ReferenceVideoMetricsSchema = z.object({
       /** Loudness inside words minus between them (dB); a real voice stands out, invented words don't. */
       contrastDb: nnum,
       reason: z.string().max(200),
+    })
+    .nullable()
+    .optional(),
+  /**
+   * v3: on-screen text as a sequence (OCR at a few frames a second → events). null = OCR was not
+   * available or the video has no picture; the rest of the measurement stands.
+   */
+  screen: z
+    .object({
+      method: z.string().max(120),
+      frames: z.number().int().nonnegative(),
+      headlines: z.object({
+        count: z.number().int().nonnegative(),
+        per10s: num.nonnegative(),
+        holdMedianS: nnum,
+        wordsMedian: nnum,
+        band: z.enum(["TOP", "MID", "LOW"]).nullable(),
+        uppercaseShare: nnum,
+      }),
+      captions: z.object({
+        present: z.boolean(),
+        wordsPerChunk: nnum,
+        band: z.enum(["TOP", "MID", "LOW"]).nullable(),
+        oneWordShare: nnum,
+        uppercaseShare: nnum,
+        coverage: nnum,
+      }),
+      hook: z.object({ text: z.string().max(120), byS: num.nonnegative() }).nullable(),
+      longestBareS: num.nonnegative(),
+      events: z
+        .array(z.object({ start: num.nonnegative(), end: num.nonnegative(), text: z.string().max(120), words: z.number().int().nonnegative(), band: z.enum(["TOP", "MID", "LOW"]), role: z.enum(["HEADLINE", "CAPTION", "OTHER"]) }))
+        .max(400),
+    })
+    .nullable()
+    .optional(),
+  /** v3: punch-ins read off the head size within shots (subject track). null = no track. */
+  zooms: z
+    .object({
+      method: z.string().max(120),
+      count: z.number().int().nonnegative(),
+      per10s: num.nonnegative(),
+      amountMedian: nnum,
+      rampMedianS: nnum,
+      holdMedianS: nnum,
+      inOutShare: nnum,
+    })
+    .nullable()
+    .optional(),
+  /** v3: the pads this reference leaves at its own splices (voice offset → cut → voice onset). */
+  pads: z
+    .object({
+      n: z.number().int().nonnegative(),
+      tailMedianMs: nnum,
+      leadMedianMs: nnum,
+      tailP75Ms: nnum,
+      leadP75Ms: nnum,
+      airMedianMs: nnum,
+    })
+    .nullable()
+    .optional(),
+  /** v3: cut rhythm as a sequence — cuts per 10 s in the opening, middle and closing third. */
+  rhythm: z
+    .object({
+      thirdsPer10s: z.tuple([num.nonnegative(), num.nonnegative(), num.nonnegative()]),
+      /** Cuts where the head barely moved (a jump cut on one framing) as a share; null = no track. */
+      jumpCutShare: nnum,
     })
     .nullable()
     .optional(),

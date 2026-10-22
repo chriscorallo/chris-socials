@@ -5,6 +5,7 @@ import {
   countReferenceCreators,
   referenceVideoCounts,
   getReferenceStyleProfile,
+  getStyleModel,
   creatorStyleGroup,
   getOwnSpeechProfile,
   compareOwnToReference,
@@ -17,7 +18,7 @@ import { requireSession } from "../../lib/session";
 import { NavBar } from "../components/NavBar";
 import { PageShell, PageHeader, Panel, CollapsiblePanel, Button, ButtonLink } from "../components/ui";
 import { createCreator } from "./actions";
-import { StyleCard, CompareCard } from "./StyleCards";
+import { StyleCard, CompareCard, StyleModelCard } from "./StyleCards";
 import { MeasureControl } from "./MeasureProgress";
 
 const LIMIT = 60;
@@ -28,7 +29,7 @@ const LIMIT = 60;
 export default async function ReferencePage() {
   await requireSession();
   // Independent reads — together on Neon, one at a time on PGlite (queryAll; /docs/DECISIONS.md).
-  const [creators, total, counts, profile, facelessProfile, own, active, outdated] = await queryAll([
+  const [creators, total, counts, profile, facelessProfile, own, active, outdated, model] = await queryAll([
     () => listReferenceCreators(prisma, { limit: LIMIT }),
     () => countReferenceCreators(prisma),
     () => referenceVideoCounts(prisma),
@@ -37,6 +38,7 @@ export default async function ReferencePage() {
     () => getOwnSpeechProfile(prisma),
     () => getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT),
     () => countOutdatedReferenceVideos(prisma),
+    () => getStyleModel(prisma, { group: "MAIN" }),
   ] as const);
   const hasFaceless = creators.some((c) => creatorStyleGroup(c.formats) === "FACELESS");
   const compare = compareOwnToReference(own, profile);
@@ -63,6 +65,7 @@ export default async function ReferencePage() {
         <div className="flex flex-col gap-4">
           <MeasureControl activeJobRunId={active?.id ?? null} pending={pending} failed={failed} outdated={outdated} />
 
+          {model.sampleSize > 0 && <StyleModelCard model={model} />}
           {videoTotal > 0 && <StyleCard eyebrow="Target style · talking videos" title={profile.creatorCount > 1 ? `Across ${profile.creatorCount} creators` : "Your references"} profile={profile} />}
           {hasFaceless && <StyleCard eyebrow="No-face motivational style" title={facelessProfile.creatorCount > 1 ? `Across ${facelessProfile.creatorCount} creators` : "Kept separate from your talking style"} profile={facelessProfile} />}
           <CompareCard lines={compare} takes={own.takes} refs={profile.sampleSize} />

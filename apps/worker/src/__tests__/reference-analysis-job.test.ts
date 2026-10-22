@@ -63,7 +63,7 @@ describe("reference analysis job", () => {
   });
 
   it("measures a file: video, the hard cut, speech, loudness and background", async () => {
-    const m = await analyzeReferenceVideoFile(clip, { transcriptionProvider: provider });
+    const m = await analyzeReferenceVideoFile(clip, { transcriptionProvider: provider, ocr: null, subjectTracker: null });
     expect(parseReferenceVideoMetrics(m)).not.toBeNull();
     expect(m.video).toMatchObject({ width: 180, height: 320, aspect: "9:16", fps: 30 });
     expect(m.video.durationS).toBeGreaterThan(5.9);
@@ -91,7 +91,7 @@ describe("reference analysis job", () => {
     const good = await registerReferenceVideo(prisma, { referenceCreatorId: c.id, storageKey: goodKey, filename: "good.mp4" }, { actorId: "chris" });
     const bad = await registerReferenceVideo(prisma, { referenceCreatorId: c.id, storageKey: badKey, filename: "bad.mp4" }, { actorId: "chris" });
     const progress: string[] = [];
-    const r = await analyzePendingReferenceVideos(prisma, storage, { ids: [good.id, bad.id], transcriptionProvider: provider, onProgress: (p) => progress.push(p.message) }, { actorId: "job" });
+    const r = await analyzePendingReferenceVideos(prisma, storage, { ids: [good.id, bad.id], transcriptionProvider: provider, ocr: null, subjectTracker: null, onProgress: (p) => progress.push(p.message) }, { actorId: "job" });
     expect(r.remaining).toBe(0);
     expect(r.measured.find((x) => x.id === good.id)!.ok).toBe(true);
     expect(r.measured.find((x) => x.id === bad.id)!.ok).toBe(false);
@@ -129,9 +129,9 @@ describe("reference analysis job", () => {
     ]);
     const talk = Array.from({ length: 12 }, (_, i) => ({ word: i === 11 ? "more." : `w${i}`, start: 0.2 + i * 0.3, end: 0.2 + i * 0.3 + 0.25 }));
     const p = Object.assign(new MockTranscriptionProvider(() => ({ text: talk.map((w) => w.word).join(" "), words: talk })), { model: "mock" });
-    const m = await analyzeReferenceVideoFile(igClip, { transcriptionProvider: p });
+    const m = await analyzeReferenceVideoFile(igClip, { transcriptionProvider: p, ocr: null, subjectTracker: null });
     expect(parseReferenceVideoMetrics(m)).not.toBeNull();
-    expect(m.version).toBe(2);
+    expect(m.version).toBe(3);
     expect(m.video.sourceDurationS!).toBeGreaterThan(6.9);
     expect(m.video.durationS).toBeCloseTo(4, 0);
     expect(Math.abs(m.video.durationS - 4)).toBeLessThanOrEqual(0.1);
@@ -156,7 +156,7 @@ describe("reference analysis job", () => {
       { word: "you.", start: 3.1, end: 3.4 }, { word: "Thank", start: 7.0, end: 7.3 },
     ];
     const p = Object.assign(new MockTranscriptionProvider(() => ({ text: "You know what you. Thank", words: invented })), { model: "mock" });
-    const m = await analyzeReferenceVideoFile(music, { transcriptionProvider: p });
+    const m = await analyzeReferenceVideoFile(music, { transcriptionProvider: p, ocr: null, subjectTracker: null });
     expect(parseReferenceVideoMetrics(m)).not.toBeNull();
     expect(m.speech).toBeNull();
     expect(m.voice).toMatchObject({ present: false });
@@ -184,7 +184,7 @@ describe("reference analysis job", () => {
       await storage.put(key, await readFile(clip));
       ids.push((await registerReferenceVideo(prisma, { referenceCreatorId: c.id, storageKey: key, filename: "v.mp4" }, { actorId: "chris" })).id);
     }
-    const r = await analyzePendingReferenceVideos(prisma, storage, { ids, transcriptionProvider: provider, timeBudgetMs: 0 }, { actorId: "job" });
+    const r = await analyzePendingReferenceVideos(prisma, storage, { ids, transcriptionProvider: provider, ocr: null, subjectTracker: null, timeBudgetMs: 0 }, { actorId: "job" });
     expect(r.measured).toHaveLength(0);
     expect(r.remaining).toBe(2);
   }, 60_000);

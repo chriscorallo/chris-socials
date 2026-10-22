@@ -5,6 +5,7 @@ import {
   getReferenceContent,
   listReferenceVideos,
   getReferenceStyleProfile,
+  getStyleModel,
   getActiveHeavyJob,
   creatorStyleGroup,
   listReferenceCreators,
@@ -16,7 +17,7 @@ import { NavBar } from "../../components/NavBar";
 import { PageShell, PageHeader, Panel, CollapsiblePanel, Button, BackLink, ButtonLink } from "../../components/ui";
 import { addContent, analyzeContent } from "./actions";
 import { setCreatorStyleGroup } from "../actions";
-import { StyleCard } from "../StyleCards";
+import { StyleCard, StyleModelCard } from "../StyleCards";
 import { MeasureControl } from "../MeasureProgress";
 import { VideoCard } from "./VideoCard";
 import { getViewerChecksForReferences } from "../../../lib/viewer-check";
@@ -43,6 +44,7 @@ export default async function ReferenceCreatorPage({
   const videos = await listReferenceVideos(prisma, id);
   const allCreators = (await listReferenceCreators(prisma, { limit: 200 })).map((c) => ({ id: c.id, name: c.name }));
   const profile = await getReferenceStyleProfile(prisma, { referenceCreatorId: id });
+  const model = await getStyleModel(prisma, { referenceCreatorId: id, includeMine: false });
   const active = await getActiveHeavyJob(prisma, REFERENCE_LIBRARY_SUBJECT);
   const videoIds = new Set(videos.map((v) => v.id));
   const notes = [];
@@ -91,6 +93,8 @@ export default async function ReferenceCreatorPage({
 
           <MeasureControl activeJobRunId={active?.id ?? null} pending={pending} failed={failed} outdated={outdated} />
 
+          {model.sampleSize > 0 && <StyleModelCard model={model} eyebrow="What they do" title={`${creator.name}, in a paragraph`} />}
+          {model.sampleSize > 0 && <StyleModelCard model={model} eyebrow="What they do" title={`${creator.name}, in a paragraph`} />}
           {videos.length > 0 && <StyleCard eyebrow="Style" title={`How ${creator.name} edits`} profile={profile} />}
 
           {videos.length > 0 && (

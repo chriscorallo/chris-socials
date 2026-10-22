@@ -9728,3 +9728,69 @@ typecheck clean.
 **Reversibility:** the orchestrator runs only when an Editor plan exists; the free cut is the
 fallback; every schema field defaults to the previous behaviour; `EDITOR` 1.0.0 is the
 rollback version.
+
+## 2026-10-22 — Reference learning: what a viewer sees, as bands (Weeks 4–6)
+
+**Decision:** references (and Chris's own hand edits) are measured as what a viewer sees and
+hears in time, aggregated as bands, and read by the Editor, the orchestrator and Chris. The
+previous profile (~50 scalars → medians → five clamped numbers) stays for the length target and
+the pause keep; the StyleModel sits beside it. Built against unit tests and a synthetic OCR
+reel; not shipped (same batch as Editor v2 + the orchestrator; needs a worker ship and, once
+live, a re-measure of the reference library).
+
+1. **Reference metrics v3** (`packages/domain/src/style-metrics.ts`, `REFERENCE_METRICS_VERSION`
+   3; the job in `apps/worker/src/reference-analysis-job.ts`): `screen` — on-screen text events
+   from OCR frames at 3 fps (appear / hold / leave, words, band, role HEADLINE when held ≥ 2 s
+   with ≤ 8 words, CAPTION when short text chains in one band), headline cadence (per 10 s,
+   hold, words, band, case), caption style (words per chunk, band, one-word share, coverage of
+   the talking time), the hook text and when it is on screen, the longest bare stretch; `zooms`
+   — punch-ins read off the head width within shots (the ONNX tracker at 3 fps: a monotonic
+   change ≥ 6 % over ≤ 1.5 s then a hold ≥ 0.4 s; amount, ramp, hold, in-out share); `pads` —
+   at every detected cut with voice within 0.6 s on both sides, voice offset → cut and cut →
+   voice onset on the reference's own envelope (the reference's splice pads); `rhythm` — cuts
+   per 10 s in the opening / middle / closing third and the jump-cut share. Each is a bonus:
+   when it fails the rest of the measurement stands and a note says why. OCR is **tesseract.js**
+   (pure WASM: the same code on the Mac and in the sandbox, no apt package; the English
+   tessdata_fast model lives in `packages/media/assets/models/tesseract/`, downloaded into the
+   snapshot by `restoreRunner`, gitignored locally; `TESSERACT_LANG_PATH` overrides). The
+   package is loaded by name at runtime, so a machine without it still runs everything else.
+   Alternatives: the tesseract CLI via apt (needs the snapshot's apt step and a Mac install;
+   this Mac has no Homebrew) — rejected for parity; a vision model per frame — rejected for
+   cost; a LOW vision fallback for frames OCR cannot read is still open.
+2. **StyleModel** (`packages/domain/src/style-model.ts`, loader `getStyleModel` in
+   `reference-videos.ts`): per-video samples → bands (p25 / p50 / p75 + n) for length, shot,
+   cuts per 10 s, first cut, rhythm thirds, headlines per 10 s, headline hold / words / band /
+   case, caption preset (ONE_WORD / PHRASE / NONE by mode) / words per chunk / band / coverage,
+   hook text time and the share with text by 1.5 s, zooms per 10 s / amount / hold / in-out
+   share, kept pause, pads, ends-on-last-word share, music share and level. **His hand edits are
+   samples of his own** (`sampleFromTimeline`: headlines = texts held ≥ 2 s, caption preset from
+   the chunk sizes, zooms, cuts — read straight off the stored timeline, no OCR), weighted
+   double. A creator whose "don't copy" note names a signal (captions, headlines, zooms, cuts,
+   music, length, hook) is left out of that band, and the model says so. Posted-unchanged
+   videos join as "mine" once the Weeks 6–8 rating label exists. `describeStyleModel` is the
+   one paragraph Chris can agree with; `editorDigest` the ten lines the Editor reads.
+3. **Consumers:** the Editor's prompt gets the digest ("a range to work inside, never a quota");
+   the orchestrator gets presets (`screenStyleFromStyleModel`: zoom amount inside 1.04–1.15,
+   minimum headline hold from the references' holds, a longer face hold when they never punch
+   in) and the caption habit (`captionDefaultsFromStyleModel`: one-word captioners get one word
+   on every short line, phrase captioners their phrase size; amounts always get phrases); the
+   `/reference` page and each creator's page show the paragraph. Both are part of the full
+   edit's inputs key, so a changed model re-cuts. Not wired yet: gate thresholds from the bands
+   (the orchestrator's audit stays rule-based until the watch-back weeks), graphic / B-roll
+   density (no region detection yet), the splice model's band from the reference pads (shown
+   and in the digest; the fitted hand-edit model stays authoritative).
+4. **The sandbox snapshot** gains the tesseract.js language data (`restoreRunner`,
+   `LITE_EXCLUDES`, `TESSERACT_LANG_PATH` in the runtime env). The reference-analyze job now
+   also runs the head tracker and OCR per video (≈ 1–3 minutes more per reference); the time
+   budget and "continue" flow already handle that.
+
+**Verification:** `reference-learning.test.ts` (synthetic OCR reel → two headlines and
+one-word captions classified; zoom detection vs jitter; reference pads at voiced cuts only),
+`style-model.test.ts` (bands, mine ×2, exclusions, the paragraph and the digest as sentences, v2
+rows without screen signals), the OCR adapter smoke-tested on a synthetic 6 s reel rendered
+with drawtext (headline + one-word captions read back, see the session log), media + domain +
+agents suites green, worker reference/edit job tests green, typecheck clean.
+
+**Reversibility:** v1/v2 metrics rows parse unchanged; the StyleModel is additive (the old
+profile and its five numbers are untouched); without references the digest and presets are
+empty and the orchestrator uses its built-in defaults; OCR off = `screen: null`.

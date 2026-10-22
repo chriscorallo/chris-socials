@@ -51,3 +51,6 @@ packages/media/assets/models/emotion-ferplus/*.onnx
 
 # golden-set media renders (fixtures/golden/*.json are committed; the media never is)
 fixtures/golden/media/
+
+# Reference learning: tesseract.js language data (downloaded into the sandbox snapshot / locally on demand)
+packages/media/assets/models/tesseract/

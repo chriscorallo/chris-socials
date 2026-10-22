@@ -1,4 +1,5 @@
 import { describeStyle, sampleSizeText, type StyleLine, type StyleProfile } from "@chris/domain/style-metrics";
+import { describeStyleModel, type StyleModel } from "@chris/domain/style-model";
 
 function Lines({ lines, testId }: { lines: StyleLine[]; testId: string }) {
   return (
@@ -40,6 +41,27 @@ export function CompareCard({ lines, takes, refs }: { lines: StyleLine[]; takes:
         {refs < 3 ? " — an early read" : ""}.
       </p>
       <Lines lines={lines} testId="compare-lines" />
+    </section>
+  );
+}
+
+/**
+ * What the references DO, in one paragraph a creator can agree with (the StyleModel: bands from
+ * what a viewer sees and hears, his own hand edits weighted double). Reference learning,
+ * docs/PREMIUM_EDITOR_PLAN.md round 4. Measured on-screen text needs videos re-measured with
+ * the current version — until then the paragraph covers cuts, pauses and sound only.
+ */
+export function StyleModelCard({ model, eyebrow = "What they do", title = "Your references, in a paragraph" }: { model: StyleModel; eyebrow?: string; title?: string }) {
+  const text = describeStyleModel(model);
+  if (!text) return null;
+  const screenMeasured = model.headlinesPer10s != null || model.captions.preset != null;
+  return (
+    <section className="panel p-4 sm:p-5" data-testid="style-model-card">
+      <p className="eyebrow">{eyebrow}</p>
+      <h2 className="mt-0.5 text-[19px] font-semibold">{title}</h2>
+      <p className="mt-2 text-[15px] leading-relaxed">{text}</p>
+      {!screenMeasured && <p className="mt-2 text-[13px] text-[var(--color-text-faint)]">On-screen text, captions and punch-ins show up here once the videos are re-measured (the Measure button above).</p>}
+      {model.exclusions.length > 0 && <p className="mt-2 text-[13px] text-[var(--color-text-faint)]">Left out on purpose: {model.exclusions.join("; ")}.</p>}
     </section>
   );
 }

@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Sandbox } from "@vercel/sandbox";
-import { BUILD_DIR, EXPRESSION_MODEL_URL, LITE_EXCLUDES, OUT, SANDBOX_CACHE, SANDBOX_ROOT, ULTRAFACE_URL, runtimeEnv } from "./build-runner";
+import { BUILD_DIR, EXPRESSION_MODEL_URL, LITE_EXCLUDES, OUT, SANDBOX_CACHE, SANDBOX_ROOT, TESSERACT_LANG_URL, ULTRAFACE_URL, runtimeEnv } from "./build-runner";
 
 const execFileAsync = promisify(execFile);
 
@@ -140,6 +140,9 @@ export async function restoreRunner(sandbox: Sandbox) {
       "rm -rf motion-bundle/public && cp -r packages/media/assets motion-bundle/public",
       `node -e "fetch(process.argv[1]).then(async (r) => { if (!r.ok) throw new Error(r.status); require('fs').writeFileSync(process.argv[2], Buffer.from(await r.arrayBuffer())); })" ${ULTRAFACE_URL} packages/media/assets/models/ultraface/version-RFB-640.onnx`,
       "cp packages/media/assets/models/ultraface/version-RFB-640.onnx motion-bundle/public/models/ultraface/",
+      // Reference learning: tesseract.js's English model (fast variant, ~4 MB) so on-screen text is
+      // read offline in the sandbox (packages/media/src/ocr.ts resolves this directory).
+      `mkdir -p packages/media/assets/models/tesseract && node -e "fetch(process.argv[1]).then(async (r) => { if (!r.ok) throw new Error(r.status); require('fs').writeFileSync(process.argv[2], Buffer.from(await r.arrayBuffer())); })" ${TESSERACT_LANG_URL} packages/media/assets/models/tesseract/eng.traineddata.gz`,
       // the mini-movie bundle's public dir is the same assets (runners built before it existed have no cinema-bundle)
       "if [ -d cinema-bundle ]; then rm -rf cinema-bundle/public && cp -r packages/media/assets cinema-bundle/public; fi",
       "node packages/motion/scripts/generate-sfx.mjs >/dev/null",

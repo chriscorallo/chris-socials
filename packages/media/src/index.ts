@@ -48,6 +48,7 @@ export * from "./style-analysis";
 export * from "./style-cut";
 export * from "./full-edit";
 export * from "./screen";
+export * from "./reference";
 export * from "./speech-activity";
 export * from "./viewer-audio";
 export * from "./preview-proxy";

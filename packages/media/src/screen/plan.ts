@@ -80,6 +80,37 @@ export const DEFAULT_SCREEN_STYLE: ScreenStyle = {
   minHeadlineS: 1.4,
 };
 
+/** The StyleModel's bands as the orchestrator's presets (structural type: @chris/domain's
+ * StyleModel, without importing it). The references move the look inside their band; the
+ * rules (one new thing per beat, never the face) never move. */
+export interface StyleModelLike {
+  captions?: { preset: "ONE_WORD" | "PHRASE" | "NONE" | null; wordsPerChunk?: { p50: number } | null } | null;
+  headlineHoldS?: { p25: number; p50: number; p75: number } | null;
+  zoomAmount?: { p25: number; p50: number; p75: number } | null;
+  zoomsPer10s?: { p50: number } | null;
+  zoomInOutShare?: number | null;
+  headlinesPer10s?: { p25: number; p75: number } | null;
+  referenceCount?: number;
+}
+
+export function screenStyleFromStyleModel(m: StyleModelLike | null | undefined): Partial<ScreenStyle> {
+  if (!m || !(m.referenceCount ?? 0)) return {};
+  const out: Partial<ScreenStyle> = {};
+  if (m.zoomAmount) out.zoomAmount = Math.min(1.15, Math.max(1.04, m.zoomAmount.p50));
+  if (m.headlineHoldS) out.minHeadlineS = Math.min(2, Math.max(1, m.headlineHoldS.p25 * 0.6));
+  if (m.zoomsPer10s && m.zoomsPer10s.p50 === 0) out.maxStaticS = 8; // they don't punch in: let the face hold longer
+  if (m.captions?.preset === "NONE") out.captionPreset = "QUIET"; // captions stay (accessibility); quiet
+  return out;
+}
+
+/** Caption chunk size per beat, nudged by the references: one-word captioners get one word on
+ * every short line, phrase captioners get phrases everywhere amounts are not the issue. */
+export function captionDefaultsFromStyleModel(m: StyleModelLike | null | undefined): { shortLineWords: number; defaultWords: number } {
+  if (m?.captions?.preset === "ONE_WORD") return { shortLineWords: 1, defaultWords: 1 };
+  if (m?.captions?.preset === "PHRASE") return { shortLineWords: 2, defaultWords: Math.min(3, Math.max(2, Math.round(m.captions.wordsPerChunk?.p50 ?? 2))) };
+  return { shortLineWords: 1, defaultWords: 2 };
+}
+
 export interface ScreenInput {
   /** Clips, canvas and the base caption look; texts / zooms are written by the plan. */
   timeline: EditTimeline;
@@ -95,6 +126,9 @@ export interface ScreenInput {
   hookEnd: number;
   pacing: "LONG_SHOTS_ZOOMS" | "TIGHT_CUTS";
   style?: Partial<ScreenStyle>;
+  /** The references' caption habit (captionDefaultsFromStyleModel); default = one word on short
+   * emotional lines, two otherwise, three where amounts are spoken. */
+  captionDefaults?: { shortLineWords: number; defaultWords: number };
 }
 
 export type ScreenLead = "HEADLINE" | "GRAPHIC" | "ZOOM" | "FACE";
@@ -148,13 +182,13 @@ const bare = (w: string) => w.toLowerCase().replace(/[^a-z0-9$%.,]/g, "").replac
 
 /** Caption chunk size for a beat: one word for a short emotional line, phrases where amounts
  * are spoken, two words otherwise. */
-export function captionWindowFor(beat: ScreenBeat): number {
+export function captionWindowFor(beat: ScreenBeat, defaults: { shortLineWords: number; defaultWords: number } = { shortLineWords: 1, defaultWords: 2 }): number {
   if (beat.hasAmount) return 3;
   const text = beat.words.map((w) => w.word).join(" ");
   const short = beat.words.length <= 7;
   const emotional = /[!?]\s*$/.test(text.trim()) || beat.role === "HOOK" || beat.role === "TURN" || beat.role === "ENDING";
-  if (short && emotional) return 1;
-  return 2;
+  if (short && emotional) return defaults.shortLineWords;
+  return defaults.defaultWords;
 }
 
 /** The cover frame: inside the hook beat, once the title has settled, the middle of the longest
@@ -290,14 +324,14 @@ export function planScreen(input: ScreenInput): ScreenPlan {
   const chunking: CaptionChunkWindow[] = [];
   for (const b of beats) {
     if (!b.words.length) continue;
-    const maxWords = captionWindowFor(b);
+    const maxWords = captionWindowFor(b, input.captionDefaults);
     const start = r3(b.words[0]!.start);
     const end = r3(Math.min(dur, b.words[b.words.length - 1]!.end + 0.01));
     const prev = chunking[chunking.length - 1];
     if (prev && prev.maxWords === maxWords && start - prev.end < 0.5) prev.end = end;
     else if (end > start) chunking.push({ start, end, maxWords });
   }
-  const captions = { preset: style.captionPreset, fontSize: style.captionFontSize, y: anchors.caption.y, maxWordsPerChunk: 2, chunking };
+  const captions = { preset: style.captionPreset, fontSize: style.captionFontSize, y: anchors.caption.y, maxWordsPerChunk: input.captionDefaults?.defaultWords ?? 2, chunking };
 
   const coverFrameSeconds = chooseCoverFrame(hookBeat, title ? title.start : 0, input.hookEnd);
   return { anchors, style, title, headlines, slots, faceBeats, leads: leads.sort((a, b) => a.at - b.at), captions, zooms: [], coverFrameSeconds, notes };

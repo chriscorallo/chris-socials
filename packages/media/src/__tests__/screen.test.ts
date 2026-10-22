@@ -109,7 +109,7 @@ describe("screen — the plan", () => {
     const withGraphic = EditTimelineSchema.parse({ ...t0, visuals: [{ id: "g1", template: "KINETIC_TEXT", start: p0.slots[0]!.start, end: p0.slots[0]!.end, props: { text: "x" }, placement: { mode: "AUTO", x: 0.5, y: 0.3, scale: 1 } }] });
     const p = planZooms(p0, withGraphic, input);
     const emphasis = p.zooms.find((z) => z.reason === "EMPHASIS");
-    expect(emphasis?.word.toLowerCase()).toBe("never");
+    expect(emphasis?.word?.toLowerCase()).toBe("never");
     expect(p.zooms.every((z) => !(z.start < p0.slots[0]!.end && p0.slots[0]!.start < z.end))).toBe(true);
     const t = EditTimelineSchema.parse({ ...withGraphic, zooms: applyScreenPlan(withGraphic, p).zooms });
     for (const z of t.zooms) {

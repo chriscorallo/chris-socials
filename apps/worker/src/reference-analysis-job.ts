@@ -18,15 +18,23 @@ import {
 import type { TranscriptionProvider } from "@chris/agents";
 import {
   CUT_DETECTION_METHOD,
+  analyzeSplicePcm,
+  analyzeSubjectTrack,
   detectCuts,
   detectEndCard,
+  detectReferenceZooms,
   measureAudioActivity,
   measureFrameChanges,
   measureStyleLoudness,
   measureTailFrames,
   measureVoiceBackground,
   probeVideo,
+  referencePads,
+  subjectBoxAt,
+  summariseText,
+  type OcrAdapter,
   type StorageAdapter,
+  type SubjectTrack,
   type TailFrame,
 } from "@chris/media";
 
@@ -49,7 +57,43 @@ async function defaultProvider(): Promise<Provider> {
 
 export interface AnalyzeFileOptions {
   transcriptionProvider?: Provider;
-  onStage?: (stage: "probe" | "cuts" | "speech" | "audio") => void;
+  onStage?: (stage: "probe" | "cuts" | "speech" | "audio" | "screen" | "zooms") => void;
+  /** v3 (reference learning): on-screen text. null = skip (the measurement says why). */
+  ocr?: OcrAdapter | null;
+  /** v3: the head through the video for zoom usage; default = the ONNX tracker, null = skip. */
+  subjectTracker?: ((filePath: string) => Promise<SubjectTrack>) | null;
+}
+
+async function defaultOcr(): Promise<OcrAdapter | null> {
+  try {
+    const { TesseractJsOcr } = await import("@chris/media/ocr");
+    return new TesseractJsOcr();
+  } catch {
+    return null;
+  }
+}
+
+/** Cut rhythm as a sequence: cuts per 10 s in the opening, middle and closing third; and how
+ * many cuts are jump cuts (the head barely moves across the cut) when a track exists. */
+export function cutRhythm(cutTimes: number[], durationS: number, track: SubjectTrack | null): NonNullable<ReferenceVideoMetrics["rhythm"]> {
+  const third = durationS / 3;
+  const per = (k: number) => (third > 0 ? Math.round((cutTimes.filter((c) => c >= k * third && c < (k + 1) * third).length / third) * 1000) / 100 : 0);
+  let jump: number | null = null;
+  if (track && track.length && cutTimes.length) {
+    let n = 0;
+    let j = 0;
+    for (const c of cutTimes) {
+      const a = subjectBoxAt(track, c - 0.3);
+      const b = subjectBoxAt(track, c + 0.3);
+      if (!a || !b) continue;
+      n++;
+      const dx = Math.abs(a.x + a.w / 2 - (b.x + b.w / 2));
+      const dw = Math.abs(a.w / b.w - 1);
+      if (dx < 0.08 && dw < 0.15) j++;
+    }
+    jump = n ? Math.round((j / n) * 100) / 100 : null;
+  }
+  return { thirdsPer10s: [per(0), per(1), per(2)], jumpCutShare: jump };
 }
 
 /**
@@ -153,6 +197,55 @@ export async function analyzeReferenceVideoFile(filePath: string, options: Analy
     };
   }
 
+  // v3 — what a viewer SEES: on-screen text events (OCR), punch-ins (head size within shots),
+  // the reference's own splice pads (its voice around its cuts), cut rhythm by thirds. Each is
+  // a bonus on top of v2: a failure leaves it null with a note, never the whole measurement.
+  let screen: ReferenceVideoMetrics["screen"] = null;
+  let zooms: ReferenceVideoMetrics["zooms"] = null;
+  let pads: ReferenceVideoMetrics["pads"] = null;
+  let rhythm: ReferenceVideoMetrics["rhythm"] = null;
+  let track: SubjectTrack | null = null;
+  if (probe.hasVideo) {
+    options.onStage?.("zooms");
+    const tracker = options.subjectTracker === undefined ? (f: string) => analyzeSubjectTrack(f, { fps: 3 }) : options.subjectTracker;
+    if (tracker) {
+      track = await tracker(filePath).catch((err: unknown) => {
+        notes.push(`Head tracking failed (${err instanceof Error ? err.message.slice(0, 80) : "error"}) — punch-ins not measured.`);
+        return null;
+      });
+    }
+    if (track && track.some((s) => s.box)) {
+      const z = detectReferenceZooms(track, cutTimes ?? [], durationS);
+      zooms = { method: "head width within shots (ultraface 3 fps)", count: z.count, per10s: z.per10s, amountMedian: z.amountMedian, rampMedianS: z.rampMedianS, holdMedianS: z.holdMedianS, inOutShare: z.inOutShare };
+    }
+    if (cutTimes) rhythm = cutRhythm(cutTimes, durationS, track);
+    options.onStage?.("screen");
+    const ocr = options.ocr === undefined ? await defaultOcr() : options.ocr;
+    const avail = ocr ? await ocr.available() : { ok: false as const, reason: options.ocr === null ? "" : "no OCR adapter" };
+    if (ocr && avail.ok) {
+      try {
+        const frames = await ocr.recognizeFrames(filePath, { fps: 3, maxFrames: 360, durationS });
+        const t = summariseText(frames, durationS, speech ? { startS: speech.speechStartS, endS: speech.speechEndS } : null);
+        screen = {
+          method: ocr.method,
+          frames: t.frames,
+          headlines: t.headlines,
+          captions: t.captions,
+          hook: t.hook,
+          longestBareS: t.longestBareS,
+          events: t.events.slice(0, 400).map((e) => ({ start: e.start, end: e.end, text: e.text.slice(0, 120), words: e.words, band: e.band, role: e.role })),
+        };
+      } catch (err) {
+        notes.push(`On-screen text not read (${err instanceof Error ? err.message.slice(0, 80) : "error"}).`);
+      }
+    } else if (!avail.ok && avail.reason) notes.push(`On-screen text not read (${avail.reason}).`);
+  }
+  if (pcm && cutTimes && cutTimes.length && speech) {
+    const analysis = analyzeSplicePcm(pcm.subarray(0, Math.floor(durationS * PCM_RATE)), PCM_RATE);
+    const p = referencePads(analysis, cutTimes);
+    pads = { n: p.n, tailMedianMs: p.tailMedianMs, leadMedianMs: p.leadMedianMs, tailP75Ms: p.tailP75Ms, leadP75Ms: p.leadP75Ms, airMedianMs: p.airMedianMs };
+  }
+
   const r3 = (x: number) => Math.round(x * 1000) / 1000;
   return {
     version: REFERENCE_METRICS_VERSION,
@@ -169,6 +262,10 @@ export async function analyzeReferenceVideoFile(filePath: string, options: Analy
     speech,
     audio,
     voice: probe.hasAudio ? { present: voice.present, wordCount: voice.wordCount, coverage: voice.coverage, contrastDb: voice.contrastDb, reason: voice.reason } : null,
+    screen,
+    zooms,
+    pads,
+    rhythm,
     transcript,
     notes,
   };
@@ -200,6 +297,8 @@ export async function analyzePendingReferenceVideos(
     transcriptionProvider?: Provider;
     timeBudgetMs?: number;
     onProgress?: (p: { done: number; total: number; message: string }) => void;
+    ocr?: OcrAdapter | null;
+    subjectTracker?: AnalyzeFileOptions["subjectTracker"];
   },
   actor: { actorId: string },
 ): Promise<ReferenceAnalysisResult> {
@@ -226,7 +325,7 @@ export async function analyzePendingReferenceVideos(
         const file = join(dir, `ref${extname(label) || ".mp4"}`);
         await fetchToFile(storage, row.mediaStorageKey!, file);
         provider ??= await defaultProvider();
-        const metrics = await analyzeReferenceVideoFile(file, { transcriptionProvider: provider });
+        const metrics = await analyzeReferenceVideoFile(file, { transcriptionProvider: provider, ocr: options.ocr, subjectTracker: options.subjectTracker });
         const saved = await recordReferenceAnalysis(db, row.id, { metrics }, actor);
         measured.push(saved.analysisStatus === "DONE" ? { id: row.id, ok: true } : { id: row.id, ok: false, error: saved.analysisError ?? "unknown error" });
       } catch (err) {

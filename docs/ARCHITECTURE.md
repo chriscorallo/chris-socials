@@ -52,6 +52,16 @@ rendered timeline. It only writes the timeline, so the editor preview and the re
 construction. The Motion Designer fills graphic *content* into the slots it opens; the placement
 solver treats a slot as a preference and the face/captions as rules.
 
+**References are learned, not averaged** (`packages/domain/src/style-model.ts`,
+`packages/media/src/reference/`, 2026-10-22, round 4). A reference is measured as what a viewer
+sees and hears in time: on-screen text events from OCR (tesseract.js, offline in the sandbox) →
+headline cadence, caption style, the hook text; punch-ins from the head size within shots; the
+pads it leaves at its own splices; cut rhythm by thirds. Chris's hand edits are read straight off
+their timelines as samples of his own (weighted double). The `StyleModel` is bands (p25–p75),
+not medians; a creator's "don't copy" note excludes it from the signals it names. It reaches the
+Editor as a ten-line digest, the orchestrator as presets, and Chris as one paragraph on
+`/reference` he can agree or disagree with.
+
 ## Authority hierarchy (§5) — and how it's enforced in code, not just convention
 
 1. Human Owner (Chris) — final say on everything except platform/security/factual hard
