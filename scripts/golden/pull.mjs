@@ -12,8 +12,9 @@ import "dotenv/config";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const OUT = join(ROOT, "fixtures/golden");
 const [base, ...specs] = process.argv.slice(2);
-if (!base || specs.length === 0) {
-  console.error("usage: pnpm golden:pull <base-url> <contentItemId>=<slug>[@<handEditPlanId>] …");
+const listOnly = specs.includes("--list");
+if (!base || (specs.length === 0 && !listOnly)) {
+  console.error("usage: pnpm golden:pull <base-url> --list | \"<contentItemId or title words>=<slug>[@<handEditPlanId>]\" …");
   process.exit(2);
 }
 const email = process.env.SEED_USER_EMAIL;
@@ -64,9 +65,24 @@ if (![...jar.keys()].some((k) => k.endsWith("authjs.session-token"))) {
   process.exit(1);
 }
 
+if (listOnly) {
+  const res = await retry(() => fetch(`${base}/api/golden`, { headers: { cookie: cookie() } }), "list");
+  const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) {
+    console.error(body.error ?? `HTTP ${res.status}`);
+    process.exit(1);
+  }
+  for (const i of body.items) {
+    console.log(
+      `${i.id}  ${String(i.title).slice(0, 48).padEnd(48)}  ${i.takes} take${i.takes === 1 ? " " : "s"}  ${i.durationS ? `${Math.round(i.durationS)}s`.padStart(5) : "   —"}  ${String(i.words).padStart(4)} words  ${i.editorPlan ? "editor" : "      "}  ${i.handEdit ? "hand-edit" : ""}`,
+    );
+  }
+  process.exit(0);
+}
+
 mkdirSync(OUT, { recursive: true });
 let failed = 0;
-for (const spec of specs) {
+for (const spec of specs.filter((x) => !x.startsWith("--"))) {
   const m = spec.match(/^(.+)=([a-z0-9-]+)(?:@(.+))?$/);
   if (!m) {
     console.error(`skip "${spec}": expected <contentItemId>=<slug>[@<handEditPlanId>]`);
