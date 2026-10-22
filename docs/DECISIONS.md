@@ -9569,10 +9569,15 @@ hand; nothing measured the voice itself).
    defects test: a gap, a clipped word and a level step caught at the right cuts; a clean cut
    passes.
 
+7. **Captions follow the voice**: the render refines each take's Whisper word times with the
+   stored analysis before the caption chunks are built (`apps/worker/src/splice-store.ts`,
+   shared with the gate), so a highlighted word and the voice never drift apart after a tight
+   splice. The editor's preview still shows raw Whisper times (parity pending).
+
 **Not done / next:** the learned model is not yet fed from Chris's hand edits automatically
 (fixtures pulled after this ships carry the analysis; `pnpm golden:replay` can then fit it and
-the worker can read a stored model); caption word highlights at render still use the raw
-Whisper times (the refined times should reach `timelineCaptionChunks`); multi-part recordings
+the worker can read a stored model); the editor preview's captions use raw Whisper times
+(the render's refined ones should reach it for preview = render); multi-part recordings
 (several takes) get no analysis yet; the screen audits (face core, two leads, hook text by
 1.5 s) wait for the Screen Orchestrator (Weeks 2–4). Needs a worker ship (10–12 min) — not
 shipped in this session (no network).

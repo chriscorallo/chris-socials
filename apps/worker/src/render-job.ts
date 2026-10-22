@@ -34,7 +34,9 @@ import {
   type VisualOverlaySegment,
   type RenderInstructions,
   type TranscriptWord,
+  refineWordEdges,
 } from "@chris/media";
+import { storedSpliceAnalysisFor } from "./splice-store";
 import type { StorageAdapter } from "@chris/media";
 
 /**
@@ -546,7 +548,11 @@ export async function renderContentItem(
       const path = join(workDir, `source-${i}${extname(asset.originalFilename) || ".mp4"}`);
       await writeFile(path, await storage.get(asset.storageKey));
       sources[asset.id] = path;
-      sourceWords[asset.id] = parseTranscriptWords(asset.transcriptWords);
+      const words = parseTranscriptWords(asset.transcriptWords);
+      // Caption word times refined to the voice (splice engine), so a highlighted word and the
+      // voice never drift apart after a tight splice. Same words the cut was placed by.
+      const analysis = words?.length ? await storedSpliceAnalysisFor(db, contentItemId, asset.id) : null;
+      sourceWords[asset.id] = analysis && words ? refineWordEdges(words, analysis) : words;
     }
 
     // Motion graphics + sound design (packages/motion). Graceful: a failed motion render or a

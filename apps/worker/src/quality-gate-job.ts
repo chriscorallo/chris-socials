@@ -16,8 +16,6 @@ import {
   brandGateFromScores,
   creativeGateFromScore,
   technicalGateFromIssues,
-  readStoredFullEdit,
-  readStoredStyleCut,
   type PrismaClient,
   type QCIssueInput,
   type GateStatus,
@@ -46,12 +44,11 @@ import {
   directorOwnedVisualIds,
   auditSplices,
   refineWordEdges,
-  isSpliceAnalysis,
-  type SpliceAnalysis,
   type CaptionCollision,
   type EditTimeline,
   type TimelineVisual,
 } from "@chris/media";
+import { storedSpliceAnalysisFor } from "./splice-store";
 import type { StorageAdapter } from "@chris/media";
 
 export interface QualityGateJobResult {
@@ -131,18 +128,6 @@ export function describeUngroundedVisualNumbers(found: UngroundedVisualNumbers[]
   return `On-screen numbers aren't in the fact-checked research or script: ${parts.join("; ")}. Fix the graphic to use a researched number, or remove it.`;
 }
 
-
-/** The splice engine's voice analysis cached on the latest edit of this take (null before the engine existed). */
-async function storedSpliceAnalysisFor(db: PrismaClient, contentItemId: string, mediaAssetId: string): Promise<SpliceAnalysis | null> {
-  const plans = await db.editPlan.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" }, take: 30, select: { plan: true } });
-  for (const p of plans) {
-    const fe = readStoredFullEdit(p.plan);
-    if (fe && fe.mediaAssetId === mediaAssetId && isSpliceAnalysis(fe.splice)) return fe.splice;
-    const sc = readStoredStyleCut(p.plan);
-    if (sc && sc.mediaAssetId === mediaAssetId && isSpliceAnalysis(sc.splice)) return sc.splice;
-  }
-  return null;
-}
 
 /** Everything the Quality Gate decides WITHOUT a model call — shared by the full gate and the
  * owner's "skip the AI check" path, so both see exactly the same technical/factual facts. */
