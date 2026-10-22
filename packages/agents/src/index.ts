@@ -27,6 +27,7 @@ export * from "./hook-picker-agent";
 export * from "./footage-brief-agent";
 export * from "./flow-check-agent";
 export * from "./editor-agent";
+export * from "./watch-back";
 export * from "./visual-strategist-agent";
 export * from "./scheduler-agent";
 export * from "./analytics-agent";

@@ -13,6 +13,8 @@ import { thumbUrlFor } from "../../../../lib/media-urls";
 import { RawTakeUploader } from "../RawTakeUploader";
 import { ViewerCheck } from "../../../components/ViewerCheck";
 import { getViewerCheckForVideo } from "../../../../lib/viewer-check";
+import { WatchBack } from "../../../components/WatchBack";
+import { getWatchBackForVideo } from "../../../../lib/watch-back";
 import { FlowProgress } from "../FlowProgress";
 import { startEditing } from "../flow-actions";
 import { FootageUpload } from "../../../upload/FootageUpload";
@@ -138,6 +140,7 @@ export default async function ContentDetailPage({
   const heroTake = rawTakes.find((a) => a.id === latestTakeSelection?.selectedMediaAssetId) ?? rawTakes[0];
   const heroKey = goodRender?.storageKey ?? heroTake?.storageKey ?? null;
   const viewerCheck = goodRender ? await getViewerCheckForVideo(item.id).catch(() => null) : null;
+  const watchBack = goodRender ? await getWatchBackForVideo(item.id).catch(() => null) : null;
   const livePost = item.publications.find((p) => p.status === "SUCCESS" && p.url);
   // Owner override (docs/decisions-pending/quality-override.md): was the latest render sent to
   // the calendar without the AI check? Honest mark + an optional "Run the AI check now".
@@ -606,6 +609,7 @@ export default async function ContentDetailPage({
             </Panel>
           )}
 
+          {watchBack && <WatchBack data={watchBack} />}
           {viewerCheck && <ViewerCheck data={viewerCheck} />}
 
           {state === "SELECTED" && (

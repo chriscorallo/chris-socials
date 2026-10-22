@@ -66,7 +66,7 @@ export const FULL_EDIT_AUTO_REASON = "Full edit (automatic, no AI)";
 export function isHandEditReason(reason: string | null | undefined): boolean {
   if (!reason?.startsWith("Finishing edit by Chris")) return false;
   const note = reason.slice("Finishing edit by Chris".length).replace(/^:\s*/, "");
-  return !/^(Full edit —|Style cut —|Plain full take)/.test(note) && !note.includes("(Design visuals with AI)");
+  return !/^(Full edit —|Style cut —|Plain full take|Watch-back fixes)/.test(note) && !note.includes("(Design visuals with AI)");
 }
 
 /** Feature flag: ON = new uploads get "Cuts only"; OFF/absent (default) = "Full edit". */

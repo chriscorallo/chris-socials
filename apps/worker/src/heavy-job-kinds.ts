@@ -19,6 +19,7 @@ export const HEAVY_JOB_KINDS = [
   "motion-design",
   "reference-analyze",
   "viewer-review",
+  "watch-back",
   "take-understand",
   // mini-movie studio (packages/cinema) — see apps/worker/src/film-jobs.ts
   "film-render",
@@ -85,6 +86,10 @@ export interface HeavyJobArgsByKind {
     platform?: "TIKTOK" | "INSTAGRAM" | "YOUTUBE";
     persona?: "COLD" | "FOLLOWER";
   };
+  /** The watch-back gate (one HIGH vision watch + a MEDIUM hook test) on the latest render:
+   * free audits → checklist → PASS / FIX / HOLD with typed fixes; `applyFixes` overrides the
+   * watch_back.fix_loop flag. Writes WatchVerdict rows; shadow unless the gating flag is on. */
+  "watch-back": { contentItemId: string; applyFixes?: boolean };
   /** Render a mini-movie (narration → picture in chunks → assembled film) and register it as a
    * video (a ContentItem's render) unless `register` is false. Idempotent per (film, tier,
    * narration, idempotencyKey): a finished render is returned, finished chunks are reused. */
@@ -172,7 +177,7 @@ export type HeavyJobArgs<K extends HeavyJobKind = HeavyJobKind> = HeavyJobArgsBy
 
 /** Kinds that call the model provider (need ANTHROPIC_API_KEY in the worker). */
 export function heavyJobNeedsModel(kind: HeavyJobKind, args: unknown): boolean {
-  if (kind === "quality-gate" || kind === "auto-repair" || kind === "motion-design" || kind === "viewer-review") return true;
+  if (kind === "quality-gate" || kind === "auto-repair" || kind === "motion-design" || kind === "viewer-review" || kind === "watch-back") return true;
   if (kind === "render") return !!(args as HeavyJobArgsByKind["render"]).thenQualityGate;
   return false;
 }
@@ -191,6 +196,7 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   "motion-design": "Designing visuals",
   "reference-analyze": "Measuring your reference videos",
   "viewer-review": "Watching it like a new viewer",
+  "watch-back": "Watching it back before it posts",
   "take-understand": "Reading your face and moves",
   "film-render": "Rendering your mini-movie",
   "film-render-chunk": "Rendering part of your mini-movie",
@@ -333,6 +339,11 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
     case "render":
       out = { contentItemId, thenQualityGate: optBool(a.thenQualityGate, "thenQualityGate") ?? false };
       break;
+    case "watch-back": {
+      const applyFixes = optBool(a.applyFixes, "applyFixes");
+      out = { contentItemId, ...(applyFixes === undefined ? {} : { applyFixes }) };
+      break;
+    }
     case "quality-gate":
       out = { contentItemId, ...(optBool(a.lateCheck, "lateCheck") ? { lateCheck: true } : {}) };
       break;

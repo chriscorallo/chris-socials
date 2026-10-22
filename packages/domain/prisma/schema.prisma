@@ -1747,3 +1747,58 @@ model DirectorMessage {
 
   @@index([contentItemId, createdAt])
 }
+
+// Watch-back gate (2026-10-22, docs/PREMIUM_EDITOR_PLAN.md round 2): one watch per render —
+// free audits (splice, screen, story) → one model watch with contrastive reference frames →
+// PASS / FIX / HOLD with typed fixes. Append-only; `loop` 0 = first watch, 1 = after the one
+// fix loop. Shadow by default: the verdict is recorded, the hard gate still decides READY,
+// unless the watch_back.gating flag is on (a HOLD then blocks like a technical BLOCK).
+model WatchVerdict {
+  id            String   @id @default(cuid())
+  contentItemId String
+  renderId      String
+  editPlanId    String?
+  loop          Int      @default(0)
+  /// "PASS" | "FIX" | "HOLD"
+  verdict       String
+  /// WatchChecklist (packages/agents watch-back.ts): each check with ok + evidence.
+  checklist     Json
+  /// WatchFix[] (packages/media watch/fixes.ts) — at most 5 typed operations.
+  fixes         Json
+  /// The free audits' findings this watch was given (splice, screen, story).
+  audits        Json
+  /// The isolated hook test (first frame + the first 2 s of words), or null.
+  hookTest      Json?
+  coldViewer    String
+  promptVersion String
+  model         String
+  inputSummary  Json
+  costUsd       Float?
+  jobRunId      String?
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  ratings WatchRating[]
+
+  @@index([contentItemId, createdAt])
+  @@index([renderId])
+}
+
+/// Chris's one-tap rating at post time (or his HOLD-queue choice): the label autonomy is
+/// earned against. "UP" = posted as-is / agrees; "DOWN" = edited first or rejected.
+model WatchRating {
+  id             String   @id @default(cuid())
+  watchVerdictId String
+  contentItemId  String
+  /// "UP" | "DOWN"
+  rating         String
+  /// "POSTED_UNCHANGED" | "EDITED_FIRST" | "REJECTED" | "POST_ANYWAY" | "FIX_IT"
+  action         String
+  note           String?
+  createdBy      String
+  createdAt      DateTime @default(now())
+
+  verdict WatchVerdict @relation(fields: [watchVerdictId], references: [id])
+
+  @@index([contentItemId, createdAt])
+}

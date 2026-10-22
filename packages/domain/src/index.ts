@@ -155,6 +155,9 @@ export * from "./latency";
 // Viewer Panel (2026-10-17) — advisory AI first-time-viewer reviews of a whole video
 // (docs/decisions-pending/viewer-panel.md). Never a hard-gate input.
 export * from "./viewer-review";
+// Watch-back gate (2026-10-22) — verdicts per render, Chris's one-tap ratings, autonomy as
+// agreement per series (docs/PREMIUM_EDITOR_PLAN.md round 2).
+export * from "./watch-back";
 export type { ViewerReview as ViewerReviewRow } from "@prisma/client";
 // ChatGPT connector (2026-10-17) — OAuth 2.1 server + MCP tool logic so Chris's own ChatGPT can
 // read his plan and save scripts (docs/decisions-pending/chatgpt-connector.md). No model calls.

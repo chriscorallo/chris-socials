@@ -90,3 +90,10 @@ else, going backward means cancel-and-recreate a new `ContentItem`, not mutating
 - Bare-button manual transitions are `MANUAL_TRANSITIONS` only (none reaches READY). Guarded
   human transitions (`OWNER_GUARDED_TRANSITIONS`) succeed only through their own domain function,
   which checks preconditions and writes its evidence — currently just the owner quality override.
+
+- Watch-back gate (2026-10-22): **no new state.** The watch records a `WatchVerdict` per render
+  (shadow). With `watch_back.gating` on, a HOLD (or a FIX whose one loop is spent) on the exact
+  render stops the publish preflight (`watchBackHoldFor` in `preflight.ts`) until Chris answers
+  it: "Fix it" runs the fix loop (a new finishing-edit version + render, the normal
+  `READY → EDIT_PLANNED` rollback), "Post anyway" is a journaled `WatchRating` override. The
+  hard gate's `RENDERED → READY` is untouched; FACTUAL still fails closed.

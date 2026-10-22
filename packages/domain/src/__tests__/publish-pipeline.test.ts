@@ -4,6 +4,7 @@ import { createContentItem } from "../content-item";
 import { applyTransition } from "../state-machine";
 import { recordPlatformPackage, PlatformPackageRequiresRenderError } from "../platform-package";
 import { runPreflight, computePublishIdempotencyKey } from "../preflight";
+import { recordWatchRating } from "../watch-back";
 import { scheduleContentItemForPublishing, ScheduleForPublishingRequiresReadyStateError } from "../schedule";
 import {
   startPublishing,
@@ -314,6 +315,24 @@ describe("startPublishing / recordPublicationAttempt / finalizePublishing", () =
     );
     await finalizePublishing(prisma, item.id, { actorId: "chris" });
 
+    // Since the watch-back gate (2026-10-22) an API success alone counts for nothing: the
+    // outcome is Chris's 👍 on the edit. Without a rating the count stands still…
+    const unrated = await getAutonomyState(prisma, "PUBLISHING", "FAST");
+    expect(unrated.approvedOutcomeCount).toBe(before.approvedOutcomeCount);
+
+    // …with a 👍 it counts.
+    const { item: item2, packages: packages2 } = await makeScheduledItemWithPackage(["INSTAGRAM"]);
+    const verdict = await prisma.watchVerdict.create({
+      data: { contentItemId: item2.id, renderId: "render-x", loop: 0, verdict: "PASS", checklist: [], fixes: [], audits: [], coldViewer: "fine", promptVersion: "1.0.0", model: "mock", inputSummary: {}, createdBy: "chris" },
+    });
+    await recordWatchRating(prisma, { watchVerdictId: verdict.id, rating: "UP", action: "POSTED_UNCHANGED" }, { actorId: "chris" });
+    await startPublishing(prisma, item2.id, { actorId: "chris" });
+    await recordPublicationAttempt(
+      prisma,
+      { contentItemId: item2.id, platform: "INSTAGRAM", platformPackageId: packages2.INSTAGRAM!, idempotencyKey: computePublishIdempotencyKey(item2.id, "INSTAGRAM"), status: "SUCCESS", platformPostId: "ig-post-2" },
+      { actorId: "chris" },
+    );
+    await finalizePublishing(prisma, item2.id, { actorId: "chris" });
     const after = await getAutonomyState(prisma, "PUBLISHING", "FAST");
     expect(after.approvedOutcomeCount).toBe(before.approvedOutcomeCount + 1);
   });

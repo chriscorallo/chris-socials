@@ -1,4 +1,4 @@
-import { updateHeavyJobProgress, finishHeavyJob, type PrismaClient } from "@chris/domain";
+import { updateHeavyJobProgress, finishHeavyJob, isEnabled, WATCH_BACK_AUTO_FLAG, type PrismaClient } from "@chris/domain";
 import type { ModelProvider, TranscriptionProvider } from "@chris/agents";
 import type { StorageAdapter } from "@chris/media";
 import { renderContentItem, type MotionOptions, type RenderJobResult } from "./render-job";
@@ -14,6 +14,7 @@ import { designMotionForContentItem } from "./motion-design-job";
 import { analyzePendingReferenceVideos } from "./reference-analysis-job";
 import { maybeAutoStyleCut, type StyleCutOutcome } from "./style-cut-job";
 import { reviewReferenceAsViewer, reviewRenderAsViewer } from "./viewer-review-job";
+import { watchBackContentItem } from "./watch-back-job";
 import { HEAVY_JOB_LABEL, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "./heavy-job-kinds";
 import { runFilmRender, runFilmRenderChunk, runFilmStoryboard, runFilmVoiceAlign, type CinemaEngine, type FilmJobContext } from "./film-jobs";
 
@@ -135,6 +136,12 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       try {
         const gate = await runQualityGateForContentItem(db, storage, needModel(ctx), a.contentItemId, actor);
         const state = await stateOf(db, a.contentItemId);
+        // The watch-back, in shadow, after a PASS (flag watch_back.auto): records the verdict
+        // for Chris and the agreement score; a failure here never costs the render or the gate.
+        if (gate.overallStatus === "PASS" && (await isEnabled(db, WATCH_BACK_AUTO_FLAG).catch(() => false))) {
+          progress(93, "Watching it back…", "watch");
+          await watchBackContentItem(db, storage, () => needModel(ctx), a.contentItemId, actor, { jobRunId: ctx.jobRunId ?? null, onProgress: (pct, message) => progress(93 + pct * 0.06, message, "watch") }).catch(() => null);
+        }
         return {
           ok: true,
           result: { render, state, gate: { overallStatus: gate.overallStatus, gates: gate.gates, reasons: gate.reasons, passed: state === "READY" || gate.overallStatus === "PASS" } },
@@ -299,6 +306,20 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       }
     }
 
+    case "watch-back": {
+      const a = args as HeavyJobArgsByKind["watch-back"];
+      try {
+        const r = await watchBackContentItem(db, storage, () => needModel(ctx), a.contentItemId, actor, {
+          jobRunId: ctx.jobRunId ?? null,
+          applyFixes: a.applyFixes,
+          onProgress: (pct: number, message: string) => progress(pct, message, "watch"),
+        });
+        const msg = r.verdict === "PASS" ? "Watched it back: it passes." : r.verdict === "FIX" ? `Watched it back: ${r.fixes.length} fix${r.fixes.length === 1 ? "" : "es"} named.` : "Watched it back: it needs you.";
+        return { ok: true, result: r, message: msg };
+      } catch (err) {
+        return { ok: false, result: { errorName: err instanceof Error ? err.name : "Error" }, error: errMsg(err), message: "The watch-back couldn't run." };
+      }
+    }
     case "viewer-review": {
       const a = args as HeavyJobArgsByKind["viewer-review"];
       const opts = {

@@ -189,12 +189,16 @@ export async function finalizePublishing(
   // signal for PUBLISHING; a partial-failure publish is a genuine success (graceful
   // degradation working as designed) but a weaker signal, so it deliberately doesn't count
   // here — same standard as EDIT_PLANNING's "first attempt only" rule in quality-gate.ts.
+  // Since 2026-10-22 (watch-back gate) an API success alone is no longer the signal: the
+  // outcome counts only when Chris rated this video's edit UP (posted as-is). Without a rating
+  // nothing is counted — autonomy is agreement with him, not with the platform.
   if (failedPlatforms.length === 0) {
+    const rating = await prisma.watchRating.findFirst({ where: { contentItemId }, orderBy: { createdAt: "desc" } });
     const editPlan = await prisma.editPlan.findFirst({
       where: { contentItemId },
       orderBy: { createdAt: "desc" },
     });
-    if (editPlan) {
+    if (editPlan && rating?.rating === "UP") {
       await recordApprovedOutcome(prisma, "PUBLISHING", editPlan.productionTier, actor);
     }
   }

@@ -258,6 +258,17 @@ domain function with seeded rows (worker/domain DB test conventions above).
   "mine" (needs the Weeks 6–8 rating label). The snapshot must carry
   `packages/media/assets/models/tesseract/eng.traineddata.gz` (restoreRunner downloads it); the
   references must be re-measured once shipped for the screen signals to exist.
+- Weeks 6–8: built 2026-10-22 (not yet shipped). The watch-back gate: free audits (splice,
+  screen, the new story audit) → `WATCH_BACK` (HIGH vision, contrastive reference frames,
+  typed fixes) + `HOOK_TEST` (MEDIUM) → PASS / FIX / HOLD recorded as `WatchVerdict`; the one
+  fix loop (`applyWatchFixes` + re-cut / re-render / re-gate / re-watch) behind
+  `watch_back.fix_loop`; HOLD stops the publish preflight behind `watch_back.gating`; the watch
+  runs after every gate PASS behind `watch_back.auto`; Chris's one-tap rating (`WatchRating`)
+  on the content page; autonomy as agreement per series (`getSeriesAgreement`: ≥ 90 % over
+  ten, no override, demoted on a pulled post); PUBLISHING outcomes count only with a 👍. All
+  three flags default off (shadow). Not done: the HOLD queue on the home page (the card is on
+  the content page), a "pull this post" action that records PULLED, gate thresholds from the
+  StyleModel bands, promoting the splice/screen audits to BLOCKING.
 - Routine: after any cutting change run `pnpm golden:replay` (diff must be empty or explained),
   `--update` to re-baseline, and note it in DECISIONS. Re-pull a fixture after the AI edit runs
   on that video so it gains an Editor plan.

@@ -43,6 +43,19 @@ export interface PreflightInput {
  * another succeeded must not strand the failed one forever) — never a state regression. */
 const PUBLISHABLE_STATES: ContentState[] = ["SCHEDULED", "PUBLISHING", "PUBLISHED", "MEASURING"];
 
+/** The watch-back's objection to publishing this render, or null (see runPreflight). */
+export async function watchBackHoldFor(prisma: PrismaClient, renderId: string): Promise<string | null> {
+  const gating = await prisma.featureFlag.findUnique({ where: { key: "watch_back.gating" } });
+  if (!gating?.enabled) return null;
+  const verdict = await prisma.watchVerdict.findFirst({ where: { renderId }, orderBy: { createdAt: "desc" } });
+  if (!verdict) return null;
+  const blocking = verdict.verdict === "HOLD" || (verdict.verdict === "FIX" && verdict.loop >= 1);
+  if (!blocking) return null;
+  const answered = await prisma.watchRating.findFirst({ where: { watchVerdictId: verdict.id, action: "POST_ANYWAY" } });
+  if (answered) return null;
+  return `The watch-back put this video on hold (${verdict.coldViewer.slice(0, 140)}) — Fix it or Post anyway on the video page.`;
+}
+
 export async function runPreflight(prisma: PrismaClient, input: PreflightInput): Promise<PreflightStatus> {
   const reasons: string[] = [];
 
@@ -96,6 +109,11 @@ export async function runPreflight(prisma: PrismaClient, input: PreflightInput):
     // counts (a re-run after a repair supersedes an older one).
     const approval = await renderPublishApproval(prisma, render.id);
     if (!approval.ok) reasons.push(approval.reason);
+    // The watch-back gate (2026-10-22): with watch_back.gating on, a HOLD (or a FIX whose one
+    // loop is spent) on this exact render stops the post until Chris answers it — "Fix it"
+    // makes a new render, "Post anyway" is a journaled override. Shadow (flag off): recorded only.
+    const hold = await watchBackHoldFor(prisma, render.id);
+    if (hold) reasons.push(hold);
     reasons.push(
       ...validateMediaSpec(
         input.platform,

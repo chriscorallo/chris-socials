@@ -9801,3 +9801,65 @@ deploy) then worker snapshot `snap_UH00hLNWOECDqqJNDuWzk6wY8dEJ` (built with `--
 production redeploy so web and worker match. The first snapshot attempt failed because the new
 OCR-model download sat after the assets→bundle copy the manifest checks; fixed in `18fa514`.
 The reference library must be re-measured (Measure on `/reference`) for the v3 screen signals.
+
+## 2026-10-22 — The watch-back gate (Weeks 6–8 of the premium editor plan)
+
+**Decision:** one watch-back stage, a bar not a score, replaces "three reviews that nothing
+reads": free audits → one model watch judged against a reference → PASS / FIX / HOLD with typed
+fixes, one fix loop, a HOLD for Chris, and autonomy redefined as agreement with him. Built
+behind three flags that all default off; not shipped yet.
+
+1. **Order inside the job** (`apps/worker/src/watch-back-job.ts`, heavy job `watch-back`):
+   (a) the free audits — the splice audit and the screen audit from Weeks 1–4 plus a new story
+   audit (`packages/media/src/watch/story-audit.ts`: every Editor line present and in order, no
+   dependent opener whose referent was cut, the ENDING line last); (b) frames on both sides of
+   every cut and screen change (the viewer check's planner, ≤ 36) and, when a measured reference
+   with media exists, six of its frames at the same fractions of its length — **contrastive**
+   judging, so the model answers "which reads as edited by a person" instead of rating its own
+   work; (c) `WATCH_BACK` (HIGH vision): a six-item checklist answered in words with timestamped
+   evidence, a cold-viewer read, ≤ 5 typed fixes; (d) `HOOK_TEST` (MEDIUM): the first frame and
+   the first two seconds of words alone. The verdict is then settled by rule (`settleVerdict`):
+   a clean checklist = PASS; fixes on the first watch = FIX; the loop spent = HOLD; a failed
+   HOOK_BY_1_5S together with a NO from the hook test = HOLD regardless. Cost ≈ the viewer
+   check's (same cap, `VIEWER_REVIEW_MAX_USD`) plus one MEDIUM call.
+2. **Typed fixes** (`packages/media/src/watch/fixes.ts`, `WatchFixSchema`): EDITOR
+   DROP_LINE / RESTORE_LINE / MOVE_ENDING by sentence id → Full-edit choices and a re-cut;
+   SCREEN MOVE (to a zone) / SHRINK / DROP / RETIME (±3 s) by element id; SPLICE RETIME a cut by
+   ±250 ms (never crossing the other side, never a clip under 0.2 s). Unknown elements are
+   skipped and said so. With `watch_back.fix_loop` on, a FIX applies them (a re-cut when EDITOR
+   fixes exist, else a new finishing-edit version noted "Watch-back fixes (automatic)" — kept
+   out of the hand-edit set, `isHandEditReason`), re-renders, re-runs the hard gate and watches
+   once more; a second FIX is a HOLD.
+3. **HOLD without a new state.** The state machine is untouched (CLAUDE.md). A HOLD is a
+   `WatchVerdict` row; with `watch_back.gating` on, `runPreflight` refuses to publish that exact
+   render (`watchBackHoldFor`) until Chris answers on the content page: **Fix it** (rates 👎,
+   runs the job with the loop forced) or **Post anyway** (a journaled `WatchRating` override
+   that lets preflight through). In shadow (default) the verdict is recorded and shown only.
+4. **Autonomy as agreement** (`packages/domain/src/watch-back.ts`): Chris's one-tap rating at
+   post time (👍 good as-is / 👎 had to change it) is the label. Per series, over the last ten
+   rated videos: agreement = PASS↔👍 or FIX/HOLD↔👎; earned at ≥ 90 % with no "post anyway"
+   override; demoted by any pulled post or a rejected PASS. `watchBackEarnedFor` folds in the
+   global `autonomy.shadow_only` switch; the ceiling stays human-only. `recordApprovedOutcome`
+   for PUBLISHING now counts only when the video was rated 👍 — an API success is no longer the
+   signal. The rating UI sits on the content page's watch-back card; a `PULLED` action is
+   defined but no "pull this post" button exists yet.
+5. **Flags:** `watch_back.auto` (run after every gate PASS, inside the render job, never costing
+   the render), `watch_back.fix_loop`, `watch_back.gating`. Turn on in that order as the shadow
+   agreement earns it; FACTUAL is never touched by any of them.
+
+**Alternatives considered:** a new HOLD content state (rejected: the state machine is fixed and
+the preflight + a verdict row express it); letting the model rate (rejected: the plan's "never
+a score"); applying fixes without a re-watch (rejected: the second watch is what makes the loop
+honest).
+
+**Verification:** `watch.test.ts` (fixes applied and bounded, unknown elements skipped, five
+max; the story audit on a clean and a broken cut), `watch-back.test.ts` (frames and reference
+pairs labelled, audits and digest in the prompt, the hook test, the verdict rules),
+`watch-back-agreement.test.ts` (the promotion and demotion rules), `watch-back-job.test.ts` (a
+real tiny render: audits → HIGH watch → MEDIUM hook test → the row with its fixes; the loop
+off; the preflight hold under the gating flag and its override; the agreement), the touched
+worker suites (publish, autonomous publish, gate, viewer review) green; typecheck and lint
+clean. Migration `20261022230000_watch_back` applied to the dev database.
+
+**Reversibility:** every behaviour is behind a flag that defaults off; the tables are additive;
+removing the flags leaves the hard gate exactly as it was.
