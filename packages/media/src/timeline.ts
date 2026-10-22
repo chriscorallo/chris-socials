@@ -49,6 +49,12 @@ export type TimelineClip = z.infer<typeof TimelineClipSchema>;
 
 export const TEXT_STYLE_PRESETS = ["HEADLINE", "CAPTION", "NUMBER_CALLOUT", "LOWER_THIRD", "CUSTOM"] as const;
 
+/** Where the Screen Orchestrator anchored a text (screen/anchors.ts): the top zone above the
+ * head, a side band beside it, near the speaker (chest), or FREE (placed by hand / unknown).
+ * Informational — `x`/`y` are already resolved; the editor shows it and the audit checks it. */
+export const TEXT_ANCHORS = ["TOP", "SIDE_L", "SIDE_R", "NEAR_SPEAKER", "FREE"] as const;
+export type TextAnchor = (typeof TEXT_ANCHORS)[number];
+
 export const TimelineTextSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1).max(500),
@@ -70,10 +76,37 @@ export const TimelineTextSchema = z.object({
   /** Max line width as a fraction of canvas width; text wraps inside it. */
   maxWidth: z.number().min(0.2).max(1).default(0.84),
   uppercase: z.boolean().default(false),
+  anchor: z.enum(TEXT_ANCHORS).default("FREE"),
+  /** Entrance / exit as a fade (seconds, 0 = hard). Renderer (drawtext alpha, ASS \fad) and the
+   * browser preview (opacity) use the same curve: linear over the window. Exits are quicker
+   * than entrances by convention (the orchestrator sets 0.2 / 0.12). */
+  fadeIn: z.number().min(0).max(1).default(0),
+  fadeOut: z.number().min(0).max(1).default(0),
 });
 export type TimelineText = z.infer<typeof TimelineTextSchema>;
 
-export const CAPTION_PRESETS = ["CLEAN", "BOLD_HIGHLIGHT", "BOXED", "KARAOKE"] as const;
+/** Opacity of a text at output time t (0–1); 0 outside [start, end). Shared by the renderer's
+ * expressions and the preview. */
+export function textOpacityAt(t: Pick<TimelineText, "start" | "end" | "fadeIn" | "fadeOut">, time: number): number {
+  if (time < t.start || time >= t.end) return 0;
+  let a = 1;
+  if (t.fadeIn > 0) a = Math.min(a, (time - t.start) / t.fadeIn);
+  if (t.fadeOut > 0) a = Math.min(a, (t.end - time) / t.fadeOut);
+  return Math.max(0, Math.min(1, a));
+}
+
+/** QUIET (2026-10-21): the orchestrator's support captions — small, white, thin stroke, no
+ * plate, no spoken-word highlight; the headline is the loud layer. */
+export const CAPTION_PRESETS = ["CLEAN", "BOLD_HIGHLIGHT", "BOXED", "KARAOKE", "QUIET"] as const;
+
+/** A stretch of the output where the caption chunk size differs from `maxWordsPerChunk`: one
+ * word at a time for a short emotional line, phrases for a line with amounts (screen/captions.ts). */
+export const CaptionChunkWindowSchema = z.object({
+  start: z.number().nonnegative(),
+  end: z.number().positive(),
+  maxWords: z.number().int().min(1).max(8),
+});
+export type CaptionChunkWindow = z.infer<typeof CaptionChunkWindowSchema>;
 
 export const TimelineCaptionsSchema = z.object({
   enabled: z.boolean().default(true),
@@ -89,6 +122,8 @@ export const TimelineCaptionsSchema = z.object({
   y: Fraction.default(0.72),
   maxWordsPerChunk: z.number().int().min(1).max(8).default(3),
   uppercase: z.boolean().default(false),
+  /** Adaptive chunking by stretch (non-overlapping, output seconds); empty = one size throughout. */
+  chunking: z.array(CaptionChunkWindowSchema).default([]),
   /**
    * Caption text corrections, keyed `${mediaAssetId}:${wordIndex}` into that take's
    * transcriptWords. Value = replacement text; "" hides the word. Timing always comes from the
@@ -110,6 +145,9 @@ export const TimelineZoomSchema = z.object({
   /** "CUT" = jump zoom (instant); "EASE" = smooth push-in over `easeSeconds`. */
   mode: z.enum(["CUT", "EASE"]).default("CUT"),
   easeSeconds: z.number().min(0).max(3).default(0.4),
+  /** In-hold-out: ease back to 1 over the last `easeOutSeconds` of the window (0 = snap back,
+   * the pre-2026-10-21 behaviour). */
+  easeOutSeconds: z.number().min(0).max(3).default(0),
 });
 export type TimelineZoom = z.infer<typeof TimelineZoomSchema>;
 

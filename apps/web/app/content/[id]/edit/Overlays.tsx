@@ -6,6 +6,7 @@ import {
   layoutTimelineText,
   layoutCaptionChunk,
   resolveGrade,
+  textOpacityAt,
   GRADE_PRESETS,
   GRADE_PRESET_VALUES,
   LAYOUT,
@@ -131,26 +132,33 @@ export function OverlaySvg({ w, h, guides, inlineEditor }: { w: number; h: numbe
 
 function TextLayer({ k, editing }: { k: number; editing: string | null }) {
   const { doc, engine, state, fontsVersion } = useEditor();
+  // Visible texts with their fade opacity (renderer: drawtext alpha / ASS \fad — same curve,
+  // textOpacityAt), quantised so the layer only re-renders when something the eye sees changes.
   const visibleKey = usePlayheadValue(engine, (t) =>
     doc.texts
       .filter((x) => t >= x.start && t < x.end)
-      .map((x) => x.id)
+      .map((x) => `${x.id}=${Math.round(textOpacityAt(x, t) * 20) / 20}`)
       .join(","),
   );
-  const visible = new Set(visibleKey ? visibleKey.split(",") : []);
+  const visible = new Map<string, number>(visibleKey ? visibleKey.split(",").map((p) => [p.slice(0, p.lastIndexOf("=")), Number(p.slice(p.lastIndexOf("=") + 1))] as [string, number]) : []);
   const selectedId = state.selection?.kind === "text" ? state.selection.id : null;
   return (
     <>
       {doc.texts
         .filter((t) => visible.has(t.id))
         .map((t) => (
-          <TextItem key={t.id} t={t} k={k} selected={t.id === selectedId} editing={editing === t.id} fontsVersion={fontsVersion} />
+          <TextItem key={t.id} t={t} k={k} selected={t.id === selectedId} editing={editing === t.id} fontsVersion={fontsVersion} fade={selected(t.id, selectedId) ? 1 : visible.get(t.id) ?? 1} />
         ))}
     </>
   );
 }
 
-function TextItem({ t, k, selected, editing, fontsVersion }: { t: TimelineText; k: number; selected: boolean; editing: boolean; fontsVersion: number }) {
+/** A selected text is shown solid while fading so the handles stay usable. */
+function selected(id: string, selectedId: string | null): boolean {
+  return id === selectedId;
+}
+
+function TextItem({ t, k, selected, editing, fontsVersion, fade }: { t: TimelineText; k: number; selected: boolean; editing: boolean; fontsVersion: number; fade: number }) {
   const { setUi, doc, touch } = useEditor();
   // fontsVersion: re-measure once webfonts load
   const L = useMemo(() => layoutTimelineText(t, doc.canvas, browserMeasureText), [t, doc.canvas, fontsVersion]);
@@ -162,7 +170,7 @@ function TextItem({ t, k, selected, editing, fontsVersion }: { t: TimelineText; 
   const hs = (touch ? 22 : 12) / k;
   return (
     <g
-      style={{ pointerEvents: "auto", cursor: "grab", opacity: hidden ? 0 : 1 }}
+      style={{ pointerEvents: "auto", cursor: "grab", opacity: hidden ? 0 : fade }}
       data-gesture="text"
       data-id={t.id}
       onDoubleClick={(e) => {

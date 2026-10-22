@@ -6,6 +6,7 @@ import {
   isEnabled,
   isScriptVersionFilmable,
   parseTranscriptWords,
+  readStoredFullEdit,
   recordAudit,
   recordReplannedEditPlan,
   saveFinishingEdit,
@@ -170,6 +171,10 @@ export async function designMotionForContentItem(
     const { topic } = classifyMotionTopic({ ...topicInput, script: gated?.spokenScript ?? null });
     const motionTaste = await getMotionTasteForDesign(db, topic).catch(() => null);
     let brief: VisualBrief | null = null;
+    // The Editor's beats (where each idea plays, its headline, what the viewer needs there) from
+    // the stored full edit on this row — the strategist plans only inside beats that name a need.
+    const storedEdit = readStoredFullEdit(row.plan);
+    const editorBeats = ((storedEdit?.report as { editor?: { beats?: Array<{ role: string; headline: string | null; viewerNeeds: string | null; start: number; end: number }> } | null } | undefined)?.editor?.beats ?? null);
     if (options.strategize && !options.focus) {
       const phrases = buildTranscriptPhrases(outputTimelineWords(timeline, wordsByAsset));
       brief = await runVisualStrategistAgent(scopeProvider(provider, { contentItemId }), {
@@ -179,6 +184,7 @@ export async function designMotionForContentItem(
         brandContext,
         creativeBrief: await creativeBriefTextFor(db, contentItemId),
         existing: options.replaceExisting ? null : timeline.visuals.map((v) => ({ start: v.start, end: v.end, name: v.anchorText ?? v.template })),
+        editorBeats: editorBeats?.length ? editorBeats.map((b) => ({ role: b.role, headline: b.headline, viewerNeeds: b.viewerNeeds, start: b.start, end: b.end })) : null,
       });
     }
     const designed: DesignVisualsResult = await designVisualsForTimeline(scopeProvider(provider, { contentItemId }), {

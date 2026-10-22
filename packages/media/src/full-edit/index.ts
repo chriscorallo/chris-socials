@@ -26,6 +26,7 @@ import { buildSentences, keywords, type FESentence } from "./understand";
 import { ALL_GRAPHIC_PRESETS, chooseVisuals, presetDescription, type VisualPick, type VisualRejection } from "./visuals";
 import { bare, cosine, hashString, LEXICAL_EMBEDDER, type FullEditEmbedder } from "./text";
 import { spokenNumbers, sameNumber } from "./numbers";
+import { applyScreenPlan, auditScreen, faceOf, planScreen, planZooms, toTimelineZooms, type ScreenBeat, type ScreenFinding, type ScreenInput, type ScreenPlan } from "../screen";
 
 export { LEXICAL_EMBEDDER, type FullEditEmbedder } from "./text";
 export { spokenNumbers, shortNumberLabel, sameNumber, type SpokenNumber } from "./numbers";
@@ -52,7 +53,7 @@ export { chooseVisuals, listGraphic, graphicNumbers, readSeconds, presetDescript
  * decisions and visual picks; this module stays the deterministic executor + checker.
  */
 
-export const FULL_EDIT_VERSION = 2; // 2: cut like the hand edits (2026-10-19)
+export const FULL_EDIT_VERSION = 3; // 2: cut like the hand edits (2026-10-19); 3: Screen Orchestrator + Editor v2 (2026-10-21)
 
 export interface FullEditChoices {
   /** Index into the hook candidates ("Try another hook"); omitted = the bot's pick. */
@@ -153,6 +154,24 @@ export const FullEditReportSchema = z.object({
     .nullable()
     .default(null),
   marked: z.array(z.object({ sentenceId: z.number(), note: z.string() })),
+  /** The Screen Orchestrator's plan (the Editor's cut only): anchors, leads per beat, zooms,
+   * graphic slots, the cover frame, the free screen audit. */
+  screen: z
+    .object({
+      headlineZone: z.string().nullable(),
+      headlineY: z.number().nullable(),
+      captionZone: z.string(),
+      captionY: z.number(),
+      captionPreset: z.string(),
+      leads: z.array(z.object({ beatIndex: z.number(), lead: z.string(), at: z.number() })),
+      zooms: z.array(z.object({ start: z.number(), end: z.number(), reason: z.string(), word: z.string().nullable() })),
+      slots: z.array(z.object({ beatIndex: z.number(), start: z.number(), end: z.number(), need: z.string() })),
+      coverFrameSeconds: z.number().nullable(),
+      audit: z.array(z.object({ kind: z.string(), atS: z.number(), detail: z.string() })),
+      notes: z.array(z.string()),
+    })
+    .nullable()
+    .default(null),
   visuals: z.array(z.object({ id: z.string(), presetId: z.string(), name: z.string(), reason: z.string(), start: z.number(), match: z.number(), numbers: z.array(z.number()) })),
   rejectedVisuals: z.number(),
   zooms: z.number(),
@@ -459,46 +478,90 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   const titleIndex = choices.titleIndex === null ? null : Math.min(choices.titleIndex ?? 0, titles.length - 1);
   const measure: MeasureText = input.measure ?? ((text, _f, px) => text.length * px * 0.56);
   const checks: FullEditCheck[] = [];
+  const chosenTitle = titleIndex != null && titleIndex >= 0 && titles[titleIndex] ? titles[titleIndex]!.text : null;
   let titleText: TimelineText | null = null;
-  if (titleIndex != null && titleIndex >= 0 && titles[titleIndex]) {
-    titleText = placeTitle(titles[titleIndex]!.text, timeline, Math.max(1.6, Math.min(2.4, hookEndOut)), input, measure);
-  }
-  // The Editor's beat headlines: the idea in 2–5 words, top zone, held for the whole beat
-  // (orchestration: one lead at a time; the hook title covers the hook beat).
-  const beatTexts: TimelineText[] = [];
+  // The Editor's beats with output timing (report) and, for the Screen Orchestrator, their words
+  // on the output timeline, emphasis words and whether an amount is spoken.
   const editorBeatsOut: NonNullable<FullEditReport["editor"]>["beats"] = [];
+  const screenBeats: ScreenBeat[] = [];
+  let screen: ScreenPlan | null = null;
+  let screenInput: ScreenInput | null = null;
   if (editor) {
     const beats = editorBeats(editor.plan);
     beats.forEach((b, i) => {
       // The beat's words as they play (after trims): the story order's spans for its lines.
       const spans = story.order.filter((o) => o.sentenceIds.some((id) => b.sentenceIds.includes(id)));
-      const w0 = Math.min(...spans.map((o) => o.w0));
-      const w1 = Math.max(...spans.map((o) => o.w1));
       if (!spans.length) return;
-      const start = srcToOut(words[w0]!.start, i > 0) ?? null;
-      const end = srcToOut(Math.max(words[w1]!.start, words[w1]!.end - 0.05), i > 0);
-      if (start == null || end == null) return;
+      // Each word as it plays: a word edge that fell inside a removed pause (the cut sits on the
+      // voice, Whisper's edge drifted into the quiet) is clamped to the clip, so no beat is lost.
+      const outWords: ScreenBeat["words"] = [];
+      for (const sp of spans) {
+        for (let k = sp.w0; k <= sp.w1; k++) {
+          const w = words[k]!;
+          const mid = (w.start + w.end) / 2;
+          const ws = srcToOut(w.start + 0.005, i > 0) ?? srcToOut(mid, i > 0);
+          const we = srcToOut(Math.max(w.start + 0.01, w.end - 0.005), i > 0) ?? srcToOut(mid, i > 0);
+          if (ws == null || we == null) continue;
+          const a = Math.min(ws, we);
+          const b2 = Math.max(we, a + 0.02);
+          outWords.push({ word: w.word, start: r3(a), end: r3(b2) });
+        }
+      }
+      if (!outWords.length) return;
+      const start = outWords[0]!.start;
+      const end = outWords[outWords.length - 1]!.end;
       editorBeatsOut.push({ role: b.role, headline: b.headline, viewerNeeds: b.viewerNeeds, sentenceIds: b.sentenceIds, start: r3(start), end: r3(end) });
-      if (!b.headline || i === 0) return; // the hook beat is the hook title
-      if (end - start < 1.2) return;
-      const t = placeTitle(b.headline.slice(0, 48), timeline, end, input, measure);
-      beatTexts.push({ ...t, id: `fe-beat-${i}`, start: r3(Math.max(0, start - 0.05)), end: r3(end), fontSize: Math.min(t.fontSize, 60), uppercase: true });
+      screenBeats.push({
+        index: screenBeats.length,
+        role: b.role,
+        headline: b.headline,
+        viewerNeeds: b.viewerNeeds,
+        sentenceIds: b.sentenceIds,
+        start: r3(start),
+        end: r3(end),
+        words: outWords,
+        emphasis: b.emphasis.flatMap((x) => x.words),
+        hasAmount: sentences.filter((x) => b.sentenceIds.includes(x.id)).some((x) => x.numbers.length > 0),
+      });
     });
+    screenInput = {
+      timeline,
+      mediaAssetId: input.mediaAssetId,
+      subjectTrack: input.subjectTrack ?? null,
+      sourceSize: input.sourceSize ?? null,
+      measure,
+      beats: screenBeats,
+      title: chosenTitle,
+      // The hook BEAT (all its lines), not just the hook candidate's first sentence.
+      hookEnd: screenBeats[0]?.end ?? hookEndOut,
+      pacing: editor.plan.pacing,
+    };
+    screen = planScreen(screenInput);
+    timeline = applyScreenPlan(timeline, screen);
+    titleText = timeline.texts.find((t) => t.id === "fe-hook-title") ?? null;
+  } else {
+    if (chosenTitle) titleText = placeTitle(chosenTitle, timeline, Math.max(1.6, Math.min(2.4, hookEndOut)), input, measure);
+    timeline = EditTimelineSchema.parse({ ...timeline, texts: titleText ? [titleText] : [] });
   }
-  timeline = EditTimelineSchema.parse({ ...timeline, texts: [...(titleText ? [titleText] : []), ...beatTexts] });
-
   // ---- 6. Visuals bot -------------------------------------------------------------------------
   const pv = await presetVectors(embedder);
   const keptStory = sentences.filter((s) => story.decisions[s.id]?.kept && !(story.coldOpen && !story.hookReplayed && hook.sentenceIds.includes(s.id)));
   const keptSpoken = keptStory.flatMap((s) => s.numbers);
   const vocabulary = new Set(words.map((w) => bare(w.word)));
+  const slotFor = (sentenceId: number) => screen?.slots.find((sl) => screenBeats[sl.beatIndex]?.sentenceIds.includes(sentenceId)) ?? null;
   const moments = keptStory
+    // The Editor's cut: a graphic only where a beat named a need (the orchestrator's slot);
+    // elsewhere his face is the picture.
+    .filter((s) => !screen || slotFor(s.id))
     .map((s) => {
       // Whisper's edges drift ±0.2 s: use the first/last word whose time lands inside a clip.
       let a: number | null = null;
       for (let k = s.w0; k <= s.w1 && a == null; k++) a = srcToOut((words[k]!.start + words[k]!.end) / 2, true);
       let b: number | null = null;
       for (let k = s.w1; k >= s.w0 && b == null; k--) b = srcToOut(Math.max(words[k]!.start, words[k]!.end - 0.05), true);
+      const slot = slotFor(s.id);
+      if (slot && a != null) a = Math.max(a, slot.start);
+      if (slot && a != null && b != null && b - a < 0.8) return null; // the slot opens too late in the line
       return a == null || b == null ? null : { sentence: s, outStart: a, outEnd: b, wordOut: (w: number) => srcToOut(words[w]!.start + 0.01, true) ?? srcToOut((words[w]!.start + words[w]!.end) / 2, true), vec: vecs[s.id]! };
     })
     .filter((m): m is NonNullable<typeof m> => !!m);
@@ -534,8 +597,9 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     });
     if (iter === 0) rejectedAll.push(...chosen.rejected);
     picks = chosen.picks.filter((p) => !(choices.removedVisualIds ?? []).includes(p.visual.id));
-    timeline = EditTimelineSchema.parse({ ...timeline, visuals: picks.map((p) => p.visual), zooms, sfx });
-    const solved = solveVisualPlacements(timeline, placementOpts);
+    timeline = EditTimelineSchema.parse({ ...timeline, visuals: picks.map((p) => p.visual), zooms: screen ? timeline.zooms : zooms, sfx });
+    const preferredRects = screen ? Object.fromEntries(picks.map((p) => [p.visual.id, slotFor(p.sentenceId)?.rect ?? null])) : undefined;
+    const solved = solveVisualPlacements(timeline, { ...placementOpts, preferredRects });
     const low = new Set(solved.warnings.filter((w) => w.code === "LOW_CONFIDENCE").map((w) => w.visualId));
     for (const p of picks.filter((x) => low.has(x.visual.id))) {
       note("QUALITY", `swapped out “${p.presetName}” — it had no spot clear of your face and the captions`);
@@ -546,28 +610,38 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     timeline = EditTimelineSchema.parse({ ...timeline, visuals: solved.visuals.filter((v) => !low.has(v.id)) });
     if (low.size === 0) break;
   }
+  if (screen && screenInput) {
+    // The ZOOM lane: in-hold-out on emphasis words and idea boundaries, never on a graphic's
+    // beat, then wherever nothing changed for too long (screen/plan.ts).
+    screen = planZooms(screen, timeline, screenInput);
+    timeline = EditTimelineSchema.parse({ ...timeline, zooms: toTimelineZooms(screen.zooms, screen.style) });
+  }
   // Retention: a long stretch with nothing changing on screen → a slow push-in there (bounded).
   for (let iter = 0; iter < 4; iter++) {
+    if (screen) break;
     const worst = staticGaps(timeline).sort((a, b) => b.len - a.len)[0];
     if (!worst || worst.len <= 7 || zooms.length >= Math.ceil(outDur / 12)) break;
     const s = moments.find((m) => m.outStart >= worst.start + 1 && m.outEnd <= worst.end - 0.3 && m.outEnd - m.outStart >= 1.2 && !timeline.visuals.some((v) => v.start < m.outEnd && m.outStart < v.end));
     if (!s) break;
-    zooms = [...zooms, { id: `fe-z-${s.sentence.id}`, start: r3(s.outStart), end: r3(s.outEnd), zoom: 1.08, x: 0.5, y: 0.4, mode: "EASE", easeSeconds: 0.6 }];
+    zooms = [...zooms, { id: `fe-z-${s.sentence.id}`, start: r3(s.outStart), end: r3(s.outEnd), zoom: 1.08, x: 0.5, y: 0.4, mode: "EASE", easeSeconds: 0.6, easeOutSeconds: 0 }];
     note("RETENTION", `added a slow push-in at ${s.outStart.toFixed(1)} s (${worst.len.toFixed(1)} s without a change)`);
     timeline = EditTimelineSchema.parse({ ...timeline, zooms });
   }
   // Emphasis: one punch-in on the punchiest un-illustrated line per ~15 s (on a WIDE shot).
   const emphasisRx = /\b(stop|never|nobody|no one|most people|free money|trap|before it ever|instead)\b/i;
   for (const m of moments) {
+    if (screen) break;
     if (zooms.length >= Math.max(1, Math.floor(outDur / 15))) break;
     if (!emphasisRx.test(m.sentence.text) || m.outEnd - m.outStart > 4.5) continue;
     if (timeline.visuals.some((v) => v.start < m.outEnd + 0.3 && m.outStart < v.end + 0.3)) continue;
     if (zooms.some((z) => z.start < m.outEnd + 3 && m.outStart < z.end + 3)) continue;
     const ci = timeline.clips.findIndex((_, i) => clipStarts[i]! <= m.outStart + 1e-6 && m.outStart < clipStarts[i]! + (timeline.clips[i]!.sourceEnd - timeline.clips[i]!.sourceStart));
     if (ci < 0 || timeline.clips[ci]!.crop.zoom > 1.001) continue;
-    zooms.push({ id: `fe-z-${m.sentence.id}`, start: r3(m.outStart), end: r3(m.outEnd), zoom: 1.08, x: 0.5, y: 0.4, mode: "EASE", easeSeconds: 0.5 });
+    zooms.push({ id: `fe-z-${m.sentence.id}`, start: r3(m.outStart), end: r3(m.outEnd), zoom: 1.08, x: 0.5, y: 0.4, mode: "EASE", easeSeconds: 0.5, easeOutSeconds: 0 });
   }
-  timeline = EditTimelineSchema.parse({ ...timeline, zooms: zooms.sort((a, b) => a.start - b.start) });
+  if (!screen) timeline = EditTimelineSchema.parse({ ...timeline, zooms: zooms.sort((a, b) => a.start - b.start) });
+  // The free screen audit (the rules checked on what renders; gate G1 runs the same on the render).
+  const screenAudit: ScreenFinding[] = screen ? auditScreen(timeline, { mediaAssetId: input.mediaAssetId, subjectTrack: input.subjectTrack ?? null, sourceSize: input.sourceSize ?? null, measure, hookExpected: !!chosenTitle }) : [];
 
   // ---- Checks (reported) -------------------------------------------------------------------
   const transcriptNumbers = spokenNumbers(words.map((w) => w.word));
@@ -617,7 +691,8 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   });
   // Quality: title placement, captions, loudness, placement warnings.
   const qIssues: string[] = [];
-  if (titleText) {
+  for (const f of screenAudit) if (f.kind === "FACE_OVERLAP" || f.kind === "TWO_LEADS" || f.kind === "HOOK_TEXT_LATE" || f.kind === "ZOOM_DURING_GRAPHIC") qIssues.push(`${f.detail} (screen audit)`);
+  if (titleText && !screen) {
     const hr = subjectRegionsForWindow(timeline, titleText.start, titleText.end, placementOpts).head;
     const head = hr ? faceOf(hr) : null;
     const rect = layoutTimelineText(titleText, timeline.canvas, measure).rect;
@@ -636,7 +711,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     name: "Quality",
     status: qIssues.length ? "WARN" : fixes.QUALITY ? "FIXED" : "PASS",
     detail: [
-      qIssues.length ? `Check: ${qIssues.join("; ")}.` : "Graphics and title clear of your face, the captions and the app buttons.",
+      qIssues.length ? `Check: ${qIssues.join("; ")}.` : screen ? `One screen: headlines ${screen.anchors.headline ? `in the ${screen.anchors.headline.zone.toLowerCase().replace("_", " ")} zone` : "off (no clear zone)"}, captions quiet near you, ${screen.zooms.length} punch-in${screen.zooms.length === 1 ? "" : "s"}, nothing on your face.` : "Graphics and title clear of your face, the captions and the app buttons.",
       timeline.captions.enabled ? `Captions on (${timeline.captions.fontSize} px).` : "Captions off.",
       "Audio mastered to −14 LUFS.",
       ...(fixes.QUALITY ?? []).map((f) => `Fixed: ${f}.`),
@@ -712,6 +787,21 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
     kept: [...new Set(story.order.flatMap((o) => o.sentenceIds))].map((id) => sentences.find((s) => s.id === id)!).filter(Boolean).map((s) => ({ sentenceId: s.id, text: s.text, beat: s.beat })),
     editor: editor ? { rationale: editor.plan.rationale, pacing: editor.plan.pacing, coldViewer: editor.plan.coldViewer ?? null, problems: editor.problems, beats: editorBeatsOut } : null,
     marked: story.marked.map((m) => ({ sentenceId: m.id, note: m.note })),
+    screen: screen
+      ? {
+          headlineZone: screen.anchors.headline?.zone ?? null,
+          headlineY: screen.anchors.headline?.y ?? null,
+          captionZone: screen.anchors.caption.zone,
+          captionY: screen.anchors.caption.y,
+          captionPreset: screen.captions.preset,
+          leads: screen.leads,
+          zooms: screen.zooms.map((z) => ({ start: z.start, end: z.end, reason: z.reason, word: z.word })),
+          slots: screen.slots.map((sl) => ({ beatIndex: sl.beatIndex, start: sl.start, end: sl.end, need: sl.need })),
+          coverFrameSeconds: screen.coverFrameSeconds,
+          audit: screenAudit.map((f) => ({ kind: f.kind, atS: f.atS, detail: f.detail })),
+          notes: screen.notes,
+        }
+      : null,
     visuals: picks.map((p) => ({ id: p.visual.id, presetId: p.presetId, name: p.presetName, reason: p.reason, start: r2(timeline.visuals.find((v) => v.id === p.visual.id)?.start ?? p.visual.start), match: p.match, numbers: p.numbers })),
     rejectedVisuals: rejectedAll.length,
     zooms: timeline.zooms.length,
@@ -757,14 +847,6 @@ export function staticGaps(t: EditTimeline): Array<{ start: number; end: number;
   return out;
 }
 
-/** The face (+ a small forehead/chin margin) inside a protected head region (subject-track-core:
- * face expanded 0.6 face heights up, 0.25 down, 0.35 widths each side). */
-export function faceOf(head: { x: number; y: number; width: number; height: number }) {
-  const fh = head.height / 1.85;
-  const fw = head.width / 1.7;
-  return { x: head.x + 0.35 * fw, y: head.y + 0.45 * fh, width: fw, height: fh * 1.25 };
-}
-
 /** The hook title: bold white on a dark plate, above Chris's head when there's room, else
  * between his chin and the captions; inside the platform-safe area. */
 function placeTitle(text: string, timeline: EditTimeline, end: number, input: FullEditInput, measure: MeasureText): TimelineText {
@@ -793,6 +875,9 @@ function placeTitle(text: string, timeline: EditTimeline, end: number, input: Fu
     y: 0.2,
     maxWidth: 0.8,
     uppercase: false,
+    anchor: "TOP",
+    fadeIn: 0,
+    fadeOut: 0,
   };
   for (const size of [76, 68, 60]) {
     const t = { ...base, fontSize: size };
@@ -806,18 +891,21 @@ function placeTitle(text: string, timeline: EditTimeline, end: number, input: Fu
     if (headTop - safeTop >= h + 2 * margin) return { ...t, y: r3(safeTop + (headTop - safeTop) / 2) };
     if (capTop - headBottom >= h + 2 * margin) return { ...t, y: r3(headBottom + (capTop - headBottom) / 2) };
   }
-  // No clear band around the whole head (a close-up): the face CORE (eyes → mouth) is what must
-  // stay clear; the title may sit over the hair above it, else in the band between chin and
-  // captions, at the smallest size.
-  const t = { ...base, fontSize: 56 };
-  const h = layoutTimelineText(t, canvas, measure).rect.height / H;
-  if (head) {
-    const safeRect = placementSafeArea(canvas, PLACEMENT_SAFE_ZONE);
-    const core = protectedFaceRect(head, safeRect);
-    const coreTop = core.y / H;
-    const coreBottom = (core.y + core.height) / H;
-    if (coreTop - safeTop >= h + 0.02) return { ...t, y: r3(coreTop - h / 2 - 0.01) };
-    if (capTop - coreBottom >= h + 0.02) return { ...t, y: r3(coreBottom + h / 2 + 0.01) };
+  // No clear band around the whole head (a close-up): smaller type, over the hair above the
+  // face or in the band between chin and captions — never the forehead (2026-10-21: the old
+  // fallback used the eyes→mouth core as the limit, which put the title on his forehead).
+  for (const size of [56, 50]) {
+    const t = { ...base, fontSize: size };
+    const h = layoutTimelineText(t, canvas, measure).rect.height / H;
+    if (!head) return { ...t, y: r3(safeTop + h / 2 + 0.01) };
+    const f = faceOf(head);
+    const faceTop = f.y / H;
+    const faceBottom = (f.y + f.height) / H;
+    if (faceTop - safeTop >= h + 0.02) return { ...t, y: r3(safeTop + (faceTop - safeTop) / 2) };
+    if (capTop - faceBottom >= h + 0.02) return { ...t, y: r3(faceBottom + (capTop - faceBottom) / 2) };
   }
+  // Nothing clear at any size: the top safe edge, where at most the hair is under it.
+  const t = { ...base, fontSize: 50 };
+  const h = layoutTimelineText(t, canvas, measure).rect.height / H;
   return { ...t, y: r3(safeTop + h / 2 + 0.01) };
 }

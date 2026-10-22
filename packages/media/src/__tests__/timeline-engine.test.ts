@@ -99,9 +99,9 @@ describe("zoom curve", () => {
   it("CUT is instant, EASE ramps with easeInOutCubic then holds, both cut back at end", () => {
     const { zooms, warnings } = normalizeZooms(
       [
-        { id: "e", start: 3, end: 5, zoom: 1.5, x: 0.3, y: 0.3, mode: "EASE", easeSeconds: 1 },
-        { id: "c", start: 1, end: 2, zoom: 1.2, x: 0.5, y: 0.5, mode: "CUT", easeSeconds: 0.4 },
-        { id: "late", start: 9, end: 12, zoom: 1.2, x: 0.5, y: 0.5, mode: "CUT", easeSeconds: 0.4 },
+        { id: "e", start: 3, end: 5, zoom: 1.5, x: 0.3, y: 0.3, mode: "EASE", easeSeconds: 1, easeOutSeconds: 0 },
+        { id: "c", start: 1, end: 2, zoom: 1.2, x: 0.5, y: 0.5, mode: "CUT", easeSeconds: 0.4, easeOutSeconds: 0 },
+        { id: "late", start: 9, end: 12, zoom: 1.2, x: 0.5, y: 0.5, mode: "CUT", easeSeconds: 0.4, easeOutSeconds: 0 },
       ],
       8,
     );
@@ -114,11 +114,17 @@ describe("zoom curve", () => {
     expect(zoomStateAt(zooms, 3.5).zoom).toBeCloseTo(1.25, 6);
     expect(zoomStateAt(zooms, 4.2).zoom).toBe(1.5);
     expect(easeInOutCubic(0.25)).toBeCloseTo(0.0625, 6);
+    // In-hold-out: with easeOutSeconds the zoom eases back to wide by `end` (2026-10-21).
+    const io = normalizeZooms([{ id: "o", start: 0, end: 4, zoom: 1.5, x: 0.5, y: 0.4, mode: "EASE", easeSeconds: 1, easeOutSeconds: 1 }], 8).zooms;
+    expect(zoomStateAt(io, 2).zoom).toBe(1.5);
+    expect(zoomStateAt(io, 3.5).zoom).toBeCloseTo(1.25, 6);
+    expect(zoomStateAt(io, 3.999).zoom).toBeCloseTo(1, 2);
+    expect(zoomFilter(io, canvas, 30)!).toContain("min(");
     const w = zoomWindow({ zoom: 2, x: 0.25, y: 0.5 }, canvas);
     expect(w).toEqual({ x: 135, y: 480, width: 540, height: 960 });
   });
   it("the ffmpeg perspective expression is built for every zoom", () => {
-    const f = zoomFilter([{ id: "a", start: 1, end: 2, zoom: 1.2, x: 0.5, y: 0.33, mode: "EASE", easeSeconds: 0.5 }], canvas, 30)!;
+    const f = zoomFilter([{ id: "a", start: 1, end: 2, zoom: 1.2, x: 0.5, y: 0.33, mode: "EASE", easeSeconds: 0.5, easeOutSeconds: 0 }], canvas, 30)!;
     expect(f).toMatch(/^perspective=/);
     expect(f).toContain("eval=frame");
     expect(f).toContain("((in-1)/30)");
@@ -302,7 +308,7 @@ describe("planToTimeline", () => {
     // The LOWER_THIRD sits in the lower caption band, so captions moved out of its way.
     const capRect = { x: 0, y: t.captions.y * 1920 - 50, width: 1080, height: 100 };
     expect(rectsIntersect(capRect, layoutTimelineText(lt!, canvas, nodeMeasureText).rect)).toBe(false);
-    expect(t.zooms).toEqual([{ id: "zoom-1", start: 1, end: 2, zoom: 1.2, x: 0.5, y: 0.33, mode: "CUT", easeSeconds: 0.4 }]);
+    expect(t.zooms).toEqual([{ id: "zoom-1", start: 1, end: 2, zoom: 1.2, x: 0.5, y: 0.33, mode: "CUT", easeSeconds: 0.4, easeOutSeconds: 0 }]);
     expect(t.grade.preset).toBe("NONE");
     expect(t.audio.normalize).toBe(true);
   });

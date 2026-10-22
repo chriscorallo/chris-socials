@@ -119,6 +119,7 @@
    }
   ],
   "zooms": 2,
+  "screen": null,
   "checks": [
    {
     "id": "MEANING_MATCH",

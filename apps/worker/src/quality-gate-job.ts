@@ -42,7 +42,9 @@ import {
   findTimelineCollisions,
   nodeMeasureText,
   directorOwnedVisualIds,
+  auditScreen,
   auditSplices,
+  parseSubjectTrack,
   refineWordEdges,
   type CaptionCollision,
   type EditTimeline,
@@ -273,6 +275,31 @@ async function runDeterministicChecks(db: PrismaClient, contentItemId: string): 
           recommendedRepair: f.kind === "GAP" ? "Tighten the cut (move the cut-out earlier or the cut-in later)." : f.kind === "CLIPPED_WORD" ? "Move the cut off the voice." : "Level the two sides of the cut.",
           source: "SPLICE_AUDIT",
         });
+      }
+    }
+    // The free screen audit (gate G1, screen rules on what rendered): nothing on the face core,
+    // one new thing per beat, the hook text by 1.5 s, no dead stretch, captions quieter than the
+    // headline. MAJOR (recorded, not blocking) like the splice audit until the watch-back weeks.
+    {
+      const primary = assets.find((a) => a.id === timeline.clips[0]!.mediaAssetId) ?? assets[0];
+      if (primary) {
+        const findings = auditScreen(timeline, {
+          mediaAssetId: primary.id,
+          subjectTrack: parseSubjectTrack(primary.subjectTrack),
+          sourceSize: primary.width && primary.height ? { width: primary.width, height: primary.height } : null,
+          measure: nodeMeasureText,
+          hookExpected: timeline.texts.some((t) => t.id === "fe-hook-title"),
+        });
+        for (const f of findings) {
+          collisionIssues.push({
+            category: `SCREEN_${f.kind}`,
+            description: `${f.detail}.`,
+            severity: "MAJOR",
+            timestampSeconds: f.atS,
+            recommendedRepair: f.kind === "FACE_OVERLAP" ? "Move the text off the face (the orchestrator's anchor, or by hand)." : f.kind === "TWO_LEADS" || f.kind === "ZOOM_DURING_GRAPHIC" ? "Give each beat one new thing — retime or drop one of the two." : f.kind === "HOOK_TEXT_LATE" ? "Put the hook headline on screen from the first frame." : f.kind === "STATIC_STRETCH" ? "Add the cheapest lead (a punch-in or the next headline earlier)." : "Make the captions smaller than the headline.",
+            source: "SCREEN_AUDIT",
+          });
+        }
       }
     }
     const chunks = timelineCaptionChunks(timeline, wordsByAsset);

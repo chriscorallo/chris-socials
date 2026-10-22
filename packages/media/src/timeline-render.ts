@@ -427,19 +427,30 @@ function assHeader(canvas: { width: number; height: number }): string[] {
   ];
 }
 
-function plateEvent(layer: number, start: number, end: number, rect: Rect, radius: number, color: string): string {
+/** drawtext `alpha` expression for a text's fade-in / fade-out (textOpacityAt's curve), or
+ * null when the text has no fades. */
+export function textAlphaExpr(t: Pick<EditTimeline["texts"][number], "start" | "end" | "fadeIn" | "fadeOut">): string | null {
+  const parts: string[] = [];
+  if (t.fadeIn > 0) parts.push(`clip((t-${n(t.start)})/${n(t.fadeIn)},0,1)`);
+  if (t.fadeOut > 0) parts.push(`clip((${n(t.end)}-t)/${n(t.fadeOut)},0,1)`);
+  if (!parts.length) return null;
+  return parts.length === 1 ? parts[0]! : `min(${parts[0]},${parts[1]})`;
+}
+
+function plateEvent(layer: number, start: number, end: number, rect: Rect, radius: number, color: string, fade?: { inMs: number; outMs: number }): string {
   const col = assColor(color);
-  return `Dialogue: ${layer},${assTime(start)},${assTime(end)},Base,,0,0,0,,{\\an7\\pos(0,0)\\bord0\\shad0\\1c${col.c}\\1a${col.a}\\p1}${assRoundedRect(rect, radius)}{\\p0}`;
+  const fad = fade && (fade.inMs > 0 || fade.outMs > 0) ? `\\fad(${Math.round(fade.inMs)},${Math.round(fade.outMs)})` : "";
+  return `Dialogue: ${layer},${assTime(start)},${assTime(end)},Base,,0,0,0,,{\\an7\\pos(0,0)\\bord0\\shad0${fad}\\1c${col.c}\\1a${col.a}\\p1}${assRoundedRect(rect, radius)}{\\p0}`;
 }
 
 /** ASS document with the rounded plates behind texts (drawtext draws the glyphs on top). */
 export function buildTextPlatesAss(
-  texts: Array<{ start: number; end: number; layout: TextElementLayout }>,
+  texts: Array<{ start: number; end: number; layout: TextElementLayout; fadeIn?: number; fadeOut?: number }>,
   canvas: { width: number; height: number },
 ): string | null {
   const events = texts
     .filter((t) => t.layout.plate)
-    .map((t) => plateEvent(0, t.start, t.end, t.layout.plate!.rect, t.layout.plate!.radius, t.layout.plate!.color));
+    .map((t) => plateEvent(0, t.start, t.end, t.layout.plate!.rect, t.layout.plate!.radius, t.layout.plate!.color, { inMs: (t.fadeIn ?? 0) * 1000, outMs: (t.fadeOut ?? 0) * 1000 }));
   if (events.length === 0) return null;
   return [...assHeader(canvas), ...events, ""].join("\n");
 }
@@ -566,12 +577,14 @@ export function zoomFilter(
   const T = `((in-1)/${fps})`;
   let z = "1";
   for (const zm of [...zooms].reverse()) {
-    let expr: string;
-    if (zm.mode === "EASE" && zm.easeSeconds > 0) {
-      const p = `clip((${T}-${n(zm.start)})/${n(zm.easeSeconds)},0,1)`;
-      const e = `if(lt(${p},0.5),4*pow(${p},3),1-pow(2-2*${p},3)/2)`;
-      expr = `(1+${n(zm.zoom - 1)}*${e})`;
-    } else expr = n(zm.zoom);
+    // Progress in (ease-in-out cubic over easeSeconds), hold, out (over easeOutSeconds) — the
+    // same curve as zoomProgressAt (timeline-layout.ts), so the preview matches.
+    const cubic = (p: string) => `if(lt(${p},0.5),4*pow(${p},3),1-pow(2-2*${p},3)/2)`;
+    const parts: string[] = [];
+    if (zm.mode === "EASE" && zm.easeSeconds > 0) parts.push(cubic(`clip((${T}-${n(zm.start)})/${n(zm.easeSeconds)},0,1)`));
+    if (zm.easeOutSeconds > 0) parts.push(cubic(`clip((${n(zm.end)}-${T})/${n(zm.easeOutSeconds)},0,1)`));
+    const progress = parts.length === 0 ? "1" : parts.length === 1 ? parts[0]! : `min(${parts[0]},${parts[1]})`;
+    const expr = parts.length ? `(1+${n(zm.zoom - 1)}*${progress})` : n(zm.zoom);
     z = `if(gte(${T},${n(zm.start)})*lt(${T},${n(zm.end)}),${expr},${z})`;
   }
   const W = canvas.width;
@@ -748,7 +761,7 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
     const preOverlayCount = vChain.length;
 
     const platesAss = buildTextPlatesAss(
-      texts.map((t, i) => ({ start: t.start, end: t.end, layout: textLayouts[i]! })),
+      texts.map((t, i) => ({ start: t.start, end: t.end, layout: textLayouts[i]!, fadeIn: t.fadeIn, fadeOut: t.fadeOut })),
       canvas,
     );
     if (platesAss) {
@@ -776,6 +789,8 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
           `y=${line.baseline}-ascent`,
         ];
         if (l.strokeWidth > 0 && t.strokeColor) opts.push(`borderw=${l.strokeWidth}`, `bordercolor=${ffColor(t.strokeColor)}`);
+        const alpha = textAlphaExpr(t);
+        if (alpha) opts.push(`alpha='${alpha}'`);
         opts.push(`enable='gte(t,${n(t.start)})*lt(t,${n(t.end)})'`);
         vChain.push(`drawtext=${opts.join(":")}`);
       }

@@ -88,6 +88,21 @@ export interface GoldenCut {
   headlines: Array<{ text: string; start: number; end: number }>;
   graphics: Array<{ presetId: string; start: number }>;
   zooms: number;
+  /** The Screen Orchestrator's plan (the Editor's cut): where things live, what leads each beat,
+   * the zooms with their reasons, the cover frame, the screen audit (2026-10-21). */
+  screen: {
+    headlineZone: string | null;
+    captionZone: string;
+    captionPreset: string;
+    titleY: number | null;
+    titleFontSize: number | null;
+    leads: string[];
+    zooms: Array<{ start: number; end: number; reason: string; word: string | null }>;
+    slots: number;
+    coverFrameSeconds: number | null;
+    audit: string[];
+    notes: string[];
+  } | null;
   checks: Array<{ id: string; status: string }>;
   splices: SpliceMetric[];
   spliceSummary: SpliceSummary;
@@ -225,7 +240,7 @@ export function compareToHandEdit(machine: EditTimeline, hand: EditTimeline, ass
 function summariseCut(r: FullEditResult, words: TranscriptWord[], silences: Array<{ start: number; end: number }> | null, analysis: SpliceAnalysis | null): GoldenCut {
   if (!r.ok) {
     const empty = summariseSplices([]);
-    return { ok: false, error: r.message, outputDurationS: 0, kept: [], removed: [], title: null, headlines: [], graphics: [], zooms: 0, checks: [], splices: [], spliceSummary: empty };
+    return { ok: false, error: r.message, outputDurationS: 0, kept: [], removed: [], title: null, headlines: [], graphics: [], zooms: 0, screen: null, checks: [], splices: [], spliceSummary: empty };
   }
   const rep = r.report;
   const splices = spliceMetrics(r.timeline, words, silences, analysis);
@@ -238,6 +253,21 @@ function summariseCut(r: FullEditResult, words: TranscriptWord[], silences: Arra
     headlines: r.timeline.texts.filter((t) => t.id.startsWith("fe-beat-")).map((t) => ({ text: t.text, start: r3(t.start), end: r3(t.end) })),
     graphics: rep.visuals.map((v) => ({ presetId: v.presetId, start: r3(v.start) })),
     zooms: rep.zooms,
+    screen: rep.screen
+      ? {
+          headlineZone: rep.screen.headlineZone,
+          captionZone: rep.screen.captionZone,
+          captionPreset: rep.screen.captionPreset,
+          titleY: r.timeline.texts.find((t) => t.id === "fe-hook-title")?.y ?? null,
+          titleFontSize: r.timeline.texts.find((t) => t.id === "fe-hook-title")?.fontSize ?? null,
+          leads: rep.screen.leads.map((l) => `${l.beatIndex}:${l.lead}@${l.at}`),
+          zooms: rep.screen.zooms,
+          slots: rep.screen.slots.length,
+          coverFrameSeconds: rep.screen.coverFrameSeconds,
+          audit: rep.screen.audit.map((a) => `${a.kind}@${a.atS}`),
+          notes: rep.screen.notes,
+        }
+      : null,
     checks: rep.checks.map((c) => ({ id: c.id, status: c.status })),
     splices,
     spliceSummary: summariseSplices(splices),
@@ -308,6 +338,15 @@ function diffCut(label: string, e: GoldenCut | null, a: GoldenCut | null, out: s
   if (!eq(e.headlines.map((h) => h.text), a.headlines.map((h) => h.text))) out.push(`${label}: headlines ${JSON.stringify(e.headlines.map((h) => h.text))} → ${JSON.stringify(a.headlines.map((h) => h.text))}`);
   if (!eq(e.graphics.map((g) => g.presetId), a.graphics.map((g) => g.presetId))) out.push(`${label}: graphics ${JSON.stringify(e.graphics.map((g) => g.presetId))} → ${JSON.stringify(a.graphics.map((g) => g.presetId))}`);
   if (e.zooms !== a.zooms) out.push(`${label}: zooms ${e.zooms} → ${a.zooms}`);
+  if (!!e.screen !== !!a.screen) out.push(`${label}: screen plan ${e.screen ? "lost" : "new"}`);
+  if (e.screen && a.screen) {
+    if (e.screen.headlineZone !== a.screen.headlineZone) out.push(`${label}: headline zone ${e.screen.headlineZone} → ${a.screen.headlineZone}`);
+    if (e.screen.captionZone !== a.screen.captionZone || e.screen.captionPreset !== a.screen.captionPreset) out.push(`${label}: captions ${e.screen.captionZone}/${e.screen.captionPreset} → ${a.screen.captionZone}/${a.screen.captionPreset}`);
+    if (!eq(e.screen.leads.map((l) => l.replace(/@.*/, "")), a.screen.leads.map((l) => l.replace(/@.*/, "")))) out.push(`${label}: leads ${JSON.stringify(e.screen.leads)} → ${JSON.stringify(a.screen.leads)}`);
+    if (!eq(e.screen.zooms.map((z) => z.reason), a.screen.zooms.map((z) => z.reason)) || e.screen.zooms.some((z, i) => Math.abs(z.start - (a.screen!.zooms[i]?.start ?? 1e9)) > 0.05)) out.push(`${label}: zoom lane ${JSON.stringify(e.screen.zooms.map((z) => `${z.reason}@${z.start}`))} → ${JSON.stringify(a.screen.zooms.map((z) => `${z.reason}@${z.start}`))}`);
+    if (!eq(e.screen.audit, a.screen.audit)) out.push(`${label}: screen audit ${JSON.stringify(e.screen.audit)} → ${JSON.stringify(a.screen.audit)}`);
+    if ((e.screen.coverFrameSeconds ?? -1) !== (a.screen.coverFrameSeconds ?? -1) && Math.abs((e.screen.coverFrameSeconds ?? -1) - (a.screen.coverFrameSeconds ?? -1)) > 0.1) out.push(`${label}: cover frame ${e.screen.coverFrameSeconds} → ${a.screen.coverFrameSeconds}`);
+  }
   if (!eq(e.checks, a.checks)) out.push(`${label}: checks ${JSON.stringify(e.checks)} → ${JSON.stringify(a.checks)}`);
   if (e.splices.length !== a.splices.length) out.push(`${label}: splices ${e.splices.length} → ${a.splices.length}`);
   else

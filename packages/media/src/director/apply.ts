@@ -227,7 +227,7 @@ export function describeVisual(v: Pick<TimelineVisual, "template" | "props">, pr
 // text styles
 // ---------------------------------------------------------------------------------------
 
-const TEXT_STYLE: Record<string, Omit<TimelineText, "id" | "text" | "start" | "end" | "x" | "y"> & { sizes: [number, number, number] }> = {
+const TEXT_STYLE: Record<string, Omit<TimelineText, "id" | "text" | "start" | "end" | "x" | "y" | "anchor" | "fadeIn" | "fadeOut"> & { sizes: [number, number, number] }> = {
   HEADLINE: { preset: "HEADLINE", fontId: "inter-display-extrabold", fontSize: 68, sizes: [56, 68, 80], color: "#FFFFFF", backgroundColor: "#000000B3", strokeColor: null, align: "center", maxWidth: 0.8, uppercase: false },
   PUNCH: { preset: "CUSTOM", fontId: "montserrat-black", fontSize: 110, sizes: [84, 110, 140], color: "#FFFFFF", backgroundColor: null, strokeColor: "#000000", align: "center", maxWidth: 0.9, uppercase: true },
   CAPTION: { preset: "CAPTION", fontId: "inter-display-bold", fontSize: 52, sizes: [44, 52, 62], color: "#FFFFFF", backgroundColor: null, strokeColor: "#000000", align: "center", maxWidth: 0.84, uppercase: false },
@@ -592,6 +592,9 @@ export function applyDirectorAnswer(timeline: EditTimeline, answer: DirectorAnsw
           uppercase: op.uppercase ?? look.uppercase,
           x: 0.5,
           y: 0.3,
+          anchor: "FREE",
+          fadeIn: 0,
+          fadeOut: 0,
         };
         const placed = placeText(doc, t, typeof op.placement === "string" ? op.placement : "AUTO", typeof op.placement === "object" ? op.placement : null, ctx);
         doc = { ...doc, texts: [...doc.texts, placed.text] };
@@ -626,7 +629,7 @@ export function applyDirectorAnswer(timeline: EditTimeline, answer: DirectorAnsw
           }
         }
         const id = findItem(op.ref) ? newId(op.ref) : `dc-${op.ref}`;
-        doc = { ...doc, zooms: [...doc.zooms, { id, start: s.start, end: s.end, zoom: amount, x: r3(x), y: r3(y), mode: op.mode ?? "CUT", easeSeconds: 0.4 }] };
+        doc = { ...doc, zooms: [...doc.zooms, { id, start: s.start, end: s.end, zoom: amount, x: r3(x), y: r3(y), mode: op.mode ?? "CUT", easeSeconds: 0.4, easeOutSeconds: 0 }] };
         refs[op.ref] = id;
         touched.add(id);
         changes.push({ kind: "ADDED", id, text: `Added: ${op.mode === "EASE" ? "slow push-in" : "punch-in"} ${amount}× on your face at ${fmtT(s.start)}–${fmtT(s.end)}` });

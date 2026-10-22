@@ -98,6 +98,9 @@ export function planToTimeline(plan: PlanLike, ctx: PlanToTimelineContext): Edit
         y: 0.5,
         maxWidth: p.maxWidth,
         uppercase: false,
+        anchor: "FREE",
+        fadeIn: 0,
+        fadeOut: 0,
       };
       // Largest size in [min, max] that fits in maxLines (the old auto-fit), then fixed.
       let size: number = p.maxSize;
@@ -159,6 +162,7 @@ export function planToTimeline(plan: PlanLike, ctx: PlanToTimelineContext): Edit
     maxWordsPerChunk: 3,
     uppercase: false,
     wordEdits: {},
+    chunking: [],
   };
 
   const zooms = (plan.punchIns ?? []).map((p, i) => ({

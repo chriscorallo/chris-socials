@@ -150,19 +150,26 @@ export interface ZoomState {
   y: number;
 }
 
+/** The zoom amount's progress (0 = wide, 1 = fully in) at `t` inside a zoom: in (easeSeconds),
+ * hold, out (easeOutSeconds, back to wide by `end`). Shared by zoomStateAt and the renderer's
+ * expression so preview = render. */
+export function zoomProgressAt(z: Pick<TimelineZoom, "start" | "end" | "mode" | "easeSeconds" | "easeOutSeconds">, t: number): number {
+  let p = 1;
+  if (z.mode === "EASE" && z.easeSeconds > 0) p = Math.min(p, easeInOutCubic((t - z.start) / z.easeSeconds));
+  if (z.easeOutSeconds > 0) p = Math.min(p, easeInOutCubic((z.end - t) / z.easeOutSeconds));
+  return Math.max(0, Math.min(1, p));
+}
+
 /**
  * Zoom at output time t. Inside [start, end): CUT = `zoom` instantly; EASE = ramps 1 -> zoom
- * over `easeSeconds` from `start` with easeInOutCubic, then holds. At `end` it cuts back to 1.
- * Expects normalizeZooms() output.
+ * over `easeSeconds` from `start` with easeInOutCubic, then holds; with `easeOutSeconds` it
+ * ramps back to 1 over the last `easeOutSeconds` (in-hold-out). Otherwise at `end` it cuts
+ * back to 1. Expects normalizeZooms() output.
  */
 export function zoomStateAt(zooms: TimelineZoom[], t: number): ZoomState {
   for (const z of zooms) {
     if (t >= z.start && t < z.end) {
-      if (z.mode === "EASE" && z.easeSeconds > 0) {
-        const e = easeInOutCubic((t - z.start) / z.easeSeconds);
-        return { zoom: 1 + (z.zoom - 1) * e, x: z.x, y: z.y };
-      }
-      return { zoom: z.zoom, x: z.x, y: z.y };
+      return { zoom: 1 + (z.zoom - 1) * zoomProgressAt(z, t), x: z.x, y: z.y };
     }
   }
   return { zoom: 1, x: 0.5, y: 0.5 };

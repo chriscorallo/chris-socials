@@ -232,9 +232,20 @@ domain function with seeded rows (worker/domain DB test conventions above).
 - Week 1: done and shipped. Splice engine, sample-exact render, caption times on the voice,
   free splice audit (MAJOR), SpliceModel fitted from 57 of his hand cuts. Worker snapshot
   `snap_zTd4zsWbRV8aDvtUj5uyPozidI76` (+ one more ship for the fitted model).
-- Next: Weeks 2–4 (Editor v2 + Screen Orchestrator). Open from Week 1: story joins should
-  prefer a voice gap; editor preview captions still on raw Whisper times; multi-part takes get
-  no analysis; promote the splice audit to BLOCKING once a few real videos show zero findings.
+- Weeks 2–4: built 2026-10-22 (not yet shipped — needs a worker ship, 10–12 min, plus the web
+  push). Editor v2 (`EDITOR` 2.0.0 + `EDITOR_CRITIQUE` 1.0.0: write → checklist + critique →
+  revise once; headline per beat, emphasis words, `review` stored on the plan), the Screen
+  Orchestrator (`packages/media/src/screen/`: anchors, five lanes, one new thing per beat, quiet
+  adaptive captions, in-hold-out zooms, cover frame, screen audit), timeline schema additions
+  (`TimelineText.anchor/fadeIn/fadeOut`, `TimelineZoom.easeOutSeconds`, `captions.chunking`,
+  caption preset `QUIET`; all defaulted — old rows parse unchanged), preview parity (text fades,
+  ease-out, caption windows), the screen audit in the gate (MAJOR, `SCREEN_AUDIT`), Editor beats
+  passed to the Visual Strategist, the title never on the forehead. Golden baseline re-written;
+  DECISIONS "Editor v2 + Screen Orchestrator". Open: story joins should prefer a voice gap;
+  editor preview captions still on raw Whisper times; multi-part takes get no analysis; promote
+  the splice/screen audits to BLOCKING once a few real videos show zero findings; the two Editor
+  fixtures show his framing leaves no clean top zone (headlines sit over the hair) — the filming
+  card's first line is the real fix; re-pull fixtures after the v2 Editor has run on a video.
 - Routine: after any cutting change run `pnpm golden:replay` (diff must be empty or explained),
   `--update` to re-baseline, and note it in DECISIONS. Re-pull a fixture after the AI edit runs
   on that video so it gains an Editor plan.

@@ -36,6 +36,7 @@ function printCut(label: string, c: GoldenCut | null) {
   console.log(`  ${label}: ${c.outputDurationS} s · title "${c.title ?? "—"}" · ${c.headlines.length} headlines · ${c.graphics.length} graphics · ${c.zooms} zooms`);
   for (const k of c.kept) console.log(`    [${k.sentenceId}] ${k.beat.padEnd(8)} ${k.text.slice(0, 90)}`);
   if (c.headlines.length) console.log(`    headlines: ${c.headlines.map((h) => `"${h.text}" ${h.start}–${h.end}`).join(" | ")}`);
+  if (c.screen) console.log(`    screen: headlines ${c.screen.headlineZone ?? "none"} · captions ${c.screen.captionZone}/${c.screen.captionPreset} · leads ${c.screen.leads.join(" ")} · zooms ${c.screen.zooms.map((z) => `${z.reason}@${z.start}`).join(" ") || "none"} · cover ${c.screen.coverFrameSeconds ?? "—"} · audit ${c.screen.audit.join(" ") || "clean"}${c.screen.notes.length ? ` · notes: ${c.screen.notes.join(" // ")}` : ""}`);
   console.log(`    ${fmtSum(c.spliceSummary)}`);
 }
 

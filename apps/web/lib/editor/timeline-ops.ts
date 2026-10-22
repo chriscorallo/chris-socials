@@ -237,8 +237,11 @@ export function addText(
     y: 0.3,
     maxWidth: 0.84,
     uppercase: false,
+    anchor: "FREE",
+    fadeIn: 0,
+    fadeOut: 0,
     ...partial,
-  };
+  } as TimelineText;
   return { doc: { ...doc, texts: [...doc.texts, t] }, id: t.id };
 }
 
@@ -269,6 +272,7 @@ export function addZoom(doc: EditorDoc, at: number, id: string = newId("zoom")):
     y: 0.4,
     mode: "CUT",
     easeSeconds: 0.4,
+    easeOutSeconds: 0,
   };
   return { doc: { ...doc, zooms: [...doc.zooms, z] }, id: z.id };
 }

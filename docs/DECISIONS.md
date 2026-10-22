@@ -9646,3 +9646,85 @@ sentences) — the Editor v2 / join placement should prefer a voice gap; the har
 snapshot build failed (a Node-only import had reached the browser bundle); the id was restored
 by hand and the script now stops on an empty snapshot. Never let a ship script PATCH an env
 from an unchecked value.
+
+## 2026-10-22 — Editor v2 + Screen Orchestrator (Weeks 2–4 of the premium editor plan)
+
+**Decision:** the Editor becomes write → critique → revise once, and one deterministic Screen
+Orchestrator owns everything on screen from the Editor's plan. Built against the golden harness;
+not yet shipped (needs a worker ship + a web push).
+
+1. **Editor v2** (`prompts/agents/EDITOR.md` 2.0.0, new `prompts/agents/EDITOR_CRITIQUE.md`
+   1.0.0 at MEDIUM, `packages/agents/src/editor-agent.ts`). The draft is read by a deterministic
+   checklist (`editorPlanChecklist` in `full-edit/editor-plan.ts`: headline per beat, hook stands
+   alone, ending is ENDING/PAYOFF, a kept line leaning on a cut line, an amount under a headline
+   without a number, emphasis words he did not say, two TENSION lines with the same numbers, a
+   one-sentence cold read) and by the Critique (semantic: the same eight checks, confirms or
+   dismisses the deterministic findings, ≤ 8 findings with a line and a fix). Any finding → one
+   revision with the draft and the findings in the prompt. The plan gains `emphasisWords` per
+   line and a stored `review` (verdict, findings, revised) — the provenance of the cut. Cost: one
+   HIGH when the draft is clean (+ one MEDIUM read); HIGH + MEDIUM + HIGH at most. A failed
+   critique never costs the cut. `sanitizeEditorPlan` carries a missing headline forward from the
+   previous entry (reported), so the engine always has a headline per beat; `critique: false`
+   keeps the one-shot v1 call for tests. Alternatives: a second HIGH critique (too costly for a
+   checklist read); a loop (the plan says once).
+2. **Screen Orchestrator** (`packages/media/src/screen/`: `anchors.ts`, `plan.ts`, `audit.ts`).
+   Anchors are resolved ONCE per video from the subject track (the stored track is the protected
+   head region; the face is derived from it as the placement solver does), as the band the head
+   stays inside 80 % of the time (p10/p90 of each edge per sample — a union grows to the whole
+   frame the moment he leans once). Zone order: top zone above the head → over the hair above
+   the face box (never the forehead, never the core) → side band (≥ 30 % of the width) → under
+   the chin; the title is anchored over the hook's own framing (its punch-in), headlines and
+   captions over the rest. Lanes: the title covers the hook beat; each later headline arrives
+   on the first word of its idea (−0.05 s) and leaves after its last (+0.2 s), fading 0.2 s in /
+   0.12 s out, exits 0.1 s before the next entrance, consecutive identical headlines merge, a
+   beat shorter than 1.4 s shows none; a graphic slot opens only where the Editor named a need
+   (never on the ending), 0.6 s after the headline settled (stacking = HELD_HEADLINE, the
+   reference reel's pattern; NONE is available); the ending is a face beat; captions are QUIET
+   (44 px, white, thin stroke, no plate, no highlight) at one spot near the chest — never higher
+   than the base look's y — with chunk windows per beat (one word for a short emotional line,
+   three for lines with amounts, two otherwise; `captions.chunking`, shared by preview and
+   render); zooms are in-hold-out (1.08, 0.4 s in / 0.4 s out, ≤ 6 s hold) on the Editor's
+   emphasis word, else at an idea boundary alternating wide/tight on a continuous take — the
+   punch and the headline change share one instant — never on a beat with a graphic slot, and a
+   push-in a third of the way into any stretch > 5 s with nothing changing (one per beat); the
+   cover frame is the calmest gap between words in the hook once the title has settled. The
+   free visuals bot now only picks graphics inside slots, and the placement solver takes the
+   slot's zone as a preference (`preferredRects`). `FULL_EDIT_VERSION` 3. The free cut (no Editor
+   plan) is unchanged except the hook title's close-up fallback, which no longer uses the face
+   core as its limit (that put it on his forehead).
+3. **Timeline schema** (all defaulted, persisted rows parse unchanged): `TimelineText.anchor`
+   (TOP / SIDE_L / SIDE_R / NEAR_SPEAKER / FREE), `fadeIn` / `fadeOut` (drawtext `alpha`, ASS
+   `\fad`, preview opacity — one curve, `textOpacityAt`); `TimelineZoom.easeOutSeconds` (the
+   renderer's expression and `zoomStateAt` share `zoomProgressAt`); caption preset `QUIET`;
+   `captions.chunking` windows. Preview = render for all four by construction.
+4. **Gate G1 screen audit** (`screen/audit.ts`, run in `runDeterministicChecks` as
+   `SCREEN_AUDIT`, MAJOR like the splice audit): text on the face core, two leads within 0.5 s,
+   a zoom during a graphic, no title by 1.5 s, > 7 s with nothing changing, captions bigger than
+   the headline. Promote to BLOCKING with the splice audit once real renders are clean.
+5. **Known immediate fixes folded in:** `motion-design-job.ts` passes the stored edit's
+   `report.editor.beats` to the Visual Strategist; the title never on the forehead.
+
+**Golden baseline after this change** (`pnpm golden:replay --update`; the free cuts are
+byte-identical to the Week 1 baseline except the title fallback size on close-ups):
+
+| fixture (Editor cut) | headlines | zone | captions | zooms | graphics | audit |
+|---|---|---|---|---|---|---|
+| two-people-100k | 4 of 6 beats (one 1.1 s beat skipped) | TOP, over the hair | CHEST / QUIET | 1 (static, in the 16 s tension beat) | 1 | clean |
+| before-investing | 8 of 10 beats | TOP, over the hair | CHEST / QUIET | 2 (boundary, with the headline change) | 1 | clean |
+
+Both of his real framings leave no clean top zone (the head fills the top third; his chin sits
+near the platform-safe bottom), so headlines sit over the hair above the face box, as prod's
+title already did — the honest fix is upstream (the filming card: leave the top third empty).
+Kept-line agreement with the hand edits is unchanged (the Editor's job, judged on Fridays).
+
+**Verification:** `screen.test.ts` (anchors on wide / tight / untracked framings, headline
+timing, one new thing per beat incl. strict mode, caption windows, zoom lane incl. the static
+rule, cover frame, the audit catching six planted defects), `screen-render.test.ts` (fades,
+ease-out, caption windows: preview = render), the Editor v2 tests (write → critique → revise,
+accept path, v1 path), `full-edit.test.ts` updated for the orchestrator, the golden set green
+on the new baseline; media + agents suites (63 files) green; worker, web, agents, domain
+typecheck clean.
+
+**Reversibility:** the orchestrator runs only when an Editor plan exists; the free cut is the
+fallback; every schema field defaults to the previous behaviour; `EDITOR` 1.0.0 is the
+rollback version.

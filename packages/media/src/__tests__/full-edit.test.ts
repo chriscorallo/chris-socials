@@ -172,12 +172,33 @@ describe("full edit — the Editor's cut is executed exactly (2026-10-21)", () =
     expect(r.report.hook.text).toMatch(/^Both are making/);
     expect(r.report.hook.titles[0]).toEqual({ text: "Both making $100K", template: "EDITOR" });
     expect(r.report.removed.map((x) => x.why)).toEqual(expect.arrayContaining(["greeting", "ends on the question"]));
-    expect(r.report.editor?.beats.map((b) => b.headline)).toEqual(["SAME SALARY", "WHO WOULD YOU RATHER BE?", "$733 A MONTH", "$4,133 A MONTH", null]);
-    // Beat headlines on screen (the hook beat is the hook title), each held for its beat, in order.
+    // Editor v2: every beat has a headline — a missing one continues the previous idea (and is reported).
+    expect(r.report.editor?.beats.map((b) => b.headline)).toEqual(["SAME SALARY", "WHO WOULD YOU RATHER BE?", "$733 A MONTH", "$4,133 A MONTH", "$4,133 A MONTH"]);
+    expect(r.report.editor?.problems.some((p) => /no headline/.test(p))).toBe(true);
+    // The Screen Orchestrator: beat headlines (the hook beat is the hook title) at ONE anchor, each
+    // arriving on its first word and leaving after its last, fading, never overlapping; the ending
+    // continues "$4,133 A MONTH" so the two beats share one held headline.
     const texts = r.timeline.texts.filter((x) => x.id.startsWith("fe-beat-"));
     // (the 0.9 s "who would you rather be" beat is too short to hold a headline — reported, not shown)
     expect(texts.map((x) => x.text)).toEqual(["$733 A MONTH", "$4,133 A MONTH"]);
-    for (let i = 1; i < texts.length; i++) expect(texts[i]!.start).toBeGreaterThanOrEqual(texts[i - 1]!.end - 0.01);
+    for (let i = 1; i < texts.length; i++) expect(texts[i]!.start).toBeGreaterThanOrEqual(texts[i - 1]!.end + 0.09);
+    expect(new Set(texts.map((x) => `${x.anchor}:${x.x}:${x.y}:${x.fontSize}`)).size).toBe(1);
+    expect(texts[0]!.fadeIn).toBeGreaterThan(0);
+    expect(texts[0]!.fadeOut).toBeLessThan(texts[0]!.fadeIn);
+    const title = r.timeline.texts.find((x) => x.id === "fe-hook-title")!;
+    expect(title.anchor).toBe(texts[0]!.anchor);
+    // Captions are support: QUIET, small, phrase chunks on the lines with amounts.
+    expect(r.timeline.captions.preset).toBe("QUIET");
+    expect(r.timeline.captions.fontSize).toBeLessThan(texts[0]!.fontSize);
+    expect(r.timeline.captions.chunking.some((w) => w.maxWords === 3)).toBe(true);
+    // Zooms ease in and out; a cover frame inside the hook is chosen; the screen plan is reported.
+    for (const z of r.timeline.zooms) expect(z.easeOutSeconds).toBeGreaterThan(0);
+    expect(r.timeline.coverFrameSeconds).not.toBeNull();
+    // (no subject track here: the assumed centred framing has no headroom, so the zone is under the chin)
+    expect(r.report.screen?.headlineZone).toBe("NEAR_SPEAKER");
+    expect(r.report.screen?.captionZone).toBe("BELOW_HEADLINE");
+    expect(r.report.screen?.leads.some((l) => l.lead === "HEADLINE")).toBe(true);
+    expect(r.report.screen?.audit.filter((a) => a.kind === "FACE_OVERLAP" || a.kind === "TWO_LEADS")).toEqual([]);
     // The trim inside "So I have a picture here of two people, who would you rather be?" kept words 9–13.
     const trimmed = r.story.wordCuts.filter((c) => c.kind === "TRIM");
     expect(trimmed.length).toBeGreaterThan(0);

@@ -539,6 +539,7 @@ const CAPTION_LABELS: Record<(typeof CAPTION_PRESETS)[number], string> = {
   BOLD_HIGHLIGHT: "Highlight",
   BOXED: "Boxed",
   KARAOKE: "Karaoke",
+  QUIET: "Quiet",
 };
 
 function CaptionSample({ c, preset }: { c: TimelineCaptions; preset: (typeof CAPTION_PRESETS)[number] }) {

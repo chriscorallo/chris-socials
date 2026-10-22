@@ -69,13 +69,45 @@ export function timelineCaptionChunks(
 ): TimelineCaptionChunk[] {
   if (!timeline.captions.enabled) return [];
   const words = timelineCaptionWords(timeline, wordsByAsset);
-  const maxWords = timeline.captions.maxWordsPerChunk;
-  const chunks = buildCaptionChunks(words, {
-    maxWords,
-    minWords: Math.min(2, maxWords),
-    maxChars: Math.max(10, maxWords * 7),
-  });
-  return chunks as TimelineCaptionChunk[];
+  const chunkWith = (ws: TimelineCaptionWord[], maxWords: number) =>
+    buildCaptionChunks(ws, {
+      maxWords,
+      minWords: Math.min(2, maxWords),
+      maxChars: Math.max(10, maxWords * 7),
+    }) as TimelineCaptionChunk[];
+  const windows = [...timeline.captions.chunking].filter((w) => w.end > w.start).sort((a, b) => a.start - b.start);
+  if (windows.length === 0) return chunkWith(words, timeline.captions.maxWordsPerChunk);
+  // Adaptive chunking (screen/captions.ts): each word belongs to the window its midpoint falls
+  // in (else the default size); runs of words with the same size are chunked together, so a
+  // chunk never spans two windows and the default size still applies between them.
+  const sizeOf = (w: TimelineCaptionWord) => {
+    const mid = (w.start + w.end) / 2;
+    const win = windows.find((x) => mid >= x.start && mid < x.end);
+    return win ? win.maxWords : timeline.captions.maxWordsPerChunk;
+  };
+  const out: TimelineCaptionChunk[] = [];
+  let run: TimelineCaptionWord[] = [];
+  let runSize = -1;
+  const flush = () => {
+    if (run.length) out.push(...chunkWith(run, runSize));
+    run = [];
+  };
+  for (const w of words) {
+    const size = sizeOf(w);
+    if (size !== runSize) {
+      flush();
+      runSize = size;
+    }
+    run.push(w);
+  }
+  flush();
+  // A chunk may not run into the next one (buildCaptionChunks only polishes inside a run).
+  for (let i = 0; i < out.length - 1; i++) {
+    const c = out[i]!;
+    const next = out[i + 1]!;
+    if (c.end > next.start) c.end = Math.max(c.start + 0.05, next.start);
+  }
+  return out;
 }
 
 function round3(n: number): number {

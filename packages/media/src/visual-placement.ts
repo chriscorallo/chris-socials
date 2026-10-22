@@ -60,6 +60,12 @@ export interface PlacementOptions {
    * the graphic sits partly BEHIND Chris's head instead of being pushed away from it.
    */
   mattes?: Record<string, boolean | null | undefined>;
+  /**
+   * Visual id -> the zone the Screen Orchestrator opened for it (canvas px). A candidate spot
+   * inside the zone is preferred; outside it costs more, but face / caption / text avoidance
+   * still wins (the zone is a preference, the obstacles are rules).
+   */
+  preferredRects?: Record<string, Rect | null | undefined>;
 }
 
 /** Templates the auto-depth rule may put behind Chris (big, bold type only). */
@@ -508,6 +514,7 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
     const pointTo =
       fp.kind === "CALLOUT" ? readPointTo(v.props, canvas) : null;
     const prev = { x: v.placement.x * canvas.width, y: v.placement.y * canvas.height };
+    const preferred = options.preferredRects?.[v.id] ?? null;
 
     let best: Candidate | null = null;
     let leastBad: Candidate | null = null;
@@ -529,7 +536,8 @@ export function solveVisualPlacements(timeline: EditTimeline, options: Placement
             1.5 * (1 - factor) +
             0.4 * Math.abs(cx / canvas.width - 0.5) +
             0.5 * Math.abs(cy / canvas.height - fp.preferY) +
-            0.15 * (Math.hypot(cx - prev.x, cy - prev.y) / canvas.height);
+            0.15 * (Math.hypot(cx - prev.x, cy - prev.y) / canvas.height) +
+            (preferred ? 1.6 * (1 - intersectionArea(rect, preferred) / rectArea(rect)) : 0);
           if (pointTo) {
             const containsTarget =
               pointTo.x >= rect.x && pointTo.x <= rect.x + w && pointTo.y >= rect.y && pointTo.y <= rect.y + h;

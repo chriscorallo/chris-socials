@@ -39,6 +39,19 @@ is reserved for genuinely semantic decisions.
 
 Full specialist roster, inputs, outputs, and model-routing class: `/docs/AGENT_CONTRACTS.md`.
 
+**The screen is owned by one deterministic orchestrator** (`packages/media/src/screen/`,
+2026-10-21, docs/PREMIUM_EDITOR_PLAN.md round 5). The Editor decides *what* each beat needs
+(its headline, the viewer's need, the emphasis words); the Screen Orchestrator decides *where,
+when, how long and how it moves*: five lanes on one clock (HEADLINE, GRAPHIC, CAPTION, ZOOM,
+FACE), anchors fixed once per video from the subject track (top zone above the head → side
+band → under the chin; never the face), headlines that arrive on the first word of their idea
+and leave on its last, one new thing per beat (a graphic may build under a held headline), quiet
+adaptive captions near the speaker, zooms in-hold-out on emphasis words and idea boundaries, a
+chosen cover frame, and a free screen audit (`screen/audit.ts`) that the quality gate runs on the
+rendered timeline. It only writes the timeline, so the editor preview and the render agree by
+construction. The Motion Designer fills graphic *content* into the slots it opens; the placement
+solver treats a slot as a preference and the face/captions as rules.
+
 ## Authority hierarchy (§5) — and how it's enforced in code, not just convention
 
 1. Human Owner (Chris) — final say on everything except platform/security/factual hard

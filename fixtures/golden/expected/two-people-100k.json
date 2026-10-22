@@ -73,6 +73,7 @@
    }
   ],
   "zooms": 0,
+  "screen": null,
   "checks": [
    {
     "id": "MEANING_MATCH",
@@ -96,7 +97,7 @@
    },
    {
     "id": "QUALITY",
-    "status": "PASS"
+    "status": "WARN"
    },
    {
     "id": "RETENTION",
@@ -317,31 +318,67 @@
   "headlines": [
    {
     "text": "THE SPENDER",
-    "start": 11.572,
-    "end": 19.057
+    "start": 11.577,
+    "end": 19.302
+   },
+   {
+    "text": "SPENDER KEEPS $733",
+    "start": 19.464,
+    "end": 35.324
    },
    {
     "text": "$733 vs $4,133",
-    "start": 35.418,
-    "end": 39.703
+    "start": 35.424,
+    "end": 39.948
    },
    {
     "text": "WHICH ONE ARE YOU?",
-    "start": 41.247,
-    "end": 43.787
+    "start": 41.252,
+    "end": 43.837
    }
   ],
   "graphics": [
    {
-    "presetId": "hero-salary",
-    "start": 17.59
-   },
-   {
     "presetId": "monthly-income-strip",
-    "start": 37.27
+    "start": 17.59
    }
   ],
-  "zooms": 0,
+  "zooms": 1,
+  "screen": {
+   "headlineZone": "TOP",
+   "captionZone": "CHEST",
+   "captionPreset": "QUIET",
+   "titleY": 0.196,
+   "titleFontSize": 48,
+   "leads": [
+    "0:HEADLINE@0",
+    "0:GRAPHIC@0.6",
+    "1:HEADLINE@11.577",
+    "1:GRAPHIC@12.177",
+    "2:HEADLINE@19.464",
+    "2:GRAPHIC@20.064",
+    "2:ZOOM@25.072",
+    "3:HEADLINE@35.424",
+    "3:GRAPHIC@36.024",
+    "5:HEADLINE@41.252"
+   ],
+   "zooms": [
+    {
+     "start": 25.072,
+     "end": 29.072,
+     "reason": "STATIC",
+     "word": null
+    }
+   ],
+   "slots": 4,
+   "coverFrameSeconds": 8.522,
+   "audit": [],
+   "notes": [
+    "headlines sit over the hair (the head fills the top zone) — leave the top third empty when filming for a clean zone",
+    "beat 4 (\"MY PICK: THE SAVER\") is 1.1 s — too short to hold a headline",
+    "6.3 s with nothing changing from 29.072s — left to the face"
+   ]
+  },
   "checks": [
    {
     "id": "MEANING_MATCH",
@@ -365,7 +402,7 @@
    },
    {
     "id": "QUALITY",
-    "status": "PASS"
+    "status": "FIXED"
    },
    {
     "id": "RETENTION",
