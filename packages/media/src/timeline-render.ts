@@ -313,8 +313,9 @@ export interface RenderTimelineResult {
 /** Per-clip voice levelling (ffmpeg dynaudnorm): 400 ms frames, 21-frame window, ≤ 4× gain. */
 export const VOICE_LEVEL_FILTER = "dynaudnorm=f=400:g=21:m=4:p=0.9";
 
-/** Length of the de-click fade at a splice (s): long enough to remove the step, too short to hear. */
-export const SPLICE_FADE_SECONDS = 0.008;
+/** Length of the de-click fade at a splice (s): long enough to remove the step, too short to
+ * hear (2026-10-21: 4 ms, equal-power — with sample-exact clip audio there is no gap to hide). */
+export const SPLICE_FADE_SECONDS = 0.004;
 
 /**
  * De-click fades for clip k's audio: a SPLICE_FADE_SECONDS fade-in where the previous clip
@@ -328,8 +329,8 @@ export function clipAudioFades(clips: EditTimeline["clips"], k: number, outSecon
     !!a && !!b && a.mediaAssetId === b.mediaAssetId && Math.abs(a.sourceEnd - b.sourceStart) < 1e-3;
   const d = Math.min(SPLICE_FADE_SECONDS, outSeconds / 4);
   let out = "";
-  if (k > 0 && !contiguous(clips[k - 1], clips[k])) out += `,afade=t=in:st=0:d=${n(d)}`;
-  if (k < clips.length - 1 && !contiguous(clips[k], clips[k + 1])) out += `,afade=t=out:st=${n(Math.max(0, outSeconds - d))}:d=${n(d)}`;
+  if (k > 0 && !contiguous(clips[k - 1], clips[k])) out += `,afade=t=in:st=0:d=${n(d)}:curve=ipar`;
+  if (k < clips.length - 1 && !contiguous(clips[k], clips[k + 1])) out += `,afade=t=out:st=${n(Math.max(0, outSeconds - d))}:d=${n(d)}:curve=ipar`;
   return out;
 }
 
@@ -711,7 +712,10 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
     timeline.clips.forEach((clip, k) => {
       const path = input.sources[clip.mediaAssetId]!;
       const p = probes.get(clip.mediaAssetId)!;
-      const outSeconds = frames[k]! / fps;
+      // The audio is cut where the splice engine put it — to the sample, not to the frame. The
+      // picture takes whole frames (clipFrameCounts tracks the cumulative audio time, so the
+      // two never drift apart by more than half a frame); the streams are concatenated apart.
+      const audioSeconds = clipDuration(clip);
       // One input per CLIP with accurate input seeking (not one per asset): clips may come
       // from any point of any take in any order, and a shared input would make ffmpeg buffer
       // every decoded frame a later clip needs while concat is still consuming earlier ones.
@@ -721,16 +725,19 @@ export async function renderTimeline(input: RenderTimelineInput): Promise<Render
       if (p.hasAudio) {
         parts.push(
           `[${k}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${vol},` +
-            `apad,atrim=end=${n(outSeconds)}${clipAudioFades(timeline.clips, k, outSeconds)},asetpts=PTS-STARTPTS[a${k}]`,
+            `apad,atrim=end=${n(audioSeconds)}${clipAudioFades(timeline.clips, k, audioSeconds)},asetpts=PTS-STARTPTS[a${k}]`,
         );
       } else {
         parts.push(
-          `anullsrc=r=48000:cl=stereo,atrim=end=${n(outSeconds)},aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${k}]`,
+          `anullsrc=r=48000:cl=stereo,atrim=end=${n(audioSeconds)},aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${k}]`,
         );
       }
     });
+    // Picture and sound concatenated separately: a joint concat pads each segment's audio to
+    // its (frame-quantized) picture, which put up to 16 ms of silence at every splice.
+    parts.push(`${timeline.clips.map((_, k) => `[v${k}]`).join("")}concat=n=${timeline.clips.length}:v=1:a=0[vcat]`);
     parts.push(
-      `${timeline.clips.map((_, k) => `[v${k}][a${k}]`).join("")}concat=n=${timeline.clips.length}:v=1:a=1[vcat][acat]`,
+      `${timeline.clips.map((_, k) => `[a${k}]`).join("")}concat=n=${timeline.clips.length}:v=0:a=1,apad,atrim=end=${n(frames.reduce((a, b) => a + b, 0) / fps)},asetpts=PTS-STARTPTS[acat]`,
     );
 
     const vChain: string[] = [];

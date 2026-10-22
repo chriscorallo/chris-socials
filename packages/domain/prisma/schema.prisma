@@ -706,7 +706,7 @@ model QCIssue {
   severity          QCSeverity
   timestampSeconds  Float?
   recommendedRepair String?
-  source            String // "VISUAL_QA" | "OVERLAY_COLLISION" — which check produced this
+  source            String // "VISUAL_QA" | "OVERLAY_COLLISION" | "SPLICE_AUDIT" — which check produced this
   createdAt         DateTime   @default(now())
 
   qcReport QCReport @relation(fields: [qcReportId], references: [id])

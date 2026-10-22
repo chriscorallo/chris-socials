@@ -9521,3 +9521,65 @@ the baseline numbers (splice air median/p90, clipped count, hand-edit median del
 in this file. Those numbers are the bar Week 1's splice engine is judged against.
 
 **Reversibility:** additive; nothing in the edit path changed behaviour.
+
+## 2026-10-21 — Week 1: the splice engine (cuts land on the voice) and the free splice audit
+
+Implements `/docs/PREMIUM_EDITOR_HANDOFF.md` §4 "Week 1" (plan round 3). Chris's words: cuts
+"right on the decibel the voice changes". Until today every splice carried 0.14–0.25 s of
+designed air plus up to 67 ms of outward frame rounding, and the silences it was placed by
+came from 20 ms RMS frames with no hysteresis (DECISIONS 2026-10-19 copied two pad numbers by
+hand; nothing measured the voice itself).
+
+**Decision (packages/media `splice/`):**
+1. **Voice analysis** (`analysis.ts`, `analyzeSplicePcm`): a 1 ms-hop RMS envelope of the full
+   band and of the band above 2 kHz (so fricative tails count as voice); voice ON at
+   floor + 10 dB on the fine (5 ms) view, OFF when a 20 ms-smoothed view falls below floor + 4 dB
+   for 40 ms, with the exact offset taken as the last fine frame still within 30 dB of the span's
+   peak and above the room's own fine-frame peak (so a rumbling room stretches no tail); spans
+   under 30 ms or below floor + 6 dB mean are not voice; plosive bursts = a ≥ 12 dB high-band
+   rise out of ≥ 20 ms of quiet whose energy is mostly high band. The output (`SpliceAnalysis`:
+   voice spans with their level, bursts, floor/speech dB) is a few KB and is stored with the
+   edit (`StoredFullEdit.splice`, `StoredStyleCut.splice`); the PCM is never kept.
+   Synthetic-audio tests: onsets/offsets within 3 ms, a 60 ms fricative tail kept, a 20 ms dip
+   never splits a word, a quiet line's tail not stretched, the burst found within 2 ms.
+2. **The SpliceModel** (`model.ts`): tail/lead pads mid-sentence and at a sentence end. Prior
+   from the hand edits (mid 80/50 ms, sentence 110/60 ms); `learnSpliceModel` re-fits medians
+   from `spliceSamplesFromTimeline` (a hand-edited timeline measured against the voice), never
+   outside the band tail 30–140 ms / lead 20–100 ms. The worker uses the prior today; learning
+   runs through the golden harness once fixtures carry an analysis (see "not done").
+3. **Placement** (`place.ts`): cut-out = voice offset + tail pad, cut-in = voice onset − lead
+   pad, pulled to 15 ms before a plosive burst up to 90 ms ahead of voicing; no frame grid; a
+   pause shorter than the pads is left alone. `refineWordEdges` snaps the first/last Whisper
+   word of each voice span to the span's edges (±150 ms).
+4. **Inside the cutter**: `cutOneTake` takes the analysis — the voice gaps are the pauses, the
+   model's pads the air, `q()` no longer touches an audio cut (it still quantizes picture-only
+   rhythm cuts); story joins get the sentence-end pads on both sides (was pre-roll + join tail,
+   ~0.24 s). The Full edit refines the words and passes the analysis; `STYLE_CUT_VERSION` 4,
+   inputs keys include the voice spans.
+5. **Render**: picture and audio are concatenated as separate streams; each clip's audio is its
+   exact source length (was padded/trimmed to whole output frames, ±8–16 ms per splice) with a
+   4 ms equal-power fade at each non-contiguous join (was 8 ms linear); the picture keeps
+   `clipFrameCounts` (cumulative rounding, drift ≤ half a frame). Room-tone fill is unnecessary
+   with no gap to fill.
+6. **Gate G1, free splice audit** (`audit.ts`, run in `runDeterministicChecks`): per cut, GAP
+   (air beyond the pads + 60 ms), CLIPPED_WORD (the cut sits > 40 ms inside a voice span) and
+   LEVEL_STEP (≥ 4 dB across a cut with voice within 0.3 s on both sides), each with the cut
+   index, output time and delta. Recorded as `SPLICE_AUDIT` issues at MAJOR severity — not
+   blocking — until the golden baseline shows the engine meets the bar; then BLOCKING. Planted
+   defects test: a gap, a clipped word and a level step caught at the right cuts; a clean cut
+   passes.
+
+**Not done / next:** the learned model is not yet fed from Chris's hand edits automatically
+(fixtures pulled after this ships carry the analysis; `pnpm golden:replay` can then fit it and
+the worker can read a stored model); caption word highlights at render still use the raw
+Whisper times (the refined times should reach `timelineCaptionChunks`); multi-part recordings
+(several takes) get no analysis yet; the screen audits (face core, two leads, hook text by
+1.5 s) wait for the Screen Orchestrator (Weeks 2–4). Needs a worker ship (10–12 min) — not
+shipped in this session (no network).
+
+**Verification:** `splice.test.ts` (12 tests incl. the cutter integration: exactly the model's
+air at every pause cut, off the frame grid, no clipped word; a story join's pads), the whole
+media suite (30 files, 365 tests) and the worker edit-job/gate tests green.
+
+**Reversibility:** without an analysis (`splice: null`) every path is byte-for-byte the previous
+behaviour; `STYLE_CUT_VERSION` 4 only changes the inputs key.

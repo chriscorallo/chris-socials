@@ -46,6 +46,8 @@ import {
   type FullEditEmbedder,
   type FullEditReport,
   type GoldenFixture,
+  type SpliceAnalysis,
+  isSpliceAnalysis,
   type StorageAdapter,
   type StyleCutResult,
 } from "@chris/media";
@@ -240,7 +242,8 @@ async function compute(db: PrismaClient, storage: StorageAdapter, contentItemId:
     return { r, stored };
   }
 
-  const silences = await silencesFor(db, storage, contentItemId, l.take, measure);
+  const audio = await takeAudioFor(db, storage, contentItemId, l.take, measure);
+  const silences = audio.silences;
   const r = buildStyleCut({
     base: l.current,
     mediaAssetId: l.take.id,
@@ -249,6 +252,7 @@ async function compute(db: PrismaClient, storage: StorageAdapter, contentItemId:
     subjectTrack: l.take.subjectTrack,
     sourceSize: sizeOf(l.take),
     silences,
+    splice: audio.splice,
     target,
   });
   if (!r.ok) return { r, stored: null };
@@ -261,6 +265,8 @@ async function compute(db: PrismaClient, storage: StorageAdapter, contentItemId:
     stats: { ...r.stats },
     target: { ...r.target },
     silences,
+    envelope: audio.envelope,
+    splice: audio.splice,
     mediaAssetId: l.take.id,
   };
   return { r, stored };
@@ -306,22 +312,32 @@ export function fullEditEmbedder(): FullEditEmbedder {
 }
 
 /** Silences + loudness envelope of a take: cached on an earlier full edit, else measured now. */
-async function takeAudioFor(db: PrismaClient, storage: StorageAdapter, contentItemId: string, take: LoadedTake, measure: boolean) {
+async function takeAudioFor(
+  db: PrismaClient,
+  storage: StorageAdapter,
+  contentItemId: string,
+  take: LoadedTake,
+  measure: boolean,
+): Promise<{ silences: Array<{ start: number; end: number }> | null; envelope: { frameS: number; db: number[] } | null; splice: SpliceAnalysis | null }> {
   const plans = await db.editPlan.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" }, take: 30, select: { plan: true } });
   for (const p of plans) {
+    // Cached on an earlier edit of this take — including the splice engine's analysis (an edit
+    // stored before the engine existed has none, so the take is decoded once more).
     const fe = readStoredFullEdit(p.plan);
-    if (fe && fe.mediaAssetId === take.id && Array.isArray(fe.silences) && fe.envelope) return { silences: fe.silences, envelope: fe.envelope };
+    if (fe && fe.mediaAssetId === take.id && Array.isArray(fe.silences) && fe.envelope && isSpliceAnalysis(fe.splice)) return { silences: fe.silences, envelope: fe.envelope, splice: fe.splice };
+    const sc = readStoredStyleCut(p.plan);
+    if (sc && sc.mediaAssetId === take.id && Array.isArray(sc.silences) && sc.envelope && isSpliceAnalysis(sc.splice)) return { silences: sc.silences, envelope: sc.envelope, splice: sc.splice };
   }
-  if (!measure) return { silences: await silencesFor(db, storage, contentItemId, take, false), envelope: null };
+  if (!measure) return { silences: await silencesFor(db, storage, contentItemId, take, false), envelope: null, splice: null };
   const dir = await mkdtemp(join(tmpdir(), "chris-fulledit-"));
   try {
     const file = join(dir, `take${extname(take.originalFilename) || ".mp4"}`);
     await writeFile(file, await storage.get(take.storageKey));
     const a = await analyzeTakeAudio(file);
-    return { silences: a.silences, envelope: a.envelope };
+    return { silences: a.silences, envelope: a.envelope, splice: a.splice };
   } catch (err) {
     console.warn("[full-edit] audio analysis failed — using word timings only:", err instanceof Error ? err.message : err);
-    return { silences: null, envelope: null };
+    return { silences: null, envelope: null, splice: null };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -371,6 +387,7 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
       sourceSize: l.take.width && l.take.height ? { width: l.take.width, height: l.take.height } : null,
       silences: audio.silences,
       envelope: audio.envelope,
+      splice: audio.splice,
       target: styleCutTargetFromProfile(profile),
       story: storyTargetFromProfile(profile),
       choices,
@@ -392,6 +409,7 @@ async function computeFullEdit(db: PrismaClient, storage: StorageAdapter, conten
     mediaAssetId: l.take.id,
     silences: audio.silences,
     envelope: audio.envelope,
+    splice: audio.splice,
   };
   return { ok: true, timeline: r.timeline, stored, report: r.report };
 }
@@ -447,7 +465,7 @@ export async function exportGoldenFixture(
       words: l.take.words.map((w) => ({ word: w.word, start: w.start, end: w.end })),
       subjectTrack: l.take.subjectTrack ?? null,
     },
-    audio: { silences: audio.silences ?? null, envelope: audio.envelope ?? null },
+    audio: { silences: audio.silences ?? null, envelope: audio.envelope ?? null, splice: audio.splice ?? null },
     base: plainTimeline(l.takes, l.current),
     brief: await briefForFullEdit(db, contentItemId),
     profile: (profile ?? null) as unknown,

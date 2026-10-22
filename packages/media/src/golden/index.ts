@@ -6,6 +6,7 @@ import { parseSubjectTrack } from "../subject-track-core";
 import { buildFullEdit, storyTargetFromProfile, type FullEditChoices, type FullEditResult } from "../full-edit";
 import { EditorPlanSchema } from "../full-edit/editor-plan";
 import { LEXICAL_EMBEDDER, type FullEditEmbedder } from "../full-edit/text";
+import { isSpliceAnalysis } from "../splice/analysis";
 
 /**
  * The golden-set harness (2026-10-21, docs/PREMIUM_EDITOR_HANDOFF.md §3.1). A fixture is one of
@@ -37,6 +38,8 @@ export const GoldenFixtureSchema = z.object({
   audio: z.object({
     silences: z.array(Span).nullable(),
     envelope: z.object({ frameS: z.number(), db: z.array(z.number()) }).nullable(),
+    /** The splice engine's voice analysis (null for fixtures pulled before it existed). */
+    splice: z.unknown().nullable().optional(),
   }),
   base: EditTimelineSchema,
   brief: z.object({ hook: z.string().nullable(), keep: z.array(z.string()), onScreenText: z.string().nullable() }).nullable(),
@@ -250,6 +253,7 @@ export async function replayGolden(fixture: GoldenFixture, options: { embedder?:
         sourceSize: f.take.width && f.take.height ? { width: f.take.width, height: f.take.height } : null,
         silences,
         envelope: f.audio.envelope,
+        splice: isSpliceAnalysis(f.audio.splice) ? f.audio.splice : null,
         target: styleCutTargetFromProfile(profile),
         story: storyTargetFromProfile(profile as Parameters<typeof storyTargetFromProfile>[0]),
         brief: f.brief,

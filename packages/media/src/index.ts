@@ -59,3 +59,4 @@ export * from "./graphics/suggest";
 export * from "./take-understanding";
 export * from "./director";
 export * from "./golden";
+export * from "./splice";

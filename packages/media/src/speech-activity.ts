@@ -1,3 +1,4 @@
+import { analyzeSplicePcm, type SpliceAnalysis } from "./splice/analysis";
 /**
  * Where a take is actually silent — measured from the audio, not from Whisper.
  *
@@ -114,11 +115,12 @@ export function loudnessEnvelopeFromPcm(pcm: Float32Array, sampleRate: number, f
   return { frameS, db };
 }
 
-/** Node: one decode → silences + loudness envelope (the Full edit's audio inputs). */
-export async function analyzeTakeAudio(filePath: string, options: Partial<SilenceOptions> = {}): Promise<SilenceAnalysis & { envelope: { frameS: number; db: number[] } }> {
+/** Node: one decode → silences + loudness envelope + the splice engine's voice analysis (the
+ * Full edit's audio inputs). */
+export async function analyzeTakeAudio(filePath: string, options: Partial<SilenceOptions> = {}): Promise<SilenceAnalysis & { envelope: { frameS: number; db: number[] }; splice: SpliceAnalysis }> {
   const { extractAudioPcm16k, WHISPER_SAMPLE_RATE } = await import("./transcription/local-whisper");
   const pcm = await extractAudioPcm16k(filePath);
-  return { ...detectSilencesFromPcm(pcm, WHISPER_SAMPLE_RATE, options), envelope: loudnessEnvelopeFromPcm(pcm, WHISPER_SAMPLE_RATE) };
+  return { ...detectSilencesFromPcm(pcm, WHISPER_SAMPLE_RATE, options), envelope: loudnessEnvelopeFromPcm(pcm, WHISPER_SAMPLE_RATE), splice: analyzeSplicePcm(pcm, WHISPER_SAMPLE_RATE) };
 }
 
 /** Node: decodes a take's audio (16 kHz mono via ffmpeg) and finds its silences. */

@@ -225,6 +225,18 @@ domain function with seeded rows (worker/domain DB test conventions above).
   before starting it).
 - Push `902e4b7` with it.
 
+## 3.5 Status (2026-10-21, end of day)
+
+- Week 0: built and committed (`fb53336`, `1a32409`); **not yet pushed** — the session's command
+  sandbox had no network and pushes outside it were denied. Fixtures not yet pulled. The
+  baseline numbers are therefore still to be written.
+- Week 1: the splice engine, sample-exact render and free splice audit are built, tested and
+  committed (DECISIONS 2026-10-21 "Week 1"). Not shipped (needs a worker ship, 10–12 min).
+- First steps for the next session: push (`git push origin fix/usable-v1:main`), ship the
+  worker, pull the five fixtures (they will carry the voice analysis), `pnpm golden:replay
+  --update`, record the baseline (splice air, clipped count, hand-edit delta per fixture) and
+  fit the SpliceModel from the two hand edits (`spliceSamplesFromTimeline` → `learnSpliceModel`).
+
 ## 4. After Week 0 — contracts to hold to
 
 Sizes and pass tests are in the plan's recommendation table; these are the implementation

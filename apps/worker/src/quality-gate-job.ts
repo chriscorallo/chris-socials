@@ -16,6 +16,8 @@ import {
   brandGateFromScores,
   creativeGateFromScore,
   technicalGateFromIssues,
+  readStoredFullEdit,
+  readStoredStyleCut,
   type PrismaClient,
   type QCIssueInput,
   type GateStatus,
@@ -42,6 +44,10 @@ import {
   findTimelineCollisions,
   nodeMeasureText,
   directorOwnedVisualIds,
+  auditSplices,
+  refineWordEdges,
+  isSpliceAnalysis,
+  type SpliceAnalysis,
   type CaptionCollision,
   type EditTimeline,
   type TimelineVisual,
@@ -125,6 +131,18 @@ export function describeUngroundedVisualNumbers(found: UngroundedVisualNumbers[]
   return `On-screen numbers aren't in the fact-checked research or script: ${parts.join("; ")}. Fix the graphic to use a researched number, or remove it.`;
 }
 
+
+/** The splice engine's voice analysis cached on the latest edit of this take (null before the engine existed). */
+async function storedSpliceAnalysisFor(db: PrismaClient, contentItemId: string, mediaAssetId: string): Promise<SpliceAnalysis | null> {
+  const plans = await db.editPlan.findMany({ where: { contentItemId }, orderBy: { createdAt: "desc" }, take: 30, select: { plan: true } });
+  for (const p of plans) {
+    const fe = readStoredFullEdit(p.plan);
+    if (fe && fe.mediaAssetId === mediaAssetId && isSpliceAnalysis(fe.splice)) return fe.splice;
+    const sc = readStoredStyleCut(p.plan);
+    if (sc && sc.mediaAssetId === mediaAssetId && isSpliceAnalysis(sc.splice)) return sc.splice;
+  }
+  return null;
+}
 
 /** Everything the Quality Gate decides WITHOUT a model call — shared by the full gate and the
  * owner's "skip the AI check" path, so both see exactly the same technical/factual facts. */
@@ -252,6 +270,26 @@ async function runDeterministicChecks(db: PrismaClient, contentItemId: string): 
     const assetIds = [...new Set(timeline.clips.map((c) => c.mediaAssetId))];
     const assets = await db.mediaAsset.findMany({ where: { id: { in: assetIds } } });
     wordsByAsset = Object.fromEntries(assets.map((a) => [a.id, parseTranscriptWords(a.transcriptWords)]));
+    // The free splice audit (gate G1, docs/PREMIUM_EDITOR_PLAN.md round 2): every cut checked
+    // against the take's voice — a gap, a clipped word, a level step — with the cut index and
+    // delta, so a fix can retime it. MAJOR (recorded, not blocking) until the baseline on the
+    // golden set shows the splice engine meets the bar; then BLOCKING (DECISIONS 2026-10-21).
+    for (const assetId of assetIds) {
+      const words = wordsByAsset[assetId];
+      if (!words?.length) continue;
+      const analysis = await storedSpliceAnalysisFor(db, contentItemId, assetId);
+      const refined = analysis ? refineWordEdges(words, analysis) : words;
+      for (const f of auditSplices(timeline, assetId, refined, analysis)) {
+        collisionIssues.push({
+          category: `SPLICE_${f.kind}`,
+          description: `Cut ${f.index + 1} at ${f.atS}s: ${f.detail}.`,
+          severity: "MAJOR",
+          timestampSeconds: f.atS,
+          recommendedRepair: f.kind === "GAP" ? "Tighten the cut (move the cut-out earlier or the cut-in later)." : f.kind === "CLIPPED_WORD" ? "Move the cut off the voice." : "Level the two sides of the cut.",
+          source: "SPLICE_AUDIT",
+        });
+      }
+    }
     const chunks = timelineCaptionChunks(timeline, wordsByAsset);
     for (const c of findTimelineCollisions(timeline, chunks, nodeMeasureText)) {
       collisionIssues.push(

@@ -33,6 +33,9 @@ export interface StoredStyleCut {
   target: Record<string, unknown>;
   /** Measured silences (s) — cached so a re-apply needn't decode the take again. */
   silences?: Array<{ start: number; end: number }> | null;
+  /** Loudness envelope + the splice engine's voice analysis, cached with the silences. */
+  envelope?: { frameS: number; db: number[] } | null;
+  splice?: unknown | null;
   /** The take cut (the first part, for a multi-part recording). */
   mediaAssetId: string;
   /** Multi-part recording: every part, in order, and each part's measured silences. */
@@ -89,6 +92,8 @@ export interface StoredFullEdit {
   /** Measured silences + loudness envelope — cached so "Try another hook" needn't decode again. */
   silences?: Array<{ start: number; end: number }> | null;
   envelope?: { frameS: number; db: number[] } | null;
+  /** The splice engine's voice analysis (packages/media splice/analysis.ts SpliceAnalysis). */
+  splice?: unknown | null;
 }
 
 export function readStoredFullEdit(plan: unknown): StoredFullEdit | null {

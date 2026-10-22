@@ -524,9 +524,9 @@ describe("clipAudioFades (de-click at splices)", () => {
   it("fades only where the audio jumps (removed pause or other take), never inside contiguous footage", () => {
     const clips = [clip("a", 0, 2), clip("b", 2, 3), clip("c", 4, 5), clip("d", 0, 1, "other")];
     expect(clipAudioFades(clips, 0, 2)).toBe("");
-    expect(clipAudioFades(clips, 1, 1)).toBe(",afade=t=out:st=0.992:d=0.008");
-    expect(clipAudioFades(clips, 2, 1)).toBe(",afade=t=in:st=0:d=0.008,afade=t=out:st=0.992:d=0.008");
-    expect(clipAudioFades(clips, 3, 1)).toBe(",afade=t=in:st=0:d=0.008");
+    expect(clipAudioFades(clips, 1, 1)).toBe(",afade=t=out:st=0.996:d=0.004:curve=ipar");
+    expect(clipAudioFades(clips, 2, 1)).toBe(",afade=t=in:st=0:d=0.004:curve=ipar,afade=t=out:st=0.996:d=0.004:curve=ipar");
+    expect(clipAudioFades(clips, 3, 1)).toBe(",afade=t=in:st=0:d=0.004:curve=ipar");
   });
 });
 

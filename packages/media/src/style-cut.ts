@@ -1,3 +1,6 @@
+import { silencesFromVoice, type SpliceAnalysis } from "./splice/analysis";
+import { DEFAULT_SPLICE_MODEL, padsFor, type SpliceModel } from "./splice/model";
+import { placePauseCut } from "./splice/place";
 import type { TranscriptWord } from "./caption-chunking";
 import { PROTECTED_HEAD_EXPANSION, subjectBoxAt, type NormBox, type SubjectTrack } from "./subject-track-core";
 import { EditTimelineSchema, type EditTimeline, type TimelineClip } from "./timeline";
@@ -33,7 +36,7 @@ import { EditTimelineSchema, type EditTimeline, type TimelineClip } from "./time
  * concat never slips audio between contiguous clips.
  */
 
-export const STYLE_CUT_VERSION = 3; // 3: cut like the hand edits (2026-10-19)
+export const STYLE_CUT_VERSION = 4; // 4: the splice engine — cuts on the voice (2026-10-21); 3: cut like the hand edits (2026-10-19)
 
 /** Output frame grid (s). Multiples of 1/30 are also whole frames at 60 fps. */
 const FRAME = 1 / 30;
@@ -167,6 +170,9 @@ export interface StyleCutInput {
   /** Measured silences of the take's audio (speech-activity.ts). Strongly preferred: Whisper's
    * word edges alone drift ±0.2 s, so without these the cut pads more and trims less. */
   silences?: Array<{ start: number; end: number }> | null;
+  /** The splice engine's voice analysis (splice/analysis.ts). With it, every cut lands on the
+   * voice to the millisecond and `silences` is ignored; without it the 20 ms silences are used. */
+  splice?: SpliceAnalysis | null;
   target?: StyleCutTarget;
   /** Fine-tuning (tests). */
   options?: Partial<StyleCutOptions>;
@@ -197,6 +203,8 @@ export interface StyleCutOptions {
   /** Long shots + zooms (the Editor's LONG_SHOTS_ZOOMS pacing): every pause removal is a jump
    * cut on the same crop — the picture never re-frames on a cut; punch-ins come from zooms. */
   holdFraming: boolean;
+  /** The pads a cut leaves around the voice when a splice analysis is given (splice/model.ts). */
+  spliceModel: SpliceModel;
 }
 
 export const DEFAULT_STYLE_CUT_OPTIONS: StyleCutOptions = {
@@ -212,6 +220,7 @@ export const DEFAULT_STYLE_CUT_OPTIONS: StyleCutOptions = {
   maxWordlessIslandS: 0.3,
   rhythmCuts: false,
   holdFraming: false,
+  spliceModel: DEFAULT_SPLICE_MODEL,
 };
 
 export interface StyleCutShot {
@@ -310,6 +319,11 @@ function hash(s: string): string {
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/** What of a splice analysis goes into an inputs key (same voice, same cut). */
+function spliceKey(a: SpliceAnalysis | null | undefined): unknown {
+  return a && a.voice.length ? { v: a.voice.map((x) => [x.start, x.end]), b: a.bursts } : null;
 }
 
 /** Valid words, clamped to the take, in time order (shared with the Full edit). */
@@ -431,6 +445,7 @@ export interface StyleCutTakeInput {
   subjectTrack?: SubjectTrack | null;
   sourceSize?: { width: number; height: number } | null;
   silences?: Array<{ start: number; end: number }> | null;
+  splice?: SpliceAnalysis | null;
 }
 
 /**
@@ -473,15 +488,19 @@ function cutOneTake(
   target: StyleCutTarget,
   shotOffset: number,
   firstTake: boolean,
+  splice: SpliceAnalysis | null = null,
 ): TakeCut {
   // ---- 1+2. Speech segments: dead air trimmed, long pauses shortened ----------------------
-  const speech = speechMap(words, duration, silences);
+  // Splice mode: the voice spans ARE the speech; the quiet between them the pauses — measured
+  // to the millisecond, so no pad for Whisper drift and no frame grid on the audio cut.
+  const sp = splice && splice.voice.length ? splice : null;
+  const speech = speechMap(words, duration, sp ? silencesFromVoice(sp) : silences);
   const audio = speech.mode === "AUDIO";
   // Whisper's word ends run early (see speech-activity.ts) — without measured silences, pad more.
   const minTailPad = audio ? opts.minTailPadS : Math.max(opts.minTailPadS, opts.whisperTailPadS);
   const minLeadPad = audio ? opts.minLeadPadS : Math.max(opts.minLeadPadS, opts.whisperLeadPadS);
-  const start = Math.max(0, q(speech.start - opts.preRollS, "floor"));
-  const end = Math.min(duration, q(speech.end + (audio ? opts.tailS : Math.max(opts.tailS, opts.whisperTailPadS)), "ceil"));
+  const start = sp ? Math.max(0, r6(speech.start - opts.preRollS)) : Math.max(0, q(speech.start - opts.preRollS, "floor"));
+  const end = sp ? Math.min(duration, r6(speech.end + opts.tailS)) : Math.min(duration, q(speech.end + (audio ? opts.tailS : Math.max(opts.tailS, opts.whisperTailPadS)), "ceil"));
   const minShot = Math.max(0.8, target.shotP25S * 0.5);
   const minFirstShot = Math.max(minShot, target.firstCutS * 0.6);
 
@@ -492,14 +511,23 @@ function cutOneTake(
   const removed = new Set<number>();
   speech.pauses.forEach((p, pi) => {
     const gap = p.end - p.start;
-    const keep = p.sentenceEnd ? target.sentencePauseKeepS : target.pauseKeepS;
-    if (gap - keep < opts.minRemovalS) return;
-    // Pads: ~60 % of the kept pause after the speech (breath/release), ~40 % before the next.
-    const tailPad = Math.max(minTailPad, keep * 0.6);
-    const leadPad = Math.max(minLeadPad, keep * 0.4);
-    const cutOut = q(p.start + tailPad, "ceil");
-    const cutIn = q(p.end - leadPad, "floor");
-    if (!(cutIn - cutOut >= opts.minRemovalS - 1e-9)) return;
+    let cutOut: number;
+    let cutIn: number;
+    if (sp) {
+      const placed = placePauseCut(p.start, p.end, p.sentenceEnd, opts.spliceModel, sp.bursts, opts.minRemovalS);
+      if (!placed) return;
+      cutOut = placed.cutOut;
+      cutIn = placed.cutIn;
+    } else {
+      const keep = p.sentenceEnd ? target.sentencePauseKeepS : target.pauseKeepS;
+      if (gap - keep < opts.minRemovalS) return;
+      // Pads: ~60 % of the kept pause after the speech (breath/release), ~40 % before the next.
+      const tailPad = Math.max(minTailPad, keep * 0.6);
+      const leadPad = Math.max(minLeadPad, keep * 0.4);
+      cutOut = q(p.start + tailPad, "ceil");
+      cutIn = q(p.end - leadPad, "floor");
+      if (!(cutIn - cutOut >= opts.minRemovalS - 1e-9)) return;
+    }
     if (cutOut <= seg.start || cutIn >= end) return;
     // The pause always goes (that's the hand-edit feel). When the shot so far is too short for
     // a framing change, the cut is a jump cut: same crop, just the air removed.
@@ -714,7 +742,7 @@ export function buildStyleCut(input: StyleCutInput | StyleCutSequenceInput): Sty
     return { ok: false, reason: "NO_TRANSCRIPT", message: "Style cut needs captions first — they appear once your words are transcribed." };
   }
 
-  const { shots, speech, start, end, pausesRemoved, pauseSecondsRemoved } = cutOneTake(words, duration, input.silences ?? null, opts, target, 0, true);
+  const { shots, speech, start, end, pausesRemoved, pauseSecondsRemoved } = cutOneTake(words, duration, input.silences ?? null, opts, target, 0, true, input.splice ?? null);
 
   // ---- 4. Framing per shot (face-centred punch-ins) ---------------------------------------
   const canvas = input.base.canvas;
@@ -772,6 +800,7 @@ export function buildStyleCut(input: StyleCutInput | StyleCutSequenceInput): Sty
       t: track ? track.map((s) => [r3(s.t), s.box ? [r3(s.box.x), r3(s.box.y), r3(s.box.w), r3(s.box.h)] : null]) : null,
       s: input.sourceSize ?? null,
       z: input.silences ? input.silences.map((x) => [r3(x.start), r3(x.end)]) : null,
+      p: spliceKey(input.splice),
       g: { ...target, source: undefined },
       o: opts,
       c: [canvas.width, canvas.height, input.base.captions.y],
@@ -822,7 +851,7 @@ function buildSequenceCut(input: StyleCutSequenceInput): StyleCutResult {
       takeShots = [{ sourceStart: 0, sourceEnd: whole, framing: framingForShot(shots.length), cutBefore: first ? "START" : "JOIN" }];
       allAudio = false;
     } else {
-      const c = cutOneTake(words, t.durationSeconds, t.silences ?? null, opts, target, shots.length, first);
+      const c = cutOneTake(words, t.durationSeconds, t.silences ?? null, opts, target, shots.length, first, t.splice ?? null);
       takeShots = c.shots;
       pausesRemoved += c.pausesRemoved;
       pauseSecondsRemoved += c.pauseSecondsRemoved;
@@ -884,6 +913,7 @@ function buildSequenceCut(input: StyleCutSequenceInput): StyleCutResult {
         t: trackOrNull(t.subjectTrack)?.map((s) => [r3(s.t), s.box ? [r3(s.box.x), r3(s.box.y), r3(s.box.w), r3(s.box.h)] : null]) ?? null,
         s: t.sourceSize ?? null,
         z: t.silences ? t.silences.map((x) => [r3(x.start), r3(x.end)]) : null,
+        p: spliceKey(t.splice),
       })),
       g: { ...target, source: undefined },
       o: opts,
@@ -1013,6 +1043,7 @@ export interface StyleCutRangesInput {
   subjectTrack?: SubjectTrack | null;
   sourceSize?: { width: number; height: number } | null;
   silences?: Array<{ start: number; end: number }> | null;
+  splice?: SpliceAnalysis | null;
   target?: StyleCutTarget;
   options?: Partial<StyleCutOptions>;
   /** Playback order (may jump backwards — a cold open). */
@@ -1056,19 +1087,38 @@ export function buildStyleCutFromRanges(input: StyleCutRangesInput): StyleCutRan
       ? input.silences.map((s) => ({ start: Math.max(r.start, s.start) - r.start, end: Math.min(r.end, s.end) - r.start })).filter((s) => s.end > s.start)
       : null;
     const dur = r.end - r.start;
+    // Splice mode: the voice spans and bursts inside this range, in range-local time.
+    const sp: SpliceAnalysis | null =
+      input.splice && input.splice.voice.length
+        ? {
+            ...input.splice,
+            durationS: dur,
+            voice: input.splice.voice
+              .map((v) => ({ ...v, start: Math.max(r.start, v.start) - r.start, end: Math.min(r.end, v.end) - r.start }))
+              .filter((v) => v.end > v.start),
+            bursts: input.splice.bursts.filter((b) => b >= r.start && b <= r.end).map((b) => b - r.start),
+          }
+        : null;
     if (local.length === 0) {
-      shots.push({ sourceStart: q(r.start, "ceil"), sourceEnd: q(r.end, "floor"), framing: "WIDE", cutBefore: ri === 0 ? "START" : "STORY", rangeIndex: ri });
+      shots.push({ sourceStart: sp ? r6(r.start) : q(r.start, "ceil"), sourceEnd: sp ? r6(r.end) : q(r.end, "floor"), framing: "WIDE", cutBefore: ri === 0 ? "START" : "STORY", rangeIndex: ri });
       return;
     }
-    const o = last ? opts : { ...opts, tailS: Math.min(opts.tailS, input.joinTailS ?? Math.max(0.12, target.sentencePauseKeepS * 0.6)) };
-    const c = cutOneTake(local, dur, sil && sil.length ? sil : null, o, target, offset + shots.length, ri === 0);
+    // At a story join the air around the voice is the sentence-end pad on both sides (a hand
+    // edit's beat between two lines), not the video's own pre-roll/tail.
+    const joinPads = padsFor(opts.spliceModel, true);
+    const o: StyleCutOptions = sp
+      ? { ...opts, preRollS: ri === 0 ? opts.preRollS : joinPads.leadS, tailS: last ? opts.tailS : joinPads.tailS }
+      : last
+        ? opts
+        : { ...opts, tailS: Math.min(opts.tailS, input.joinTailS ?? Math.max(0.12, target.sentencePauseKeepS * 0.6)) };
+    const c = cutOneTake(local, dur, sil && sil.length ? sil : null, o, target, offset + shots.length, ri === 0, sp);
     if (c.speech.mode !== "AUDIO") audio = false;
     pausesRemoved += c.pausesRemoved;
     pauseSecondsRemoved += c.pauseSecondsRemoved;
     c.shots.forEach((s, k) => {
-      // Back to source time, on the frame grid.
-      const a = q(s.sourceStart + r.start, "round");
-      const b = q(s.sourceEnd + r.start, "round");
+      // Back to source time — on the frame grid, unless the splice engine placed the cut.
+      const a = sp ? r6(s.sourceStart + r.start) : q(s.sourceStart + r.start, "round");
+      const b = sp ? r6(s.sourceEnd + r.start) : q(s.sourceEnd + r.start, "round");
       if (b - a < FRAME - 1e-9) return;
       shots.push({ ...s, sourceStart: a, sourceEnd: b, cutBefore: ri === 0 && k === 0 ? "START" : k === 0 ? "STORY" : s.cutBefore, rangeIndex: ri });
     });

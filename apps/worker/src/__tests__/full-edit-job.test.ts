@@ -20,7 +20,7 @@ import {
   FULL_EDIT_AUTO_REASON,
   STYLE_CUT_AUTO_REASON,
 } from "@chris/domain";
-import { FFMPEG_PATH, LocalFsStorageAdapter, EditTimelineSchema, FullEditReportSchema, GoldenFixtureSchema, replayGolden } from "@chris/media";
+import { FFMPEG_PATH, LocalFsStorageAdapter, EditTimelineSchema, FullEditReportSchema, GoldenFixtureSchema, replayGolden, isSpliceAnalysis } from "@chris/media";
 import { maybeAutoStyleCut, applyStyleCutChoice, exportGoldenFixture } from "../style-cut-job";
 
 const run = promisify(execFile);
@@ -96,6 +96,8 @@ describe("full edit job", () => {
     expect(fe.origin).toBe("AUTO");
     expect(fe.mediaAssetId).toBe(assetId);
     expect(Array.isArray(fe.silences)).toBe(true);
+    // The splice engine's voice analysis rides along (cached for re-applies and the gate's audit).
+    expect(isSpliceAnalysis(fe.splice)).toBe(true);
     const report = FullEditReportSchema.parse(fe.report);
     expect(report.removed.map((x) => x.kind)).toEqual(expect.arrayContaining(["GREETING", "RETAKE"]));
     expect(report.hook.text).not.toMatch(/^Hey/);

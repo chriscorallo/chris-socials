@@ -119,7 +119,7 @@ const QCIssueInputSchema = z.object({
   severity: z.enum(["INFO", "MINOR", "MAJOR", "BLOCKING"]),
   timestampSeconds: z.number().nullable().optional(),
   recommendedRepair: z.string().nullable().optional(),
-  source: z.enum(["VISUAL_QA", "OVERLAY_COLLISION"]),
+  source: z.enum(["VISUAL_QA", "OVERLAY_COLLISION", "SPLICE_AUDIT"]),
 });
 export type QCIssueInput = z.input<typeof QCIssueInputSchema>;
 

@@ -1,3 +1,6 @@
+import { silencesFromVoice, type SpliceAnalysis } from "../splice/analysis";
+import type { SpliceModel } from "../splice/model";
+import { refineWordEdges } from "../splice/place";
 import { z } from "zod";
 import type { TranscriptWord } from "../caption-chunking";
 import { PLACEMENT_SAFE_ZONE } from "../platform-profiles";
@@ -78,6 +81,11 @@ export interface FullEditInput {
   silences?: Array<{ start: number; end: number }> | null;
   /** 100 ms loudness envelope (speech-activity.ts analyzeTakeAudio). */
   envelope?: { frameS: number; db: number[] } | null;
+  /** The splice engine's voice analysis (splice/analysis.ts): with it, word edges are refined to
+   * the voice, the pauses are the quiet between voice spans and every cut lands on the voice. */
+  splice?: SpliceAnalysis | null;
+  /** The pads a cut leaves around the voice (splice/model.ts); the prior when not given. */
+  spliceModel?: SpliceModel | null;
   /** Pacing (style cut target from the reference profile). */
   target?: StyleCutTarget;
   /** Length (the reference videos' duration median / p25–p75). */
@@ -235,9 +243,13 @@ function boundaryFn(words: TranscriptWord[], duration: number, silences: Array<{
 export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbedder = LEXICAL_EMBEDDER): Promise<FullEditResult> {
   const duration = input.durationSeconds;
   if (!(duration > 0)) return { ok: false, reason: "NO_DURATION", message: "This take has no length yet — wait for it to finish processing." };
-  const words = cleanWords(input.words, duration);
-  if (words.length < 3) return { ok: false, reason: "NO_TRANSCRIPT", message: "The full edit needs captions first — they appear once your words are transcribed." };
-  const silences = input.silences && input.silences.length ? input.silences : null;
+  const rawWords = cleanWords(input.words, duration);
+  if (rawWords.length < 3) return { ok: false, reason: "NO_TRANSCRIPT", message: "The full edit needs captions first — they appear once your words are transcribed." };
+  // Splice mode: Whisper's word edges snap to the voice, and the pauses are the quiet between
+  // voice spans (to the millisecond) instead of 20 ms silences.
+  const splice = input.splice && input.splice.voice.length ? input.splice : null;
+  const words = splice ? refineWordEdges(rawWords, splice) : rawWords;
+  const silences = splice ? silencesFromVoice(splice) : input.silences && input.silences.length ? input.silences : null;
   const target = input.target ?? DEFAULT_STYLE_CUT_TARGET;
   const storyTarget = input.story ?? DEFAULT_STORY_TARGET;
   let choices: FullEditChoices = input.choices ?? {};
@@ -396,8 +408,9 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
       subjectTrack: input.subjectTrack,
       sourceSize: input.sourceSize,
       silences,
+      splice,
       target,
-      options: { ...(input.options ?? {}), ...(editor && editor.plan.pacing === "LONG_SHOTS_ZOOMS" ? { holdFraming: true } : {}) },
+      options: { ...(input.options ?? {}), ...(input.spliceModel ? { spliceModel: input.spliceModel } : {}), ...(editor && editor.plan.pacing === "LONG_SHOTS_ZOOMS" ? { holdFraming: true } : {}) },
       ranges,
       // The hook opens on a MEDIUM punch-in (room for the title above the head), then WIDE.
       framingOffset: 3,
@@ -715,6 +728,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
       w: words.map((w) => [w.word, r3(w.start), r3(w.end)]),
       t: input.subjectTrack ? input.subjectTrack.length : 0,
       z: silences ? silences.map((x) => [r3(x.start), r3(x.end)]) : null,
+      p: splice ? { b: splice.bursts, m: input.spliceModel ?? null } : null,
       g: { ...target, source: undefined },
       st: storyTarget,
       c: choices,
