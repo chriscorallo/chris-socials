@@ -22,8 +22,17 @@ export async function POST(request: Request) {
   }
   if (typeof body.contentItemId !== "string" || typeof body.slug !== "string") return NextResponse.json({ error: "bad request" }, { status: 400 });
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  // An id, or words from the video's title ("car payment") — the most recent match wins.
+  const item =
+    (await prisma.contentItem.findUnique({ where: { id: body.contentItemId }, select: { id: true } })) ??
+    (await prisma.contentItem.findFirst({
+      where: { title: { contains: body.contentItemId, mode: "insensitive" } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    }));
+  if (!item) return NextResponse.json({ error: `No video with id or title matching "${body.contentItemId}".` }, { status: 404 });
   try {
-    const fixture = await exportGoldenFixture(prisma, storage, body.contentItemId, {
+    const fixture = await exportGoldenFixture(prisma, storage, item.id, {
       slug: body.slug,
       machinePlanId: str(body.machinePlanId),
       handEditPlanId: str(body.handEditPlanId),

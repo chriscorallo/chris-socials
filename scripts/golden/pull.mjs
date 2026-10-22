@@ -1,6 +1,6 @@
 // Golden-set harness: freeze real takes as fixtures (docs/PREMIUM_EDITOR_HANDOFF.md §3.1).
 //
-//   pnpm golden:pull <base-url> <contentItemId>=<slug>[@<handEditPlanId>] …
+//   pnpm golden:pull <base-url> "<contentItemId or title words>=<slug>[@<handEditPlanId>]" …
 //
 // Signs in with the app's own login (SEED_USER_EMAIL / SEED_USER_PASSWORD from the environment
 // or .env — never printed), calls POST /api/golden per item, writes fixtures/golden/<slug>.json.
@@ -67,7 +67,7 @@ if (![...jar.keys()].some((k) => k.endsWith("authjs.session-token"))) {
 mkdirSync(OUT, { recursive: true });
 let failed = 0;
 for (const spec of specs) {
-  const m = spec.match(/^([^=]+)=([a-z0-9-]+)(?:@(.+))?$/);
+  const m = spec.match(/^(.+)=([a-z0-9-]+)(?:@(.+))?$/);
   if (!m) {
     console.error(`skip "${spec}": expected <contentItemId>=<slug>[@<handEditPlanId>]`);
     failed++;
@@ -91,7 +91,7 @@ for (const spec of specs) {
   }
   writeFileSync(join(OUT, `${slug}.json`), JSON.stringify(body, null, 1) + "\n");
   console.log(
-    `${slug}: ${body.take.words.length} words, ${body.take.durationSeconds.toFixed(1)} s, editor plan ${body.editorPlan ? "yes" : "no"}, hand edit ${body.handEdit ? "yes" : "no"}`,
+    `${slug} ← "${body.title}" (${body.contentItemId}): ${body.take.words.length} words, ${body.take.durationSeconds.toFixed(1)} s, editor plan ${body.editorPlan ? "yes" : "no"}, hand edit ${body.handEdit ? "yes" : "no"}`,
   );
 }
 process.exit(failed ? 1 : 0);
