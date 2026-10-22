@@ -9794,3 +9794,10 @@ agents suites green, worker reference/edit job tests green, typecheck clean.
 **Reversibility:** v1/v2 metrics rows parse unchanged; the StyleModel is additive (the old
 profile and its five numbers are untouched); without references the digest and presets are
 empty and the orchestrator uses its built-in defaults; OCR off = `screen: null`.
+
+**Ship note (2026-10-22, evening):** both builds went live together — main `348087c` (web, git
+deploy) then worker snapshot `snap_UH00hLNWOECDqqJNDuWzk6wY8dEJ` (built with `--base` on
+`snap_4vt9RJNeBryX9SfkCtthOaea0YTO`, 2.2 min) set as `RENDER_SANDBOX_SNAPSHOT_ID` and a forced
+production redeploy so web and worker match. The first snapshot attempt failed because the new
+OCR-model download sat after the assets→bundle copy the manifest checks; fixed in `18fa514`.
+The reference library must be re-measured (Measure on `/reference`) for the v3 screen signals.

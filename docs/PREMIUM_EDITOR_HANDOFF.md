@@ -232,8 +232,8 @@ domain function with seeded rows (worker/domain DB test conventions above).
 - Week 1: done and shipped. Splice engine, sample-exact render, caption times on the voice,
   free splice audit (MAJOR), SpliceModel fitted from 57 of his hand cuts. Worker snapshot
   `snap_zTd4zsWbRV8aDvtUj5uyPozidI76` (+ one more ship for the fitted model).
-- Weeks 2–4: built 2026-10-22 (not yet shipped — needs a worker ship, 10–12 min, plus the web
-  push). Editor v2 (`EDITOR` 2.0.0 + `EDITOR_CRITIQUE` 1.0.0: write → checklist + critique →
+- Weeks 2–4: built and SHIPPED 2026-10-22 (main `348087c` + `18fa514`; worker snapshot
+  `snap_UH00hLNWOECDqqJNDuWzk6wY8dEJ`, the base for the next ship). Editor v2 (`EDITOR` 2.0.0 + `EDITOR_CRITIQUE` 1.0.0: write → checklist + critique →
   revise once; headline per beat, emphasis words, `review` stored on the plan), the Screen
   Orchestrator (`packages/media/src/screen/`: anchors, five lanes, one new thing per beat, quiet
   adaptive captions, in-hold-out zooms, cover frame, screen audit), timeline schema additions
@@ -246,7 +246,8 @@ domain function with seeded rows (worker/domain DB test conventions above).
   the splice/screen audits to BLOCKING once a few real videos show zero findings; the two Editor
   fixtures show his framing leaves no clean top zone (headlines sit over the hair) — the filming
   card's first line is the real fix; re-pull fixtures after the v2 Editor has run on a video.
-- Weeks 4–6: built 2026-10-22 (same unshipped batch). Reference metrics v3 (`screen` text events
+- Weeks 4–6: built and shipped 2026-10-22 in the same batch; the reference library still needs
+  the Measure button pressed once for the screen signals to exist. Reference metrics v3 (`screen` text events
   via tesseract.js OCR, `zooms` from the head track, `pads` from the reference's own cuts,
   `rhythm` by thirds; `REFERENCE_METRICS_VERSION` 3 so the page offers to re-measure), the
   `StyleModel` (bands; his hand edits as "mine" ×2; "don't copy" exclusions; `getStyleModel`),
