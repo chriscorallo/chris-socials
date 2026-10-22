@@ -225,17 +225,19 @@ domain function with seeded rows (worker/domain DB test conventions above).
   before starting it).
 - Push `902e4b7` with it.
 
-## 3.5 Status (2026-10-21, end of day)
+## 3.5 Status (2026-10-21, night)
 
-- Week 0: built and committed (`fb53336`, `1a32409`); **not yet pushed** — the session's command
-  sandbox had no network and pushes outside it were denied. Fixtures not yet pulled. The
-  baseline numbers are therefore still to be written.
-- Week 1: the splice engine, sample-exact render and free splice audit are built, tested and
-  committed (DECISIONS 2026-10-21 "Week 1"). Not shipped (needs a worker ship, 10–12 min).
-- First steps for the next session: push (`git push origin fix/usable-v1:main`), ship the
-  worker, pull the five fixtures (they will carry the voice analysis), `pnpm golden:replay
-  --update`, record the baseline (splice air, clipped count, hand-edit delta per fixture) and
-  fit the SpliceModel from the two hand edits (`spliceSamplesFromTimeline` → `learnSpliceModel`).
+- Week 0: done. Harness, filming card, latency meter shipped; six fixtures pulled and their
+  expected replays committed (`fixtures/golden`); baseline in DECISIONS ("Golden set pulled").
+- Week 1: done and shipped. Splice engine, sample-exact render, caption times on the voice,
+  free splice audit (MAJOR), SpliceModel fitted from 57 of his hand cuts. Worker snapshot
+  `snap_zTd4zsWbRV8aDvtUj5uyPozidI76` (+ one more ship for the fitted model).
+- Next: Weeks 2–4 (Editor v2 + Screen Orchestrator). Open from Week 1: story joins should
+  prefer a voice gap; editor preview captions still on raw Whisper times; multi-part takes get
+  no analysis; promote the splice audit to BLOCKING once a few real videos show zero findings.
+- Routine: after any cutting change run `pnpm golden:replay` (diff must be empty or explained),
+  `--update` to re-baseline, and note it in DECISIONS. Re-pull a fixture after the AI edit runs
+  on that video so it gains an Editor plan.
 
 ## 4. After Week 0 — contracts to hold to
 

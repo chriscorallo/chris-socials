@@ -1,0 +1,933 @@
+{
+ "slug": "before-investing",
+ "free": {
+  "ok": true,
+  "outputDurationS": 55.58,
+  "kept": [
+   {
+    "sentenceId": 1,
+    "text": "you even ask me what stocks to buy, I want to know these questions first.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 5,
+    "text": "At least 44% of people don't have their next emergency expense saved already.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 8,
+    "text": "Because think of it as time buckets, right?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 9,
+    "text": "Where is my money going for the goal that I have?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 13,
+    "text": "Don't even throw it in there because the market's down statistically every one in four years.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 14,
+    "text": "There's a correction year and each correction year every recession lasts about 18 months.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 16,
+    "text": "If I know I need it in the next four years or so, if it's four to 10 plus years away, then I'm going to say, \"Okay, cool.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 17,
+    "text": "Let's get a little bit of fresh tea with this bit.\"",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 20,
+    "text": "long in this range are we talking?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 21,
+    "text": "Is it fresh for five years, or are we talking 10 plus whatever?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 24,
+    "text": "Now I'm not recommending certain things that you do, you go do whichever you think you want to do.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 26,
+    "text": "three, four years it should be in a money market or not even money market.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 30,
+    "text": "would be conservatively if you were to be 10 years right",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 34,
+    "text": "How risky do you want to be?",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 0,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 2,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 3,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 4,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 6,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 7,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 10,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 11,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 12,
+    "kind": "RETAKE"
+   },
+   {
+    "sentenceId": 15,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 18,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 22,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 23,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 25,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 27,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 28,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 29,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 31,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 32,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 33,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 35,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 36,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 37,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 38,
+    "kind": "TRAILING"
+   }
+  ],
+  "title": "Before you ask what stocks to buy",
+  "headlines": [],
+  "graphics": [
+   {
+    "presetId": "ring-savings-goal",
+    "start": 5.95
+   },
+   {
+    "presetId": "hero-salary",
+    "start": 25.11
+   },
+   {
+    "presetId": "hero-salary",
+    "start": 35.94
+   },
+   {
+    "presetId": "hero-salary",
+    "start": 50.49
+   }
+  ],
+  "zooms": 0,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "PASS"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "PASS"
+   },
+   {
+    "id": "RETENTION",
+    "status": "PASS"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 22.781,
+    "inS": 22.964,
+    "removedS": 0.183,
+    "tailAirS": 0.096,
+    "leadAirS": 0.073,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 23.219,
+    "inS": 23.516,
+    "removedS": 0.297,
+    "tailAirS": 0.095,
+    "leadAirS": 0.073,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 25.266,
+    "inS": 46.766,
+    "removedS": 21.501,
+    "tailAirS": 0.145,
+    "leadAirS": 0.083,
+    "airS": 0.228,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 50.98,
+    "inS": 61.64,
+    "removedS": 10.66,
+    "tailAirS": -0.763,
+    "leadAirS": -1.271,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 64.332,
+    "inS": 64.929,
+    "removedS": 0.597,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 5,
+    "outS": 69.478,
+    "inS": 78.906,
+    "removedS": 9.429,
+    "tailAirS": 0.085,
+    "leadAirS": 0.121,
+    "airS": 0.206,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 87.875,
+    "inS": 96.515,
+    "removedS": 8.639,
+    "tailAirS": 0.08,
+    "leadAirS": 0.094,
+    "airS": 0.174,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 98.914,
+    "inS": 100.004,
+    "removedS": 1.09,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.167,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 105.278,
+    "inS": 109.893,
+    "removedS": 4.615,
+    "tailAirS": 0.147,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 9,
+    "outS": 114.174,
+    "inS": 114.558,
+    "removedS": 0.384,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 117.328,
+    "inS": 138.731,
+    "removedS": 21.403,
+    "tailAirS": 0.114,
+    "leadAirS": -0.165,
+    "airS": 0.114,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 165,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 143.93,
+    "inS": 157.907,
+    "removedS": 13.977,
+    "tailAirS": -0.875,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 12,
+    "outS": 162.26,
+    "inS": 186.616,
+    "removedS": 24.356,
+    "tailAirS": -9.288,
+    "leadAirS": 0.12,
+    "airS": 0.12,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 13,
+    "outS": 187.603,
+    "inS": 189.312,
+    "removedS": 1.709,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 14,
+    "outS": 191.745,
+    "inS": 214.819,
+    "removedS": 23.075,
+    "tailAirS": 0.146,
+    "leadAirS": -14.116,
+    "airS": 0.146,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 15,
+   "airMedianS": 0.168,
+   "airP90S": 0.219,
+   "airMaxS": 0.267,
+   "clippedCount": 1,
+   "clippedMaxMs": 165,
+   "airOver026Count": 1
+  }
+ },
+ "editor": {
+  "ok": true,
+  "outputDurationS": 44.43,
+  "kept": [
+   {
+    "sentenceId": 0,
+    "text": "Before",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 1,
+    "text": "you even ask me what stocks to buy, I want to know these questions first.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 2,
+    "text": "Do",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 3,
+    "text": "you have your emergency savings already built out?",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 6,
+    "text": "So, get to saving kid.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 7,
+    "text": "I want to know what your goals are because that's also important.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 8,
+    "text": "Because think of it as time buckets, right?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 9,
+    "text": "Where is my money going for the goal that I have?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 10,
+    "text": "So for example, if you have where maybe you need money in the next couple of years, maybe three or four years,",
+    "beat": "EXAMPLE"
+   },
+   {
+    "sentenceId": 11,
+    "text": "that should not be in the market at all.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 12,
+    "text": "Don't even touch it.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 13,
+    "text": "Don't even throw it in there because the market's down statistically every one in four years.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 14,
+    "text": "There's a correction year and each correction year every recession lasts about 18 months.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 29,
+    "text": "Market",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 32,
+    "text": "And so it's having an outer kind of zoomed out lens and saying okay what's the full picture here how do we want this money to work for us and then 10 plus right you can kind of play your game right is this retirement money is this?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 33,
+    "text": "What are we doing with this?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 27,
+    "text": "Well, that's why in the next three years it should be in bank accounts and things that are not in the market because then it won't go down, Anything more, you can kind of play at your own risk, not my recommendation, depending on how you want to do it.",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 38,
+    "text": "Stop asking me for advice.",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 4,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 5,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 15,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 16,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 17,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 18,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 20,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 21,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 22,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 23,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 24,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 25,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 26,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 28,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 30,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 31,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 34,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 35,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 36,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 37,
+    "kind": "LOW_VALUE"
+   }
+  ],
+  "title": "Before you ask what stocks to buy",
+  "headlines": [
+   {
+    "text": "TIME BUCKETS",
+    "start": 16.087,
+    "end": 23.425
+   },
+   {
+    "text": "DOWN ~1 IN 4 YEARS",
+    "start": 30.607,
+    "end": 33.047
+   },
+   {
+    "text": "10 YEARS = 1–2 DOWN YEARS",
+    "start": 35.123,
+    "end": 39.242
+   },
+   {
+    "text": "CLOSER = SAFER",
+    "start": 39.388,
+    "end": 42.308
+   },
+   {
+    "text": "ANSWER THESE FIRST",
+    "start": 42.575,
+    "end": 43.906
+   }
+  ],
+  "graphics": [
+   {
+    "presetId": "hero-salary",
+    "start": 32.49
+   }
+  ],
+  "zooms": 1,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "FIXED"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "PASS"
+   },
+   {
+    "id": "RETENTION",
+    "status": "PASS"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 22.781,
+    "inS": 22.964,
+    "removedS": 0.183,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 23.219,
+    "inS": 23.516,
+    "removedS": 0.297,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 25.266,
+    "inS": 37.46,
+    "removedS": 12.194,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 40.02,
+    "inS": 50.98,
+    "removedS": 10.96,
+    "tailAirS": 0.059,
+    "leadAirS": -3.876,
+    "airS": 0.059,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 51.839,
+    "inS": 52.193,
+    "removedS": 0.354,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 5,
+    "outS": 53.626,
+    "inS": 58.624,
+    "removedS": 4.998,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 61.64,
+    "inS": 62.636,
+    "removedS": 0.995,
+    "tailAirS": -0.911,
+    "leadAirS": 0.084,
+    "airS": 0.084,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 64.332,
+    "inS": 64.93,
+    "removedS": 0.597,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 65.953,
+    "inS": 66.48,
+    "removedS": 0.527,
+    "tailAirS": 0.035,
+    "leadAirS": -0.492,
+    "airS": 0.035,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 9,
+    "outS": 68.62,
+    "inS": 69.643,
+    "removedS": 1.022,
+    "tailAirS": -0.773,
+    "leadAirS": -0.081,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 10,
+    "outS": 75.175,
+    "inS": 76.767,
+    "removedS": 1.593,
+    "tailAirS": 0.146,
+    "leadAirS": 0.081,
+    "airS": 0.227,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 78.821,
+    "inS": 78.906,
+    "removedS": 0.085,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 12,
+    "outS": 83.7,
+    "inS": 85.18,
+    "removedS": 1.48,
+    "tailAirS": -4.095,
+    "leadAirS": -4.696,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 13,
+    "outS": 87.875,
+    "inS": 182.952,
+    "removedS": 95.077,
+    "tailAirS": 0.08,
+    "leadAirS": 0.121,
+    "airS": 0.201,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 14,
+    "outS": 183.647,
+    "inS": 185.13,
+    "removedS": 1.483,
+    "tailAirS": -0.01,
+    "leadAirS": 0.072,
+    "airS": 0.072,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 15,
+    "outS": 185.921,
+    "inS": 198.445,
+    "removedS": 12.524,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 16,
+    "outS": 200.549,
+    "inS": 200.631,
+    "removedS": 0.082,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 17,
+    "outS": 202,
+    "inS": 213.579,
+    "removedS": 11.579,
+    "tailAirS": -14.982,
+    "leadAirS": -12.876,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 18,
+    "outS": 214.706,
+    "inS": 165.2,
+    "removedS": -49.506,
+    "tailAirS": -2.276,
+    "leadAirS": -4.052,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 19,
+    "outS": 168.266,
+    "inS": 236.688,
+    "removedS": 68.422,
+    "tailAirS": -3.282,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   }
+  ],
+  "spliceSummary": {
+   "n": 20,
+   "airMedianS": 0.168,
+   "airP90S": 0.267,
+   "airMaxS": 0.267,
+   "clippedCount": 0,
+   "clippedMaxMs": 0,
+   "airOver026Count": 3
+  }
+ },
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 27,
+   "airMedianS": 0.091,
+   "airP90S": 0.807,
+   "airMaxS": 4.844,
+   "clippedCount": 8,
+   "clippedMaxMs": 3028,
+   "airOver026Count": 4
+  }
+ },
+ "hand": null
+}

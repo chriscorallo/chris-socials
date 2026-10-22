@@ -70,9 +70,11 @@ export function auditSplices(
     if (analysis && analysis.voice.length) {
       const before = analysis.voice.filter((v) => v.start < outS).pop() ?? null;
       const after = analysis.voice.find((v) => v.end > inS) ?? null;
-      // Clipped: the cut sits inside a voice span by more than the tolerance.
-      if (before && before.end - outS > t.clippedS) push("CLIPPED_WORD", (before.end - outS) * 1000, `the voice runs ${Math.round((before.end - outS) * 1000)} ms past the cut-out at ${at}s`);
-      if (after && inS - after.start > t.clippedS) push("CLIPPED_WORD", (inS - after.start) * 1000, `the cut-in at ${at}s lands ${Math.round((inS - after.start) * 1000)} ms into the voice`);
+      // Clipped: the cut sits inside a voice span by more than the tolerance AND inside a word
+      // (continuous speech is one long span; a cut between two of its words is not clipping).
+      const inWord = (x: number) => words.some((w) => w.start + t.clippedS < x && x < w.end - t.clippedS);
+      if (before && before.end - outS > t.clippedS && inWord(outS)) push("CLIPPED_WORD", (before.end - outS) * 1000, `the voice runs ${Math.round((before.end - outS) * 1000)} ms past the cut-out at ${at}s`);
+      if (after && inS - after.start > t.clippedS && inWord(inS)) push("CLIPPED_WORD", (inS - after.start) * 1000, `the cut-in at ${at}s lands ${Math.round((inS - after.start) * 1000)} ms into the voice`);
       // Gap: more air than the hand edits leave.
       const tailAir = before ? Math.max(0, outS - before.end) : 0;
       const leadAir = after ? Math.max(0, after.start - inS) : 0;

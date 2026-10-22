@@ -1,0 +1,630 @@
+{
+ "slug": "car-payment",
+ "free": {
+  "ok": true,
+  "outputDurationS": 65.13,
+  "kept": [
+   {
+    "sentenceId": 27,
+    "text": "If you are literally paying 80, 90% in just your needs, where are you saving?",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 0,
+    "text": "A lot of you are financing your personality traits for at least 72 months and I have a problem with it.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 3,
+    "text": "And not to say that you're 30 grand a month or whatever you've done isn't success.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 7,
+    "text": "So oftentimes your needs should be 50% of what your your total 50%",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 21,
+    "text": "When you have your couple hundred dollar oil change and you're're like, well shit,",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 26,
+    "text": "think one, no matter what, the bare minimum, never going over your 50% of your income per month in needs.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 29,
+    "text": "Because you should at least be saving bare minimum 20%.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 33,
+    "text": "at least throw 20% in the savings, right?",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 39,
+    "text": "you're making 10k a month and your net income is 10,000 right?",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 41,
+    "text": "It's your net you're making 10k you're saving about 20% So it's $2,000 a month.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 43,
+    "text": "You have 8k right of the 8k",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 49,
+    "text": "But don't do it first.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 50,
+    "text": "If you want more tips, don't fucking follow me.",
+    "beat": "CTA"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 1,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 2,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 4,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 5,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 6,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 8,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 9,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 10,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 11,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 12,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 13,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 14,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 15,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 16,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 17,
+    "kind": "RETAKE"
+   },
+   {
+    "sentenceId": 18,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 20,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 22,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 23,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 24,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 25,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 28,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 30,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 31,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 32,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 34,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 35,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 36,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 37,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 38,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 40,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 42,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 44,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 45,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 46,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 47,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 48,
+    "kind": "DANGLING"
+   }
+  ],
+  "title": "Where are you saving",
+  "headlines": [],
+  "graphics": [
+   {
+    "presetId": "hero-salary",
+    "start": 13.99
+   },
+   {
+    "presetId": "big-number-percent",
+    "start": 20.48
+   },
+   {
+    "presetId": "big-number-percent",
+    "start": 32.06
+   },
+   {
+    "presetId": "ring-savings-goal",
+    "start": 43.99
+   },
+   {
+    "presetId": "monthly-income-strip",
+    "start": 48.94
+   },
+   {
+    "presetId": "emergency-fund-stat",
+    "start": 57.73
+   }
+  ],
+  "zooms": 0,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "FIXED"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "FIXED"
+   },
+   {
+    "id": "RETENTION",
+    "status": "PASS"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 184.409,
+    "inS": 184.508,
+    "removedS": 0.099,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 188.402,
+    "inS": 0.507,
+    "removedS": -187.895,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 7.024,
+    "inS": 26.23,
+    "removedS": 19.206,
+    "tailAirS": 0.146,
+    "leadAirS": -2.668,
+    "airS": 0.146,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 3,
+    "outS": 31.521,
+    "inS": 49.272,
+    "removedS": 17.751,
+    "tailAirS": 0.073,
+    "leadAirS": 0.121,
+    "airS": 0.194,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 49.994,
+    "inS": 50.389,
+    "removedS": 0.395,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 5,
+    "outS": 54.101,
+    "inS": 54.812,
+    "removedS": 0.711,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 56.612,
+    "inS": 149.979,
+    "removedS": 93.367,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 153.351,
+    "inS": 172.9,
+    "removedS": 19.548,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 176.486,
+    "inS": 176.905,
+    "removedS": 0.419,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 9,
+    "outS": 178.944,
+    "inS": 179.125,
+    "removedS": 0.181,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.169,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 180.832,
+    "inS": 181.166,
+    "removedS": 0.334,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 182.032,
+    "inS": 182.189,
+    "removedS": 0.157,
+    "tailAirS": 0.145,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 12,
+    "outS": 184.409,
+    "inS": 184.509,
+    "removedS": 0.1,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.167,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 13,
+    "outS": 188.402,
+    "inS": 189.54,
+    "removedS": 1.138,
+    "tailAirS": 0.145,
+    "leadAirS": -0.271,
+    "airS": 0.145,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 14,
+    "outS": 192.803,
+    "inS": 205.883,
+    "removedS": 13.081,
+    "tailAirS": 0.115,
+    "leadAirS": 0.121,
+    "airS": 0.236,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 15,
+    "outS": 208.152,
+    "inS": 208.363,
+    "removedS": 0.211,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 16,
+    "outS": 208.98,
+    "inS": 245.742,
+    "removedS": 36.762,
+    "tailAirS": 0.043,
+    "leadAirS": 0.121,
+    "airS": 0.164,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 17,
+    "outS": 248.279,
+    "inS": 248.402,
+    "removedS": 0.123,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.167,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 18,
+    "outS": 250.01,
+    "inS": 250.65,
+    "removedS": 0.64,
+    "tailAirS": -3.324,
+    "leadAirS": -2.177,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 19,
+    "outS": 253.43,
+    "inS": 253.639,
+    "removedS": 0.209,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 20,
+    "outS": 255.92,
+    "inS": 257.491,
+    "removedS": 1.571,
+    "tailAirS": -1.392,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 21,
+    "outS": 258.772,
+    "inS": 258.997,
+    "removedS": 0.225,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 22,
+    "outS": 261.097,
+    "inS": 302.166,
+    "removedS": 41.069,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 23,
+    "outS": 303.493,
+    "inS": 304.325,
+    "removedS": 0.832,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 24,
+    "outS": 305.928,
+    "inS": 306.085,
+    "removedS": 0.157,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 25,
+   "airMedianS": 0.168,
+   "airP90S": 0.267,
+   "airMaxS": 0.267,
+   "clippedCount": 0,
+   "clippedMaxMs": 0,
+   "airOver026Count": 6
+  }
+ },
+ "editor": null,
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 21,
+   "airMedianS": 0.183,
+   "airP90S": 0.339,
+   "airMaxS": 0.387,
+   "clippedCount": 1,
+   "clippedMaxMs": 55,
+   "airOver026Count": 5
+  }
+ },
+ "hand": {
+  "spliceSummary": {
+   "n": 16,
+   "airMedianS": 0.142,
+   "airP90S": 0.23,
+   "airMaxS": 0.244,
+   "clippedCount": 4,
+   "clippedMaxMs": 1295,
+   "airOver026Count": 0
+  },
+  "vsFree": {
+   "handCuts": 16,
+   "medianDeltaMs": 47,
+   "p90DeltaMs": 6967,
+   "within30ms": 11,
+   "machineKeptOfHand": 0.811,
+   "handKeptOfMachine": 0.702
+  },
+  "vsEditor": null
+ }
+}

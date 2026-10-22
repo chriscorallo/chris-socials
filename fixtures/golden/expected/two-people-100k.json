@@ -1,0 +1,533 @@
+{
+ "slug": "two-people-100k",
+ "free": {
+  "ok": true,
+  "outputDurationS": 57.57,
+  "kept": [
+   {
+    "sentenceId": 1,
+    "text": "Both are making 100 grand a year where they're taking home $8,333 a month and then on top of that You have two different people, one's a spender, one's a saver.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 0,
+    "text": "So I have a picture here of two different people and I'm just kind of curious who would you rather be?",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 2,
+    "text": "So one, you are a very nice house or a car or rent.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 3,
+    "text": "So you have a very expensive apartment, $5,000 a month, you have $1,600 you're paying for your car, and then you travel a lot.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 4,
+    "text": "So you're paying $1,000 a month just to travel.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 5,
+    "text": "So end up saving about $733 a month, or would you rather be the other person who's doing $3,500, they own a house instead of renting like the other person, they have $200 just for their car insurance since they own their car, and then also $500 for travel because they're a little bit more modest,",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 6,
+    "text": "they don't really gotta travel that much, saving $4,133 a month.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 7,
+    "text": "Now which one are you and which one would you rather be if you're the other or not?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 9,
+    "text": "I would rather be the saver so and I am",
+    "beat": "PAYOFF"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 8,
+    "kind": "TRAILING"
+   }
+  ],
+  "title": "Both making $100K. Who's winning?",
+  "headlines": [],
+  "graphics": [
+   {
+    "presetId": "emergency-fund-stat",
+    "start": 23.78
+   },
+   {
+    "presetId": "hero-salary",
+    "start": 28.36
+   },
+   {
+    "presetId": "monthly-income-strip",
+    "start": 48.74
+   }
+  ],
+  "zooms": 0,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "PASS"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "PASS"
+   },
+   {
+    "id": "RETENTION",
+    "status": "PASS"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 9.33,
+    "inS": 9.503,
+    "removedS": 0.173,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 13.961,
+    "inS": 14.123,
+    "removedS": 0.162,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 15.456,
+    "inS": 15.63,
+    "removedS": 0.174,
+    "tailAirS": 0.097,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 18.451,
+    "inS": 0.169,
+    "removedS": -18.281,
+    "tailAirS": 0.054,
+    "leadAirS": 0.121,
+    "airS": 0.175,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 5.811,
+    "inS": 18.627,
+    "removedS": 12.816,
+    "tailAirS": 0.117,
+    "leadAirS": -0.122,
+    "airS": 0.117,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 122,
+    "inSilence": true
+   },
+   {
+    "index": 5,
+    "outS": 21.014,
+    "inS": 21.458,
+    "removedS": 0.444,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 32.092,
+    "inS": 32.414,
+    "removedS": 0.322,
+    "tailAirS": 0.147,
+    "leadAirS": 0.121,
+    "airS": 0.268,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 33.168,
+    "inS": 33.314,
+    "removedS": 0.146,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 49.508,
+    "inS": 49.594,
+    "removedS": 0.086,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 9,
+    "outS": 53.998,
+    "inS": 54.317,
+    "removedS": 0.319,
+    "tailAirS": -0.011,
+    "leadAirS": 0.12,
+    "airS": 0.12,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 58.461,
+    "inS": 60.465,
+    "removedS": 2.004,
+    "tailAirS": 0.147,
+    "leadAirS": 0.105,
+    "airS": 0.251,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 61.529,
+    "inS": 61.716,
+    "removedS": 0.187,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 12,
+   "airMedianS": 0.168,
+   "airP90S": 0.243,
+   "airMaxS": 0.268,
+   "clippedCount": 1,
+   "clippedMaxMs": 122,
+   "airOver026Count": 1
+  }
+ },
+ "editor": {
+  "ok": true,
+  "outputDurationS": 43.84,
+  "kept": [
+   {
+    "sentenceId": 1,
+    "text": "Both are making 100 grand a year where they're taking home $8,333 a month and then on top of that You have two different people, one's a spender, one's a saver.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 3,
+    "text": "So you have a very expensive apartment, $5,000 a month, you have $1,600 you're paying for your car, and then you travel a lot.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 4,
+    "text": "So you're paying $1,000 a month just to travel.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 5,
+    "text": "So end up saving about $733 a month, or would you rather be the other person who's doing $3,500, they own a house instead of renting like the other person, they have $200 just for their car insurance since they own their car, and then also $500 for travel because they're a little bit more modest,",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 6,
+    "text": "they don't really gotta travel that much, saving $4,133 a month.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 9,
+    "text": "I would rather be the saver so and I am",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 7,
+    "text": "Now which one are you and which one would you rather be if you're the other or not?",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 0,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 2,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 8,
+    "kind": "LOW_VALUE"
+   }
+  ],
+  "title": "Both making $100K. Who's winning?",
+  "headlines": [
+   {
+    "text": "THE SPENDER",
+    "start": 11.572,
+    "end": 19.057
+   },
+   {
+    "text": "$733 vs $4,133",
+    "start": 35.418,
+    "end": 39.703
+   },
+   {
+    "text": "WHICH ONE ARE YOU?",
+    "start": 41.247,
+    "end": 43.787
+   }
+  ],
+  "graphics": [
+   {
+    "presetId": "hero-salary",
+    "start": 17.59
+   },
+   {
+    "presetId": "monthly-income-strip",
+    "start": 37.27
+   }
+  ],
+  "zooms": 0,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "PASS"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "PASS"
+   },
+   {
+    "id": "RETENTION",
+    "status": "PASS"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 9.33,
+    "inS": 9.503,
+    "removedS": 0.173,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 13.961,
+    "inS": 14.123,
+    "removedS": 0.162,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 15.456,
+    "inS": 15.63,
+    "removedS": 0.174,
+    "tailAirS": 0.097,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 18.451,
+    "inS": 24.094,
+    "removedS": 5.643,
+    "tailAirS": 0.054,
+    "leadAirS": 0.035,
+    "airS": 0.088,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 30.18,
+    "inS": 30.28,
+    "removedS": 0.1,
+    "tailAirS": -1.765,
+    "leadAirS": -1.009,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 5,
+    "outS": 32.091,
+    "inS": 33.264,
+    "removedS": 1.173,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 49.507,
+    "inS": 49.593,
+    "removedS": 0.086,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 53.997,
+    "inS": 60.465,
+    "removedS": 6.468,
+    "tailAirS": -0.011,
+    "leadAirS": 0.105,
+    "airS": 0.105,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 61.579,
+    "inS": 54.317,
+    "removedS": -7.262,
+    "tailAirS": 0.145,
+    "leadAirS": 0.12,
+    "airS": 0.266,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 9,
+   "airMedianS": 0.168,
+   "airP90S": 0.266,
+   "airMaxS": 0.267,
+   "clippedCount": 0,
+   "clippedMaxMs": 0,
+   "airOver026Count": 2
+  }
+ },
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 15,
+   "airMedianS": 0.071,
+   "airP90S": 0.195,
+   "airMaxS": 0.307,
+   "clippedCount": 3,
+   "clippedMaxMs": 2682,
+   "airOver026Count": 1
+  }
+ },
+ "hand": {
+  "spliceSummary": {
+   "n": 19,
+   "airMedianS": 0.078,
+   "airP90S": 0.215,
+   "airMaxS": 0.257,
+   "clippedCount": 6,
+   "clippedMaxMs": 2648,
+   "airOver026Count": 0
+  },
+  "vsFree": {
+   "handCuts": 19,
+   "medianDeltaMs": 307,
+   "p90DeltaMs": 3815,
+   "within30ms": 12,
+   "machineKeptOfHand": 0.964,
+   "handKeptOfMachine": 0.844
+  },
+  "vsEditor": {
+   "handCuts": 19,
+   "medianDeltaMs": 1215,
+   "p90DeltaMs": 3881,
+   "within30ms": 5,
+   "machineKeptOfHand": 0.825,
+   "handKeptOfMachine": 0.949
+  }
+ }
+}

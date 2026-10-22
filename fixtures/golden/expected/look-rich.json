@@ -1,0 +1,368 @@
+{
+ "slug": "look-rich",
+ "free": {
+  "ok": true,
+  "outputDurationS": 62.11,
+  "kept": [
+   {
+    "sentenceId": 3,
+    "text": "The easiest way to look rich is by spending the money you should have used to become wealthy.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 7,
+    "text": "valuable possessions that you have aren't really putting you ahead to become wealthy.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 18,
+    "text": "When you make a lot of money or you just make a certain amount of money and you spend whatever else is left over, that gap is gonna get smaller so you can do less with it.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 23,
+    "text": "You work so hard so many hours for money that it's like you're going to spend it on liabilities?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 24,
+    "text": "No, you're going to throw it into an asset that asset's going to make you money.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 25,
+    "text": "Then that money that you make from it, you're going to use to spend on whatever liabilities because this asset's going to continue to make money.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 26,
+    "text": "So it's like you work to trade your time for money first, then you build assets that buys back your time.",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 27,
+    "text": "So then that way if you're not working, you're still making money.",
+    "beat": "PAYOFF"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 0,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 1,
+    "kind": "FLUFF"
+   },
+   {
+    "sentenceId": 2,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 4,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 5,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 6,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 8,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 9,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 10,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 11,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 12,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 13,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 14,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 15,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 16,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 17,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 20,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 21,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 22,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 28,
+    "kind": "FLUFF"
+   }
+  ],
+  "title": "Looking rich is how you stay broke",
+  "headlines": [],
+  "graphics": [],
+  "zooms": 1,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "PASS"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "PASS"
+   },
+   {
+    "id": "COHESION",
+    "status": "WARN"
+   },
+   {
+    "id": "QUALITY",
+    "status": "FIXED"
+   },
+   {
+    "id": "RETENTION",
+    "status": "WARN"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 42.643,
+    "inS": 42.762,
+    "removedS": 0.119,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 44.539,
+    "inS": 44.924,
+    "removedS": 0.385,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 45.96,
+    "inS": 67.835,
+    "removedS": 21.875,
+    "tailAirS": -1.902,
+    "leadAirS": 0.042,
+    "airS": 0.042,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 3,
+    "outS": 70.096,
+    "inS": 70.535,
+    "removedS": 0.439,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 73.637,
+    "inS": 136.56,
+    "removedS": 62.923,
+    "tailAirS": 0.146,
+    "leadAirS": -0.216,
+    "airS": 0.146,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 5,
+    "outS": 143.107,
+    "inS": 143.215,
+    "removedS": 0.108,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 146,
+    "inS": 168.9,
+    "removedS": 22.9,
+    "tailAirS": -0.154,
+    "leadAirS": -0.148,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 7,
+    "outS": 172.034,
+    "inS": 172.445,
+    "removedS": 0.411,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 174.901,
+    "inS": 175.2,
+    "removedS": 0.299,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 9,
+    "outS": 181.816,
+    "inS": 181.957,
+    "removedS": 0.141,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 183.481,
+    "inS": 183.995,
+    "removedS": 0.514,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 188.579,
+    "inS": 189.203,
+    "removedS": 0.624,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 12,
+    "outS": 193.528,
+    "inS": 193.59,
+    "removedS": 0.062,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 13,
+   "airMedianS": 0.168,
+   "airP90S": 0.247,
+   "airMaxS": 0.267,
+   "clippedCount": 0,
+   "clippedMaxMs": 0,
+   "airOver026Count": 2
+  }
+ },
+ "editor": null,
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 20,
+   "airMedianS": 0.053,
+   "airP90S": 0.195,
+   "airMaxS": 0.233,
+   "clippedCount": 10,
+   "clippedMaxMs": 7197,
+   "airOver026Count": 0
+  }
+ },
+ "hand": {
+  "spliceSummary": {
+   "n": 20,
+   "airMedianS": 0.053,
+   "airP90S": 0.195,
+   "airMaxS": 0.233,
+   "clippedCount": 10,
+   "clippedMaxMs": 7197,
+   "airOver026Count": 0
+  },
+  "vsFree": {
+   "handCuts": 20,
+   "medianDeltaMs": 1727,
+   "p90DeltaMs": 11000,
+   "within30ms": 11,
+   "machineKeptOfHand": 0.668,
+   "handKeptOfMachine": 0.623
+  },
+  "vsEditor": null
+ }
+}

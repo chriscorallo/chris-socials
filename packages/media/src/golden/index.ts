@@ -6,7 +6,7 @@ import { parseSubjectTrack } from "../subject-track-core";
 import { buildFullEdit, storyTargetFromProfile, type FullEditChoices, type FullEditResult } from "../full-edit";
 import { EditorPlanSchema } from "../full-edit/editor-plan";
 import { LEXICAL_EMBEDDER, type FullEditEmbedder } from "../full-edit/text";
-import { isSpliceAnalysis } from "../splice/analysis";
+import { isSpliceAnalysis, type SpliceAnalysis } from "../splice/analysis";
 
 /**
  * The golden-set harness (2026-10-21, docs/PREMIUM_EDITOR_HANDOFF.md §3.1). A fixture is one of
@@ -136,14 +136,23 @@ function boundaries(timeline: EditTimeline): Array<{ outS: number; inS: number }
   return out;
 }
 
-/** Every splice of a timeline measured against the take's words (and silences when known). */
-export function spliceMetrics(timeline: EditTimeline, words: TranscriptWord[], silences: Array<{ start: number; end: number }> | null): SpliceMetric[] {
+/**
+ * Every splice of a timeline measured against the voice (the splice analysis, to the
+ * millisecond) when the fixture has one, else against Whisper's words (±0.2–0.4 s — a coarse
+ * ruler: a "clipped" word there may be Whisper's drift, not the cut's). Silences, when known,
+ * say whether both edges sit in measured quiet.
+ */
+export function spliceMetrics(timeline: EditTimeline, words: TranscriptWord[], silences: Array<{ start: number; end: number }> | null, analysis?: SpliceAnalysis | null): SpliceMetric[] {
   const inSil = (t: number) => (silences ? silences.some((s) => t >= s.start - 0.02 && t <= s.end + 0.02) : null);
+  const spans: Array<{ start: number; end: number }> = analysis && analysis.voice.length ? analysis.voice : words;
   return boundaries(timeline).map(({ outS, inS }, index) => {
-    const before = [...words].reverse().find((w) => w.end <= outS + 0.02 || (w.start < outS && w.end > outS));
-    const after = words.find((w) => w.start >= inS - 0.02 || (w.start < inS && w.end > inS));
-    const clippedTail = before && before.start < outS && before.end > outS + 0.02 ? (before.end - outS) * 1000 : 0;
-    const clippedLead = after && after.start < inS - 0.02 && after.end > inS ? (inS - after.start) * 1000 : 0;
+    const before = [...spans].reverse().find((w) => w.end <= outS + 0.02 || (w.start < outS && w.end > outS));
+    const after = spans.find((w) => w.start >= inS - 0.02 || (w.start < inS && w.end > inS));
+    // Clipped = the cut sits inside the voice AND inside a word (a voice span can run for many
+    // seconds of continuous speech; a cut between two words of one span is not a clipped word).
+    const inWord = (t: number) => words.some((w) => w.start + 0.04 < t && t < w.end - 0.04);
+    const clippedTail = before && before.start < outS && before.end > outS + 0.02 && (!analysis || inWord(outS)) ? (before.end - outS) * 1000 : 0;
+    const clippedLead = after && after.start < inS - 0.02 && after.end > inS && (!analysis || inWord(inS)) ? (inS - after.start) * 1000 : 0;
     const tailAirS = before ? outS - before.end : 0;
     const leadAirS = after ? after.start - inS : 0;
     const a = inSil(outS);
@@ -213,13 +222,13 @@ export function compareToHandEdit(machine: EditTimeline, hand: EditTimeline, ass
   };
 }
 
-function summariseCut(r: FullEditResult, words: TranscriptWord[], silences: Array<{ start: number; end: number }> | null): GoldenCut {
+function summariseCut(r: FullEditResult, words: TranscriptWord[], silences: Array<{ start: number; end: number }> | null, analysis: SpliceAnalysis | null): GoldenCut {
   if (!r.ok) {
     const empty = summariseSplices([]);
     return { ok: false, error: r.message, outputDurationS: 0, kept: [], removed: [], title: null, headlines: [], graphics: [], zooms: 0, checks: [], splices: [], spliceSummary: empty };
   }
   const rep = r.report;
-  const splices = spliceMetrics(r.timeline, words, silences);
+  const splices = spliceMetrics(r.timeline, words, silences, analysis);
   return {
     ok: true,
     outputDurationS: r3(rep.outputDurationS),
@@ -241,6 +250,7 @@ export async function replayGolden(fixture: GoldenFixture, options: { embedder?:
   const embedder = options.embedder ?? LEXICAL_EMBEDDER;
   const words = f.take.words;
   const silences = f.audio.silences;
+  const analysis = isSpliceAnalysis(f.audio.splice) ? f.audio.splice : null;
   const profile = (f.profile ?? null) as Parameters<typeof styleCutTargetFromProfile>[0];
   const run = (choices: FullEditChoices) =>
     buildFullEdit(
@@ -253,7 +263,7 @@ export async function replayGolden(fixture: GoldenFixture, options: { embedder?:
         sourceSize: f.take.width && f.take.height ? { width: f.take.width, height: f.take.height } : null,
         silences,
         envelope: f.audio.envelope,
-        splice: isSpliceAnalysis(f.audio.splice) ? f.audio.splice : null,
+        splice: analysis,
         target: styleCutTargetFromProfile(profile),
         story: storyTargetFromProfile(profile as Parameters<typeof storyTargetFromProfile>[0]),
         brief: f.brief,
@@ -263,18 +273,18 @@ export async function replayGolden(fixture: GoldenFixture, options: { embedder?:
       embedder,
     );
   const freeR = await run({});
-  const free = summariseCut(freeR, words, silences);
+  const free = summariseCut(freeR, words, silences, analysis);
   let editor: GoldenCut | null = null;
   let editorTimeline: EditTimeline | null = null;
   if (f.editorPlan) {
     const r = await run({ useEditor: true, editorPlan: f.editorPlan });
-    editor = summariseCut(r, words, silences);
+    editor = summariseCut(r, words, silences, analysis);
     if (r.ok) editorTimeline = r.timeline;
   }
-  const prodMachine = f.machine ? { spliceSummary: summariseSplices(spliceMetrics(f.machine.timeline, words, silences)) } : null;
+  const prodMachine = f.machine ? { spliceSummary: summariseSplices(spliceMetrics(f.machine.timeline, words, silences, analysis)) } : null;
   const hand = f.handEdit
     ? {
-        spliceSummary: summariseSplices(spliceMetrics(f.handEdit.timeline, words, silences)),
+        spliceSummary: summariseSplices(spliceMetrics(f.handEdit.timeline, words, silences, analysis)),
         vsFree: freeR.ok ? compareToHandEdit(freeR.timeline, f.handEdit.timeline, f.take.mediaAssetId) : compareToHandEdit(f.base, f.handEdit.timeline, f.take.mediaAssetId),
         vsEditor: editorTimeline ? compareToHandEdit(editorTimeline, f.handEdit.timeline, f.take.mediaAssetId) : null,
       }

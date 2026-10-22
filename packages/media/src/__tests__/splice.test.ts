@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { analyzeSplicePcm, silencesFromVoice } from "../splice/analysis";
-import { DEFAULT_SPLICE_MODEL, learnSpliceModel, spliceSamplesFromTimeline, SPLICE_PAD_BAND } from "../splice/model";
+import { DEFAULT_SPLICE_MODEL, PRIOR_SPLICE_MODEL, learnSpliceModel, spliceSamplesFromTimeline, SPLICE_PAD_BAND } from "../splice/model";
 import { placePauseCut, refineWordEdges } from "../splice/place";
 import { auditSplices } from "../splice/audit";
 import { EditTimelineSchema, type EditTimeline } from "../timeline";
@@ -150,12 +150,13 @@ describe("splice model — learned from hand edits, inside the band", () => {
       expect(Math.abs(s.tailS - 0.07)).toBeLessThanOrEqual(0.012);
       expect(Math.abs(s.leadS - 0.04)).toBeLessThanOrEqual(0.012);
     }
-    const m = learnSpliceModel(samples, DEFAULT_SPLICE_MODEL, 3);
+    const m = learnSpliceModel(samples, PRIOR_SPLICE_MODEL, 3);
     expect(m.source).toBe("LEARNED");
     expect(m.sentence.tailS).toBeGreaterThanOrEqual(SPLICE_PAD_BAND.tailS[0]);
-    const wide = learnSpliceModel(Array.from({ length: 8 }, () => ({ tailS: 0.5, leadS: 0.4, sentenceEnd: false })), DEFAULT_SPLICE_MODEL);
+    const wide = learnSpliceModel(Array.from({ length: 8 }, () => ({ tailS: 0.5, leadS: 0.4, sentenceEnd: false })), PRIOR_SPLICE_MODEL);
     expect(wide.mid).toEqual({ tailS: SPLICE_PAD_BAND.tailS[1], leadS: SPLICE_PAD_BAND.leadS[1] }); // never wider than the hand-edit band
     expect(learnSpliceModel([]).source).toBe("PRIOR");
+    expect(DEFAULT_SPLICE_MODEL.source).toBe("LEARNED"); // the worker cuts with the fitted pads
   });
 });
 

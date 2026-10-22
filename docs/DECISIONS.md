@@ -9588,3 +9588,61 @@ media suite (30 files, 365 tests) and the worker edit-job/gate tests green.
 
 **Reversibility:** without an analysis (`splice: null`) every path is byte-for-byte the previous
 behaviour; `STYLE_CUT_VERSION` 4 only changes the inputs key.
+
+## 2026-10-21 — Golden set pulled; the splice baseline; the SpliceModel fitted from his hand edits
+
+**Golden set** (`fixtures/golden/*.json`, expected replays in `fixtures/golden/expected/`): six
+of Chris's takes, pulled from prod with `pnpm golden:pull` after the Week 0/1 ship:
+
+| slug | video | take | hand edit | Editor plan |
+|---|---|---|---|---|
+| car-payment | Your car payment is not a personality trait | 308 s | yes (16 cuts) | no |
+| 100k-not-spending | Why a $100K salary isn't $100K of spending money | 88 s | yes (13) | no |
+| two-people-100k | Two people making $100K: who's actually winning? | 63 s | yes (19) | yes |
+| before-investing | What I would organize before investing $1 | 239 s | no | yes |
+| look-rich | You don't need to look rich to be wealthy | 199 s | yes (20) | no |
+| img-4128 | IMG 4128 | 166 s | yes (45) | no |
+
+Only two videos in prod carry an Editor plan today; the others replay the free cut only. A video
+gets an Editor replay as soon as the AI edit has run on it once and the fixture is re-pulled.
+
+**Harness fixes found by the first replay:** (1) the machine cut must never be a hand save —
+`saveFinishingEdit` keeps the earlier `fullEdit` block on the row, so "has a fullEdit block" is
+no proof (`isHandEditReason` decides); (2) splices are measured against the voice analysis, not
+Whisper's words (±0.2–0.4 s: even the hand edits read as "clipped" by that ruler); (3)
+"clipped" means inside the voice AND inside a word — continuous speech is one long voice span,
+and a cut between two of its words is not clipping. The same rule is in the gate's audit.
+
+**The SpliceModel is fitted, not a prior** (`LEARNED_SPLICE_MODEL`, now the default): 57 pause
+cuts across the five hand edits, each measured against the voice. Mid-sentence tail 96 ms
+(p25–p75 76–112), lead 72 ms (59–77); sentence end tail 146 ms (99–175), lead 121 ms (91–151).
+The band widened to tail 30–200 ms / lead 20–160 ms so a sentence-end pad is not clamped. His
+real air is therefore ~170 ms inside a sentence and ~270 ms between sentences — more than the
+hand-copied 2026-10-19 numbers (120/180 ms) assumed, and now measured, not guessed.
+
+**Baseline (replay with the fitted model, air measured against the voice):**
+
+| fixture | engine (free cut) | prod cut before the engine | hand edit |
+|---|---|---|---|
+| car-payment | 25 splices · air median 0.168 s · p90 0.267 · >0.26 s: 6 · clipped 0 | 21 · 0.183 · 0.339 · 5 · 1 | 16 · 0.142 · 0.23 · 0 · 4 |
+| 100k-not-spending | 17 · 0.189 · 0.267 · 8 · 0 | 15 · 0.171 · 0.356 · 4 · 2 | 13 · 0.089 · 0.328 · 3 · 5 |
+| two-people-100k | 12 · 0.168 · 0.243 · 1 · 1 (Editor: 9 · 0.168 · 0.266 · 2 · 0) | 15 · 0.071 · 0.195 · 1 · 3 | 19 · 0.078 · 0.215 · 0 · 6 |
+| before-investing | 15 · 0.168 · 0.219 · 1 · 1 (Editor: 20 · 0.168 · 0.267 · 3 · 0) | 27 · 0.091 · 0.807 · 4 · 8 (max 4.8 s) | — |
+| look-rich | 13 · 0.168 · 0.247 · 2 · 0 | 20 · 0.053 · 0.195 · 0 · 10 | same row |
+| img-4128 | 23 · 0.168 · 0.252 · 3 · 1 | 17 · 0.174 · 0.309 · 3 · 2 | 45 · 0.14 · 0.298 · 5 · 2 |
+
+Reading it: the engine leaves the same air at every cut (the model's pads, to the millisecond)
+and clips nothing; the old cut's air varied from 0 to 4.8 s. The "> 0.26 s" column is the
+sentence-end pad (0.267 s) — his own sentence-end cuts sit there too. Kept-line agreement with
+his hand edits (which lines he kept vs the machine) is 57–97 % — that is the Editor's job,
+not the splice engine's, and is judged on Fridays by watching.
+
+**Not done:** the few remaining "clipped" cuts (≤ 1 per fixture, 122–285 ms) are story joins the
+planner placed at a Whisper boundary inside continuous speech (no pause ≥ 50 ms between the two
+sentences) — the Editor v2 / join placement should prefer a voice gap; the harness's hand-edit
+"air" and the pad samples use slightly different cut sets (all cuts vs pause cuts only).
+
+**Ship note:** the scratchpad `ship.sh` once wrote an empty snapshot id to Vercel when the
+snapshot build failed (a Node-only import had reached the browser bundle); the id was restored
+by hand and the script now stops on an empty snapshot. Never let a ship script PATCH an env
+from an unchecked value.

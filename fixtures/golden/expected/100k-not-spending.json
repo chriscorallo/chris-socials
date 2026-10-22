@@ -1,0 +1,400 @@
+{
+ "slug": "100k-not-spending",
+ "free": {
+  "ok": true,
+  "outputDurationS": 64.32,
+  "kept": [
+   {
+    "sentenceId": 2,
+    "text": "Why is $100,000 of income never actually $100,000 worth of spending money?",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 3,
+    "text": "Hmm, you ever thought about that?",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 4,
+    "text": "Well, the reason is because there's a lot more that goes into your actual income.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 5,
+    "text": "So two big differences.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 6,
+    "text": "There's a difference between gross income and net income.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 7,
+    "text": "Gross is your literal, what do I make per year?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 8,
+    "text": "Net is what you're seeing in your bank account after taxes, retirement contributions contributions, so that would be like 401k and all of those little things that are getting taken out pre-tax",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 9,
+    "text": "because they're taking it from your income.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 10,
+    "text": "Generally speaking, you are going to be contributing to all these things",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 12,
+    "text": "before you see it.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 13,
+    "text": "Yeah, you're making a hundred plus grand a year But you're really saying like seven to eight so oftentimes you'll see somebody is making 120 years grand will be taking home probably something like seven 8k per month month of spending money.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 14,
+    "text": "So if you're spending more than 10k per month it's not in the budget so please stop doing that.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 15,
+    "text": "Also for better tips please teach me how to get better tips.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 16,
+    "text": "Also please don't follow me.",
+    "beat": "CTA"
+   },
+   {
+    "sentenceId": 18,
+    "text": "I don't even want to do this anymore.",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 0,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 1,
+    "kind": "GREETING"
+   },
+   {
+    "sentenceId": 11,
+    "kind": "RETAKE"
+   },
+   {
+    "sentenceId": 17,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "FLUFF"
+   }
+  ],
+  "title": "The $100K income",
+  "headlines": [],
+  "graphics": [
+   {
+    "presetId": "monthly-income-strip",
+    "start": 36.76
+   },
+   {
+    "presetId": "hero-salary",
+    "start": 50.72
+   },
+   {
+    "presetId": "cta-follow",
+    "start": 60.43
+   }
+  ],
+  "zooms": 2,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "FIXED"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "PASS"
+   },
+   {
+    "id": "RETENTION",
+    "status": "FIXED"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 15.95,
+    "inS": 16.186,
+    "removedS": 0.236,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 17.94,
+    "inS": 18.499,
+    "removedS": 0.559,
+    "tailAirS": 0.067,
+    "leadAirS": 0.121,
+    "airS": 0.189,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 21.732,
+    "inS": 22.315,
+    "removedS": 0.583,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 23.393,
+    "inS": 24.122,
+    "removedS": 0.729,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 39.117,
+    "inS": 39.592,
+    "removedS": 0.475,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 5,
+    "outS": 42.038,
+    "inS": 42.472,
+    "removedS": 0.434,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 44.615,
+    "inS": 45.079,
+    "removedS": 0.464,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 48.323,
+    "inS": 50.931,
+    "removedS": 2.608,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 52.9,
+    "inS": 53.06,
+    "removedS": 0.16,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 9,
+    "outS": 55.914,
+    "inS": 56.302,
+    "removedS": 0.388,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 58.074,
+    "inS": 58.266,
+    "removedS": 0.192,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 72.43,
+    "inS": 72.728,
+    "removedS": 0.298,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 12,
+    "outS": 73.274,
+    "inS": 73.516,
+    "removedS": 0.242,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 13,
+    "outS": 74.566,
+    "inS": 74.671,
+    "removedS": 0.105,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 14,
+    "outS": 75.274,
+    "inS": 75.362,
+    "removedS": 0.088,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 15,
+    "outS": 77.982,
+    "inS": 79.417,
+    "removedS": 1.435,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 16,
+    "outS": 81.243,
+    "inS": 83.627,
+    "removedS": 2.384,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 17,
+   "airMedianS": 0.189,
+   "airP90S": 0.267,
+   "airMaxS": 0.267,
+   "clippedCount": 0,
+   "clippedMaxMs": 0,
+   "airOver026Count": 8
+  }
+ },
+ "editor": null,
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 15,
+   "airMedianS": 0.171,
+   "airP90S": 0.356,
+   "airMaxS": 0.396,
+   "clippedCount": 2,
+   "clippedMaxMs": 8590,
+   "airOver026Count": 4
+  }
+ },
+ "hand": {
+  "spliceSummary": {
+   "n": 13,
+   "airMedianS": 0.089,
+   "airP90S": 0.328,
+   "airMaxS": 0.427,
+   "clippedCount": 5,
+   "clippedMaxMs": 8590,
+   "airOver026Count": 3
+  },
+  "vsFree": {
+   "handCuts": 13,
+   "medianDeltaMs": 293,
+   "p90DeltaMs": 6285,
+   "within30ms": 6,
+   "machineKeptOfHand": 0.972,
+   "handKeptOfMachine": 0.689
+  },
+  "vsEditor": null
+ }
+}

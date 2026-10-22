@@ -1,0 +1,576 @@
+{
+ "slug": "img-4128",
+ "free": {
+  "ok": true,
+  "outputDurationS": 75.05,
+  "kept": [
+   {
+    "sentenceId": 1,
+    "text": "Now, somebody who has $400,000, you are a bitch.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 5,
+    "text": "So, two people who are both making $400,000 can have two completely different networks.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 7,
+    "text": "Imagine",
+    "beat": "EXAMPLE"
+   },
+   {
+    "sentenceId": 8,
+    "text": "one person making $400,000 a year is saving about 50% of their entire income.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 9,
+    "text": "So they're saving 200 grand.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 10,
+    "text": "Right now, so you have another person making 400 grand, but they're also only saving maybe 20% right?",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 11,
+    "text": "I would say even 50% realistically honestly, you really wanted to play Paul before ball game for game come on now, you know, but say one person",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 12,
+    "text": "is investing into real estate.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 13,
+    "text": "They're buying businesses.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 14,
+    "text": "They're doing stuff with this cash.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 15,
+    "text": "They're also investing in the stocks and doing all these other things.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 17,
+    "text": "They're saving into like a high-level savings account.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 18,
+    "text": "They're also maybe doing a couple of other things that aren't too crazy, maybe it's just stocks and whatever else.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 19,
+    "text": "Nothing crazy.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 22,
+    "text": "Now I'm not giving recommendations, right?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 24,
+    "text": "You're looking at stuff that's in the market.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 25,
+    "text": "If you're looking at stuff that's in real real estate if you're looking at things that are not liquid But will grow at a certain rate",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 27,
+    "text": "So, what does that safer thing?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 37,
+    "text": "Just know, what are you getting into?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 38,
+    "text": "Because there's other things you can get into besides those.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 39,
+    "text": "But that's just the tip of the iceberg.",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 40,
+    "text": "Do not fucking follow me.",
+    "beat": "CTA"
+   },
+   {
+    "sentenceId": 41,
+    "text": "I don't want to talk to you.",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 0,
+    "kind": "GREETING"
+   },
+   {
+    "sentenceId": 2,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 3,
+    "kind": "FLUFF"
+   },
+   {
+    "sentenceId": 4,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 6,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 16,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 20,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 21,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 23,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 26,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 28,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 29,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 30,
+    "kind": "SIGN_OFF"
+   },
+   {
+    "sentenceId": 31,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 32,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 33,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 34,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 35,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 36,
+    "kind": "LOW_VALUE"
+   }
+  ],
+  "title": "They're: $400K",
+  "headlines": [],
+  "graphics": [
+   {
+    "presetId": "hero-salary",
+    "start": 6.41
+   },
+   {
+    "presetId": "hero-salary",
+    "start": 12.8
+   },
+   {
+    "presetId": "emergency-fund-stat",
+    "start": 20
+   },
+   {
+    "presetId": "big-number-percent",
+    "start": 26.68
+   },
+   {
+    "presetId": "cta-follow",
+    "start": 71.33
+   }
+  ],
+  "zooms": 1,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "FIXED"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "PASS"
+   },
+   {
+    "id": "RETENTION",
+    "status": "FIXED"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 6.42,
+    "inS": 6.887,
+    "removedS": 0.467,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 7.906,
+    "inS": 18.47,
+    "removedS": 10.564,
+    "tailAirS": -0.416,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 2,
+    "outS": 23.388,
+    "inS": 24.212,
+    "removedS": 0.824,
+    "tailAirS": 0.058,
+    "leadAirS": 0.11,
+    "airS": 0.167,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 24.854,
+    "inS": 25.337,
+    "removedS": 0.483,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.167,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 26.092,
+    "inS": 26.683,
+    "removedS": 0.591,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.169,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 5,
+    "outS": 27.889,
+    "inS": 27.991,
+    "removedS": 0.102,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.169,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 30.878,
+    "inS": 31.198,
+    "removedS": 0.32,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 33.549,
+    "inS": 33.7,
+    "removedS": 0.151,
+    "tailAirS": 0.145,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 41.554,
+    "inS": 42.054,
+    "removedS": 0.5,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 9,
+    "outS": 48.785,
+    "inS": 49.06,
+    "removedS": 0.275,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.169,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 51.126,
+    "inS": 51.984,
+    "removedS": 0.858,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 59.232,
+    "inS": 62.338,
+    "removedS": 3.105,
+    "tailAirS": 0.039,
+    "leadAirS": 0.035,
+    "airS": 0.075,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 12,
+    "outS": 71.377,
+    "inS": 81.323,
+    "removedS": 9.947,
+    "tailAirS": 0.146,
+    "leadAirS": 0.044,
+    "airS": 0.191,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 13,
+    "outS": 81.909,
+    "inS": 82.433,
+    "removedS": 0.524,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 14,
+    "outS": 83.839,
+    "inS": 84.099,
+    "removedS": 0.26,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 15,
+    "outS": 84.411,
+    "inS": 91.205,
+    "removedS": 6.794,
+    "tailAirS": 0.046,
+    "leadAirS": 0.121,
+    "airS": 0.166,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 16,
+    "outS": 97.057,
+    "inS": 97.371,
+    "removedS": 0.314,
+    "tailAirS": -0.285,
+    "leadAirS": 0.072,
+    "airS": 0.072,
+    "clippedTailMs": 285,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 17,
+    "outS": 99.456,
+    "inS": 113.051,
+    "removedS": 13.595,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 18,
+    "outS": 114.652,
+    "inS": 152.494,
+    "removedS": 37.842,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 19,
+    "outS": 153.532,
+    "inS": 154.479,
+    "removedS": 0.947,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 20,
+    "outS": 155.091,
+    "inS": 155.311,
+    "removedS": 0.22,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 21,
+    "outS": 159.081,
+    "inS": 159.205,
+    "removedS": 0.124,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 22,
+    "outS": 163.536,
+    "inS": 163.778,
+    "removedS": 0.242,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 23,
+   "airMedianS": 0.168,
+   "airP90S": 0.252,
+   "airMaxS": 0.267,
+   "clippedCount": 1,
+   "clippedMaxMs": 285,
+   "airOver026Count": 3
+  }
+ },
+ "editor": null,
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 17,
+   "airMedianS": 0.174,
+   "airP90S": 0.309,
+   "airMaxS": 0.493,
+   "clippedCount": 2,
+   "clippedMaxMs": 746,
+   "airOver026Count": 3
+  }
+ },
+ "hand": {
+  "spliceSummary": {
+   "n": 45,
+   "airMedianS": 0.14,
+   "airP90S": 0.298,
+   "airMaxS": 0.493,
+   "clippedCount": 2,
+   "clippedMaxMs": 286,
+   "airOver026Count": 5
+  },
+  "vsFree": {
+   "handCuts": 45,
+   "medianDeltaMs": 2167,
+   "p90DeltaMs": 7944,
+   "within30ms": 17,
+   "machineKeptOfHand": 0.572,
+   "handKeptOfMachine": 0.984
+  },
+  "vsEditor": null
+ }
+}

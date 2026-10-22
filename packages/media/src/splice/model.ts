@@ -24,15 +24,33 @@ export interface SpliceModel {
 }
 
 /** The hand-edit band: a cut outside it reads as a machine (clipped) or as a gap. */
-export const SPLICE_PAD_BAND = { tailS: [0.03, 0.14], leadS: [0.02, 0.1] } as const;
+export const SPLICE_PAD_BAND = { tailS: [0.03, 0.2], leadS: [0.02, 0.16] } as const;
 
-export const DEFAULT_SPLICE_MODEL: SpliceModel = {
+/** Before any measurement: the two pad numbers copied by hand in DECISIONS 2026-10-19. */
+export const PRIOR_SPLICE_MODEL: SpliceModel = {
   version: 1,
   mid: { tailS: 0.08, leadS: 0.05 },
   sentence: { tailS: 0.11, leadS: 0.06 },
   source: "PRIOR",
   samples: 0,
 };
+
+/**
+ * Fitted 2026-10-21 by the golden harness from 57 pause cuts in five of Chris's hand edits
+ * (car-payment, 100k-not-spending, two-people-100k, look-rich, img-4128), each measured
+ * against the voice: mid-sentence tail p25/50/75 = 76/96/112 ms, lead 59/72/77 ms; sentence
+ * end tail 99/146/175 ms, lead 91/121/151 ms. Re-fit with `scripts/golden` when hand edits
+ * are added (`spliceSamplesFromTimeline` → `learnSpliceModel`).
+ */
+export const LEARNED_SPLICE_MODEL: SpliceModel = {
+  version: 1,
+  mid: { tailS: 0.096, leadS: 0.072 },
+  sentence: { tailS: 0.146, leadS: 0.121 },
+  source: "LEARNED",
+  samples: 57,
+};
+
+export const DEFAULT_SPLICE_MODEL: SpliceModel = LEARNED_SPLICE_MODEL;
 
 export interface SpliceSample {
   tailS: number;
@@ -62,7 +80,7 @@ export function padsFor(model: SpliceModel, sentenceEnd: boolean): SplicePads {
  * Pure. Fits pads from hand-edit splices: the median per class when there are at least
  * `minPerClass` samples, clamped to the band; a class without enough samples keeps the prior.
  */
-export function learnSpliceModel(samples: SpliceSample[], prior: SpliceModel = DEFAULT_SPLICE_MODEL, minPerClass = 6): SpliceModel {
+export function learnSpliceModel(samples: SpliceSample[], prior: SpliceModel = PRIOR_SPLICE_MODEL, minPerClass = 6): SpliceModel {
   const fit = (cls: SpliceSample[], base: SplicePads): SplicePads =>
     cls.length >= minPerClass
       ? { tailS: r3(clamp(median(cls.map((s) => s.tailS)), SPLICE_PAD_BAND.tailS)), leadS: r3(clamp(median(cls.map((s) => s.leadS)), SPLICE_PAD_BAND.leadS)) }
