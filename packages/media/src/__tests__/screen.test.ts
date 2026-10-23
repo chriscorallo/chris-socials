@@ -134,6 +134,19 @@ describe("screen — the plan", () => {
 });
 
 describe("screen — the free audit", () => {
+  it("the references' headline band is a threshold: too few or too many headlines per 10 s is a finding, inside the band is not", () => {
+    const base = tl();
+    const text = (id: string, start: number, end: number) => ({ id, text: "X", start, end, preset: "HEADLINE", fontId: "inter-display-extrabold", fontSize: 60, color: "#FFFFFF", backgroundColor: null, strokeColor: null, x: 0.5, y: 0.15, maxWidth: 0.8 });
+    const opts = { mediaAssetId: "take", subjectTrack: wideTrack(), sourceSize: { width: 1080, height: 1920 }, measure, hookExpected: false, bands: { headlinesPer10s: { p25: 1, p75: 2 } } };
+    // 40 s, one headline → 0.25 per 10 s, under half the p25
+    const few = EditTimelineSchema.parse({ ...base, texts: [text("h1", 1, 5)] });
+    expect(auditScreen(few, opts).some((f) => f.kind === "HEADLINE_DENSITY")).toBe(true);
+    // six headlines → 1.5 per 10 s, inside
+    const ok = EditTimelineSchema.parse({ ...base, texts: [0, 1, 2, 3, 4, 5].map((i) => text(`h${i}`, 1 + i * 6, 4 + i * 6)) });
+    expect(auditScreen(ok, opts).some((f) => f.kind === "HEADLINE_DENSITY")).toBe(false);
+    expect(auditScreen(few, { ...opts, bands: null }).some((f) => f.kind === "HEADLINE_DENSITY")).toBe(false);
+  });
+
   it("catches a text on the face, two leads in a beat, a late hook text, a dead stretch and loud captions", () => {
     const t = EditTimelineSchema.parse({
       ...tl(),

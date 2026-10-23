@@ -29,11 +29,13 @@ export interface WatchBackData {
   gating: boolean;
   fixLoop: boolean;
   activeJobRunId: string | null;
+  /** PUBLISHED / MEASURING: the "I pulled this post" demotion signal is offered. */
+  published: boolean;
 }
 
 export async function getWatchBackForVideo(contentItemId: string): Promise<WatchBackData> {
   const render = await prisma.render.findFirst({ where: { contentItemId, status: "SUCCESS" }, orderBy: { createdAt: "desc" }, select: { id: true } });
-  const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId }, select: { series: true } });
+  const item = await prisma.contentItem.findUniqueOrThrow({ where: { id: contentItemId }, select: { series: true, currentState: true } });
   const v = await latestWatchVerdict(prisma, { contentItemId });
   const rating = v ? await prisma.watchRating.findFirst({ where: { watchVerdictId: v.id }, orderBy: { createdAt: "desc" } }) : await latestWatchRating(prisma, contentItemId);
   const agreement = await getSeriesAgreement(prisma, item.series);
@@ -66,5 +68,6 @@ export async function getWatchBackForVideo(contentItemId: string): Promise<Watch
     gating,
     fixLoop,
     activeJobRunId: active && active.summary?.jobKind === "watch-back" ? active.id : null,
+    published: item.currentState === "PUBLISHED" || item.currentState === "MEASURING",
   };
 }

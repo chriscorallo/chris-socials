@@ -40,14 +40,27 @@ describe("tryAutonomousPublish", () => {
     await rm(storageDir, { recursive: true, force: true });
   });
 
+  /** The watch-back gate's bar (2026-10-22): a series earns hands-off posting with ten videos
+   * whose watch said PASS and Chris rated 👍. */
+  async function earnSeries(series: string) {
+    for (let i = 0; i < 10; i++) {
+      const it = await createContentItem(prisma, { title: `${series} earned ${i}` }, { actorId: "test-user" });
+      await prisma.contentItem.update({ where: { id: it.id }, data: { series } });
+      const v = await prisma.watchVerdict.create({ data: { contentItemId: it.id, renderId: `r-${it.id}`, loop: 0, verdict: "PASS", checklist: [], fixes: [], audits: [], coldViewer: "fine", promptVersion: "1.0.0", model: "mock", inputSummary: {}, createdBy: "chris" } });
+      await prisma.watchRating.create({ data: { watchVerdictId: v.id, contentItemId: it.id, rating: "UP", action: "POSTED_UNCHANGED", createdBy: "chris" } });
+    }
+  }
+
   async function makeReadyItem(
     productionTier: "RAW" | "FAST" | "MEDIUM" | "HERO",
     platform: "INSTAGRAM" = "INSTAGRAM",
     qc: "PASS" | null = "PASS",
+    series: string | null = null,
   ) {
     const item = await createContentItem(prisma, { title: `Autonomous publish test (${productionTier})` }, {
       actorId: "test-user",
     });
+    if (series) await prisma.contentItem.update({ where: { id: item.id }, data: { series } });
     for (const to of [
       "SELECTED", "CONTRACTED", "RESEARCHING", "RESEARCHED", "SCRIPTING", "SCRIPTED",
       "READY_TO_FILM", "FILMED", "MEDIA_INGESTED", "TAKE_SELECTED",
@@ -121,15 +134,28 @@ describe("tryAutonomousPublish", () => {
     expect(updated.currentState).toBe("READY"); // untouched — still needs a human
   });
 
-  it("publishes autonomously once the tier has genuinely earned level 3", async () => {
+  it("an earned tier is not enough: the SERIES must have earned hands-off posting (watch-back agreement)", async () => {
+    await resetAutonomyLevel("FAST");
+    for (let i = 0; i < AUTONOMY_LEVEL_THRESHOLDS[3]!; i++) await recordApprovedOutcome(prisma, "PUBLISHING", "FAST", { actorId: "system" });
+    const item = await makeReadyItem("FAST", "INSTAGRAM", "PASS", `UNEARNED_${Date.now()}`);
+    const instagram = new MockPlatformAdapter("INSTAGRAM");
+    const result = await tryAutonomousPublish(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" }, { publish: FAST_PUBLISH_OPTIONS });
+    expect(result.attempted).toBe(false);
+    expect(result.reason).toMatch(/hasn't earned hands-off posting/);
+    expect(instagram.publishCalls).toHaveLength(0);
+  });
+
+  it("publishes autonomously once the tier has genuinely earned level 3 and the series has earned it", async () => {
     await resetAutonomyLevel("FAST");
     for (let i = 0; i < AUTONOMY_LEVEL_THRESHOLDS[3]!; i++) {
       await recordApprovedOutcome(prisma, "PUBLISHING", "FAST", { actorId: "system" });
     }
     const earned = await getAutonomyState(prisma, "PUBLISHING", "FAST");
     expect(earned.level).toBeGreaterThanOrEqual(3);
+    const series = `EARNED_${Date.now()}`;
+    await earnSeries(series);
 
-    const item = await makeReadyItem("FAST");
+    const item = await makeReadyItem("FAST", "INSTAGRAM", "PASS", series);
     const instagram = new MockPlatformAdapter("INSTAGRAM");
 
     const result = await tryAutonomousPublish(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" }, {
@@ -149,7 +175,9 @@ describe("tryAutonomousPublish", () => {
     for (let i = 0; i < AUTONOMY_LEVEL_THRESHOLDS[3]!; i++) {
       await recordApprovedOutcome(prisma, "PUBLISHING", "FAST", { actorId: "system" });
     }
-    const item = await makeReadyItem("FAST", "INSTAGRAM", null);
+    const series = `EARNED_NOQC_${Date.now()}`;
+    await earnSeries(series);
+    const item = await makeReadyItem("FAST", "INSTAGRAM", null, series);
     const instagram = new MockPlatformAdapter("INSTAGRAM");
 
     const result = await tryAutonomousPublish(prisma, storage, { INSTAGRAM: instagram }, item.id, { actorId: "chris" }, {
@@ -209,7 +237,10 @@ describe("tryAutonomousPublish", () => {
       await recordApprovedOutcome(prisma, "PUBLISHING", "MEDIUM", { actorId: "system" });
     }
 
+    const series = `EARNED_NOPKG_${Date.now()}`;
+    await earnSeries(series);
     const item = await createContentItem(prisma, { title: "No package yet" }, { actorId: "test" });
+    await prisma.contentItem.update({ where: { id: item.id }, data: { series } });
     for (const to of [
       "SELECTED", "CONTRACTED", "RESEARCHING", "RESEARCHED", "SCRIPTING", "SCRIPTED",
       "READY_TO_FILM", "FILMED", "MEDIA_INGESTED", "TAKE_SELECTED",

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   getLatestEditPlan,
+  getStyleModel,
   getLatestResearchPacket,
   getLatestScriptVersion,
   recordQualityGateResult,
@@ -283,12 +284,14 @@ async function runDeterministicChecks(db: PrismaClient, contentItemId: string): 
     {
       const primary = assets.find((a) => a.id === timeline.clips[0]!.mediaAssetId) ?? assets[0];
       if (primary) {
+        const model = await getStyleModel(db, { group: "MAIN" }).catch(() => null);
         const findings = auditScreen(timeline, {
           mediaAssetId: primary.id,
           subjectTrack: parseSubjectTrack(primary.subjectTrack),
           sourceSize: primary.width && primary.height ? { width: primary.width, height: primary.height } : null,
           measure: nodeMeasureText,
           hookExpected: timeline.texts.some((t) => t.id === "fe-hook-title"),
+          bands: model ? { headlinesPer10s: model.headlinesPer10s } : null,
         });
         for (const f of findings) {
           collisionIssues.push({
@@ -296,7 +299,7 @@ async function runDeterministicChecks(db: PrismaClient, contentItemId: string): 
             description: `${f.detail}.`,
             severity: "MAJOR",
             timestampSeconds: f.atS,
-            recommendedRepair: f.kind === "FACE_OVERLAP" ? "Move the text off the face (the orchestrator's anchor, or by hand)." : f.kind === "TWO_LEADS" || f.kind === "ZOOM_DURING_GRAPHIC" ? "Give each beat one new thing — retime or drop one of the two." : f.kind === "HOOK_TEXT_LATE" ? "Put the hook headline on screen from the first frame." : f.kind === "STATIC_STRETCH" ? "Add the cheapest lead (a punch-in or the next headline earlier)." : "Make the captions smaller than the headline.",
+            recommendedRepair: f.kind === "FACE_OVERLAP" ? "Move the text off the face (the orchestrator's anchor, or by hand)." : f.kind === "TWO_LEADS" || f.kind === "ZOOM_DURING_GRAPHIC" ? "Give each beat one new thing — retime or drop one of the two." : f.kind === "HOOK_TEXT_LATE" ? "Put the hook headline on screen from the first frame." : f.kind === "STATIC_STRETCH" ? "Add the cheapest lead (a punch-in or the next headline earlier)." : f.kind === "HEADLINE_DENSITY" ? "Match the references' headline cadence (one per idea, held for the idea)." : "Make the captions smaller than the headline.",
             source: "SCREEN_AUDIT",
           });
         }

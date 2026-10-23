@@ -266,9 +266,10 @@ domain function with seeded rows (worker/domain DB test conventions above).
   runs after every gate PASS behind `watch_back.auto`; Chris's one-tap rating (`WatchRating`)
   on the content page; autonomy as agreement per series (`getSeriesAgreement`: ≥ 90 % over
   ten, no override, demoted on a pulled post); PUBLISHING outcomes count only with a 👍. All
-  three flags default off (shadow). Not done: the HOLD queue on the home page (the card is on
-  the content page), a "pull this post" action that records PULLED, gate thresholds from the
-  StyleModel bands, promoting the splice/screen audits to BLOCKING.
+  three flags default off (shadow). Also in: the HOLD queue on the home page, "I pulled this
+  post" (PULLED), the StyleModel headline band as a gate threshold, auto-post requires the series
+  to have earned it. Still open: promoting the splice/screen audits to BLOCKING once real renders
+  are clean; the external platform apps / reviews.
 - Routine: after any cutting change run `pnpm golden:replay` (diff must be empty or explained),
   `--update` to re-baseline, and note it in DECISIONS. Re-pull a fixture after the AI edit runs
   on that video so it gains an Editor plan.

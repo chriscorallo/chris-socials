@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { listWatchHolds } from "./watch-back";
 import { computeCourse, sortNudges, type CourseFailure, type CourseInput, type CourseItem, type CourseResult, type Nudge } from "./course";
 import { getActivePostingPlan, listDismissedNudgeKeys } from "./posting-plan";
 import { PLAN_PLATFORM_LABEL, type PlanPlatform, type PostingPlanData } from "./posting-plan-core";
@@ -112,6 +113,13 @@ export interface TodoList {
 
 const NEEDS_YOU_KEPT = new Set(["STRATEGY_DECISION", "SUBJECTIVE_CHOICE", "UNCERTAINTY"]);
 
+export interface WatchHoldNudgeInput {
+  contentItemId: string;
+  title: string | null;
+  verdict: string;
+  coldViewer: string;
+}
+
 export function buildTodoList(input: {
   course: CourseResult;
   plan: PostingPlanData | null;
@@ -119,9 +127,25 @@ export function buildTodoList(input: {
   setup: SetupSignals;
   dismissed: Set<string>;
   now: Date;
+  /** The watch-back's HOLD queue (listWatchHolds): videos waiting for Fix it / Post anyway. */
+  watchHolds?: WatchHoldNudgeInput[];
 }): TodoList {
   const { course, plan, needsYou, setup, dismissed, now } = input;
   const out: Nudge[] = [...course.nudges];
+
+  // The watch-back put a video on hold — Chris decides (Fix it / Post anyway), today.
+  for (const h of input.watchHolds ?? []) {
+    out.push({
+      key: `watch:hold:${h.contentItemId}`,
+      severity: "warn",
+      bucket: "today",
+      priority: 12,
+      title: `Watch-back: "${h.title ?? "a video"}" needs you`,
+      detail: h.coldViewer.length > 160 ? `${h.coldViewer.slice(0, 157)}…` : h.coldViewer,
+      due: null,
+      action: { kind: "link", label: "Decide", href: `/content/${h.contentItemId}` },
+    });
+  }
 
   // NEEDS YOU — QC/claims/platform failures are already course "stuck" nudges; keep the rest.
   for (const e of needsYou) {
@@ -251,7 +275,7 @@ export async function getTodoData(
   const today = ymdInTz(now, tz);
   // Independent gathers — together on Neon, one at a time on PGlite (queryAll). The posting
   // plan is loaded inside loadCourseInput's own batch and read back from its result.
-  const [input, needsYou, connections, autoPublishEnabled, lastRun, recentFail, dismissed] = await queryAll([
+  const [input, needsYou, connections, autoPublishEnabled, lastRun, recentFail, dismissed, holds] = await queryAll([
     () => loadCourseInput(prisma, { now, tz }),
     () => getNeedsYouQueue(prisma, { limit: 12 }),
     () => listPlatformConnectionSummaries(prisma, now),
@@ -264,6 +288,7 @@ export async function getTodoData(
         select: { createdAt: true, errorMessage: true },
       }),
     () => listDismissedNudgeKeys(prisma, today),
+    () => listWatchHolds(prisma, 10).catch(() => []),
   ] as const);
   const plan = input.plan;
   const course = computeCourse(input);
@@ -295,6 +320,7 @@ export async function getTodoData(
     },
     dismissed,
     now,
+    watchHolds: holds.map((h) => ({ contentItemId: h.verdict.contentItemId, title: h.title, verdict: h.verdict.verdict, coldViewer: h.verdict.coldViewer })),
   });
   return { course, todo, plan, today };
 }

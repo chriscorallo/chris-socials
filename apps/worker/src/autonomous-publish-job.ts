@@ -1,5 +1,6 @@
 import {
   canActAutonomously,
+  watchBackEarnedFor,
   scheduleContentItemForPublishing,
   type PrismaClient,
   type ContentPlatform,
@@ -63,6 +64,14 @@ export async function tryAutonomousPublish(
       attempted: false,
       reason: `PUBLISHING has not reached autonomy level ${requiredLevel} for ${editPlan.productionTier} yet (or the global autonomy.shadow_only kill switch is on) — publish manually.`,
     };
+  }
+
+  // The watch-back gate (2026-10-22): the SERIES must have earned hands-off posting — Chris's
+  // ratings agreeing with the watch ≥ 90 % over the last ten, no override — on top of the
+  // PUBLISHING level. Same kill switch; a stricter bar, never a looser one.
+  const earned = await watchBackEarnedFor(db, contentItemId);
+  if (!earned.earned) {
+    return { attempted: false, reason: `This series hasn't earned hands-off posting yet (${earned.agreement.why}) — publish manually.` };
   }
 
   const packages = await db.platformPackage.findMany({ where: { contentItemId } });

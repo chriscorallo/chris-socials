@@ -157,9 +157,10 @@ export async function watchBackContentItem(
       const refined = analysis ? refineWordEdges(words, analysis) : words;
       for (const f of auditSplices(timeline, a.id, refined, analysis)) audits.push({ stage: "SPLICE", kind: f.kind, atS: f.atS, detail: `cut ${f.index}: ${f.detail}` });
     }
+    const model = await getStyleModel(db, { group: "MAIN" }).catch(() => null);
     const primary = assets.find((a) => a.id === timeline.clips[0]!.mediaAssetId) ?? assets[0];
     if (primary) {
-      for (const f of auditScreen(timeline, { mediaAssetId: primary.id, subjectTrack: parseSubjectTrack(primary.subjectTrack), sourceSize: primary.width && primary.height ? { width: primary.width, height: primary.height } : null, measure: nodeMeasureText, hookExpected: timeline.texts.some((t) => t.id === "fe-hook-title") })) {
+      for (const f of auditScreen(timeline, { mediaAssetId: primary.id, subjectTrack: parseSubjectTrack(primary.subjectTrack), sourceSize: primary.width && primary.height ? { width: primary.width, height: primary.height } : null, measure: nodeMeasureText, hookExpected: timeline.texts.some((t) => t.id === "fe-hook-title"), bands: model ? { headlinesPer10s: model.headlinesPer10s } : null })) {
         audits.push({ stage: "SCREEN", kind: f.kind, atS: f.atS, detail: `${f.elementId ? `${f.elementId}: ` : ""}${f.detail}` });
       }
     }
@@ -209,7 +210,6 @@ export async function watchBackContentItem(
     const firstWords = words.filter((w) => w.start < 2).map((w) => w.word).join(" ");
     const beats = report?.editor?.beats ?? [];
     const screen = report?.screen ? describeScreen(report.screen, timeline) : describeTimeline(timeline);
-    const model = await getStyleModel(db, { group: "MAIN" }).catch(() => null);
     const styleDigest = model ? editorDigest(model) : [];
     const brandContext = (await getBrandContextText(db).catch(() => "")) || "";
     const brief = await creativeBriefTextFor(db, contentItemId).catch(() => null);

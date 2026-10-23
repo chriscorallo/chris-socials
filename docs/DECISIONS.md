@@ -9863,3 +9863,12 @@ clean. Migration `20261022230000_watch_back` applied to the dev database.
 
 **Reversibility:** every behaviour is behind a flag that defaults off; the tables are additive;
 removing the flags leaves the hard gate exactly as it was.
+
+**Addendum (same day):** the four items the gate left open are in: the HOLD queue reaches the
+home page's to-do list as "today" nudges (`buildTodoList` ← `listWatchHolds`); "I pulled this
+post" on a published video records the `PULLED` rating (the demotion signal); the StyleModel's
+headline band is a gate threshold (`auditScreen` `bands` → `HEADLINE_DENSITY`, MAJOR, in the
+gate and the watch); and `tryAutonomousPublish` now also requires the series to have earned
+hands-off posting (`watchBackEarnedFor`) — a stricter bar on top of the PUBLISHING level and the
+kill switch, never a looser one. Still open: promoting the splice/screen audits to BLOCKING once
+real renders are clean.

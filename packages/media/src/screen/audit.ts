@@ -13,7 +13,7 @@ import { faceOf, type Rect } from "./anchors";
  * the headline. A finding names the stage (SCREEN) and the element, so a fix can move or retime
  * it. No model call. PURE.
  */
-export type ScreenFindingKind = "FACE_OVERLAP" | "TWO_LEADS" | "HOOK_TEXT_LATE" | "STATIC_STRETCH" | "CAPTION_LOUDER" | "ZOOM_DURING_GRAPHIC";
+export type ScreenFindingKind = "FACE_OVERLAP" | "TWO_LEADS" | "HOOK_TEXT_LATE" | "STATIC_STRETCH" | "CAPTION_LOUDER" | "ZOOM_DURING_GRAPHIC" | "HEADLINE_DENSITY";
 
 export interface ScreenFinding {
   kind: ScreenFindingKind;
@@ -41,6 +41,9 @@ export interface ScreenAuditInput {
   /** True when the video is expected to open with a title (the Editor's cut, or a chosen title). */
   hookExpected: boolean;
   t?: typeof SCREEN_AUDIT_THRESHOLDS;
+  /** The StyleModel's bands as thresholds ("like the references" made measurable): headlines
+   * per 10 s outside half the p25 … 1.5× the p75 is a finding. Absent = not checked. */
+  bands?: { headlinesPer10s?: { p25: number; p75: number } | null } | null;
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -122,6 +125,17 @@ export function auditScreen(timeline: EditTimeline, input: ScreenAuditInput): Sc
   // 4. No stretch longer than staticS with nothing changing.
   for (const s of stretches) {
     if (s.len > t.staticS) out.push({ kind: "STATIC_STRETCH", stage: "SCREEN", elementId: null, atS: s.start, detail: `${s.len.toFixed(1)} s with nothing changing from ${s.start}s` });
+  }
+
+  // 5b. Headline density inside the references' band (when a band exists and the video has headlines at all).
+  const band = input.bands?.headlinesPer10s;
+  if (band && dur >= 10) {
+    const heads = timeline.texts.filter((x) => x.end - x.start >= 1.4).length;
+    const per10 = (heads / dur) * 10;
+    const lo = band.p25 * 0.5;
+    const hi = band.p75 * 1.5;
+    if (heads > 0 && (per10 < lo || per10 > hi)) out.push({ kind: "HEADLINE_DENSITY", stage: "SCREEN", elementId: null, atS: 0, detail: `${per10.toFixed(1)} headlines per 10 s; your references run ${band.p25}–${band.p75}` });
+    if (heads === 0 && band.p25 > 0.5) out.push({ kind: "HEADLINE_DENSITY", stage: "SCREEN", elementId: null, atS: 0, detail: `no headlines; your references run ${band.p25}–${band.p75} per 10 s` });
   }
 
   // 5. Captions never louder than the headline.

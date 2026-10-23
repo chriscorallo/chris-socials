@@ -140,6 +140,11 @@ export function WatchBack({ data }: { data: WatchBackData }) {
             <button type="button" className="btn" disabled={busy != null} onClick={() => rate("DOWN", "EDITED_FIRST")} title="I had to change it">👎 Had to change it</button>
           </>
         )}
+        {v && data.published && data.rating?.action !== "PULLED" && (
+          <button type="button" className="btn" disabled={busy != null} onClick={() => rate("DOWN", "PULLED")} title="I took this post down — the series loses hands-off posting until ten clean ratings">
+            I pulled this post
+          </button>
+        )}
       </div>
       {data.rating && <p className="mt-2 text-[12.5px] text-[var(--color-text-faint)]">You rated this {data.rating.rating === "UP" ? "👍" : "👎"} ({data.rating.action.toLowerCase().replace(/_/g, " ")}).</p>}
       <p className="mt-2 text-[12.5px] text-[var(--color-text-faint)]">
