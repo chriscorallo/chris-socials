@@ -9898,3 +9898,8 @@ those rows are version 3 and not "outdated", `REFERENCE_METRICS_VERSION` is 4 so
 button re-queues them — the library has to be measured once more. Observed while checking:
 the live pages stream in 8–25 s (`/content` 163 s) with a 0.35 s TTFB — server query time, not
 new to today's changes; worth a look on its own.
+
+**Ship note (2026-10-23, later):** `2eea2d1` live; worker snapshot
+`snap_6ZwEVIt9rBjtbwQ7lmqvOtqyqyD1` (tesseract.js installed; `scripts/sandbox/probe-ocr.ts`
+boots a snapshot and confirms the package and the English model load — it did). The reference
+library is flagged for re-measure (v4); the screen signals exist after the next Measure.
