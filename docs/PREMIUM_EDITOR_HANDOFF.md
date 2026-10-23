@@ -319,3 +319,16 @@ constraints the analysis settled:
   paths; let the gate become a score; ship without the harness green.
 - **Rhythm:** ship weekly; a Friday review of three golden videos side by side; the measure is
   his verdict plus the gate's shadow agreement.
+
+## 3.6 Status (2026-10-23, after Chris watched the first live Editor cut)
+
+- The orchestrator's screen defaults are REVERTED to his old screen (DECISIONS "The
+  orchestrator's screen defaults reverted"): hook title ≤ 2.4 s, his captions untouched, no
+  beat headlines. `ScreenStyle.headlines: "ALL"` / `captionLook: "QUIET"` are opt-in. Live:
+  main `3901e94`, worker snapshot `snap_WzC7WIjqQYjMPjMd0b5FyyMjnlYF` (the next `--base`).
+- Before any screen change ships again: a frame contact sheet of a real take, looked at. The
+  harness needs `fixtures/golden/media/` + a frames script (Week 0 deferred it) — build that
+  first.
+- Also live but not yet used by the editor panel: the `ai-edit` heavy job (brief → Editor cut →
+  visuals as one background job) and posting via `after()` with a job banner. The panel still
+  drives the AI edit from the browser; switching it to the job is the next small change.
