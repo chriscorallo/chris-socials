@@ -455,20 +455,29 @@ export async function getStyleModel(
   if (options.includeMine !== false && !options.referenceCreatorId && options.group !== "FACELESS") {
     // His hand edits: the latest finishing edit per video that is a real hand edit (not an
     // automatic cut he merely saved), read as what IS on screen.
+    // Two steps so the page never reads whole plan JSON (a stored full edit carries the take's
+    // envelope and voice analysis): pick the rows by reason, then fetch ONLY their timelines.
     const plans = await prisma.editPlan.findMany({
       where: { revisionReason: { startsWith: "Finishing edit by Chris" } },
       orderBy: { createdAt: "desc" },
-      select: { contentItemId: true, revisionReason: true, plan: true, createdAt: true },
+      select: { id: true, contentItemId: true, revisionReason: true, createdAt: true },
       take: 200,
     });
+    const chosen: Array<{ id: string; createdAt: Date }> = [];
     const seen = new Set<string>();
     for (const p of plans) {
-      if (seen.size >= (options.mineLimit ?? 30)) break;
+      if (chosen.length >= (options.mineLimit ?? 30)) break;
       if (seen.has(p.contentItemId) || !isHandEditReason(p.revisionReason)) continue;
-      const timeline = timelineLike((p.plan as { timeline?: unknown } | null)?.timeline);
-      if (!timeline) continue;
       seen.add(p.contentItemId);
-      samples.push(sampleFromTimeline(timeline, `my edit ${p.createdAt.toISOString().slice(0, 10)}`));
+      chosen.push({ id: p.id, createdAt: p.createdAt });
+    }
+    if (chosen.length) {
+      const rows = await prisma.$queryRaw<Array<{ id: string; timeline: unknown }>>`SELECT "id", "plan"->'timeline' AS "timeline" FROM "EditPlan" WHERE "id" IN (${Prisma.join(chosen.map((c) => c.id))})`;
+      const byId = new Map(rows.map((r) => [r.id, r.timeline]));
+      for (const c of chosen) {
+        const timeline = timelineLike(byId.get(c.id));
+        if (timeline) samples.push(sampleFromTimeline(timeline, `my edit ${c.createdAt.toISOString().slice(0, 10)}`));
+      }
     }
   }
   return buildStyleModel(samples, { exclusions: [...exclusions.values()] });

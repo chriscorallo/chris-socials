@@ -25,6 +25,9 @@ export interface StyleSample {
   creatorId: string | null;
   label: string;
   weight: number;
+  /** Per-signal weight overrides (his own edits: 0 on the screen signals — the old editor put
+   * nothing on screen, that is not a habit to learn; double on cuts and pads, which are his). */
+  signalWeights?: Partial<Record<StyleSignal, number>>;
   durationS: number | null;
   shotMedianS: number | null;
   cutsPer10s: number | null;
@@ -209,6 +212,7 @@ export function sampleFromTimeline(
     creatorId: null,
     label,
     weight,
+    signalWeights: { headlines: 0, captions: 0, zooms: 0, music: 0, hook: 0, length: 0 },
     durationS: r2(durationS),
     shotMedianS: shots.length ? r2(shots[Math.floor(shots.length / 2)]!) : null,
     cutsPer10s: durationS > 0 ? r2((cuts / durationS) * 10) : null,
@@ -283,7 +287,8 @@ export function buildStyleModel(samples: StyleSample[], options: BuildStyleModel
       }
       return true;
     });
-  const W = <T>(xs: StyleSample[], f: (s: StyleSample) => T) => xs.map((s) => ({ v: f(s), w: s.weight }));
+  const weightFor = (s: StyleSample, signal: StyleSignal) => s.signalWeights?.[signal] ?? s.weight;
+  const W = <T>(xs: StyleSample[], f: (s: StyleSample) => T, signal: StyleSignal) => xs.filter((s) => weightFor(s, signal) > 0).map((s) => ({ v: f(s), w: weightFor(s, signal) }));
   const cuts = pick("cuts");
   const heads = pick("headlines");
   const caps = pick("captions");
@@ -294,45 +299,45 @@ export function buildStyleModel(samples: StyleSample[], options: BuildStyleModel
   const hook = pick("hook");
   const refs = samples.filter((s) => s.source === "REFERENCE");
   const thirds = cuts.filter((s) => s.thirdsPer10s);
-  const t = (k: 0 | 1 | 2) => band(W(thirds, (s) => s.thirdsPer10s![k]));
-  const tail = band(W(pads, (s) => s.padTailMs));
-  const lead = band(W(pads, (s) => s.padLeadMs));
+  const t = (k: 0 | 1 | 2) => band(W(thirds, (s) => s.thirdsPer10s![k], "cuts"));
+  const tail = band(W(pads, (s) => s.padTailMs, "pads"));
+  const lead = band(W(pads, (s) => s.padLeadMs, "pads"));
   return {
     sampleSize: samples.length,
     referenceCount: refs.length,
     mineCount: samples.length - refs.length,
     creatorCount: new Set(refs.map((s) => s.creatorId)).size,
     confidence: confidenceFor(refs.length),
-    lengthS: band(W(length, (s) => s.durationS)),
-    shotS: band(W(cuts, (s) => s.shotMedianS)),
-    cutsPer10s: band(W(cuts, (s) => s.cutsPer10s)),
-    firstCutS: band(W(cuts, (s) => s.firstCutS)),
+    lengthS: band(W(length, (s) => s.durationS, "length")),
+    shotS: band(W(cuts, (s) => s.shotMedianS, "cuts")),
+    cutsPer10s: band(W(cuts, (s) => s.cutsPer10s, "cuts")),
+    firstCutS: band(W(cuts, (s) => s.firstCutS, "cuts")),
     thirdsPer10s: thirds.length ? [t(0)!, t(1)!, t(2)!] : null,
-    headlinesPer10s: band(W(heads, (s) => s.headlinesPer10s)),
-    headlineHoldS: band(W(heads, (s) => s.headlineHoldS)),
-    headlineWords: band(W(heads, (s) => s.headlineWords)),
-    headlineBand: mode(W(heads, (s) => s.headlineBand)),
-    headlineUppercaseShare: band(W(heads, (s) => s.headlineUppercase))?.p50 ?? null,
-    headlineShare: share(W(heads, (s) => (s.headlinesPer10s == null ? null : s.headlinesPer10s > 0))),
+    headlinesPer10s: band(W(heads, (s) => s.headlinesPer10s, "headlines")),
+    headlineHoldS: band(W(heads, (s) => s.headlineHoldS, "headlines")),
+    headlineWords: band(W(heads, (s) => s.headlineWords, "headlines")),
+    headlineBand: mode(W(heads, (s) => s.headlineBand, "headlines")),
+    headlineUppercaseShare: band(W(heads, (s) => s.headlineUppercase, "headlines"))?.p50 ?? null,
+    headlineShare: share(W(heads, (s) => (s.headlinesPer10s == null ? null : s.headlinesPer10s > 0), "headlines")),
     captions: {
-      preset: mode(W(caps, (s) => s.captionPreset)),
-      wordsPerChunk: band(W(caps, (s) => s.captionWordsPerChunk)),
-      band: mode(W(caps, (s) => s.captionBand)),
-      uppercaseShare: band(W(caps, (s) => s.captionUppercase))?.p50 ?? null,
-      coverage: band(W(caps, (s) => s.captionCoverage)),
-      share: share(W(caps, (s) => (s.captionPreset == null ? null : s.captionPreset !== "NONE"))),
+      preset: mode(W(caps, (s) => s.captionPreset, "captions")),
+      wordsPerChunk: band(W(caps, (s) => s.captionWordsPerChunk, "captions")),
+      band: mode(W(caps, (s) => s.captionBand, "captions")),
+      uppercaseShare: band(W(caps, (s) => s.captionUppercase, "captions"))?.p50 ?? null,
+      coverage: band(W(caps, (s) => s.captionCoverage, "captions")),
+      share: share(W(caps, (s) => (s.captionPreset == null ? null : s.captionPreset !== "NONE"), "captions")),
     },
-    hookTextByS: band(W(hook, (s) => s.hookTextByS)),
-    hookTextEarlyShare: share(W(hook, (s) => (s.headlinesPer10s == null ? null : s.hookTextByS != null && s.hookTextByS <= 1.5))),
-    zoomsPer10s: band(W(zooms, (s) => s.zoomsPer10s)),
-    zoomAmount: band(W(zooms, (s) => s.zoomAmount)),
-    zoomHoldS: band(W(zooms, (s) => s.zoomHoldS)),
-    zoomInOutShare: band(W(zooms, (s) => s.zoomInOut))?.p50 ?? null,
-    pauseKeepS: band(W(cuts, (s) => s.gapMedianS)),
+    hookTextByS: band(W(hook, (s) => s.hookTextByS, "hook")),
+    hookTextEarlyShare: share(W(hook, (s) => (s.headlinesPer10s == null ? null : s.hookTextByS != null && s.hookTextByS <= 1.5), "hook")),
+    zoomsPer10s: band(W(zooms, (s) => s.zoomsPer10s, "zooms")),
+    zoomAmount: band(W(zooms, (s) => s.zoomAmount, "zooms")),
+    zoomHoldS: band(W(zooms, (s) => s.zoomHoldS, "zooms")),
+    zoomInOutShare: band(W(zooms, (s) => s.zoomInOut, "zooms"))?.p50 ?? null,
+    pauseKeepS: band(W(cuts, (s) => s.gapMedianS, "cuts")),
     pads: tail && lead ? { tailMs: tail, leadMs: lead } : null,
-    endsOnLastWordShare: share(W(cuts, (s) => s.endsOnLastWord)),
-    musicShare: share(W(music, (s) => s.music)),
-    musicUnderVoiceDb: band(W(music, (s) => s.musicUnderVoiceDb)),
+    endsOnLastWordShare: share(W(cuts, (s) => s.endsOnLastWord, "cuts")),
+    musicShare: share(W(music, (s) => s.music, "music")),
+    musicUnderVoiceDb: band(W(music, (s) => s.musicUnderVoiceDb, "music")),
     exclusions: notes,
   };
 }
@@ -361,7 +366,7 @@ export function describeStyleModel(m: StyleModel): string {
   if (m.musicShare != null) parts.push(m.musicShare >= 0.5 ? `run music ${m.musicUnderVoiceDb ? `${Math.round(m.musicUnderVoiceDb.p50)} dB under the voice` : "under the voice"}` : "run no music under the voice");
   let text = `${parts.join(", ")}.`;
   text = text.charAt(0).toUpperCase() + text.slice(1);
-  const basis = `${m.referenceCount} reference video${m.referenceCount === 1 ? "" : "s"}${m.creatorCount > 1 ? ` from ${m.creatorCount} creators` : ""}${m.mineCount ? ` and ${m.mineCount} of your own edits (weighted double)` : ""}`;
+  const basis = `${m.referenceCount} reference video${m.referenceCount === 1 ? "" : "s"}${m.creatorCount > 1 ? ` from ${m.creatorCount} creators` : ""}${m.mineCount ? `; cuts and pads also from ${m.mineCount} of your own edits, weighted double` : ""}`;
   return `${text} (${basis}${m.confidence === "early" ? " — early, few videos" : ""}.)`;
 }
 

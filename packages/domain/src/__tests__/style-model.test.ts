@@ -50,17 +50,21 @@ describe("StyleModel — bands from references and his own edits", () => {
     expect(m.sampleSize).toBe(3);
     expect(m.mineCount).toBe(1);
     expect(m.creatorCount).toBe(2);
-    // c2 excluded from captions → one-word wins (a + mine)
+    // c2 excluded from captions, his edits don't count on screen signals → a alone: one-word
     expect(m.captions.preset).toBe("ONE_WORD");
+    expect(m.captions.wordsPerChunk?.n).toBe(1);
     expect(m.exclusions[0]).toMatch(/Creator two left out of captions/);
     // headlines: a (2/10 s), b (1/10 s), mine ×2 (0.53) → band covers them
-    expect(m.headlinesPer10s!.p25).toBeLessThanOrEqual(1);
-    expect(m.headlinesPer10s!.p75).toBeGreaterThanOrEqual(1);
+    // headlines: references only (a 2, b 1) — his edit's 0.53 never drags the band down
+    expect(m.headlinesPer10s!.p25).toBeGreaterThanOrEqual(1);
+    expect(m.headlinesPer10s!.p75).toBeGreaterThanOrEqual(1.5);
+    // pads and cuts: his edit counts double
+    expect(m.shotS!.n).toBe(3);
     expect(m.headlineBand).toBe("TOP");
     expect(m.pads).toEqual({ tailMs: { p25: 90, p50: 90, p75: 90, n: 2 }, leadMs: { p25: 70, p50: 70, p75: 70, n: 2 } });
     expect(m.zoomInOutShare).toBeGreaterThan(0.5);
-    // music: both references have a bed, his edit (weight 2) has none → half
-    expect(m.musicShare).toBe(0.5);
+    // music is a screen signal: his edits do not count there (the old editor added none) → the references' 1
+    expect(m.musicShare).toBe(1);
   });
 
   it("the paragraph and the Editor's digest read as sentences, never raw numbers", () => {

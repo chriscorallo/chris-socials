@@ -9879,3 +9879,13 @@ real renders are clean.
 as `RENDER_SANDBOX_SNAPSHOT_ID` with a forced production redeploy. All three `watch_back.*`
 flags are off: every render can be watched back from its page and rated; nothing changes what
 posts until the flags are turned on in order.
+
+**Correction (2026-10-23, after the first live measurement):** Chris had pressed Measure
+before the ship; 17 references came back with v3 screen signals. The first live paragraph said
+"a headline every 111 s" and "no music" — his 14 hand edits, weighted double, were describing
+the OLD editor's screen (it put nothing on it), not his references. Fixed: his own edits now
+count for cuts, pads and pauses only (`signalWeights` on a MINE sample: headlines, captions,
+zooms, music, hook and length at 0); the paragraph says so ("cuts and pads also from N of your
+own edits"). And `/reference` took 74 s to render because `getStyleModel` read whole plan JSON
+(a stored full edit carries the take's envelope and voice analysis): the loader now scans the
+cheap columns, picks ≤ 30 rows, and fetches only `plan->'timeline'` with one raw query.
