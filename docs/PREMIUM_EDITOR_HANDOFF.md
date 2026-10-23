@@ -258,7 +258,9 @@ domain function with seeded rows (worker/domain DB test conventions above).
   "mine" (needs the Weeks 6–8 rating label). The snapshot must carry
   `packages/media/assets/models/tesseract/eng.traineddata.gz` (restoreRunner downloads it); the
   references must be re-measured once shipped for the screen signals to exist.
-- Weeks 6–8: built 2026-10-22 (not yet shipped). The watch-back gate: free audits (splice,
+- Weeks 6–8: built 2026-10-22 and SHIPPED 2026-10-23 (main `84b777e`; migration
+  `20261022230000_watch_back` applied by the git deploy; worker snapshot
+  `snap_QSlkutyf0S5ueYcjLLzk1pg2dSiw`, the base for the next ship). The watch-back gate: free audits (splice,
   screen, the new story audit) → `WATCH_BACK` (HIGH vision, contrastive reference frames,
   typed fixes) + `HOOK_TEST` (MEDIUM) → PASS / FIX / HOLD recorded as `WatchVerdict`; the one
   fix loop (`applyWatchFixes` + re-cut / re-render / re-gate / re-watch) behind

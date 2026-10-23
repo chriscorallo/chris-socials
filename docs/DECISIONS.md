@@ -9872,3 +9872,10 @@ gate and the watch); and `tryAutonomousPublish` now also requires the series to 
 hands-off posting (`watchBackEarnedFor`) — a stricter bar on top of the PUBLISHING level and the
 kill switch, never a looser one. Still open: promoting the splice/screen audits to BLOCKING once
 real renders are clean.
+
+**Ship note (2026-10-23):** the watch-back gate went live — main `84b777e` (the git deploy ran
+`prisma migrate deploy`: `20261022230000_watch_back` applied), worker snapshot
+`snap_QSlkutyf0S5ueYcjLLzk1pg2dSiw` (2.5 min on `--base snap_UH00hLNWOECDqqJNDuWzk6wY8dEJ`) set
+as `RENDER_SANDBOX_SNAPSHOT_ID` with a forced production redeploy. All three `watch_back.*`
+flags are off: every render can be watched back from its page and rated; nothing changes what
+posts until the flags are turned on in order.
