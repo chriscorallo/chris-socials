@@ -332,3 +332,19 @@ constraints the analysis settled:
 - Also live but not yet used by the editor panel: the `ai-edit` heavy job (brief → Editor cut →
   visuals as one background job) and posting via `after()` with a job banner. The panel still
   drives the AI edit from the browser; switching it to the job is the next small change.
+
+## 3.7 Status (2026-10-23, later)
+
+- Chris watched the first live Editor cut on "Money opinions…" and rated it far below the free
+  cut (DECISIONS "The AI edit goes back to the proven flow"). Live now (main `a06e9a0`, worker
+  snapshot `snap_3eAkP1ULY3TvLjo5TxrmJG2MMlyU` — the next `--base`): AI edit = free Full edit →
+  AI hook → read-through → visuals; uploads default to the free Full edit; the Editor is opt-in
+  (`auto_edit.editor`). The Editor's lines get the word-level cleanup; unsafe joins are marked
+  and flagged; free graphics are back on the Editor path.
+- Written, tested, NOT applied: transcript hygiene for duplicated / stretched Whisper tokens
+  (`dedupeOverlappingWords`) — it changes the free cut's kept lines on every fixture; needs a
+  watched before/after first. Build the golden frames script (media + `renderTimeline` contact
+  sheets) before any further cutting or screen change.
+- Open from the watch: why the Motion Designer rejected all three visuals on that video (read
+  the MOTION_DESIGN_RUN audit row in prod); the Editor's own line choices; 24 cuts/min vs his
+  hand edits.
