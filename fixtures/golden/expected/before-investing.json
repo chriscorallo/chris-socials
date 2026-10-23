@@ -603,101 +603,53 @@
    }
   ],
   "title": "Before you ask what stocks to buy",
-  "headlines": [
-   {
-    "text": "Q1: EMERGENCY FUND?",
-    "start": 5.804,
-    "end": 9.93
-   },
-   {
-    "text": "Q2: WHEN DO YOU NEED IT?",
-    "start": 10.932,
-    "end": 15.919
-   },
-   {
-    "text": "TIME BUCKETS",
-    "start": 16.092,
-    "end": 23.67
-   },
-   {
-    "text": "NEED IT IN 3–4 YEARS?",
-    "start": 23.845,
-    "end": 30.512
-   },
-   {
-    "text": "DOWN ~1 IN 4 YEARS",
-    "start": 30.612,
-    "end": 33.292
-   },
-   {
-    "text": "10 YEARS = 1–2 DOWN YEARS",
-    "start": 35.128,
-    "end": 39.293
-   },
-   {
-    "text": "CLOSER = SAFER",
-    "start": 39.393,
-    "end": 42.48
-   },
-   {
-    "text": "ANSWER THESE FIRST",
-    "start": 42.58,
-    "end": 44.151
-   }
-  ],
+  "headlines": [],
   "graphics": [
    {
     "presetId": "hero-salary",
-    "start": 35.65
+    "start": 35.31
    }
   ],
   "zooms": 2,
   "screen": {
    "headlineZone": "TOP",
    "captionZone": "CHEST",
-   "captionPreset": "QUIET",
+   "captionPreset": "BOLD_HIGHLIGHT",
    "titleY": 0.181,
    "titleFontSize": 48,
    "leads": [
     "0:HEADLINE@0",
     "0:GRAPHIC@1.248",
-    "1:HEADLINE@5.804",
-    "1:ZOOM@5.804",
-    "2:HEADLINE@10.932",
-    "3:HEADLINE@16.092",
-    "3:GRAPHIC@16.692",
-    "4:HEADLINE@23.845",
-    "4:ZOOM@23.845",
-    "5:HEADLINE@30.612",
-    "7:HEADLINE@35.128",
-    "7:GRAPHIC@35.728",
-    "8:HEADLINE@39.393",
-    "8:GRAPHIC@39.993",
-    "9:HEADLINE@42.58"
+    "1:ZOOM@5.854",
+    "3:GRAPHIC@16.242",
+    "4:ZOOM@23.895",
+    "7:GRAPHIC@35.278",
+    "8:GRAPHIC@39.543"
    ],
    "zooms": [
     {
-     "start": 5.804,
+     "start": 5.854,
      "end": 9.83,
      "reason": "BOUNDARY",
      "word": null
     },
     {
-     "start": 23.845,
-     "end": 29.845,
+     "start": 23.895,
+     "end": 29.895,
      "reason": "BOUNDARY",
      "word": null
     }
    ],
    "slots": 4,
    "coverFrameSeconds": 3.41,
-   "audit": [],
+   "audit": [
+    "CAPTION_LOUDER@0"
+   ],
    "notes": [
     "headlines sit over the hair (the head fills the top zone) — leave the top third empty when filming for a clean zone",
     "the hook framing leaves no clean zone — the title sits in the headline zone at a small size",
-    "beat 6 (\"SOON = BANK ACCOUNT\") is 0.7 s — too short to hold a headline",
     "beat 6: too short (0.5 s) for the graphic it asked for",
-    "5.4 s with nothing changing from 18.277s — left to the face"
+    "5.5 s with nothing changing from 18.277s — left to the face"
    ]
   },
   "checks": [

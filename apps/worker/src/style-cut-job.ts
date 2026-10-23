@@ -172,9 +172,13 @@ function plainTimeline(takes: LoadedTake[], keepLookFrom?: EditTimeline): EditTi
     t.clips = takes.map((k, i) => ({ id: `clip-${i + 1}`, mediaAssetId: k.id, sourceStart: 0, sourceEnd: k.durationSeconds, crop: { zoom: 1, panX: 0, panY: 0 }, volume: 1 }));
   }
   if (!keepLookFrom) return t;
+  // The orchestrator's "quiet" captions (2026-10-22/23) were written by the machine, not chosen
+  // by Chris: a look carrying them (QUIET with chunk windows) is not kept, so a re-cut after the
+  // revert gets the house captions back instead of inheriting the bad edit's.
+  const machineCaptions = keepLookFrom.captions.preset === "QUIET" && (keepLookFrom.captions.chunking?.length ?? 0) > 0;
   return EditTimelineSchema.parse({
     ...t,
-    captions: { ...keepLookFrom.captions, enabled: hasWords },
+    captions: machineCaptions ? t.captions : { ...keepLookFrom.captions, enabled: hasWords },
     grade: keepLookFrom.grade,
     audio: keepLookFrom.audio,
     motionTheme: keepLookFrom.motionTheme,

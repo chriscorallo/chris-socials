@@ -166,7 +166,14 @@ describe("full edit — the Editor's cut is executed exactly (2026-10-21)", () =
       rationale: "Same salary, two lives; the number is the payoff.",
       coldViewer: "holds",
     };
-    const r = await buildFullEdit({ ...base, choices: { editorPlan: editorPlan as never } }, LEXICAL_EMBEDDER);
+    // The default screen is Chris's old one: title only, his captions. The lanes are exercised with the opt-in look.
+    const plain = await buildFullEdit({ ...base, choices: { editorPlan: editorPlan as never } }, LEXICAL_EMBEDDER);
+    if (!plain.ok) throw new Error(plain.message);
+    expect(plain.timeline.texts.map((x) => x.id)).toEqual(["fe-hook-title"]);
+    expect(plain.timeline.texts[0]!.end).toBeLessThanOrEqual(2.4);
+    expect(plain.timeline.captions.preset).toBe(BASE.captions.preset);
+    expect(plain.timeline.captions.fontSize).toBe(BASE.captions.fontSize);
+    const r = await buildFullEdit({ ...base, choices: { editorPlan: editorPlan as never }, screenStyle: { headlines: "ALL", captionLook: "QUIET", titleMaxS: 10 } }, LEXICAL_EMBEDDER);
     if (!r.ok) throw new Error(r.message);
     expect(r.report.kept.map((k) => k.text.split(" ")[0])).toEqual(["Both", "So", "One", "The", "Now"]);
     expect(r.report.hook.text).toMatch(/^Both are making/);

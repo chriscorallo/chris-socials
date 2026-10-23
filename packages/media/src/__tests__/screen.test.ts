@@ -60,7 +60,17 @@ describe("screen — anchors from the subject track", () => {
 });
 
 describe("screen — the plan", () => {
-  const input = { timeline: tl(), mediaAssetId: "take", subjectTrack: wideTrack(), sourceSize: { width: 1080, height: 1920 }, measure, beats: beats(), title: "Both making $100K", hookEnd: 3.3, pacing: "LONG_SHOTS_ZOOMS" as const };
+  const input = { timeline: tl(), mediaAssetId: "take", subjectTrack: wideTrack(), sourceSize: { width: 1080, height: 1920 }, measure, beats: beats(), title: "Both making $100K", hookEnd: 3.3, pacing: "LONG_SHOTS_ZOOMS" as const, style: { headlines: "ALL" as const, captionLook: "QUIET" as const, titleMaxS: 10 } };
+
+  it("by default the screen is Chris's old one: the hook title for ~2 s, his captions untouched, no beat headlines (2026-10-23)", () => {
+    const p = planScreen({ ...input, style: {} });
+    expect(p.headlines).toEqual([]);
+    expect(p.title!.end).toBeLessThanOrEqual(2.4);
+    const t = applyScreenPlan(tl(), p);
+    expect(t.texts.map((x) => x.id)).toEqual(["fe-hook-title"]);
+    expect(t.texts[0]!.uppercase).toBe(false);
+    expect(t.captions).toEqual(tl().captions);
+  });
 
   it("headlines arrive on the first word of their idea and leave after the last; exits never overlap entrances", () => {
     const p = planScreen(input);
@@ -82,7 +92,7 @@ describe("screen — the plan", () => {
     expect(leadsOf(1)).toEqual(["HEADLINE", "GRAPHIC"]);
     expect(leadsOf(4)).toEqual(["HEADLINE"]);
     // strict mode: the headline is the lead, the graphic waits for another beat
-    const strict = planScreen({ ...input, style: { stacking: "NONE" } });
+    const strict = planScreen({ ...input, style: { ...input.style, stacking: "NONE" } });
     expect(strict.slots).toHaveLength(0);
   });
 

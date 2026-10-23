@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { join } from "node:path";
 import {
@@ -24,6 +25,9 @@ import {
   deleteVideo,
   type ContentState,
   creativeBriefTextFor,
+  acquireHeavyJobLease,
+  updateHeavyJobProgress,
+  finishHeavyJob,
 } from "@chris/domain";
 import {
   regateEditedScript,
@@ -411,29 +415,38 @@ export async function submitPublishSchedule(formData: FormData) {
 export async function runPublish(formData: FormData) {
   const session = await requireSession();
   const contentItemId = str(formData, "contentItemId");
-  let notice: string | null = null;
+  const actor = { actorId: session.user!.id! };
 
-  try {
-    const result = await publishContentItem(
-      prisma,
-      storage,
-      getPlatformAdapters(),
-      contentItemId,
-      { actorId: session.user!.id! },
-      { getPublicVideoUrl, platformVariants: true },
-    );
-    const problems = [
-      ...result.failedPlatforms.map((p) => `${p} failed (see Publications below)`),
-      ...result.skippedPlatforms.map((p) => `${p.platform} skipped: ${p.reason}`),
-    ];
-    if (problems.length > 0) notice = problems.join("; ");
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown publish error";
+  // Posting runs AFTER the response (2026-10-23: "I don't want to be locked in there"): the page
+  // comes back at once with the job's banner, the publish continues on the server whether or
+  // not the page stays open, and its outcome lands on the JobRun the banner polls. The platform
+  // credentials never leave this function. One job per video (the heavy-job lease).
+  const lease = await acquireHeavyJobLease(prisma, { contentItemId, jobKind: "publish", args: { contentItemId }, mode: "inline", actorId: actor.actorId });
+  if (!lease.acquired) {
+    const message = lease.reason === "BUSY" ? "Something else is running for this video right now — try again when it finishes." : "Couldn't start posting right now — try again in a minute.";
     redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(message)}`);
   }
-
-  if (notice) redirect(`/content/${contentItemId}?pipelineError=${encodeURIComponent(notice)}`);
-  redirect(`/content/${contentItemId}`);
+  const jobRunId = lease.jobRunId;
+  after(async () => {
+    try {
+      await updateHeavyJobProgress(prisma, jobRunId, { pct: 10, message: "Checking the render and the packaging…", stage: "preflight" });
+      const result = await publishContentItem(prisma, storage, getPlatformAdapters(), contentItemId, actor, { getPublicVideoUrl, platformVariants: true });
+      const problems = [
+        ...result.failedPlatforms.map((p) => `${p} failed (see Publications below)`),
+        ...result.skippedPlatforms.map((p) => `${p.platform} skipped: ${p.reason}`),
+      ];
+      const ok = result.succeededPlatforms.length > 0 || problems.length === 0;
+      await finishHeavyJob(prisma, jobRunId, {
+        status: ok ? "SUCCEEDED" : "FAILED",
+        result: { succeeded: result.succeededPlatforms, failed: result.failedPlatforms, skipped: result.skippedPlatforms },
+        error: ok ? null : problems.join("; "),
+        message: ok ? (problems.length ? `Posted to ${result.succeededPlatforms.join(", ")}; ${problems.join("; ")}` : `Posted to ${result.succeededPlatforms.join(", ") || "every scheduled platform"}.`) : "Posting didn't go through.",
+      });
+    } catch (err) {
+      await finishHeavyJob(prisma, jobRunId, { status: "FAILED", error: err instanceof Error ? err.message : "Unknown publish error", message: "Posting didn't go through." }).catch(() => undefined);
+    }
+  });
+  redirect(`/content/${contentItemId}?job=${encodeURIComponent(jobRunId)}`);
 }
 
 /**

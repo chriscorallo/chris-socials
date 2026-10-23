@@ -1,0 +1,515 @@
+{
+ "slug": "ai-get-ahead",
+ "free": {
+  "ok": true,
+  "outputDurationS": 70.55,
+  "kept": [
+   {
+    "sentenceId": 22,
+    "text": "I literally can't stop making web apps or subscriptions.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 9,
+    "text": "Just as a regular conversation, you can literally create web apps, web, like literal websites.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 10,
+    "text": "You can create websites, web apps, subscription type stuff.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 12,
+    "text": "And I've done it for myself, where one I've built so many apps for other people, just because it's so much fun to literally get that creative side where you literally just put in whatever and I know like with the whole thing and it's like oh the water and I understand that but it's really never gonna go anywhere so",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 14,
+    "text": "You got this beautiful little Lake it's like where should I put a data center?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 17,
+    "text": "I can literally show you in 10 minutes and you'd be like, wow, it's actually just that.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 24,
+    "text": "It's $50.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 26,
+    "text": "I already pay a hundred dollars a month for Claude That's all I need and then I just make all of these other things Whether it's an editing app whether it's for my calendar whether it's for all these other different things.",
+    "beat": "NUMBER"
+   },
+   {
+    "sentenceId": 27,
+    "text": "If I want to make a game, you can literally make a game.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 29,
+    "text": "What the fuck are we doing here?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 51,
+    "text": "But yeah, let me know if you want to connect over this and I will not talk to you later.",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 53,
+    "text": "Hopefully never see you again.",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 0,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 1,
+    "kind": "RETAKE"
+   },
+   {
+    "sentenceId": 2,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 3,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 4,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 5,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 6,
+    "kind": "SLOW_START"
+   },
+   {
+    "sentenceId": 7,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 8,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 11,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 13,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 15,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 16,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 18,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 20,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 21,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 23,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 25,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 28,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 30,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 31,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 32,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 33,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 34,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 35,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 36,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 37,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 38,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 39,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 40,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 41,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 42,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 43,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 44,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 45,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 46,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 47,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 48,
+    "kind": "FLUFF"
+   },
+   {
+    "sentenceId": 49,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 50,
+    "kind": "DANGLING"
+   },
+   {
+    "sentenceId": 52,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 54,
+    "kind": "FLUFF"
+   }
+  ],
+  "title": "I can't stop making web apps or subscriptions",
+  "headlines": [],
+  "graphics": [
+   {
+    "presetId": "hero-salary",
+    "start": 33.17
+   },
+   {
+    "presetId": "monthly-income-strip",
+    "start": 42.32
+   }
+  ],
+  "zooms": 1,
+  "screen": null,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "FIXED"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "WARN"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "PASS"
+   },
+   {
+    "id": "RETENTION",
+    "status": "PASS"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 150.431,
+    "inS": 74.68,
+    "removedS": -75.75,
+    "tailAirS": 0.117,
+    "leadAirS": -2.108,
+    "airS": 0.117,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 1,
+    "outS": 76.684,
+    "inS": 77.178,
+    "removedS": 0.494,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 81.514,
+    "inS": 81.728,
+    "removedS": 0.214,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 85.41,
+    "inS": 90.16,
+    "removedS": 4.75,
+    "tailAirS": -3.142,
+    "leadAirS": -1.259,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 4,
+    "outS": 91.684,
+    "inS": 91.935,
+    "removedS": 0.251,
+    "tailAirS": 0.096,
+    "leadAirS": -0.217,
+    "airS": 0.096,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 5,
+    "outS": 105.212,
+    "inS": 113.372,
+    "removedS": 8.16,
+    "tailAirS": 0.103,
+    "leadAirS": 0.108,
+    "airS": 0.212,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 117.56,
+    "inS": 128.55,
+    "removedS": 10.99,
+    "tailAirS": -2.29,
+    "leadAirS": -3.768,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 7,
+    "outS": 131.908,
+    "inS": 146.327,
+    "removedS": 14.42,
+    "tailAirS": 0.072,
+    "leadAirS": 0.121,
+    "airS": 0.194,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 150.431,
+    "inS": 154.49,
+    "removedS": 4.06,
+    "tailAirS": 0.117,
+    "leadAirS": -1.931,
+    "airS": 0.117,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 9,
+    "outS": 155.454,
+    "inS": 159.353,
+    "removedS": 3.899,
+    "tailAirS": 0.053,
+    "leadAirS": 0.121,
+    "airS": 0.174,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 161.335,
+    "inS": 161.449,
+    "removedS": 0.114,
+    "tailAirS": 0.095,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 164.957,
+    "inS": 165.479,
+    "removedS": 0.522,
+    "tailAirS": 0.096,
+    "leadAirS": -0.185,
+    "airS": 0.096,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 185,
+    "inSilence": false
+   },
+   {
+    "index": 12,
+    "outS": 173.08,
+    "inS": 177.355,
+    "removedS": 4.275,
+    "tailAirS": -0.389,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 13,
+    "outS": 179.36,
+    "inS": 286.908,
+    "removedS": 107.548,
+    "tailAirS": 0.058,
+    "leadAirS": 0.12,
+    "airS": 0.178,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 14,
+    "outS": 288.236,
+    "inS": 288.474,
+    "removedS": 0.238,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 15,
+    "outS": 292.279,
+    "inS": 293.102,
+    "removedS": 0.823,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.167,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 16,
+    "outS": 295.18,
+    "inS": 297.1,
+    "removedS": 1.92,
+    "tailAirS": -8.33,
+    "leadAirS": -3.927,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   }
+  ],
+  "spliceSummary": {
+   "n": 17,
+   "airMedianS": 0.167,
+   "airP90S": 0.201,
+   "airMaxS": 0.267,
+   "clippedCount": 1,
+   "clippedMaxMs": 185,
+   "airOver026Count": 1
+  }
+ },
+ "editor": null,
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 15,
+   "airMedianS": 0.136,
+   "airP90S": 0.205,
+   "airMaxS": 0.348,
+   "clippedCount": 5,
+   "clippedMaxMs": 5277,
+   "airOver026Count": 1
+  }
+ },
+ "hand": null
+}

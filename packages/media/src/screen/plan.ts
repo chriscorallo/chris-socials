@@ -61,6 +61,16 @@ export interface ScreenStyle {
   headlineFadeOutS: number;
   /** A headline shorter than this is not shown (the beat is a flash). */
   minHeadlineS: number;
+  /**
+   * 2026-10-23, after Chris watched the first live Editor cut: a plated uppercase headline on
+   * every beat read as a second caption track, and the quiet 44 px captions were not his. The
+   * defaults are now his old screen — the hook title for ~2 s, his captions as they are, no beat
+   * headlines. "ALL" / "QUIET" are opt-in for when the look is right.
+   */
+  headlines: "NONE" | "ALL";
+  captionLook: "KEEP" | "QUIET";
+  /** The hook title's longest hold (s) — it is a title, not a banner. */
+  titleMaxS: number;
 }
 
 export const DEFAULT_SCREEN_STYLE: ScreenStyle = {
@@ -69,7 +79,7 @@ export const DEFAULT_SCREEN_STYLE: ScreenStyle = {
   zoomEaseOutS: 0.4,
   zoomMaxHoldS: 6,
   headlineFontSize: 60,
-  titleFontSize: 72,
+  titleFontSize: 76,
   captionFontSize: 44,
   captionPreset: "QUIET",
   stacking: "HELD_HEADLINE",
@@ -78,6 +88,9 @@ export const DEFAULT_SCREEN_STYLE: ScreenStyle = {
   headlineFadeInS: 0.2,
   headlineFadeOutS: 0.12,
   minHeadlineS: 1.4,
+  headlines: "NONE",
+  captionLook: "KEEP",
+  titleMaxS: 2.4,
 };
 
 /** The StyleModel's bands as the orchestrator's presets (structural type: @chris/domain's
@@ -207,7 +220,7 @@ export function chooseCoverFrame(beat: ScreenBeat | null, titleStart: number, ho
   return r3(Math.min(to, Math.max(from, (from + to) / 2)));
 }
 
-function headlineText(anchor: HeadlineAnchor, id: string, text: string, start: number, end: number, style: ScreenStyle): TimelineText {
+function headlineText(anchor: HeadlineAnchor, id: string, text: string, start: number, end: number, style: ScreenStyle, isTitle = false): TimelineText {
   return {
     id,
     text,
@@ -223,7 +236,7 @@ function headlineText(anchor: HeadlineAnchor, id: string, text: string, start: n
     x: anchor.x,
     y: anchor.y,
     maxWidth: anchor.maxWidth,
-    uppercase: true,
+    uppercase: !isTitle,
     anchor: anchor.zone,
     fadeIn: style.headlineFadeInS,
     fadeOut: style.headlineFadeOutS,
@@ -262,11 +275,11 @@ export function planScreen(input: ScreenInput): ScreenPlan {
   let title: ScreenHeadline | null = null;
   const hookBeat = beats[0] ?? null;
   if (input.title && anchors.title) {
-    const end = Math.min(dur, Math.max(1.6, input.hookEnd + 0.2));
+    const end = Math.min(dur, Math.max(1.6, Math.min(style.titleMaxS, input.hookEnd + 0.2)));
     title = { id: "fe-hook-title", beatIndex: 0, text: input.title, start: 0, end: r3(end) };
     leads.push({ beatIndex: 0, lead: "HEADLINE", at: 0 });
   }
-  if (anchors.headline) {
+  if (anchors.headline && style.headlines === "ALL") {
     for (let i = 1; i < beats.length; i++) {
       const b = beats[i]!;
       if (!b.headline || !b.words.length) continue;
@@ -331,7 +344,10 @@ export function planScreen(input: ScreenInput): ScreenPlan {
     if (prev && prev.maxWords === maxWords && start - prev.end < 0.5) prev.end = end;
     else if (end > start) chunking.push({ start, end, maxWords });
   }
-  const captions = { preset: style.captionPreset, fontSize: style.captionFontSize, y: anchors.caption.y, maxWordsPerChunk: input.captionDefaults?.defaultWords ?? 2, chunking };
+  const captions =
+    style.captionLook === "QUIET"
+      ? { preset: style.captionPreset, fontSize: style.captionFontSize, y: anchors.caption.y, maxWordsPerChunk: input.captionDefaults?.defaultWords ?? 2, chunking }
+      : { preset: input.timeline.captions.preset, fontSize: input.timeline.captions.fontSize, y: input.timeline.captions.y, maxWordsPerChunk: input.timeline.captions.maxWordsPerChunk, chunking: [] as CaptionChunkWindow[] };
 
   const coverFrameSeconds = chooseCoverFrame(hookBeat, title ? title.start : 0, input.hookEnd);
   return { anchors, style, title, headlines, slots, faceBeats, leads: leads.sort((a, b) => a.at - b.at), captions, zooms: [], coverFrameSeconds, notes };
@@ -445,13 +461,13 @@ export function toTimelineZooms(zooms: ScreenZoom[], style: ScreenStyle): Timeli
  * `toTimelineZooms` once planned). Existing texts with other ids are kept. */
 export function applyScreenPlan(timeline: EditTimeline, plan: ScreenPlan): EditTimeline {
   const texts: TimelineText[] = [];
-  if (plan.title && plan.anchors.title) texts.push(headlineText(plan.anchors.title, plan.title.id, plan.title.text, plan.title.start, plan.title.end, plan.style));
+  if (plan.title && plan.anchors.title) texts.push(headlineText(plan.anchors.title, plan.title.id, plan.title.text, plan.title.start, plan.title.end, plan.style, true));
   if (plan.anchors.headline) for (const h of plan.headlines) texts.push(headlineText(plan.anchors.headline, h.id, h.text, h.start, h.end, plan.style));
   const ids = new Set(texts.map((t) => t.id));
   return EditTimelineSchema.parse({
     ...timeline,
     texts: [...texts, ...timeline.texts.filter((t) => !ids.has(t.id) && !t.id.startsWith("fe-beat-") && t.id !== "fe-hook-title")],
-    captions: { ...timeline.captions, preset: plan.captions.preset, fontSize: plan.captions.fontSize, y: plan.captions.y, maxWordsPerChunk: plan.captions.maxWordsPerChunk, chunking: plan.captions.chunking, backgroundColor: null },
+    captions: plan.style.captionLook === "QUIET" ? { ...timeline.captions, preset: plan.captions.preset, fontSize: plan.captions.fontSize, y: plan.captions.y, maxWordsPerChunk: plan.captions.maxWordsPerChunk, chunking: plan.captions.chunking, backgroundColor: null } : timeline.captions,
     zooms: toTimelineZooms(plan.zooms, plan.style),
     coverFrameSeconds: plan.coverFrameSeconds,
   });

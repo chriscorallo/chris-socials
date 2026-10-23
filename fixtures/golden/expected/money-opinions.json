@@ -1,0 +1,1293 @@
+{
+ "slug": "money-opinions",
+ "free": {
+  "ok": true,
+  "outputDurationS": 58.32,
+  "kept": [
+   {
+    "sentenceId": 0,
+    "text": "Here's an unpopular opinion about money that you will not like.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 2,
+    "text": "is better than owning a house.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 5,
+    "text": "Yes, of course, owning a house then, right?",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 10,
+    "text": "so when would you rent and when would you buy a house?",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 12,
+    "text": "So when would you rent and when would you buy a home?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 15,
+    "text": "Why would you go in a home?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 17,
+    "text": "Unless you want the risk, go take the risk, go for it.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 21,
+    "text": "Is it better to just rent and then invest the extra that you would have paid for a house or doesn't make more sense to just flat out buy a house?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 22,
+    "text": "And then also consider where you buying the house is in HOA.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 27,
+    "text": "So So a a higher higher price to rent ratio, which means if the price of houses is way higher than the average rent,",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 33,
+    "text": "am I, huh?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 34,
+    "text": "Who do you think you are?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 41,
+    "text": "gonna be stuff that happens with your house, right?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 46,
+    "text": "where they just buy a house right away.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 50,
+    "text": "And now you're just boom, boom, boom, default.",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 53,
+    "text": "He told you to go buy that house.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 56,
+    "text": "if you are going to buy your first house, by the way, just look in the FHA loans.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 57,
+    "text": "Possible idea.",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 1,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 3,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 4,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 6,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 7,
+    "kind": "FLUFF"
+   },
+   {
+    "sentenceId": 8,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 9,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 11,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 13,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 14,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 16,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 18,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 20,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 23,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 24,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 25,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 26,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 28,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 29,
+    "kind": "FLUFF"
+   },
+   {
+    "sentenceId": 30,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 31,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 32,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 35,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 36,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 37,
+    "kind": "FLUFF"
+   },
+   {
+    "sentenceId": 38,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 39,
+    "kind": "REPEAT"
+   },
+   {
+    "sentenceId": 40,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 42,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 43,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 44,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 45,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 47,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 48,
+    "kind": "DANGLING"
+   },
+   {
+    "sentenceId": 49,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 51,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 52,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 54,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 55,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 58,
+    "kind": "FLUFF"
+   }
+  ],
+  "title": "Renting beats owning a house",
+  "headlines": [],
+  "graphics": [],
+  "zooms": 0,
+  "screen": null,
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "PASS"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "PASS"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "FIXED"
+   },
+   {
+    "id": "RETENTION",
+    "status": "WARN"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 7.205,
+    "inS": 17.541,
+    "removedS": 10.336,
+    "tailAirS": 0.146,
+    "leadAirS": 0.12,
+    "airS": 0.266,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 20.651,
+    "inS": 39.387,
+    "removedS": 18.736,
+    "tailAirS": 0.146,
+    "leadAirS": 0.122,
+    "airS": 0.268,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 41.982,
+    "inS": 120.496,
+    "removedS": 78.515,
+    "tailAirS": 0.081,
+    "leadAirS": 0.121,
+    "airS": 0.203,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 121.162,
+    "inS": 121.987,
+    "removedS": 0.825,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 124.25,
+    "inS": 127.046,
+    "removedS": 2.796,
+    "tailAirS": -2.233,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 5,
+    "outS": 130.617,
+    "inS": 144.607,
+    "removedS": 13.99,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 145.7,
+    "inS": 152.262,
+    "removedS": 6.563,
+    "tailAirS": 0.135,
+    "leadAirS": 0.1,
+    "airS": 0.234,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 155.343,
+    "inS": 167.719,
+    "removedS": 12.376,
+    "tailAirS": 0.138,
+    "leadAirS": -1.601,
+    "airS": 0.138,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 175.886,
+    "inS": 175.979,
+    "removedS": 0.093,
+    "tailAirS": -9.107,
+    "leadAirS": -9.861,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 9,
+    "outS": 178.626,
+    "inS": 216.517,
+    "removedS": 37.891,
+    "tailAirS": -6.367,
+    "leadAirS": 0.12,
+    "airS": 0.12,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 10,
+    "outS": 226.096,
+    "inS": 247.65,
+    "removedS": 21.555,
+    "tailAirS": 0.145,
+    "leadAirS": 0.001,
+    "airS": 0.147,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 248.595,
+    "inS": 249.639,
+    "removedS": 1.044,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 12,
+    "outS": 250.921,
+    "inS": 285.254,
+    "removedS": 34.332,
+    "tailAirS": 0.146,
+    "leadAirS": 0.081,
+    "airS": 0.227,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 13,
+    "outS": 287.31,
+    "inS": 315.009,
+    "removedS": 27.699,
+    "tailAirS": -3.385,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 14,
+    "outS": 316.664,
+    "inS": 326.41,
+    "removedS": 9.747,
+    "tailAirS": 0.146,
+    "leadAirS": -1.476,
+    "airS": 0.146,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 15,
+    "outS": 327.402,
+    "inS": 327.722,
+    "removedS": 0.32,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 16,
+    "outS": 329.393,
+    "inS": 329.56,
+    "removedS": 0.167,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 17,
+    "outS": 330.11,
+    "inS": 332.9,
+    "removedS": 2.79,
+    "tailAirS": -5.142,
+    "leadAirS": -3.268,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 18,
+    "outS": 334.306,
+    "inS": 339.476,
+    "removedS": 5.17,
+    "tailAirS": -0.946,
+    "leadAirS": 0.12,
+    "airS": 0.12,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 19,
+    "outS": 342.34,
+    "inS": 342.479,
+    "removedS": 0.139,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 20,
+   "airMedianS": 0.168,
+   "airP90S": 0.267,
+   "airMaxS": 0.268,
+   "clippedCount": 0,
+   "clippedMaxMs": 0,
+   "airOver026Count": 4
+  }
+ },
+ "editor": {
+  "ok": true,
+  "outputDurationS": 78.46,
+  "kept": [
+   {
+    "sentenceId": 0,
+    "text": "Here's an unpopular opinion about money that you will not like.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 1,
+    "text": "Renting",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 2,
+    "text": "is better than owning a house.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 3,
+    "text": "Rent an apartment is better than owning a house Now now before you get your panties all on a twist",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 4,
+    "text": "obviously it's situational Is building your assets and having something that's gonna go up in value that you're putting your money into that way you're not throwing it away.",
+    "beat": "SETUP"
+   },
+   {
+    "sentenceId": 14,
+    "text": "But if you are going to only be in a certain area for maybe a certain amount of months or years, it's like, okay, well, I only plan on staying here for work for a couple of years.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 15,
+    "text": "Why would you go in a home?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 16,
+    "text": "If maybe the market won't be something where you may see a profit, that's a risk.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 23,
+    "text": "Because if it's in HOA, we have all those damn fees, then yeah, I would say maybe not.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 27,
+    "text": "So So a a higher higher price to rent ratio, which means if the price of houses is way higher than the average rent,",
+    "beat": "PAYOFF"
+   },
+   {
+    "sentenceId": 28,
+    "text": "then oftentimes it makes more sense to rent,",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 30,
+    "text": "And then invest the excess or what you would have paid.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 35,
+    "text": "I think it's completely stupid",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 36,
+    "text": "to just buy a house to buy a house, especially you don't have six months of savings already saved up if you don't have as well You want to have if you're gonna buy a house six six months of emergency fund, minimum,",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 42,
+    "text": "You're gonna need new roof, you're gonna need new AC you're gonna need all these different things More so than the three months of expenses, but at least three to six months minimum and so then it's like if you don't have that rent first",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 44,
+    "text": "But yeah, renting over owning I think is sometimes a really smart decision.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 45,
+    "text": "And not everybody should do it",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 46,
+    "text": "where they just buy a house right away.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 47,
+    "text": "It doesn't make the most sense if you're not financially there yet.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 48,
+    "text": "And then you default on a house because, oh, hey, I thought it was a smart investment.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 51,
+    "text": "Well, whose fault was that?",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 52,
+    "text": "That was your best friend.",
+    "beat": "POINT"
+   },
+   {
+    "sentenceId": 53,
+    "text": "He told you to go buy that house.",
+    "beat": "POINT"
+   }
+  ],
+  "removed": [
+   {
+    "sentenceId": 5,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 6,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 7,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 8,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 9,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 10,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 11,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 12,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 13,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 17,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 18,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 19,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 20,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 21,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 22,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 24,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 25,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 26,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 29,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 31,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 32,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 33,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 34,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 37,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 38,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 39,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 40,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 41,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 43,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 49,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 50,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 54,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 55,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 56,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 57,
+    "kind": "LOW_VALUE"
+   },
+   {
+    "sentenceId": 58,
+    "kind": "LOW_VALUE"
+   }
+  ],
+  "title": "Renting beats owning a house",
+  "headlines": [],
+  "graphics": [],
+  "zooms": 3,
+  "screen": {
+   "headlineZone": "TOP",
+   "captionZone": "CHEST",
+   "captionPreset": "QUIET",
+   "titleY": 0.216,
+   "titleFontSize": 76,
+   "leads": [
+    "0:HEADLINE@0",
+    "0:GRAPHIC@1.117",
+    "4:ZOOM@31.896",
+    "5:GRAPHIC@36.234",
+    "5:ZOOM@38.198",
+    "8:GRAPHIC@55.908",
+    "10:FACE@63.852",
+    "-1:ZOOM@69.54",
+    "11:FACE@69.911",
+    "12:FACE@74.791",
+    "13:FACE@77.026"
+   ],
+   "zooms": [
+    {
+     "start": 31.896,
+     "end": 35.789,
+     "reason": "STATIC",
+     "word": null
+    },
+    {
+     "start": 38.198,
+     "end": 42.198,
+     "reason": "STATIC",
+     "word": null
+    },
+    {
+     "start": 69.54,
+     "end": 73.54,
+     "reason": "STATIC",
+     "word": null
+    }
+   ],
+   "slots": 3,
+   "coverFrameSeconds": 8.697,
+   "audit": [],
+   "notes": [
+    "headlines sit over the hair (the head fills the top zone) — leave the top third empty when filming for a clean zone"
+   ]
+  },
+  "checks": [
+   {
+    "id": "MEANING_MATCH",
+    "status": "PASS"
+   },
+   {
+    "id": "VERIFICATION",
+    "status": "PASS"
+   },
+   {
+    "id": "CONTINUITY",
+    "status": "PASS"
+   },
+   {
+    "id": "FACT_SOURCE",
+    "status": "PASS"
+   },
+   {
+    "id": "COHESION",
+    "status": "PASS"
+   },
+   {
+    "id": "QUALITY",
+    "status": "FIXED"
+   },
+   {
+    "id": "RETENTION",
+    "status": "PASS"
+   }
+  ],
+  "splices": [
+   {
+    "index": 0,
+    "outS": 7.205,
+    "inS": 7.576,
+    "removedS": 0.371,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 1,
+    "outS": 11.706,
+    "inS": 11.968,
+    "removedS": 0.262,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 2,
+    "outS": 12.53,
+    "inS": 13.266,
+    "removedS": 0.736,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 3,
+    "outS": 13.819,
+    "inS": 14.248,
+    "removedS": 0.429,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 4,
+    "outS": 15.524,
+    "inS": 15.751,
+    "removedS": 0.227,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 5,
+    "outS": 16.449,
+    "inS": 17.589,
+    "removedS": 1.14,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 6,
+    "outS": 20.65,
+    "inS": 26.023,
+    "removedS": 5.373,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 7,
+    "outS": 28.788,
+    "inS": 29.209,
+    "removedS": 0.421,
+    "tailAirS": 0.097,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 8,
+    "outS": 30.923,
+    "inS": 142,
+    "removedS": 111.077,
+    "tailAirS": 0.136,
+    "leadAirS": -0.839,
+    "airS": 0.136,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 9,
+    "outS": 144.507,
+    "inS": 144.656,
+    "removedS": 0.149,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 10,
+    "outS": 148.683,
+    "inS": 148.987,
+    "removedS": 0.304,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 11,
+    "outS": 150.692,
+    "inS": 150.928,
+    "removedS": 0.236,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 12,
+    "outS": 152.262,
+    "inS": 179,
+    "removedS": 26.738,
+    "tailAirS": 0.1,
+    "leadAirS": -12.882,
+    "airS": 0.1,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 13,
+    "outS": 185.139,
+    "inS": 219.42,
+    "removedS": 34.281,
+    "tailAirS": 0.146,
+    "leadAirS": -2.783,
+    "airS": 0.146,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 2783,
+    "inSilence": false
+   },
+   {
+    "index": 14,
+    "outS": 226.046,
+    "inS": 226.481,
+    "removedS": 0.435,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 15,
+    "outS": 228.851,
+    "inS": 229.547,
+    "removedS": 0.696,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 16,
+    "outS": 230.871,
+    "inS": 231.03,
+    "removedS": 0.159,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 17,
+    "outS": 233.34,
+    "inS": 256.399,
+    "removedS": 23.059,
+    "tailAirS": -0.731,
+    "leadAirS": 0.121,
+    "airS": 0.121,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 18,
+    "outS": 259.065,
+    "inS": 259.652,
+    "removedS": 0.587,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 19,
+    "outS": 264.1,
+    "inS": 287.31,
+    "removedS": 23.21,
+    "tailAirS": -1.631,
+    "leadAirS": -0.168,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": false
+   },
+   {
+    "index": 20,
+    "outS": 290.841,
+    "inS": 305.8,
+    "removedS": 14.959,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 21,
+    "outS": 306.528,
+    "inS": 306.781,
+    "removedS": 0.253,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 22,
+    "outS": 307.423,
+    "inS": 307.678,
+    "removedS": 0.255,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 23,
+    "outS": 308.335,
+    "inS": 308.565,
+    "removedS": 0.23,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 24,
+    "outS": 310.985,
+    "inS": 311.549,
+    "removedS": 0.564,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 25,
+    "outS": 312.127,
+    "inS": 313.315,
+    "removedS": 1.188,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 26,
+    "outS": 314.397,
+    "inS": 315.058,
+    "removedS": 0.661,
+    "tailAirS": 0.096,
+    "leadAirS": 0.072,
+    "airS": 0.168,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 27,
+    "outS": 316.664,
+    "inS": 317.198,
+    "removedS": 0.534,
+    "tailAirS": 0.146,
+    "leadAirS": 0.121,
+    "airS": 0.267,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 28,
+    "outS": 324.887,
+    "inS": 330.399,
+    "removedS": 5.512,
+    "tailAirS": 0.048,
+    "leadAirS": -0.767,
+    "airS": 0.048,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 29,
+    "outS": 330.896,
+    "inS": 330.988,
+    "removedS": 0.092,
+    "tailAirS": -4.356,
+    "leadAirS": -1.356,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   },
+   {
+    "index": 30,
+    "outS": 331.906,
+    "inS": 332.079,
+    "removedS": 0.173,
+    "tailAirS": -3.346,
+    "leadAirS": -2.447,
+    "airS": 0,
+    "clippedTailMs": 0,
+    "clippedLeadMs": 0,
+    "inSilence": true
+   }
+  ],
+  "spliceSummary": {
+   "n": 31,
+   "airMedianS": 0.168,
+   "airP90S": 0.267,
+   "airMaxS": 0.267,
+   "clippedCount": 1,
+   "clippedMaxMs": 2783,
+   "airOver026Count": 5
+  }
+ },
+ "prodMachine": {
+  "spliceSummary": {
+   "n": 31,
+   "airMedianS": 0.168,
+   "airP90S": 0.267,
+   "airMaxS": 0.267,
+   "clippedCount": 1,
+   "clippedMaxMs": 2783,
+   "airOver026Count": 5
+  }
+ },
+ "hand": null
+}

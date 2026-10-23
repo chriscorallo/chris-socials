@@ -15,6 +15,7 @@ import { analyzePendingReferenceVideos } from "./reference-analysis-job";
 import { maybeAutoStyleCut, type StyleCutOutcome } from "./style-cut-job";
 import { reviewReferenceAsViewer, reviewRenderAsViewer } from "./viewer-review-job";
 import { watchBackContentItem } from "./watch-back-job";
+import { aiEditContentItem } from "./ai-edit-job";
 import { HEAVY_JOB_LABEL, parseHeavyJobArgs, type HeavyJobArgsByKind, type HeavyJobKind } from "./heavy-job-kinds";
 import { runFilmRender, runFilmRenderChunk, runFilmStoryboard, runFilmVoiceAlign, type CinemaEngine, type FilmJobContext } from "./film-jobs";
 
@@ -306,6 +307,15 @@ export async function executeHeavyJob<K extends HeavyJobKind>(kind: K, rawArgs: 
       }
     }
 
+    case "ai-edit": {
+      const a = args as HeavyJobArgsByKind["ai-edit"];
+      try {
+        const r = await aiEditContentItem(db, storage, () => needModel(ctx), a.contentItemId, actor, { skipVisuals: a.skipVisuals, onProgress: (pct, message) => progress(pct, message, "ai-edit") });
+        return { ok: true, result: r, message: r.hook ? `AI edit saved: opens on “${r.hook.slice(0, 50)}”, ${r.graphics} graphic${r.graphics === 1 ? "" : "s"}.` : "AI edit saved as a new version." };
+      } catch (err) {
+        return { ok: false, result: { errorName: err instanceof Error ? err.name : "Error" }, error: errMsg(err), message: "The AI edit couldn't finish — whatever did finish is saved." };
+      }
+    }
     case "watch-back": {
       const a = args as HeavyJobArgsByKind["watch-back"];
       try {

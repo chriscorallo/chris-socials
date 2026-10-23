@@ -20,6 +20,7 @@ export const HEAVY_JOB_KINDS = [
   "reference-analyze",
   "viewer-review",
   "watch-back",
+  "ai-edit",
   "take-understand",
   // mini-movie studio (packages/cinema) — see apps/worker/src/film-jobs.ts
   "film-render",
@@ -90,6 +91,8 @@ export interface HeavyJobArgsByKind {
    * free audits → checklist → PASS / FIX / HOLD with typed fixes; `applyFixes` overrides the
    * watch_back.fix_loop flag. Writes WatchVerdict rows; shadow unless the gating flag is on. */
   "watch-back": { contentItemId: string; applyFixes?: boolean };
+  /** The AI edit as one background job: brief → the Editor's cut → visuals (ai-edit-job.ts). */
+  "ai-edit": { contentItemId: string; skipVisuals?: boolean };
   /** Render a mini-movie (narration → picture in chunks → assembled film) and register it as a
    * video (a ContentItem's render) unless `register` is false. Idempotent per (film, tier,
    * narration, idempotencyKey): a finished render is returned, finished chunks are reused. */
@@ -177,7 +180,7 @@ export type HeavyJobArgs<K extends HeavyJobKind = HeavyJobKind> = HeavyJobArgsBy
 
 /** Kinds that call the model provider (need ANTHROPIC_API_KEY in the worker). */
 export function heavyJobNeedsModel(kind: HeavyJobKind, args: unknown): boolean {
-  if (kind === "quality-gate" || kind === "auto-repair" || kind === "motion-design" || kind === "viewer-review" || kind === "watch-back") return true;
+  if (kind === "quality-gate" || kind === "auto-repair" || kind === "motion-design" || kind === "viewer-review" || kind === "watch-back" || kind === "ai-edit") return true;
   if (kind === "render") return !!(args as HeavyJobArgsByKind["render"]).thenQualityGate;
   return false;
 }
@@ -197,6 +200,7 @@ export const HEAVY_JOB_LABEL: Record<HeavyJobKind, string> = {
   "reference-analyze": "Measuring your reference videos",
   "viewer-review": "Watching it like a new viewer",
   "watch-back": "Watching it back before it posts",
+  "ai-edit": "Editing with AI",
   "take-understand": "Reading your face and moves",
   "film-render": "Rendering your mini-movie",
   "film-render-chunk": "Rendering part of your mini-movie",
@@ -342,6 +346,11 @@ export function parseHeavyJobArgs<K extends HeavyJobKind>(kind: K, raw: unknown)
     case "watch-back": {
       const applyFixes = optBool(a.applyFixes, "applyFixes");
       out = { contentItemId, ...(applyFixes === undefined ? {} : { applyFixes }) };
+      break;
+    }
+    case "ai-edit": {
+      const skipVisuals = optBool(a.skipVisuals, "skipVisuals");
+      out = { contentItemId, ...(skipVisuals === undefined ? {} : { skipVisuals }) };
       break;
     }
     case "quality-gate":

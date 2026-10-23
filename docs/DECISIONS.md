@@ -9903,3 +9903,27 @@ new to today's changes; worth a look on its own.
 `snap_6ZwEVIt9rBjtbwQ7lmqvOtqyqyD1` (tesseract.js installed; `scripts/sandbox/probe-ocr.ts`
 boots a snapshot and confirms the package and the English model load — it did). The reference
 library is flagged for re-measure (v4); the screen signals exist after the next Measure.
+
+## 2026-10-23 — The orchestrator's screen defaults reverted to Chris's old screen
+
+**What happened:** Chris ran the AI edit on "Money opinions that will probably annoy somebody"
+and watched it. The Editor's cut (23 of 59 lines, 78 s) was not the complaint; the screen was:
+a 72 px uppercase plated title held for the whole 16 s hook beat, then twelve plated uppercase
+headlines back to back at the top for the rest of the video, and his captions replaced by the
+"quiet" 44 px two-word chunks. On his framing (the head fills the top third) the headline lane
+sits just over the hair and reads as a second, louder caption track. His verdict: far worse than
+the free cut. He judges by watching; that verdict stands.
+
+**Decision:** the orchestrator's defaults are his old screen — the hook title for at most 2.4 s
+in sentence case at 76 px, his captions exactly as he set them, no beat headlines. The lanes
+stay in the code behind `ScreenStyle.headlines: "ALL"` and `captionLook: "QUIET"` (opt-in), so
+they can come back one piece at a time, judged on frames, when the look is right — smaller type,
+no plate, the references' cadence (their measured band is one headline every ~12 s held ~2.5 s;
+mine produced one every 6 s held 3–9 s). Zooms, the cover frame, the anchors and the audits
+are unchanged. Golden expected replays re-written (the two Editor fixtures lose their
+headlines; the free cuts are untouched).
+
+**Lesson for the log:** a screen rule that is right in the plan can still be wrong on his
+framing and his type; nothing that changes what a viewer sees ships again without a frame
+contact sheet of a real take looked at first. The golden harness has no frames (deliberately,
+Week 0); adding `fixtures/golden/media/` and a frames script is now the next thing to build.
