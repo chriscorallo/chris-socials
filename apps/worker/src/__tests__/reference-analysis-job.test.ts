@@ -131,7 +131,7 @@ describe("reference analysis job", () => {
     const p = Object.assign(new MockTranscriptionProvider(() => ({ text: talk.map((w) => w.word).join(" "), words: talk })), { model: "mock" });
     const m = await analyzeReferenceVideoFile(igClip, { transcriptionProvider: p, ocr: null, subjectTracker: null });
     expect(parseReferenceVideoMetrics(m)).not.toBeNull();
-    expect(m.version).toBe(3);
+    expect(m.version).toBe(4);
     expect(m.video.sourceDurationS!).toBeGreaterThan(6.9);
     expect(m.video.durationS).toBeCloseTo(4, 0);
     expect(Math.abs(m.video.durationS - 4)).toBeLessThanOrEqual(0.1);

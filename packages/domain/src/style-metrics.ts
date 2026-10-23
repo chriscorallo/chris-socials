@@ -15,7 +15,7 @@ import { z } from "zod";
  * out of every number; videos with little or no talking get speech marked not-applicable and
  * their audio characterised (music-led) instead of read as a voice. v1 rows still parse.
  */
-export const REFERENCE_METRICS_VERSION = 3;
+export const REFERENCE_METRICS_VERSION = 4;
 
 /** Storage keys / Blob pathnames of reference videos: `reference/<creatorId>/<file>` (private). */
 export const REFERENCE_VIDEO_KEY_PATTERN = /^reference\/[\w-]+\/[\w.-]+$/;
@@ -26,8 +26,9 @@ const nnum = num.nullable();
 export const ReferenceVideoMetricsSchema = z.object({
   /** 1 = first measuring; 2 = end cards left out + no-speech handling (fields below marked v2);
    * 3 = what a viewer sees (on-screen text events, zoom usage, the reference's splice pads, cut
-   * rhythm by thirds — reference learning, docs/PREMIUM_EDITOR_PLAN.md round 4). */
-  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+   * rhythm by thirds — reference learning, docs/PREMIUM_EDITOR_PLAN.md round 4); 4 = the same
+   * with OCR actually installed in the worker (v3 rows measured on 2026-10-23 have screen: null). */
+  version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   video: z.object({
     /** The analyzed length — up to where a platform end card starts (v2), else the file's. */
     durationS: num.nonnegative(),

@@ -37,6 +37,8 @@ const EXTERNALS: Array<{ name: string; from: string }> = [
   { name: "ffmpeg-static", from: "packages/media" },
   { name: "ffprobe-static", from: "packages/media" },
   { name: "onnxruntime-node", from: "packages/media" },
+  // Reference learning: OCR (pure WASM; loaded by name at runtime, so it must be installed here).
+  { name: "tesseract.js", from: "packages/media" },
   { name: "@huggingface/transformers", from: "packages/media" },
   { name: "@remotion/renderer", from: "packages/motion" },
   // mini-movies: Kokoro TTS (kokoro-js brings phonemizer — eSpeak NG WASM — and its 28 English

@@ -9889,3 +9889,12 @@ zooms, music, hook and length at 0); the paragraph says so ("cuts and pads also 
 own edits"). And `/reference` took 74 s to render because `getStyleModel` read whole plan JSON
 (a stored full edit carries the take's envelope and voice analysis): the loader now scans the
 cheap columns, picks ≤ 30 rows, and fetches only `plan->'timeline'` with one raw query.
+
+**Second correction (2026-10-23):** every reference measured after the ship came back with
+`screen: null` and the note "On-screen text not read (tesseract.js is not installed)": the
+runner bundle treats tesseract.js as an external loaded by name, and it was missing from the
+snapshot's installed externals (`EXTERNALS` in `scripts/sandbox/build-runner.ts`). Added. Since
+those rows are version 3 and not "outdated", `REFERENCE_METRICS_VERSION` is 4 so the Measure
+button re-queues them — the library has to be measured once more. Observed while checking:
+the live pages stream in 8–25 s (`/content` 163 s) with a 0.35 s TTFB — server query time, not
+new to today's changes; worth a look on its own.

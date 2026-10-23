@@ -112,7 +112,7 @@ describe("speech metrics", () => {
 describe("schema", () => {
   it("accepts a well-formed result and rejects malformed ones", () => {
     expect(ReferenceVideoMetricsSchema.safeParse(fakeMetrics()).success).toBe(true);
-    expect(parseReferenceVideoMetrics({ ...fakeMetrics(), version: 4 })).toBeNull();
+    expect(parseReferenceVideoMetrics({ ...fakeMetrics(), version: 5 })).toBeNull();
     expect(parseReferenceVideoMetrics({ ...fakeMetrics(), video: { durationS: -1 } })).toBeNull();
     const bad = fakeMetrics();
     (bad.audio as unknown as { background: string }).background = "loud";
@@ -246,8 +246,8 @@ describe("is anyone talking? (v2)", () => {
 });
 
 describe("versions + impossible values", () => {
-  it("v3 is current; v1 and v2 rows still parse", () => {
-    expect(REFERENCE_METRICS_VERSION).toBe(3);
+  it("v4 is current; v1–v3 rows still parse", () => {
+    expect(REFERENCE_METRICS_VERSION).toBe(4);
     expect(parseReferenceVideoMetrics(fakeMetrics())!.version).toBe(1);
     expect(parseReferenceVideoMetrics(fakeMusicLedMetrics())!.version).toBe(2);
     expect(parseReferenceVideoMetrics({ ...fakeMetrics(), version: 2, video: { ...fakeMetrics().video, endCardS: 3.1, sourceDurationS: 33.1 } })!.video.endCardS).toBe(3.1);
