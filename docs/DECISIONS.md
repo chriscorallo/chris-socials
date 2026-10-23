@@ -9927,3 +9927,43 @@ headlines; the free cuts are untouched).
 framing and his type; nothing that changes what a viewer sees ships again without a frame
 contact sheet of a real take looked at first. The golden harness has no frames (deliberately,
 Week 0); adding `fixtures/golden/media/` and a frames script is now the next thing to build.
+
+## 2026-10-23 — The AI edit goes back to the proven flow; what the first live Editor cut taught
+
+**What Chris saw** on "Money opinions that will probably annoy somebody": a cut he rated far
+below the free one — chopped, dead space, nonsense words, no animations. Measured on the
+fixture (`fixtures/golden/money-opinions.json`): the kept clips held no pause over 0.45 s and
+the splice air matched his hand edits, so the "dead space" was not pauses; it was (1) a story
+join the Editor placed inside continuous speech (one cut 2.8 s into a voice span — the free cut
+has none), (2) the hook split into three one-line clips, (3) a transcript artefact: the
+timestamped Whisper model emitted "So So a a higher higher" as duplicated, overlapping tokens
+with one "So" stretched 8.5 s across silence, which both cutters treated as words and the
+captions showed, and (4) zero graphics — my slot restriction stopped the free graphics on the
+Editor path and the Motion Designer rejected its three.
+
+**Decisions:**
+1. **AI edit = the flow he judged better**: the free Full edit, then the AI hook pick, the
+   cold-viewer read-through and the Visual Strategist + Motion Designer. New uploads default to
+   the free Full edit again (`getAutoEditMode` → FULL; the Editor is opt-in via the new
+   `auto_edit.editor` flag / the "For new uploads: Editor" chip). The Editor's cut stays in the
+   code and in the golden harness; it comes back as the default only when it beats the free
+   cut on the golden set, judged by watching.
+2. **Transcript hygiene is written but NOT applied to the cut yet** (`dedupeOverlappingWords`,
+   `MAX_WORD_S` in style-cut.ts, tested): a token overlapping its twin by half is one word; a
+   token longer than 2.5 s keeps its last 2.5 s. Applied in the cutter it changed the free cut's
+   kept lines on all eight golden fixtures (every take has such tokens; sentence ids shift) —
+   exactly the cut he just called 10× better — so it waits for a watched comparison. The
+   artefacts stay visible in captions until then.
+3. **The Editor's lines get the free cutter's word-level cleanup** (fillers, restarts,
+   lead-ins, stutters) — it had none. **Stutters** ("a a") are cut when back to back, unpunctuated,
+   not a third repeat and not a deliberate double ("very very", "boom, boom").
+4. **Unsafe joins**: the Editor's lines now say when he runs straight into the next line
+   without a pause (`cleanEnd`), the prompt (2.1.0) forbids ending a beat there, and the
+   checklist flags `UNSAFE_JOIN` so the critique/revise fixes it.
+5. **Graphics on the Editor path** are back to the free bot's full pick (the orchestrator's slot
+   is a placement preference, not a filter).
+
+**Not fixed yet, named honestly:** why the Motion Designer rejected all three of its visuals on
+that video (the audit log in prod has the reasons; the fixture doesn't carry them); the Editor's
+line choices themselves (the model's judgment) — only watchable; the splice air at 24 cuts a
+minute (his hand edits cut less often).

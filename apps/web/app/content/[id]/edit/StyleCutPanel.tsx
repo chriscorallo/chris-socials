@@ -80,13 +80,14 @@ export function StyleCutPanel() {
         if (!b.ok) return setError(b.error);
         setStyleCut({ ...styleCut, brief: b.brief });
       }
-      // 1. The Editor writes the cut (hook → tension → payoff from his lines, headlines per
-      //    beat), and the engine executes it — never a stale plan, which may predate the cutter.
+      // 1. The Full edit is the base (2026-10-23: back to the flow Chris judged better by
+      //    watching — the Editor's cut is opt-in via "For new uploads: Editor" until it beats the
+      //    free cut on the golden set). Then the AI picks the hook, reads the cut through, designs.
       let report: typeof fe = null;
       let sc = styleCut;
       {
-        setAiStep("The Editor is writing the cut from your take…");
-        const res = await styleCutAction({ contentItemId: itemId, mode: "FULL", choices: { useEditor: true } });
+        setAiStep("Making the Full edit from your take…");
+        const res = await styleCutAction({ contentItemId: itemId, mode: "FULL", choices: styleCut.autoMode === "EDITOR" ? { useEditor: true } : {} });
         if (!res.ok) return setError(res.error);
         loadSavedVersion(res.timeline, res.state);
         report = res.fullEdit ?? null;
@@ -220,7 +221,7 @@ export function StyleCutPanel() {
       <div className="flex flex-col gap-2">
         <Choice id="FULL" title="Full edit (free)" blurb={styleCut.brief ? "Opens on your planned hook, keeps the story beats, every point said once, graphics with your numbers. No AI, free." : "Strong hook first, every point said once, graphics with your numbers. No AI, free."} onClick={() => void run("FULL", {}, "FULL")} />
         <Choice id="CUTS" title="Cuts only" blurb="Just takes out your pauses, with punch-ins on your face." onClick={() => void run("STYLE")} />
-        <Choice id="AI" title="AI edit" blurb={busy === "AI" ? (aiStep ?? "Working…") : styleCut.brief ? "Full edit, then the AI picks the strongest hook and designs the graphics. Uses AI credit." : "Writes this video's plan from the footage, then the Full edit, the AI's hook and the graphics. Uses AI credit."} onClick={() => void runAi()} badge="AI" />
+        <Choice id="AI" title="AI edit" blurb={busy === "AI" ? (aiStep ?? "Working…") : styleCut.brief ? "Full edit, then the AI picks the strongest hook, reads the cut through and designs the graphics. Uses AI credit." : "Writes this video's plan from the footage, then the Full edit, the AI's hook, the read-through and the graphics. Uses AI credit."} onClick={() => void runAi()} badge="AI" />
       </div>
 
       {styleCut.fullEditStale && !busy && !recut && (

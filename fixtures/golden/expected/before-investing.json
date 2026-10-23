@@ -607,7 +607,7 @@
   "graphics": [
    {
     "presetId": "hero-salary",
-    "start": 35.31
+    "start": 32.49
    }
   ],
   "zooms": 2,
@@ -655,7 +655,7 @@
   "checks": [
    {
     "id": "MEANING_MATCH",
-    "status": "PASS"
+    "status": "FIXED"
    },
    {
     "id": "VERIFICATION",

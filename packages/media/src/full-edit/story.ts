@@ -110,6 +110,8 @@ export interface StoryPlan {
 }
 
 const FILLER_WORDS = new Set(["um", "uh", "er", "erm", "ah", "hmm", "mm", "uhm", "eh"]);
+/** Doubles people say on purpose — never cut as a stutter. */
+const DELIBERATE_DOUBLE = new Set(["very", "really", "no", "yes", "boom", "big", "long", "way", "far", "more", "much", "many", "bye", "go", "wait", "okay", "ok"]);
 const LEAD_IN = /^(?:so|okay|ok|alright|basically|honestly|look|like|well|and|i mean|i think|i guess|i don't know|i feel like|you know|um|uh|right|anyway|anyways|now)$/i;
 
 const BEAT_VALUE: Record<string, number> = {
@@ -530,8 +532,15 @@ export function wordLevelCuts(words: TranscriptWord[], S: FESentence[], dec: Sen
         for (let gap = 0; gap <= 2; gap++) {
           const c = a + len + gap;
           if (c + len - 1 > limit) continue;
-          // One repeated word only counts with a filler between ("it's, um, it's").
-          if (len === 1 && (gap === 0 || FILLER_WORDS.has(b[a]!))) continue;
+          // One repeated word counts with a filler between ("it's, um, it's") or as a stutter
+          // back to back ("So So a a higher higher") — never a deliberate double ("very very",
+          // "boom, boom, boom": punctuated, or the same word a third time).
+          if (len === 1 && FILLER_WORDS.has(b[a]!)) continue;
+          if (len === 1 && gap === 0) {
+            const w = b[a]!;
+            const deliberate = DELIBERATE_DOUBLE.has(w) || /[,.;:!?]$/.test(words[a]!.word) || b[a + 2] === w || words[a + 1]!.start - words[a]!.end > 0.4;
+            if (deliberate) continue;
+          }
           let same = true;
           for (let t = 0; t < len; t++) if (b[a + t] !== b[c + t] || !b[a + t]) same = false;
           const between = b.slice(a + len, c);

@@ -71,7 +71,10 @@ export function isHandEditReason(reason: string | null | undefined): boolean {
 
 /** Feature flag: ON = new uploads get "Cuts only"; OFF/absent (default) = "Full edit". */
 export const AUTO_EDIT_CUTS_ONLY_FLAG = "auto_edit.cuts_only";
-/** On: new uploads get the free Full edit instead of the AI Editor's cut (2026-10-21). */
+/** On: new uploads get the AI Editor's cut (2026-10-23: opt-in — the free Full edit is the
+ * default again until the Editor beats it on the golden set, judged by watching). */
+export const AUTO_EDIT_EDITOR_FLAG = "auto_edit.editor";
+/** Kept for older rows/settings: on = the free Full edit (now the default anyway). */
 export const AUTO_EDIT_NO_EDITOR_FLAG = "auto_edit.no_editor";
 
 /** EDITOR = the AI Editor writes the cut (default; falls back to FULL without AI credit);
@@ -105,12 +108,12 @@ export function readStoredFullEdit(plan: unknown): StoredFullEdit | null {
 
 /** Which automatic edit new uploads get (Chris's setting; default the AI Editor's cut). */
 export async function getAutoEditMode(prisma: PrismaClient): Promise<AutoEditMode> {
-  const [cuts, noEditor] = await Promise.all([
+  const [cuts, editor] = await Promise.all([
     prisma.featureFlag.findUnique({ where: { key: AUTO_EDIT_CUTS_ONLY_FLAG } }),
-    prisma.featureFlag.findUnique({ where: { key: AUTO_EDIT_NO_EDITOR_FLAG } }),
+    prisma.featureFlag.findUnique({ where: { key: AUTO_EDIT_EDITOR_FLAG } }),
   ]);
   if (cuts?.enabled) return "CUTS";
-  return noEditor?.enabled ? "FULL" : "EDITOR";
+  return editor?.enabled ? "EDITOR" : "FULL";
 }
 
 export async function setAutoEditMode(prisma: PrismaClient, mode: AutoEditMode, actorId: string): Promise<void> {
@@ -122,9 +125,9 @@ export async function setAutoEditMode(prisma: PrismaClient, mode: AutoEditMode, 
     actorType: "HUMAN",
   });
   await setFlag(prisma, {
-    key: AUTO_EDIT_NO_EDITOR_FLAG,
-    enabled: mode === "FULL",
-    description: "New uploads get the free heuristic Full edit instead of the AI Editor's cut (default off = Editor).",
+    key: AUTO_EDIT_EDITOR_FLAG,
+    enabled: mode === "EDITOR",
+    description: "New uploads get the AI Editor's cut instead of the free Full edit (default off = Full edit).",
     actor: actorId,
     actorType: "HUMAN",
   });

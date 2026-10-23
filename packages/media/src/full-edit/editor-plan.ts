@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { TranscriptWord } from "../caption-chunking";
 import type { FESentence } from "./understand";
-import type { StoryPlan, WordCut } from "./story";
+import { wordLevelCuts, type StoryPlan, type WordCut } from "./story";
 
 /**
  * The Editor's cut (2026-10-21). An editor — the Editor agent, with the title, the brief and the
@@ -67,6 +67,7 @@ export const EDITOR_CHECKS = [
   "COLD_VIEWER",
   "DEPENDENT_LINE",
   "EMPHASIS_WORDS",
+  "UNSAFE_JOIN",
 ] as const;
 export type EditorCheck = (typeof EDITOR_CHECKS)[number];
 
@@ -96,7 +97,7 @@ export function sentenceCount(text: string | null | undefined): number {
  * headline without one, and emphasis words that he did not say. Pure; what the critique pass
  * receives as "already found", and what the revise pass must clear.
  */
-export function editorPlanChecklist(plan: EditorPlan, lines: Array<{ id: number; text: string }>): EditorChecklistFinding[] {
+export function editorPlanChecklist(plan: EditorPlan, lines: Array<{ id: number; text: string; cleanEnd?: boolean }>): EditorChecklistFinding[] {
   const out: EditorChecklistFinding[] = [];
   const byId = new Map(lines.map((l) => [l.id, l]));
   const kept = new Set(plan.storyline.map((e) => e.sentenceId));
@@ -128,6 +129,16 @@ export function editorPlanChecklist(plan: EditorPlan, lines: Array<{ id: number;
     for (const w of e.emphasisWords ?? []) {
       const said = text.toLowerCase().includes(w.trim().toLowerCase());
       if (w.trim() && !said) out.push({ check: "EMPHASIS_WORDS", sentenceId: e.sentenceId, problem: `emphasis word "${w}" is not in line ${e.sentenceId}`, fix: "Emphasis words are words he said in that line, spelled as the transcript spells them." });
+    }
+  });
+  // A join that would land inside the voice: a kept line with no pause after it, followed by a
+  // line that is not the one he said next.
+  plan.storyline.forEach((e, i) => {
+    const next = plan.storyline[i + 1];
+    const line = byId.get(e.sentenceId);
+    if (!next || !line || line.cleanEnd !== false || e.keepWords) return;
+    if (next.sentenceId !== e.sentenceId + 1) {
+      out.push({ check: "UNSAFE_JOIN", sentenceId: e.sentenceId, problem: `line ${e.sentenceId} runs straight into line ${e.sentenceId + 1} with no pause, but the cut jumps to line ${next.sentenceId} after it — the join lands inside his voice`, fix: `Keep line ${e.sentenceId + 1} right after it, or end the beat on a line with a pause after it, or leave line ${e.sentenceId} out.` });
     }
   });
   const last = plan.storyline[plan.storyline.length - 1];
@@ -278,5 +289,14 @@ export function planFromEditor(
     order.push({ w0, w1, role: i === 0 ? "HOOK" : "STORY", sentenceIds: [s.id] });
   });
   const coldOpen = byId.get(plan.storyline[0]!.sentenceId)!.w0 !== earliestKept;
-  return { decisions, wordCuts: wordCuts.sort((a, b) => a.w0 - b.w0), order, coldOpen, hookReplayed: false, estimatedS: estimateS(order), marked: [] };
+  // 2026-10-23: the Editor chooses lines; the free cutter's word-level cleanup still runs inside
+  // them (fillers, restarts, stutters, throat-clearing lead-ins) — it did not before, which is
+  // why the Editor's cut kept "So So a a higher higher" that the free cut would have cleaned.
+  const trimmed = (k: number) => wordCuts.some((c) => k >= c.w0 && k <= c.w1);
+  const cleanup = wordLevelCuts(words, sentences, decisions, safeAfter).filter((c) => {
+    for (let k = c.w0; k <= c.w1; k++) if (trimmed(k)) return false;
+    const o = order.find((x) => c.w0 >= x.w0 && c.w1 <= x.w1);
+    return !!o && !(c.w0 === o.w0 && c.w1 === o.w1);
+  });
+  return { decisions, wordCuts: [...wordCuts, ...cleanup].sort((a, b) => a.w0 - b.w0), order, coldOpen, hookReplayed: false, estimatedS: estimateS(order), marked: [] };
 }

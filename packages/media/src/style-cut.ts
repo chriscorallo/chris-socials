@@ -328,11 +328,47 @@ function spliceKey(a: SpliceAnalysis | null | undefined): unknown {
 
 /** Valid words, clamped to the take, in time order (shared with the Full edit). */
 export function cleanWords(words: TranscriptWord[] | null | undefined, duration: number): TranscriptWord[] {
-  return (words ?? [])
+  const base = (words ?? [])
     .filter((w) => w && typeof w.word === "string" && w.word.trim() && Number.isFinite(w.start) && Number.isFinite(w.end))
     .map((w) => ({ word: w.word.trim(), start: clamp(w.start, 0, duration), end: clamp(Math.max(w.start, w.end), 0, duration) }))
     .filter((w) => w.end > w.start || w.word.length > 0)
     .sort((a, b) => a.start - b.start);
+  // dedupeOverlappingWords is NOT applied here yet: it shifts sentence ids on every real take and
+  // therefore the free cut's choices — a change to be watched first (DECISIONS 2026-10-23).
+  return base;
+}
+
+/** A word is never longer than this; Whisper's timestamped model sometimes stretches a token
+ * across a silence ("So" from 210.0 to 218.5 s) — the cutter then can't cut inside "a word". */
+export const MAX_WORD_S = 2.5;
+
+/**
+ * Transcript hygiene (2026-10-23, found on a real take): the timestamped Whisper model can emit
+ * the same token twice with overlapping spans ("So So a a higher higher") and stretch a token
+ * over dead air. A duplicate token overlapping its twin by half or more is one word (the
+ * tighter span wins); a token longer than MAX_WORD_S keeps its last MAX_WORD_S (the end time is
+ * the better-anchored edge). PURE; also run after the voice refinement.
+ */
+export function dedupeOverlappingWords(words: TranscriptWord[]): TranscriptWord[] {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9$%]/g, "");
+  const out: TranscriptWord[] = [];
+  for (const w0 of words) {
+    const w = w0.end - w0.start > MAX_WORD_S ? { ...w0, start: w0.end - MAX_WORD_S } : { ...w0 };
+    const prev = out[out.length - 1];
+    if (prev && norm(prev.word) === norm(w.word)) {
+      const overlap = Math.min(prev.end, w.end) - Math.max(prev.start, w.start);
+      const shorter = Math.min(prev.end - prev.start, w.end - w.start);
+      if (overlap >= 0.5 * Math.max(0.01, shorter)) {
+        // One word, said once: keep the tighter span (and its punctuation when it has any).
+        const keep = w.end - w.start < prev.end - prev.start ? w : prev;
+        const punct = /[.,!?;:]$/.test(prev.word) ? prev.word : w.word;
+        out[out.length - 1] = { ...keep, word: punct };
+        continue;
+      }
+    }
+    out.push(w);
+  }
+  return out;
 }
 
 interface Segment {

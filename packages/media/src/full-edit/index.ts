@@ -109,7 +109,7 @@ export interface FullEditInput {
   /** The Editor agent, called with the take's numbered lines when `choices.useEditor` is set
    * and no plan is stored. The plan it returns is recorded in the result's choices, so a
    * re-apply ("Try another hook", restore a line) never asks again. */
-  editorPlanner?: ((lines: Array<{ id: number; text: string; start: number; end: number; words: number }>) => Promise<EditorPlan>) | null;
+  editorPlanner?: ((lines: Array<{ id: number; text: string; start: number; end: number; words: number; cleanEnd?: boolean }>) => Promise<EditorPlan>) | null;
 }
 
 export const FullEditCheckSchema = z.object({
@@ -364,7 +364,7 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
 
   // ---- 1c. The Editor's cut (when the AI editor wrote one) --------------------------------
   if (!choices.editorPlan && choices.useEditor && input.editorPlanner) {
-    const plan = await input.editorPlanner(sentences.map((s) => ({ id: s.id, text: s.text, start: r2(s.start), end: r2(s.end), words: s.wordCount })));
+    const plan = await input.editorPlanner(sentences.map((s) => ({ id: s.id, text: s.text, start: r2(s.start), end: r2(s.end), words: s.wordCount, cleanEnd: boundary(s.w1).safe })));
     choices = { ...choices, editorPlan: plan };
   }
   const editorParsed = choices.editorPlan ? EditorPlanSchema.safeParse(choices.editorPlan) : null;
@@ -556,18 +556,12 @@ export async function buildFullEdit(input: FullEditInput, embedder: FullEditEmbe
   const vocabulary = new Set(words.map((w) => bare(w.word)));
   const slotFor = (sentenceId: number) => screen?.slots.find((sl) => screenBeats[sl.beatIndex]?.sentenceIds.includes(sentenceId)) ?? null;
   const moments = keptStory
-    // The Editor's cut: a graphic only where a beat named a need (the orchestrator's slot);
-    // elsewhere his face is the picture.
-    .filter((s) => !screen || slotFor(s.id))
     .map((s) => {
       // Whisper's edges drift ±0.2 s: use the first/last word whose time lands inside a clip.
       let a: number | null = null;
       for (let k = s.w0; k <= s.w1 && a == null; k++) a = srcToOut((words[k]!.start + words[k]!.end) / 2, true);
       let b: number | null = null;
       for (let k = s.w1; k >= s.w0 && b == null; k--) b = srcToOut(Math.max(words[k]!.start, words[k]!.end - 0.05), true);
-      const slot = slotFor(s.id);
-      if (slot && a != null) a = Math.max(a, slot.start);
-      if (slot && a != null && b != null && b - a < 0.8) return null; // the slot opens too late in the line
       return a == null || b == null ? null : { sentence: s, outStart: a, outEnd: b, wordOut: (w: number) => srcToOut(words[w]!.start + 0.01, true) ?? srcToOut((words[w]!.start + words[w]!.end) / 2, true), vec: vecs[s.id]! };
     })
     .filter((m): m is NonNullable<typeof m> => !!m);

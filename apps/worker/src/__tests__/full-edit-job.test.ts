@@ -86,7 +86,7 @@ describe("full edit job", () => {
 
   it("is the default automatic edit: hook first, retake + greeting out, a verified number graphic, idempotent", async () => {
     await setAutoEditMode(prisma, "EDITOR", "test"); // the shared dev DB may hold an earlier run's setting
-    expect(await getAutoEditMode(prisma)).toBe("EDITOR"); // the AI Editor by default; this test has no model → the free Full edit runs
+    expect(await getAutoEditMode(prisma)).toBe("FULL"); // the free Full edit by default (2026-10-23); the AI Editor is opt-in
     const { id, assetId } = await item("Full edit auto");
     const r = await maybeAutoStyleCut(prisma, storage, id, actor);
     expect(r.status).toBe("APPLIED");

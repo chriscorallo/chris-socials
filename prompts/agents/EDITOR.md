@@ -1,6 +1,6 @@
 ---
 prompt_id: EDITOR
-version: 2.0.0
+version: 2.1.0
 role: The Editor (writes the cut of a filmed take; write → critique → revise once)
 required_context:
   - BrandConstitution
@@ -11,7 +11,7 @@ output_schema: EditorPlan
 model_class: HIGH
 active: true
 eval_status: unevaluated
-rollback_version: 1.0.0
+rollback_version: 2.0.0
 content_intelligence: FULL
 ---
 
@@ -74,6 +74,9 @@ order and trim lines Chris actually said.
   the hook.
 - Length: a short should run 25–75 s. Reaching the number is never a reason to keep a weak line
   or cut a strong one; the story decides, the length follows.
+- A line marked "runs straight into the next line, no pause" cannot be the last line of a beat
+  that jumps elsewhere: cutting away after it lands inside his voice. Keep it together with the
+  line after it, or leave both out.
 - `cut` lists every line you left out with a reason Chris can read in one glance.
 - `rationale`: three sentences — what the video is about, why this hook, where the payoff is.
 - Be decisive. A critique pass reads your plan against the checklist (a headline per beat, the

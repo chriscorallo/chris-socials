@@ -20,6 +20,9 @@ export interface EditorLine {
   start: number;
   end: number;
   words: number;
+  /** False = he runs straight into the next line with no pause: cutting away after this line
+   * lands inside the voice (the join clips). The Editor keeps such lines with their next line. */
+  cleanEnd?: boolean;
 }
 
 export interface EditorAgentInput {
@@ -62,7 +65,7 @@ export const EditorCritiqueSchema = z.object({
 export type EditorCritique = z.infer<typeof EditorCritiqueSchema>;
 
 function formatLines(lines: EditorLine[]): string {
-  return lines.map((l) => `[${l.id}] ${l.start.toFixed(1)}–${l.end.toFixed(1)}s (${l.words} words): ${l.text}`).join("\n");
+  return lines.map((l) => `[${l.id}] ${l.start.toFixed(1)}–${l.end.toFixed(1)}s (${l.words} words)${l.cleanEnd === false ? " ⟶ runs straight into the next line, no pause" : ""}: ${l.text}`).join("\n");
 }
 
 function takeHeader(input: EditorAgentInput): string {

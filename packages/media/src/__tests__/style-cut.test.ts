@@ -686,3 +686,28 @@ describe("buildStyleCut — cuts like the hand edits (2026-10-19)", () => {
     for (const i of nonJump) expect(r.shots[i]!.framing).not.toBe(r.shots[i - 1]!.framing);
   });
 });
+
+describe("transcript hygiene (2026-10-23) — duplicated and stretched Whisper tokens", () => {
+  it("drops a token that overlaps its twin, caps a token stretched over silence, keeps real repeats", async () => {
+    const { cleanWords, dedupeOverlappingWords, MAX_WORD_S } = await import("../style-cut");
+    const w = dedupeOverlappingWords(cleanWords(
+      [
+        { word: "that.", start: 203.26, end: 203.58 },
+        { word: "So", start: 210.0, end: 218.52 },
+        { word: "So", start: 215.68, end: 218.48 },
+        { word: "a", start: 218.48, end: 219.24 },
+        { word: "a", start: 218.52, end: 219.24 },
+        { word: "higher", start: 219.24, end: 219.6 },
+        { word: "higher", start: 219.24, end: 219.56 },
+        { word: "price", start: 219.56, end: 220.22 },
+        { word: "boom,", start: 230, end: 230.3 },
+        { word: "boom,", start: 230.6, end: 230.9 },
+      ],
+      400,
+    ));
+    expect(w.map((x) => x.word)).toEqual(["that.", "So", "a", "higher", "price", "boom,", "boom,"]);
+    const so = w[1]!;
+    expect(so.end - so.start).toBeLessThanOrEqual(MAX_WORD_S + 1e-6);
+    expect(dedupeOverlappingWords([{ word: "very", start: 1, end: 1.3 }, { word: "very", start: 1.35, end: 1.6 }])).toHaveLength(2);
+  });
+});
